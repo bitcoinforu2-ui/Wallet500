@@ -4,9 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'index.html'
       - 'dashboard-live.html'
-      - 'assets/**'
       - 'data/**'
       - '.github/workflows/pages.yml'
 permissions:
@@ -24,21 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare live dashboard
-        run: |
-          cp dashboard-live.html index.html
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          p=Path('index.html')
-          s=p.read_text()
-          css='''.heroPremium{margin-bottom:10px;border:1px solid #18364c;background:#02070c;overflow:hidden}.heroPremium img{display:block;width:100%;height:auto}.heroRuntime{display:flex;justify-content:flex-end;gap:12px;padding:6px 10px;color:#55e4ad;font:10px monospace;background:#041019;border-top:1px solid #143147}@media(max-width:760px){.heroPremium img{min-height:145px;object-fit:cover;object-position:center}.heroRuntime{justify-content:center;flex-wrap:wrap}}'''
-          s=s.replace('</style>',css+'</style>',1)
-          hero='''<section class="heroPremium"><img src="assets/wallet500-logo-option1.svg" alt="WALLET500 — Multi-Chain Early Market Intelligence Engine"><div class="heroRuntime"><span><i class="dot"></i> ENGINE LIVE</span><span id="stamp">syncing…</span></div></section>'''
-          s,n=re.subn(r'<section class="hero panel">.*?</section>',hero,s,count=1,flags=re.S)
-          if n!=1: raise SystemExit('hero replacement failed')
-          p.write_text(s)
-          PY
+      - name: Prepare single-source live dashboard
+        run: cp dashboard-live.html index.html
       - uses: actions/configure-pages@v5
         with:
           enablement: true
