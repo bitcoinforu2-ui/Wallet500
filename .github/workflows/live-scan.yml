@@ -1,6 +1,13 @@
 name: Wallet500 Multi-Chain Live Scan
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'pyproject.toml'
+      - '.github/workflows/live-scan.yml'
+      - 'data/manual-watchlist.json'
   schedule:
     - cron: '*/15 * * * *'
 permissions:
