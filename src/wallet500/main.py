@@ -7,6 +7,12 @@ from .watchlist import Watchlist
 from .historical import historical_profile
 from .forensics import wallet_forensics
 from .discovery import discover_wallet_candidates
+from .wallet_scorer import score_wallet, rank_wallets
+from .live_monitor import monitor_ranked
+
+
+def _write(path: Path, payload) -> None:
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def run() -> dict:
@@ -16,30 +22,27 @@ def run() -> dict:
     out.mkdir(parents=True, exist_ok=True)
 
     events = scan_addresses(adapter, cfg.seed_wallets, cfg.signatures_per_wallet)
-    watch = Watchlist(str(out / "watchlist.json"))
-    watch_rows = watch.save_events(events, cfg.anomaly_threshold)
+    watch_rows = Watchlist(str(out / "watchlist.json")).save_events(events, cfg.anomaly_threshold)
 
     token_mints = [row["token"] for row in watch_rows[:25]]
     candidates = discover_wallet_candidates(adapter, token_mints)
-    (out / "wallet-candidates.json").write_text(json.dumps(candidates[:500], indent=2), encoding="utf-8")
+    _write(out / "wallet-candidates.json", candidates[:500])
 
-    profiles = []
-    for row in candidates[:50]:
-        profile = historical_profile(adapter, row["address"], limit=100)
-        profile["discovery_score"] = row["score"]
-        profile["token_count"] = row["token_count"]
-        profiles.append(wallet_forensics(profile))
-    (out / "wallet-profiles.json").write_text(json.dumps(profiles, indent=2), encoding="utf-8")
+    scored = []
+    for row in candidates[:100]:
+        profile = wallet_forensics(historical_profile(adapter, row["address"], limit=100))
+        scored.append(score_wallet(profile, row))
+    ranked = rank_wallets(scored)
+    _write(out / "wallet-quality.json", ranked)
+    _write(out / "elite-wallets.json", [x for x in ranked if x["tier"] == "ELITE"])
 
-    result = {
-        "chain": "solana",
-        "seeds": len(cfg.seed_wallets),
-        "events": len(events),
-        "watchlist": len(watch_rows),
-        "wallet_candidates": len(candidates),
-        "profiles": len(profiles),
-    }
-    (out / "run-summary.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    live_pool = [x for x in ranked if x["tier"] in {"ELITE", "STRONG", "WATCH"}]
+    live = monitor_ranked(adapter, live_pool, max_wallets=50)
+    _write(out / "live-wallets.json", live)
+
+    tiers = {name: sum(1 for x in ranked if x["tier"] == name) for name in ("ELITE", "STRONG", "WATCH", "LOW")}
+    result = {"chain": "solana", "seeds": len(cfg.seed_wallets), "events": len(events), "watchlist": len(watch_rows), "wallet_candidates": len(candidates), "wallets_scored": len(ranked), "tiers": tiers, "live_monitored": len(live)}
+    _write(out / "run-summary.json", result)
     return result
 
 
