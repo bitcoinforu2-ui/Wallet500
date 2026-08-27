@@ -9,8 +9,6 @@ on:
       - 'pyproject.toml'
       - '.github/workflows/live-scan.yml'
       - 'data/manual-watchlist.json'
-  schedule:
-    - cron: '2,12,22,32,42,52 * * * *'
 
 permissions:
   contents: write
@@ -42,7 +40,7 @@ jobs:
         env:
           W500_EVENT: ${{ github.event_name }}
           W500_RUN_ID: ${{ github.run_id }}
-          W500_WORKFLOW: PRIMARY
+          W500_WORKFLOW: PRIMARY_ON_DEMAND
           W500_SCHEDULE: ${{ github.event.schedule }}
         run: |
           python3 - <<'PY'
@@ -55,9 +53,8 @@ jobs:
           h=d.get('history') if isinstance(d.get('history'),list) else []
           now=datetime.now(timezone.utc).isoformat()
           row={'at':now,'workflow':os.getenv('W500_WORKFLOW'),'event':os.getenv('W500_EVENT'),'run_id':os.getenv('W500_RUN_ID'),'schedule':os.getenv('W500_SCHEDULE') or None}
-          h.append(row); h=h[-100:]
-          d={'updated_at':now,'last':row,'history':h}
-          p.write_text(json.dumps(d,indent=2))
+          h.append(row); h=h[-200:]
+          p.write_text(json.dumps({'updated_at':now,'last':row,'history':h},indent=2))
           PY
       - name: Validate primary revival lane and report degraded research lanes
         run: |
@@ -76,13 +73,7 @@ jobs:
           if c.get('healthy_sources',0)<2: raise SystemExit('FATAL: fewer than 2 healthy CEX sources')
           for required in ('data/cex-state.json','data/cex-learning.json','data/time-machine-replay.json','data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/scheduler-health.json'):
               if not Path(required).exists(): raise SystemExit('FATAL: missing '+required)
-          counts=d.get('counts',{})
-          degraded=[chain for chain in ('solana','ethereum','bsc') if int((counts.get(chain) or {}).get('discovered',0))<=0]
-          lane=(d.get('lane_health') or {}).get('new_token_lab','UNKNOWN')
-          if degraded or lane!='HEALTHY':
-              print('WARNING: research lane degraded; primary revival publish continues:',degraded,(d.get('lane_health') or {}).get('new_token_error'))
-          print('HEALTHY PRIMARY REVIVAL:',d['updated_at'],'CEX sources',c['healthy_sources'],'contracts',c['contracts_seen'],'symbols',c.get('symbols_seen',0),'alerts',c['alerts_count'])
-          print('FRESH SOLANA:', 'quality', d.get('quality_gate_qualified',d.get('qualified',0)), 'active', d.get('active_qualified',0), 'pending', d.get('fresh_solana_pending',0), 'failed', d.get('fresh_solana_failed',0))
+          print('HEALTHY ON-DEMAND SCAN:',d['updated_at'],'active',d.get('active_qualified',0),'pending',d.get('fresh_solana_pending',0),'failed',d.get('fresh_solana_failed',0))
           PY
       - name: Publish verified scan data
         run: |
@@ -91,7 +82,7 @@ jobs:
           git config user.email 'wallet500-bot@users.noreply.github.com'
           git add data/
           git diff --cached --quiet && exit 0
-          git commit -m 'data: refresh verified revival intelligence'
+          git commit -m 'data: refresh verified intelligence'
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git merge --no-edit -X ours origin/main
