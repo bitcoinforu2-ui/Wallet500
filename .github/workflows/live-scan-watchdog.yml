@@ -47,7 +47,7 @@ jobs:
           PY
       - name: Fresh scan already exists
         if: steps.freshness.outputs.stale != 'true'
-        run: echo "Primary scan is fresh (${ { steps.freshness.outputs.age_minutes } } minutes); watchdog exits cleanly."
+        run: echo "Primary scan is fresh (${{ steps.freshness.outputs.age_minutes }} minutes); watchdog exits cleanly."
       - name: Install
         if: steps.freshness.outputs.stale == 'true'
         run: pip install -e .
