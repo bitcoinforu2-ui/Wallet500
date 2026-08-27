@@ -62,10 +62,16 @@ jobs:
           PY
       - name: Publish verified scan data
         run: |
+          set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
           git add data/
           git diff --cached --quiet && exit 0
           git commit -m 'data: refresh verified revival intelligence'
-          git pull --rebase origin main
-          git push
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then exit 0; fi
+            echo "Push raced with main; rebasing generated data (attempt $attempt)"
+            git fetch origin main
+            git rebase -X theirs origin/main || { git rebase --abort || true; exit 1; }
+          done
+          git push origin HEAD:main
