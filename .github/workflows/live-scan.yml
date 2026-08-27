@@ -36,6 +36,8 @@ jobs:
         env:
           PYTHONUNBUFFERED: '1'
         run: python -m wallet500.orchestrator
+      - name: Apply fresh Solana survival gate
+        run: python -m wallet500.fresh_solana_gate
       - name: Validate primary revival lane and report degraded research lanes
         run: |
           python - <<'PY'
@@ -51,7 +53,7 @@ jobs:
           c=json.loads(cpath.read_text())
           if c.get('contracts_seen',0)<=0: raise SystemExit('FATAL: CEX radar empty')
           if c.get('healthy_sources',0)<2: raise SystemExit('FATAL: fewer than 2 healthy CEX sources')
-          for required in ('data/cex-state.json','data/cex-learning.json','data/learning-observations.json','data/time-machine-replay.json'):
+          for required in ('data/cex-state.json','data/cex-learning.json','data/time-machine-replay.json','data/fresh-solana-survival.json','data/active-qualified-candidates.json'):
               if not Path(required).exists(): raise SystemExit('FATAL: missing '+required)
           counts=d.get('counts',{})
           degraded=[chain for chain in ('solana','ethereum','bsc') if int((counts.get(chain) or {}).get('discovered',0))<=0]
@@ -59,6 +61,7 @@ jobs:
           if degraded or lane!='HEALTHY':
               print('WARNING: research lane degraded; primary revival publish continues:',degraded,(d.get('lane_health') or {}).get('new_token_error'))
           print('HEALTHY PRIMARY REVIVAL:',d['updated_at'],'CEX sources',c['healthy_sources'],'contracts',c['contracts_seen'],'symbols',c.get('symbols_seen',0),'alerts',c['alerts_count'])
+          print('FRESH SOLANA:', 'quality', d.get('quality_gate_qualified',d.get('qualified',0)), 'active', d.get('active_qualified',0), 'pending', d.get('fresh_solana_pending',0), 'failed', d.get('fresh_solana_failed',0))
           PY
       - name: Publish verified scan data
         run: |
