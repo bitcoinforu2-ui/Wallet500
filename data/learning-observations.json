@@ -1,28 +1,45 @@
 {
-  "version": 1,
-  "updated_at": "2026-08-27T06:41:21.030993+00:00",
-  "objective": "measure which discovery and revival signals produce verified post-detection follow-through",
+  "version": 2,
+  "updated_at": "2026-08-27T06:59:57.622960+00:00",
+  "objective": "optimize early detection of established-token revival using only information available at each observation time",
   "rules": [
-    "never count case studies as Wallet500 calls",
-    "never invent historical entry prices",
-    "compare candidates by verified price after detection",
-    "learn separately from early-token, on-chain revival, and CEX revival cohorts"
+    "old-coin revival is the primary production intelligence cohort",
+    "new tokens are research-only unless policy is explicitly changed",
+    "never count user case studies as Wallet500 calls",
+    "never invent historical entry prices or baselines",
+    "no hindsight feature leakage in historical review",
+    "retain failures and dumps in the complete track record",
+    "version threshold changes before evaluating them"
   ],
   "current_run": {
-    "early_anomalies": 47,
-    "early_qualified": 5,
-    "onchain_revival_alerts": 1,
+    "new_token_anomalies_research": 45,
+    "new_token_legacy_qualified_research": 5,
+    "onchain_revival_alerts": 0,
     "onchain_revival_qualified": 0,
-    "cex_revival_alerts": 87,
-    "cex_healthy_sources": 7,
-    "cex_symbols_seen": 1888,
-    "outcome_tracked": 618
+    "cex_revival_alerts": 70,
+    "cex_healthy_sources": 9,
+    "cex_symbols_seen": 1921,
+    "outcome_tracked": 667
   },
+  "revival_watch_parameters": [
+    "price acceleration >=2% per scan; stronger >=5%",
+    "volume acceleration >=8% per scan; stronger >=25%",
+    "OI acceleration >=5% per scan; stronger >=15%",
+    "absolute funding >=0.05%; extreme >=0.30%",
+    "minimum 2 exchange confirmations; strong >=4; exceptional >=6",
+    "personal baseline deviation and quiet-to-active transition",
+    "cross-exchange lead/lag and momentum dispersion",
+    "spot/perpetual confirmation when available",
+    "on-chain wallet/holder/buyer accumulation when available",
+    "liquidity/turnover quality and pump-dump risk"
+  ],
   "next_learning_targets": [
-    "which CEX score bands predict 15m/30m/1h continuation",
-    "whether OI acceleration adds predictive value beyond price and volume",
-    "which funding archetype has best risk-adjusted continuation",
-    "minimum number of exchange confirmations that reduces false positives",
-    "whether CEX revival leads on-chain revival or follows it"
+    "historically replay stored observations without future-data leakage",
+    "find score bands that predict 15m/30m/1h/4h continuation",
+    "measure OI incremental predictive value beyond price and volume",
+    "measure funding archetypes by follow-through and drawdown",
+    "find minimum exchange confirmations that reduce false positives",
+    "measure whether CEX revival leads on-chain revival",
+    "build robust per-symbol median/percentile baselines after sufficient observations"
   ]
 }
