@@ -3,6 +3,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from .config import Settings
 from .market_pipeline import run_market_scan
+from .revival_radar import run_revival_scan
 
 
 def _write(path, payload):
@@ -32,6 +33,15 @@ def _snapshot_map(snapshots: list[dict]) -> dict[str, dict]:
         chain=x.get("chain"); token=x.get("token") or x.get("mint")
         if chain and token: out[_token_key(chain,token)]=x
     return out
+
+
+def _merge_snapshots(*groups: list[dict]) -> list[dict]:
+    rows={}
+    for group in groups:
+        for x in group or []:
+            chain=x.get("chain"); token=x.get("token") or x.get("mint")
+            if chain and token: rows[_token_key(chain,token)]=x
+    return list(rows.values())
 
 
 def _pct(cur, base):
@@ -73,6 +83,24 @@ def _update_discovery_state(out: Path, universe: list[dict], snapshots: list[dic
     _write(path,state); return state,annotated
 
 
+def _ensure_revival_tracking(out: Path, state: dict, revival_snapshots: list[dict], now: str) -> dict:
+    tokens=state.get("tokens") if isinstance(state.get("tokens"),dict) else {}
+    changed=False
+    for s in revival_snapshots or []:
+        chain=s.get("chain"); token=s.get("token") or s.get("mint")
+        if not chain or not token: continue
+        key=_token_key(chain,token); price=s.get("price_usd"); rec=tokens.get(key)
+        if rec:
+            if rec.get("entry_price_usd") in (None,0,0.0) and price not in (None,0,0.0):
+                rec["entry_price_usd"]=price; rec["tracking_started_at"]=now; rec["legacy_price_tracking"]=True; changed=True
+            continue
+        tokens[key]={"chain":chain,"token":token,"first_seen":now,"last_seen":now,"scan_count":0,"last_source":"REVIVAL_RADAR","last_discovery_page":None,"entry_price_usd":price if price not in (None,0,0.0) else None,"tracking_started_at":now if price not in (None,0,0.0) else None,"legacy_price_tracking":True}
+        changed=True
+    if changed:
+        state["tokens"]=tokens; state["unique_tokens_total"]=len(tokens); state["updated_at"]=now; _write(out/"discovery-state.json",state)
+    return state
+
+
 def _update_outcomes(out: Path, state: dict, snapshots: list[dict], now: str) -> dict:
     path=out/"outcome-tracker.json"; tracker=_load_json(path,{})
     if not isinstance(tracker,dict): tracker={}
@@ -100,9 +128,6 @@ def _update_outcomes(out: Path, state: dict, snapshots: list[dict], now: str) ->
 
 
 def _pump_dump_risk(x: dict, outcomes: dict) -> dict:
-    """Heuristic manipulation gate using only verified market/outcome data we actually have.
-    It is intentionally conservative: high momentum alone never blocks a token.
-    """
     chain=x.get("chain"); token=x.get("token") or x.get("mint"); key=_token_key(chain,token)
     rec=((outcomes or {}).get("tokens") or {}).get(key) or {}
     liq=float(x.get("liquidity_usd") or 0); vol=float(x.get("volume_h1") or 0)
@@ -110,52 +135,28 @@ def _pump_dump_risk(x: dict, outcomes: dict) -> dict:
     h1=float(x.get("price_change_h1") or 0); m5=float(x.get("price_change_m5") or 0)
     turnover=(vol/max(liq,1.0)) if vol>0 else 0.0; ratio=(buys/max(sells,1)) if buys or sells else 0.0
     score=0; reasons=[]; critical=[]
-
-    if liq<=0:
-        score+=100; critical.append("ZERO_LIQUIDITY")
-    elif liq<10000:
-        score+=35; reasons.append("VERY_LOW_LIQUIDITY")
-    elif liq<20000:
-        score+=15; reasons.append("LOW_LIQUIDITY")
-
-    if turnover>=25:
-        score+=30; reasons.append("EXTREME_VOLUME_TO_LIQUIDITY")
-    elif turnover>=12:
-        score+=18; reasons.append("HIGH_VOLUME_TO_LIQUIDITY")
-
-    # Extreme pump is only suspicious when paired with weak market structure.
-    if h1>=1000 and (liq<50000 or turnover>=8):
-        score+=35; reasons.append("EXTREME_1H_PUMP_WITH_FRAGILE_STRUCTURE")
-    elif h1>=400 and (liq<30000 or turnover>=12):
-        score+=22; reasons.append("PARABOLIC_1H_MOVE")
-
-    if h1>150 and m5<=-12:
-        score+=28; reasons.append("PUMP_THEN_5M_REVERSAL")
-    if sells>=80 and ratio<0.70:
-        score+=25; reasons.append("SELL_PRESSURE_DOMINANT")
-    if tx>=100 and ratio<0.50:
-        score+=20; reasons.append("SEVERE_BUYER_EXHAUSTION")
-
+    if liq<=0: score+=100; critical.append("ZERO_LIQUIDITY")
+    elif liq<10000: score+=35; reasons.append("VERY_LOW_LIQUIDITY")
+    elif liq<20000: score+=15; reasons.append("LOW_LIQUIDITY")
+    if turnover>=25: score+=30; reasons.append("EXTREME_VOLUME_TO_LIQUIDITY")
+    elif turnover>=12: score+=18; reasons.append("HIGH_VOLUME_TO_LIQUIDITY")
+    if h1>=1000 and (liq<50000 or turnover>=8): score+=35; reasons.append("EXTREME_1H_PUMP_WITH_FRAGILE_STRUCTURE")
+    elif h1>=400 and (liq<30000 or turnover>=12): score+=22; reasons.append("PARABOLIC_1H_MOVE")
+    if h1>150 and m5<=-12: score+=28; reasons.append("PUMP_THEN_5M_REVERSAL")
+    if sells>=80 and ratio<0.70: score+=25; reasons.append("SELL_PRESSURE_DOMINANT")
+    if tx>=100 and ratio<0.50: score+=20; reasons.append("SEVERE_BUYER_EXHAUSTION")
     entry=float(rec.get("entry_price_usd") or 0); cur=float(rec.get("current_price_usd") or 0); peak=float(rec.get("peak_price_usd") or 0)
     if peak>0 and cur>0:
         drawdown=(cur/peak-1.0)*100.0
-        if drawdown<=-60:
-            score+=55; critical.append("POST_DISCOVERY_CRASH_GT_60PCT")
-        elif drawdown<=-40:
-            score+=35; reasons.append("POST_DISCOVERY_DRAWDOWN_GT_40PCT")
-        elif drawdown<=-25:
-            score+=18; reasons.append("POST_DISCOVERY_DRAWDOWN_GT_25PCT")
-    if entry>0 and cur>0 and _pct(cur,entry) is not None and _pct(cur,entry)<=-50:
-        score+=30; reasons.append("LOSS_FROM_VERIFIED_ENTRY_GT_50PCT")
-
+        if drawdown<=-60: score+=55; critical.append("POST_DISCOVERY_CRASH_GT_60PCT")
+        elif drawdown<=-40: score+=35; reasons.append("POST_DISCOVERY_DRAWDOWN_GT_40PCT")
+        elif drawdown<=-25: score+=18; reasons.append("POST_DISCOVERY_DRAWDOWN_GT_25PCT")
+    if entry>0 and cur>0 and _pct(cur,entry) is not None and _pct(cur,entry)<=-50: score+=30; reasons.append("LOSS_FROM_VERIFIED_ENTRY_GT_50PCT")
     history=rec.get("history") if isinstance(rec.get("history"),list) else []
     if len(history)>=2:
         prev=history[-2]; prev_liq=float(prev.get("liquidity_usd") or 0); prev_buys=int(prev.get("buys_h1") or 0)
-        if prev_liq>=20000 and liq>0 and liq/prev_liq<=0.55:
-            score+=45; critical.append("LIQUIDITY_REMOVAL_GT_45PCT")
-        if prev_buys>=100 and buys/prev_buys<=0.35 and sells>buys:
-            score+=25; reasons.append("BUYER_ACTIVITY_COLLAPSE")
-
+        if prev_liq>=20000 and liq>0 and liq/prev_liq<=0.55: score+=45; critical.append("LIQUIDITY_REMOVAL_GT_45PCT")
+        if prev_buys>=100 and buys/prev_buys<=0.35 and sells>buys: score+=25; reasons.append("BUYER_ACTIVITY_COLLAPSE")
     score=min(100,int(score)); blocked=score>=70 or bool(critical)
     level="CRITICAL" if critical or score>=85 else "HIGH" if score>=70 else "MEDIUM" if score>=40 else "LOW"
     return {"pump_dump_risk_score":score,"pump_dump_risk_level":level,"pump_dump_blocked":blocked,"pump_dump_reasons":critical+reasons,"pump_dump_critical":critical}
@@ -174,31 +175,59 @@ def _qualify(x: dict, now: str, outcomes: dict) -> dict:
     return {**x,**risk,"qualification":status,"qualification_reasons":failed or ["PASSED_SCORE_LIQUIDITY_VOLUME_ACTIVITY_MANIPULATION"],"qualified_at":now if status=="QUALIFIED" else None,"evaluated_at":now}
 
 
+def _qualify_revival(x: dict, now: str, outcomes: dict) -> dict:
+    score=float(x.get("revival_score") or 0); liq=float(x.get("liquidity_usd") or 0); vol=float(x.get("volume_h1") or 0)
+    tx=int(x.get("buys_h1") or 0)+int(x.get("sells_h1") or 0); risk=_pump_dump_risk(x,outcomes); failed=[]
+    if score < 65: failed.append("REVIVAL_SCORE_LT_65")
+    if liq < 20000: failed.append("LIQUIDITY_LT_20K")
+    if vol < 15000: failed.append("VOLUME_1H_LT_15K")
+    if tx < 50: failed.append("ACTIVITY_LT_50_TX_1H")
+    if risk["pump_dump_blocked"]: failed.append("PUMP_DUMP_RISK_GATE")
+    status="PUMP_DUMP_RISK" if risk["pump_dump_blocked"] else ("REVIVAL_QUALIFIED" if not failed else "REVIVAL_WATCH")
+    return {**x,**risk,"qualification":status,"qualification_reasons":failed or ["PASSED_REVIVAL_BASELINE_ACTIVITY_LIQUIDITY_MANIPULATION"],"qualified_at":now if status=="REVIVAL_QUALIFIED" else None,"evaluated_at":now}
+
+
 def run():
     cfg=Settings(); out=Path(cfg.output_dir); out.mkdir(parents=True,exist_ok=True); now=datetime.now(timezone.utc).isoformat()
     previous=_load_json(out/"discovery-state.json",{}); start_pages=previous.get("source_cursor",{}) if isinstance(previous,dict) else {}
+    manual_watch=_load_manual_watchlist(out)
     market=run_market_scan(limit_per_chain=120,threshold=45.0,start_pages=start_pages); snapshots=market["snapshots"]
     state,universe=_update_discovery_state(out,market["universe"],snapshots,market.get("next_pages",{}),now)
-    outcomes=_update_outcomes(out,state,snapshots,now); anomalies=market["anomalies"]
+
+    revival=run_revival_scan(out,state,manual_watch,now,batch_size=60,threshold=55)
+    state=_ensure_revival_tracking(out,state,revival.get("snapshots",[]),now)
+    tracking_snapshots=_merge_snapshots(snapshots,revival.get("snapshots",[]))
+    outcomes=_update_outcomes(out,state,tracking_snapshots,now); anomalies=market["anomalies"]
 
     qualification=[_qualify(x,now,outcomes) for x in anomalies]
     qualified=[x for x in qualification if x["qualification"]=="QUALIFIED"]
     pump_dump=[x for x in qualification if x["qualification"]=="PUMP_DUMP_RISK"]
     rejected=[x for x in qualification if x["qualification"]=="REJECTED"]
 
+    revival_qualification=[_qualify_revival(x,now,outcomes) for x in revival.get("alerts",[])]
+    revival_qualified=[x for x in revival_qualification if x["qualification"]=="REVIVAL_QUALIFIED"]
+    revival_pump=[x for x in revival_qualification if x["qualification"]=="PUMP_DUMP_RISK"]
+    revival_watch=[x for x in revival_qualification if x["qualification"]=="REVIVAL_WATCH"]
+    pump_dump=_merge_snapshots(pump_dump,revival_pump)
+
     automatic_watch=[{**x,"watch_source":"ANOMALY_RADAR"} for x in anomalies[:100]]
-    manual_watch=_load_manual_watchlist(out); seen={(x.get("chain"),x.get("token") or x.get("mint")) for x in automatic_watch}; watch=list(automatic_watch)
+    revival_watch_rows=[{**x,"watch_source":"REVIVAL_RADAR"} for x in revival.get("alerts",[])[:60]]
+    seen=set(); watch=[]
+    for x in automatic_watch+revival_watch_rows:
+        key=(x.get("chain"),x.get("token") or x.get("mint"))
+        if key not in seen: watch.append(x); seen.add(key)
     for x in manual_watch:
         key=(x.get("chain"),x.get("token") or x.get("mint"))
         if key not in seen: watch.append({**x,"watch_source":"MANUAL_RESEARCH"}); seen.add(key)
 
     review=[{**x,"stage":"HISTORICAL_DEEP_SCAN_QUEUED","queued_at":now,"next_stage":"WALLET_DISCOVERY_FORENSICS"} for x in watch]
-    pipeline={"flow":["MULTI_CHAIN_MARKET_SCAN","GLOBAL_ANOMALY_RADAR","QUALITY_GATE","PUMP_DUMP_RISK_GATE","WATCHLIST","HISTORICAL_DEEP_SCAN","WALLET_DISCOVERY_FORENSICS","OPERATOR_ELITE_SCORING","BEHAVIOR_LEARNING","SIGNAL_CORRELATION","OUTCOME_TRACKING","LIVE_DASHBOARD"],"current":{"MULTI_CHAIN_MARKET_SCAN":len(universe),"GLOBAL_ANOMALY_RADAR":len(anomalies),"QUALITY_GATE_QUALIFIED":len(qualified),"PUMP_DUMP_RISK":len(pump_dump),"QUALITY_GATE_REJECTED":len(rejected),"WATCHLIST":len(watch),"HISTORICAL_DEEP_SCAN":len(review),"OUTCOME_TRACKED":outcomes.get("tracked_tokens",0)},"discovery_health":state.get("last_run",{}),"unique_tokens_total":state.get("unique_tokens_total",0),"scan_runs_total":state.get("runs",0),"updated_at":now,"verified_only":True}
+    pipeline={"flow":["MULTI_CHAIN_MARKET_SCAN","GLOBAL_ANOMALY_RADAR","REVIVAL_RADAR","QUALITY_GATE","PUMP_DUMP_RISK_GATE","WATCHLIST","HISTORICAL_DEEP_SCAN","WALLET_DISCOVERY_FORENSICS","OPERATOR_ELITE_SCORING","BEHAVIOR_LEARNING","SIGNAL_CORRELATION","OUTCOME_TRACKING","LIVE_DASHBOARD"],"current":{"MULTI_CHAIN_MARKET_SCAN":len(universe),"GLOBAL_ANOMALY_RADAR":len(anomalies),"REVIVAL_SCANNED":revival.get("state",{}).get("scanned_this_run",0),"REVIVAL_ALERTS":len(revival.get("alerts",[])),"REVIVAL_QUALIFIED":len(revival_qualified),"QUALITY_GATE_QUALIFIED":len(qualified),"PUMP_DUMP_RISK":len(pump_dump),"QUALITY_GATE_REJECTED":len(rejected),"WATCHLIST":len(watch),"HISTORICAL_DEEP_SCAN":len(review),"OUTCOME_TRACKED":outcomes.get("tracked_tokens",0)},"discovery_health":state.get("last_run",{}),"revival_health":{"universe_size":revival.get("state",{}).get("universe_size",0),"scanned_this_run":revival.get("state",{}).get("scanned_this_run",0),"alerts_this_run":revival.get("state",{}).get("alerts_this_run",0),"errors_this_run":revival.get("state",{}).get("errors_this_run",0)},"unique_tokens_total":state.get("unique_tokens_total",0),"scan_runs_total":state.get("runs",0),"updated_at":now,"verified_only":True}
 
     _write(out/"market-universe.json",universe); _write(out/"market-snapshots.json",snapshots); _write(out/"anomaly-radar.json",anomalies)
     _write(out/"qualification-results.json",qualification); _write(out/"qualified-candidates.json",qualified); _write(out/"pump-dump-risk.json",pump_dump); _write(out/"rejected-candidates.json",rejected)
+    _write(out/"revival-qualification.json",revival_qualification); _write(out/"revival-qualified.json",revival_qualified); _write(out/"revival-watch.json",revival_watch)
     _write(out/"watchlist.json",watch); _write(out/"historical-review-queue.json",review); _write(out/"pipeline-status.json",pipeline)
-    result={"mode":"market-first","verified_only":True,"chains":market["chains"],"counts":market["counts"],"universe":len(universe),"snapshots":len(snapshots),"anomalies":len(anomalies),"qualified":len(qualified),"pump_dump_risk":len(pump_dump),"rejected":len(rejected),"watchlist":len(watch),"historical_review_queued":len(review),"outcome_tracked":outcomes.get("tracked_tokens",0),"manual_research_cases":len(manual_watch),"discovery":state.get("last_run",{}),"unique_tokens_total":state.get("unique_tokens_total",0),"scan_runs_total":state.get("runs",0),"updated_at":now}
+    result={"mode":"market-first+revival","verified_only":True,"chains":market["chains"],"counts":market["counts"],"universe":len(universe),"snapshots":len(snapshots),"anomalies":len(anomalies),"qualified":len(qualified),"revival_scanned":revival.get("state",{}).get("scanned_this_run",0),"revival_alerts":len(revival.get("alerts",[])),"revival_qualified":len(revival_qualified),"pump_dump_risk":len(pump_dump),"rejected":len(rejected),"watchlist":len(watch),"historical_review_queued":len(review),"outcome_tracked":outcomes.get("tracked_tokens",0),"manual_research_cases":len(manual_watch),"discovery":state.get("last_run",{}),"revival":{"universe_size":revival.get("state",{}).get("universe_size",0),"scanned_this_run":revival.get("state",{}).get("scanned_this_run",0),"alerts_this_run":revival.get("state",{}).get("alerts_this_run",0),"errors_this_run":revival.get("state",{}).get("errors_this_run",0)},"unique_tokens_total":state.get("unique_tokens_total",0),"scan_runs_total":state.get("runs",0),"updated_at":now}
     _write(out/"run-summary.json",result); return result
 
 if __name__=="__main__": print(json.dumps(run(),indent=2))
