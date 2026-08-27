@@ -7,8 +7,8 @@ on:
     paths:
       - '.github/workflows/continuous-scan.yml'
   schedule:
-    # One scheduler wake-up per hour; once awake this job self-times 5 scans
-    # at 15-minute start-to-start intervals. Minute 13 avoids top-of-hour load.
+    # One scheduler wake-up per hour. Once awake, this job self-times four
+    # scans at 15-minute start-to-start intervals. Minute 13 avoids peak load.
     - cron: '13 * * * *'
 
 permissions:
@@ -21,7 +21,7 @@ concurrency:
 jobs:
   continuous-scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 78
+    timeout-minutes: 62
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,7 +31,7 @@ jobs:
           python-version: '3.12'
       - name: Install once
         run: pip install -e .
-      - name: Run five verified scans at 15-minute intervals
+      - name: Run four verified scans at 15-minute intervals
         env:
           PYTHONUNBUFFERED: '1'
         shell: bash
@@ -40,18 +40,16 @@ jobs:
           git config user.name 'wallet500-continuous'
           git config user.email 'wallet500-continuous@users.noreply.github.com'
 
-          for cycle in 1 2 3 4 5; do
+          for cycle in 1 2 3 4; do
             cycle_start=$(date +%s)
-            echo "=== WALLET500 CONTINUOUS CYCLE $cycle/5 START $(date -u +%FT%TZ) ==="
+            echo "=== WALLET500 CONTINUOUS CYCLE $cycle/4 START $(date -u +%FT%TZ) ==="
 
-            # Pick up code/config changes without discarding local generated state.
             git fetch origin main
             git merge --no-edit -X ours origin/main || true
 
             python -m wallet500.orchestrator
             python -m wallet500.fresh_solana_gate
 
-            # Hard validation: every cycle must produce a fresh verified snapshot.
             python3 - "$cycle" <<'PY'
           import json, os, sys
           from datetime import datetime, timezone
@@ -66,20 +64,11 @@ jobs:
           if not d.get('verified_only'): raise SystemExit(f'FATAL: cycle {cycle} not verified-only')
           for required in ('data/fresh-solana-survival.json','data/active-qualified-candidates.json'):
               if not Path(required).exists(): raise SystemExit('FATAL: missing '+required)
-
           hp=Path('data/scheduler-health.json')
           try: h=json.loads(hp.read_text()) if hp.exists() else {}
           except Exception: h={}
           hist=h.get('history') if isinstance(h.get('history'),list) else []
-          item={
-              'at': datetime.now(timezone.utc).isoformat(),
-              'workflow':'CONTINUOUS_15M',
-              'event':os.environ.get('GITHUB_EVENT_NAME'),
-              'run_id':os.environ.get('GITHUB_RUN_ID'),
-              'cycle':cycle,
-              'scan_updated_at':d['updated_at'],
-              'scan_run_total':d.get('scan_runs_total'),
-          }
+          item={'at':datetime.now(timezone.utc).isoformat(),'workflow':'CONTINUOUS_15M','event':os.environ.get('GITHUB_EVENT_NAME'),'run_id':os.environ.get('GITHUB_RUN_ID'),'cycle':cycle,'scan_updated_at':d['updated_at'],'scan_run_total':d.get('scan_runs_total')}
           hist.append(item); hist=hist[-200:]
           hp.write_text(json.dumps({'updated_at':item['at'],'last':item,'history':hist},indent=2))
           print('CYCLE HEALTHY',cycle,d['updated_at'],'run',d.get('scan_runs_total'))
@@ -102,11 +91,11 @@ jobs:
               fi
             fi
 
-            if [ "$cycle" -lt 5 ]; then
+            if [ "$cycle" -lt 4 ]; then
               elapsed=$(( $(date +%s) - cycle_start ))
               sleep_for=$(( 900 - elapsed ))
               if [ "$sleep_for" -gt 0 ]; then
-                echo "Cycle $cycle took ${elapsed}s; sleeping ${sleep_for}s to preserve 15m start interval"
+                echo "Cycle $cycle took ${elapsed}s; sleeping ${sleep_for}s to preserve 15m interval"
                 sleep "$sleep_for"
               else
                 echo "WARNING: cycle $cycle took ${elapsed}s (>15m); next cycle starts immediately"
