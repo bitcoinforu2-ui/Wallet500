@@ -2,9 +2,11 @@ name: Wallet500 Continuous Scan
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/continuous-scan.yml'
   schedule:
-    # Independent runs. Never keep a runner sleeping between scans.
-    # GitHub schedules can be delayed, so dashboard health uses actual scan timestamps.
     - cron: '2,17,32,47 * * * *'
 
 permissions:
@@ -60,10 +62,10 @@ jobs:
           except Exception: h={}
           hist=h.get('history') if isinstance(h.get('history'),list) else []
           now=datetime.now(timezone.utc).isoformat()
-          item={'at':now,'workflow':'SCHEDULED_15M','event':os.getenv('W500_EVENT'),'run_id':os.getenv('W500_RUN_ID'),'schedule':os.getenv('W500_SCHEDULE') or None,'scan_updated_at':d['updated_at'],'scan_run_total':d.get('scan_runs_total')}
+          item={'at':now,'workflow':'PRIMARY_15M','event':os.getenv('W500_EVENT'),'run_id':os.getenv('W500_RUN_ID'),'schedule':os.getenv('W500_SCHEDULE') or None,'scan_updated_at':d['updated_at'],'scan_run_total':d.get('scan_runs_total')}
           hist.append(item); hist=hist[-200:]
           hp.write_text(json.dumps({'updated_at':now,'last':item,'history':hist},indent=2))
-          print('HEALTHY SCHEDULED SCAN',d['updated_at'],'run',d.get('scan_runs_total'))
+          print('HEALTHY PRIMARY SCAN',d['updated_at'],'run',d.get('scan_runs_total'))
           PY
       - name: Publish verified scan data
         run: |
@@ -72,13 +74,11 @@ jobs:
           git config user.email 'wallet500-scheduler@users.noreply.github.com'
           git add data/
           git diff --cached --quiet && exit 0
-          git commit -m 'data: scheduled verified scan'
+          git commit -m 'data: primary scheduled verified scan'
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git merge --no-edit -X ours origin/main || true
             if git push origin HEAD:main; then exit 0; fi
-            echo "Push raced with main; retrying (attempt $attempt)"
             sleep 3
           done
-          echo 'FATAL: failed to publish scheduled scan data'
           exit 1
