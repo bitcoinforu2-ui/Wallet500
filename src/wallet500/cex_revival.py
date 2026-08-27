@@ -1,10 +1,11 @@
 from __future__ import annotations
 import json, urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-UA={'User-Agent':'Wallet500/1.3','Accept':'application/json'}
+UA={'User-Agent':'Wallet500/1.4','Accept':'application/json'}
 
-def _get(url,timeout=20):
+def _get(url,timeout=12):
     req=urllib.request.Request(url,headers=UA)
     with urllib.request.urlopen(req,timeout=timeout) as r:
         return json.loads(r.read().decode())
@@ -21,7 +22,10 @@ def _pct(cur,prev):
     except:return 0.0
 
 def _norm_symbol(sym):
-    s=(sym or '').upper().replace('-SWAP','').replace('-','').replace('_','')
+    s=(sym or '').upper().strip().replace('-SWAP','').replace('-','').replace('_','')
+    # KuCoin perpetual symbols commonly use USDTM while peers use USDT.
+    # Normalize only the quote suffix; preserve the base symbol exactly.
+    if s.endswith('USDTM'):s=s[:-1]
     return s
 
 def _row(ex,sym,price=0,change=0,vol=0,fund=0,oi=0,contract=None):
@@ -100,7 +104,7 @@ def _enrich_with_history(rows,state,now):
         hist.append({'observed_at':now,'price':r['price'],'change_24h_pct':r['change_24h_pct'],'volume_24h':r['volume_24h'],'funding_rate':r['funding_rate'],'open_interest':r['open_interest']})
         histories[key]=hist[-96:]
         enriched.append(e)
-    return enriched,{'version':2,'updated_at':now,'markets':histories}
+    return enriched,{'version':3,'updated_at':now,'markets':histories}
 
 def _classify(markets):
     funds=[m['funding_rate'] for m in markets if m.get('funding_rate')]
@@ -113,15 +117,25 @@ def _classify(markets):
     if oi_acc>=8 and price_acc>=2:return 'OI_LED_BREAKOUT'
     return 'CEX_REVIVAL'
 
+def _fetch_source(name,fn):
+    got=fn()
+    return name,got
+
 def run_cex_revival(out:Path,now:str):
     rows=[];errors=[];health={}
-    for name,fn in SOURCES:
-        try:
-            got=fn();rows.extend(got);health[name]={'ok':bool(got),'contracts':len(got)}
-        except Exception as e:
-            errors.append({'exchange':name,'error':str(e)[:300]});health[name]={'ok':False,'contracts':0}
+    # Independent exchanges are I/O-bound: scan them concurrently so one slow
+    # endpoint cannot serialize the entire Old-Coin Revival lane.
+    with ThreadPoolExecutor(max_workers=len(SOURCES)) as pool:
+        futures={pool.submit(_fetch_source,name,fn):name for name,fn in SOURCES}
+        for fut in as_completed(futures):
+            name=futures[fut]
+            try:
+                _,got=fut.result();rows.extend(got);health[name]={'ok':bool(got),'contracts':len(got)}
+            except Exception as e:
+                errors.append({'exchange':name,'error':str(e)[:300]});health[name]={'ok':False,'contracts':0}
     state_path=out/'cex-state.json';prev_state=_load(state_path,{})
-    rows,state=_enrich_with_history(rows,prev_state,now);state_path.write_text(json.dumps(state,indent=2),encoding='utf-8')
+    rows,state=_enrich_with_history(rows,prev_state,now)
+    state_path.write_text(json.dumps(state,separators=(',',':')),encoding='utf-8')
     groups={}
     for x in rows:
         if x['symbol'].endswith('USDT'):groups.setdefault(x['symbol'],[]).append(x)
@@ -156,8 +170,8 @@ def run_cex_revival(out:Path,now:str):
         if score>=35:
             alerts.append({'symbol':sym,'cex_revival_score':min(score,100),'archetype':_classify(markets),'reasons':reasons,'confirmations':conf,'exchanges':sorted(exs),'change_24h_max_pct':round(change,4),'price_acceleration_max_pct':round(price_acc,4),'volume_acceleration_max_pct':round(vol_acc,4),'oi_acceleration_max_pct':round(oi_acc,4),'funding_abs_max':fund_abs,'momentum_dispersion_pp':round(dispersion,3),'markets':markets})
     alerts.sort(key=lambda x:(x['cex_revival_score'],x['confirmations'],x['price_acceleration_max_pct']),reverse=True)
-    payload={'version':3,'generated_at':now,'requested_sources':[x[0] for x in SOURCES],'source_health':health,'healthy_sources':sum(1 for x in health.values() if x['ok']),'contracts_seen':len(rows),'symbols_seen':len(groups),'alerts_count':len(alerts),'errors':errors,'alerts':alerts}
+    payload={'version':4,'generated_at':now,'requested_sources':[x[0] for x in SOURCES],'source_health':health,'healthy_sources':sum(1 for x in health.values() if x['ok']),'contracts_seen':len(rows),'symbols_seen':len(groups),'alerts_count':len(alerts),'errors':errors,'alerts':alerts}
     (out/'cex-revival-radar.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
-    learning={'version':1,'updated_at':now,'purpose':'learn which early CEX revival features precede verified follow-through; case studies are not counted as Wallet500 calls','features':['price_acceleration','volume24_acceleration','open_interest_acceleration','funding_divergence','cross_exchange_confirmation','momentum_dispersion'],'top_candidates':[{'symbol':x['symbol'],'score':x['cex_revival_score'],'archetype':x['archetype'],'confirmations':x['confirmations'],'price_acceleration_max_pct':x['price_acceleration_max_pct'],'volume_acceleration_max_pct':x['volume_acceleration_max_pct'],'oi_acceleration_max_pct':x['oi_acceleration_max_pct'],'funding_abs_max':x['funding_abs_max']} for x in alerts[:50]]}
+    learning={'version':2,'updated_at':now,'purpose':'learn which early CEX revival features precede verified follow-through; case studies are not counted as Wallet500 calls','features':['price_acceleration','volume24_acceleration','open_interest_acceleration','funding_divergence','cross_exchange_confirmation','momentum_dispersion'],'top_candidates':[{'symbol':x['symbol'],'score':x['cex_revival_score'],'archetype':x['archetype'],'confirmations':x['confirmations'],'price_acceleration_max_pct':x['price_acceleration_max_pct'],'volume_acceleration_max_pct':x['volume_acceleration_max_pct'],'oi_acceleration_max_pct':x['oi_acceleration_max_pct'],'funding_abs_max':x['funding_abs_max']} for x in alerts[:50]]}
     (out/'cex-learning.json').write_text(json.dumps(learning,indent=2),encoding='utf-8')
     return payload
