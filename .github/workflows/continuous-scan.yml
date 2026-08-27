@@ -1,15 +1,11 @@
-name: Wallet500 Continuous 15m Scan
+name: Wallet500 Continuous Scan
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/continuous-scan.yml'
   schedule:
-    # One scheduler wake-up per hour. Once awake, this job self-times four
-    # scans at 15-minute start-to-start intervals. Minute 13 avoids peak load.
-    - cron: '13 * * * *'
+    # Independent runs. Never keep a runner sleeping between scans.
+    # GitHub schedules can be delayed, so dashboard health uses actual scan timestamps.
+    - cron: '2,17,32,47 * * * *'
 
 permissions:
   contents: write
@@ -19,9 +15,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  continuous-scan:
+  scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 62
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,76 +25,60 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install once
+      - name: Install
         run: pip install -e .
-      - name: Run four verified scans at 15-minute intervals
+      - name: Run verified intelligence scan
         env:
           PYTHONUNBUFFERED: '1'
-        shell: bash
+        run: python -m wallet500.orchestrator
+      - name: Apply universal live survival gate
+        run: python -m wallet500.fresh_solana_gate
+      - name: Extract verified Solana wallet candidates
+        continue-on-error: true
+        run: python -m wallet500.wallet_candidate_discovery
+      - name: Validate fresh verified output and record scheduler health
+        env:
+          W500_EVENT: ${{ github.event_name }}
+          W500_RUN_ID: ${{ github.run_id }}
+          W500_SCHEDULE: ${{ github.event.schedule }}
         run: |
-          set -euo pipefail
-          git config user.name 'wallet500-continuous'
-          git config user.email 'wallet500-continuous@users.noreply.github.com'
-
-          for cycle in 1 2 3 4; do
-            cycle_start=$(date +%s)
-            echo "=== WALLET500 CONTINUOUS CYCLE $cycle/4 START $(date -u +%FT%TZ) ==="
-
-            git fetch origin main
-            git merge --no-edit -X ours origin/main || true
-
-            python -m wallet500.orchestrator
-            python -m wallet500.fresh_solana_gate
-
-            python3 - "$cycle" <<'PY'
-          import json, os, sys
+          python3 - <<'PY'
+          import json, os
           from datetime import datetime, timezone
           from pathlib import Path
-          cycle=int(sys.argv[1])
           p=Path('data/run-summary.json')
           if not p.exists(): raise SystemExit('FATAL: run-summary.json missing')
           d=json.loads(p.read_text())
           ts=datetime.fromisoformat(d['updated_at'])
           age=(datetime.now(timezone.utc)-ts).total_seconds()
-          if age>300: raise SystemExit(f'FATAL: cycle {cycle} output stale ({age:.0f}s)')
-          if not d.get('verified_only'): raise SystemExit(f'FATAL: cycle {cycle} not verified-only')
+          if age>300: raise SystemExit(f'FATAL: scan output stale ({age:.0f}s)')
+          if not d.get('verified_only'): raise SystemExit('FATAL: scan is not verified-only')
           for required in ('data/fresh-solana-survival.json','data/active-qualified-candidates.json'):
               if not Path(required).exists(): raise SystemExit('FATAL: missing '+required)
           hp=Path('data/scheduler-health.json')
           try: h=json.loads(hp.read_text()) if hp.exists() else {}
           except Exception: h={}
           hist=h.get('history') if isinstance(h.get('history'),list) else []
-          item={'at':datetime.now(timezone.utc).isoformat(),'workflow':'CONTINUOUS_15M','event':os.environ.get('GITHUB_EVENT_NAME'),'run_id':os.environ.get('GITHUB_RUN_ID'),'cycle':cycle,'scan_updated_at':d['updated_at'],'scan_run_total':d.get('scan_runs_total')}
+          now=datetime.now(timezone.utc).isoformat()
+          item={'at':now,'workflow':'SCHEDULED_15M','event':os.getenv('W500_EVENT'),'run_id':os.getenv('W500_RUN_ID'),'schedule':os.getenv('W500_SCHEDULE') or None,'scan_updated_at':d['updated_at'],'scan_run_total':d.get('scan_runs_total')}
           hist.append(item); hist=hist[-200:]
-          hp.write_text(json.dumps({'updated_at':item['at'],'last':item,'history':hist},indent=2))
-          print('CYCLE HEALTHY',cycle,d['updated_at'],'run',d.get('scan_runs_total'))
+          hp.write_text(json.dumps({'updated_at':now,'last':item,'history':hist},indent=2))
+          print('HEALTHY SCHEDULED SCAN',d['updated_at'],'run',d.get('scan_runs_total'))
           PY
-
-            git add data/
-            if ! git diff --cached --quiet; then
-              git commit -m "data: continuous 15m scan cycle ${cycle}"
-              pushed=false
-              for attempt in 1 2 3 4 5; do
-                git fetch origin main
-                git merge --no-edit -X ours origin/main || true
-                if git push origin HEAD:main; then pushed=true; break; fi
-                echo "Push raced with main; retrying cycle $cycle (attempt $attempt)"
-                sleep 3
-              done
-              if [ "$pushed" != true ]; then
-                echo "FATAL: cycle $cycle failed to publish"
-                exit 1
-              fi
-            fi
-
-            if [ "$cycle" -lt 4 ]; then
-              elapsed=$(( $(date +%s) - cycle_start ))
-              sleep_for=$(( 900 - elapsed ))
-              if [ "$sleep_for" -gt 0 ]; then
-                echo "Cycle $cycle took ${elapsed}s; sleeping ${sleep_for}s to preserve 15m interval"
-                sleep "$sleep_for"
-              else
-                echo "WARNING: cycle $cycle took ${elapsed}s (>15m); next cycle starts immediately"
-              fi
-            fi
+      - name: Publish verified scan data
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-scheduler'
+          git config user.email 'wallet500-scheduler@users.noreply.github.com'
+          git add data/
+          git diff --cached --quiet && exit 0
+          git commit -m 'data: scheduled verified scan'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git merge --no-edit -X ours origin/main || true
+            if git push origin HEAD:main; then exit 0; fi
+            echo "Push raced with main; retrying (attempt $attempt)"
+            sleep 3
           done
+          echo 'FATAL: failed to publish scheduled scan data'
+          exit 1
