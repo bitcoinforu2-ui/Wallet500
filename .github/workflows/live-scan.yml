@@ -32,22 +32,11 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e .
-      - name: Run verified real market scan
+      - name: Run unified verified intelligence scan
         env:
           PYTHONUNBUFFERED: '1'
-        run: python -m wallet500.main
-      - name: Run CEX old-coin revival radar
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          from datetime import datetime, timezone
-          from wallet500.cex_revival import run_cex_revival
-          d=run_cex_revival(Path('data'),datetime.now(timezone.utc).isoformat())
-          print('CEX:',d['contracts_seen'],'contracts',d['alerts_count'],'alerts','errors',d['errors'])
-          if d['contracts_seen'] <= 0:
-              raise SystemExit('FATAL: CEX revival returned zero contracts')
-          PY
-      - name: Validate fresh scan output
+        run: python -m wallet500.orchestrator
+      - name: Validate fresh DEX revival CEX learning output
         run: |
           python - <<'PY'
           import json
@@ -61,7 +50,10 @@ jobs:
           if dead: raise SystemExit('FATAL: zero discovery on chain(s): '+', '.join(dead))
           c=json.loads(Path('data/cex-revival-radar.json').read_text())
           if c.get('contracts_seen',0)<=0: raise SystemExit('FATAL: CEX radar empty')
-          print('HEALTHY DEX+CEX:',d['updated_at'],counts,'CEX contracts',c['contracts_seen'],'alerts',c['alerts_count'])
+          if c.get('healthy_sources',0)<2: raise SystemExit('FATAL: fewer than 2 healthy CEX sources')
+          for required in ('data/cex-state.json','data/cex-learning.json','data/learning-observations.json'):
+              if not Path(required).exists(): raise SystemExit('FATAL: missing '+required)
+          print('HEALTHY DEX+REVIVAL+CEX+LEARNING:',d['updated_at'],counts,'CEX sources',c['healthy_sources'],'contracts',c['contracts_seen'],'alerts',c['alerts_count'])
           PY
       - name: Publish verified scan data
         run: |
