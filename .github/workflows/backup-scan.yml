@@ -1,0 +1,105 @@
+name: Wallet500 Backup Scan
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/backup-scan.yml'
+  schedule:
+    - cron: '9,24,39,54 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-backup-scan
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check whether primary data is stale
+        id: stale
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          stale=True
+          p=Path('data/run-summary.json')
+          if p.exists():
+              try:
+                  d=json.loads(p.read_text())
+                  ts=datetime.fromisoformat(d['updated_at'])
+                  age=(datetime.now(timezone.utc)-ts).total_seconds()
+                  stale=age>720
+                  print(f'current scan age={age:.0f}s stale={stale}')
+              except Exception as e:
+                  print('cannot parse run-summary:',e)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write('stale='+('true' if stale else 'false')+'\n')
+          PY
+      - name: Install
+        if: steps.stale.outputs.stale == 'true'
+        run: pip install -e .
+      - name: Run fallback verified intelligence scan
+        if: steps.stale.outputs.stale == 'true'
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python -m wallet500.orchestrator
+      - name: Apply universal live survival gate
+        if: steps.stale.outputs.stale == 'true'
+        run: python -m wallet500.fresh_solana_gate
+      - name: Extract verified Solana wallet candidates
+        if: steps.stale.outputs.stale == 'true'
+        continue-on-error: true
+        run: python -m wallet500.wallet_candidate_discovery
+      - name: Record backup recovery
+        if: steps.stale.outputs.stale == 'true'
+        env:
+          W500_EVENT: ${{ github.event_name }}
+          W500_RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          rp=Path('data/run-summary.json')
+          d=json.loads(rp.read_text())
+          ts=datetime.fromisoformat(d['updated_at'])
+          age=(datetime.now(timezone.utc)-ts).total_seconds()
+          if age>300: raise SystemExit(f'FATAL: backup output stale ({age:.0f}s)')
+          hp=Path('data/scheduler-health.json')
+          try: h=json.loads(hp.read_text()) if hp.exists() else {}
+          except Exception: h={}
+          hist=h.get('history') if isinstance(h.get('history'),list) else []
+          now=datetime.now(timezone.utc).isoformat()
+          item={'at':now,'workflow':'BACKUP_STALE_RECOVERY','event':os.getenv('W500_EVENT'),'run_id':os.getenv('W500_RUN_ID'),'scan_updated_at':d['updated_at'],'scan_run_total':d.get('scan_runs_total')}
+          hist.append(item); hist=hist[-200:]
+          hp.write_text(json.dumps({'updated_at':now,'last':item,'history':hist},indent=2))
+          PY
+      - name: Publish recovered scan data
+        if: steps.stale.outputs.stale == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-backup'
+          git config user.email 'wallet500-backup@users.noreply.github.com'
+          git add data/
+          git diff --cached --quiet && exit 0
+          git commit -m 'data: backup stale-data recovery scan'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git merge --no-edit -X ours origin/main || true
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 3
+          done
+          exit 1
