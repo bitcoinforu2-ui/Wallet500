@@ -15,10 +15,19 @@ def token_pairs(chain:str,token:str)->list[dict]:
     except Exception: return []
     return data if isinstance(data,list) else []
 
-def snapshot(chain:str,token:str)->dict|None:
-    pairs=token_pairs(chain,token)
-    if not pairs: return None
-    p=max(pairs,key=lambda x: float((x.get("liquidity") or {}).get("usd") or 0))
+def _pair_to_snapshot(chain:str,token:str,p:dict)->dict:
     tx=p.get("txns") or {}; vol=p.get("volume") or {}; ch=p.get("priceChange") or {}; liq=p.get("liquidity") or {}
     h1=tx.get("h1") or {}; h24=tx.get("h24") or {}
     return {"chain":chain,"token":token,"pair_address":p.get("pairAddress"),"dex":p.get("dexId"),"url":p.get("url"),"price_usd":float(p.get("priceUsd") or 0),"liquidity_usd":float(liq.get("usd") or 0),"fdv":float(p.get("fdv") or 0),"market_cap":float(p.get("marketCap") or 0),"volume_m5":float(vol.get("m5") or 0),"volume_h1":float(vol.get("h1") or 0),"volume_h6":float(vol.get("h6") or 0),"volume_h24":float(vol.get("h24") or 0),"price_change_m5":float(ch.get("m5") or 0),"price_change_h1":float(ch.get("h1") or 0),"price_change_h6":float(ch.get("h6") or 0),"price_change_h24":float(ch.get("h24") or 0),"buys_h1":int(h1.get("buys") or 0),"sells_h1":int(h1.get("sells") or 0),"buys_h24":int(h24.get("buys") or 0),"sells_h24":int(h24.get("sells") or 0),"pair_created_at":p.get("pairCreatedAt")}
+
+def snapshot(chain:str,token:str,pair_address:str|None=None)->dict|None:
+    pairs=token_pairs(chain,token)
+    if not pairs: return None
+    if pair_address:
+        wanted=pair_address.lower()
+        for p in pairs:
+            if str(p.get("pairAddress") or "").lower()==wanted:
+                return _pair_to_snapshot(chain,token,p)
+        return None
+    p=max(pairs,key=lambda x: float((x.get("liquidity") or {}).get("usd") or 0))
+    return _pair_to_snapshot(chain,token,p)
