@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "purpose": "Manual verified case-study observations used to define CEX/Futures revival patterns. These are learning examples, not live market feeds or backfilled trade calls.",
+  "cases": [
+    {
+      "symbol": "BTR",
+      "market": "BTRUSDT_PERP",
+      "observation_source": "user_screenshot",
+      "observed_move_pct": 195.66,
+      "funding_pct": 0.0679,
+      "pattern": "CROWDED_LONG_MOMENTUM",
+      "learning": [
+        "large price acceleration with positive funding",
+        "require spot/volume/OI confirmation before treating as healthy revival",
+        "rising positive funding increases late-long crowding risk",
+        "do not credit pre-detection price appreciation to Wallet500"
+      ]
+    },
+    {
+      "symbol": "BICO",
+      "market": "BICOUSDT_PERP",
+      "observation_source": "user_screenshot",
+      "observed_move_pct": 48.94,
+      "funding_pct": -1.7908,
+      "pattern": "SHORT_SQUEEZE_REVIVAL",
+      "learning": [
+        "price rising while funding is deeply negative is a squeeze divergence",
+        "extreme negative funding should increase squeeze score, not be treated as bearish by itself",
+        "confirm with volume/OI acceleration and spot participation",
+        "flag concentration/manipulation risk separately from squeeze opportunity"
+      ]
+    },
+    {
+      "symbol": "QUBIC",
+      "market": "QUBICUSDT_PERP",
+      "native_network": "qubic",
+      "observation_source": "user_screenshot",
+      "observed_move_pct": 92.84,
+      "funding_pct": 0.0067,
+      "pattern": "NEUTRAL_FUNDING_BREAKOUT",
+      "learning": [
+        "large price breakout with near-neutral funding can be spot-led or broad-demand revival",
+        "near-neutral funding means squeeze is not sufficient explanation",
+        "require volume/OI/spot confirmation and event discovery",
+        "cross-chain CEX radar must not be limited to Solana Ethereum and BNB"
+      ]
+    }
+  ],
+  "derived_rules": {
+    "short_squeeze": "price_change_pct >= 20 and funding_pct <= -0.25",
+    "extreme_short_squeeze": "price_change_pct >= 20 and funding_pct <= -1.0",
+    "crowded_long_momentum": "price_change_pct >= 30 and funding_pct >= 0.05",
+    "neutral_funding_breakout": "price_change_pct >= 30 and abs(funding_pct) < 0.05",
+    "confirmation_required": ["spot_volume_acceleration", "futures_volume_acceleration", "open_interest_change", "event_or_listing_context"]
+  }
+}
