@@ -10,7 +10,7 @@ on:
       - '.github/workflows/live-scan.yml'
       - 'data/manual-watchlist.json'
   schedule:
-    - cron: '7,22,37,52 * * * *'
+    - cron: '2,12,22,32,42,52 * * * *'
 
 permissions:
   contents: write
@@ -38,6 +38,27 @@ jobs:
         run: python -m wallet500.orchestrator
       - name: Apply fresh Solana survival gate
         run: python -m wallet500.fresh_solana_gate
+      - name: Record scheduler telemetry
+        env:
+          W500_EVENT: ${{ github.event_name }}
+          W500_RUN_ID: ${{ github.run_id }}
+          W500_WORKFLOW: PRIMARY
+          W500_SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          p=Path('data/scheduler-health.json')
+          try: d=json.loads(p.read_text()) if p.exists() else {}
+          except Exception: d={}
+          h=d.get('history') if isinstance(d.get('history'),list) else []
+          now=datetime.now(timezone.utc).isoformat()
+          row={'at':now,'workflow':os.getenv('W500_WORKFLOW'),'event':os.getenv('W500_EVENT'),'run_id':os.getenv('W500_RUN_ID'),'schedule':os.getenv('W500_SCHEDULE') or None}
+          h.append(row); h=h[-100:]
+          d={'updated_at':now,'last':row,'history':h}
+          p.write_text(json.dumps(d,indent=2))
+          PY
       - name: Validate primary revival lane and report degraded research lanes
         run: |
           python - <<'PY'
@@ -53,7 +74,7 @@ jobs:
           c=json.loads(cpath.read_text())
           if c.get('contracts_seen',0)<=0: raise SystemExit('FATAL: CEX radar empty')
           if c.get('healthy_sources',0)<2: raise SystemExit('FATAL: fewer than 2 healthy CEX sources')
-          for required in ('data/cex-state.json','data/cex-learning.json','data/time-machine-replay.json','data/fresh-solana-survival.json','data/active-qualified-candidates.json'):
+          for required in ('data/cex-state.json','data/cex-learning.json','data/time-machine-replay.json','data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/scheduler-health.json'):
               if not Path(required).exists(): raise SystemExit('FATAL: missing '+required)
           counts=d.get('counts',{})
           degraded=[chain for chain in ('solana','ethereum','bsc') if int((counts.get(chain) or {}).get('discovered',0))<=0]
