@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -68,10 +68,11 @@ jobs:
           git add data/
           git diff --cached --quiet && exit 0
           git commit -m 'data: refresh verified revival intelligence'
-          for attempt in 1 2 3; do
-            if git push origin HEAD:main; then exit 0; fi
-            echo "Push raced with main; rebasing generated data (attempt $attempt)"
+          for attempt in 1 2 3 4 5; do
             git fetch origin main
-            git rebase -X theirs origin/main || { git rebase --abort || true; exit 1; }
+            git merge --no-edit -X ours origin/main
+            if git push origin HEAD:main; then exit 0; fi
+            echo "Push raced with main; retrying publish (attempt $attempt)"
           done
-          git push origin HEAD:main
+          echo 'FATAL: failed to publish scan data after retries'
+          exit 1
