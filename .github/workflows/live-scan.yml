@@ -34,8 +34,11 @@ jobs:
         env:
           PYTHONUNBUFFERED: '1'
         run: python -m wallet500.orchestrator
-      - name: Apply fresh Solana survival gate
+      - name: Apply universal live survival gate
         run: python -m wallet500.fresh_solana_gate
+      - name: Extract verified Solana wallet candidates
+        continue-on-error: true
+        run: python -m wallet500.wallet_candidate_discovery
       - name: Record scheduler telemetry
         env:
           W500_EVENT: ${{ github.event_name }}
@@ -73,7 +76,13 @@ jobs:
           if c.get('healthy_sources',0)<2: raise SystemExit('FATAL: fewer than 2 healthy CEX sources')
           for required in ('data/cex-state.json','data/cex-learning.json','data/time-machine-replay.json','data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/scheduler-health.json'):
               if not Path(required).exists(): raise SystemExit('FATAL: missing '+required)
-          print('HEALTHY ON-DEMAND SCAN:',d['updated_at'],'active',d.get('active_qualified',0),'pending',d.get('fresh_solana_pending',0),'failed',d.get('fresh_solana_failed',0))
+          wp=Path('data/wallet-candidates.json')
+          if wp.exists():
+              w=json.loads(wp.read_text())
+              print('WALLET FORENSICS:',w.get('verified_wallet_candidates',0),'verified candidates; EVM deferred',w.get('evm_candidates_deferred',0))
+          else:
+              print('DEGRADED RESEARCH LANE: wallet-candidates.json missing; primary lane remains healthy')
+          print('HEALTHY ON-DEMAND SCAN:',d['updated_at'],'active',d.get('active_qualified',0),'pending',d.get('live_survival_pending',0),'failed',d.get('live_survival_failed',0))
           PY
       - name: Publish verified scan data
         run: |
