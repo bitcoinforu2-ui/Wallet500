@@ -1,0 +1,91 @@
+name: Wallet500 Live Scan Watchdog
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0,15,30,45 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-live-scan
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check scan freshness
+        id: freshness
+        shell: bash
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+          p=Path('data/run-summary.json')
+          stale=True
+          age=999999
+          if p.exists():
+              try:
+                  d=json.loads(p.read_text())
+                  ts=datetime.fromisoformat(d['updated_at'])
+                  age=(datetime.now(timezone.utc)-ts).total_seconds()/60
+                  stale=age>18
+              except Exception:
+                  stale=True
+          print('stale=' + ('true' if stale else 'false'))
+          print(f'age_minutes={age:.1f}')
+          PY
+      - name: Fresh scan already exists
+        if: steps.freshness.outputs.stale != 'true'
+        run: echo "Primary scan is fresh (${ { steps.freshness.outputs.age_minutes } } minutes); watchdog exits cleanly."
+      - name: Install
+        if: steps.freshness.outputs.stale == 'true'
+        run: pip install -e .
+      - name: Run recovery intelligence scan
+        if: steps.freshness.outputs.stale == 'true'
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python -m wallet500.orchestrator
+      - name: Validate recovery output
+        if: steps.freshness.outputs.stale == 'true'
+        run: |
+          python3 - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+          p=Path('data/run-summary.json')
+          if not p.exists(): raise SystemExit('FATAL: run-summary.json missing')
+          d=json.loads(p.read_text())
+          ts=datetime.fromisoformat(d['updated_at'])
+          age=(datetime.now(timezone.utc)-ts).total_seconds()
+          if age>300: raise SystemExit(f'FATAL: recovery output stale ({age:.0f}s)')
+          if not d.get('verified_only'): raise SystemExit('FATAL: recovery output not verified-only')
+          print('WATCHDOG RECOVERY HEALTHY', d['updated_at'])
+          PY
+      - name: Publish recovered scan data
+        if: steps.freshness.outputs.stale == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-watchdog'
+          git config user.email 'wallet500-watchdog@users.noreply.github.com'
+          git add data/
+          git diff --cached --quiet && exit 0
+          git commit -m 'data: watchdog recovery scan'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git merge --no-edit -X ours origin/main
+            if git push origin HEAD:main; then exit 0; fi
+            echo "Push raced with main; retrying watchdog publish (attempt $attempt)"
+          done
+          echo 'FATAL: watchdog failed to publish after retries'
+          exit 1
