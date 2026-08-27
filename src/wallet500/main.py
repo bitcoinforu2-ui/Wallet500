@@ -210,8 +210,10 @@ def run():
     revival_watch=[x for x in revival_qualification if x["qualification"]=="REVIVAL_WATCH"]
     pump_dump=_merge_snapshots(pump_dump,revival_pump)
 
-    automatic_watch=[{**x,"watch_source":"ANOMALY_RADAR"} for x in anomalies[:100]]
-    revival_watch_rows=[{**x,"watch_source":"REVIVAL_RADAR"} for x in revival.get("alerts",[])[:60]]
+    # Production watchlist is a gated intelligence layer: rejected/risk candidates stay
+    # in audit/learning outputs but never advance automatically to deep scan.
+    automatic_watch=[{**x,"watch_source":"QUALIFIED_ANOMALY"} for x in qualified]
+    revival_watch_rows=[{**x,"watch_source":"QUALIFIED_REVIVAL"} for x in revival_qualified]
     seen=set(); watch=[]
     for x in automatic_watch+revival_watch_rows:
         key=(x.get("chain"),x.get("token") or x.get("mint"))
