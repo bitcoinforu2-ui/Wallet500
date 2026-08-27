@@ -26,7 +26,9 @@ jobs:
       - name: Prepare single-source live dashboard
         run: |
           cp dashboard-live.html index.html
+          export DASHBOARD_SYNC_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           python3 - <<'PY'
+          import os
           from pathlib import Path
           p=Path('index.html')
           s=p.read_text()
@@ -35,8 +37,11 @@ jobs:
           if old not in s:
               raise SystemExit('Expected current hero emblem not found')
           s=s.replace(old,new,1)
-          css='''.logoMark{position:relative;z-index:2;width:142px;height:142px;overflow:hidden;border:1px solid #2d6f95;background:#020912;box-shadow:0 0 24px #40d7ff44;align-self:flex-start}.logoMark img{display:block;width:100%;height:100%;object-fit:cover}@media(max-width:760px){.hero{grid-template-columns:104px minmax(0,1fr);column-gap:14px;padding-left:24px;padding-right:24px}.logoMark{width:104px;height:104px}.brand{justify-self:start}.brand h1{margin-left:0}.heroRight{margin-left:-10px;margin-right:-10px}}@media(max-width:390px){.hero{grid-template-columns:96px minmax(0,1fr);column-gap:12px;padding-left:18px;padding-right:18px}.logoMark{width:96px;height:96px}}'''
+          css='''.logoMark{position:relative;z-index:2;width:142px;height:142px;overflow:hidden;border:1px solid #2d6f95;background:#020912;box-shadow:0 0 24px #40d7ff44;align-self:flex-start}.logoMark img{display:block;width:100%;height:100%;object-fit:cover}.engine.stale{border-color:#ff7380;background:#1a0709bb;box-shadow:0 0 18px #ff738044}.engine.stale strong{color:#ff7380}.engine.fresh{border-color:#13a789}@media(max-width:760px){.hero{grid-template-columns:104px minmax(0,1fr);column-gap:14px;padding-left:24px;padding-right:24px}.logoMark{width:104px;height:104px}.brand{justify-self:start}.brand h1{margin-left:0}.heroRight{margin-left:-10px;margin-right:-10px}}@media(max-width:390px){.hero{grid-template-columns:96px minmax(0,1fr);column-gap:12px;padding-left:18px;padding-right:18px}.logoMark{width:96px;height:96px}}'''
           s=s.replace('</style>',css+'</style>',1)
+          sync=os.environ['DASHBOARD_SYNC_AT']
+          guard=f'''<script>(function(){{const DASH_SYNC=new Date({sync!r});function fmt(d){{return d.toLocaleString([],{{hour12:false}})}}async function health(){{try{{const r=await fetch('data/run-summary.json?health='+Date.now(),{{cache:'no-store'}});if(!r.ok)throw Error('summary '+r.status);const x=await r.json(),engineAt=new Date(x.updated_at),age=(Date.now()-engineAt.getTime())/60000,stale=!Number.isFinite(age)||age>30,box=document.querySelector('.engine'),label=box&&box.querySelector('strong'),stamp=document.getElementById('stamp');if(box){{box.classList.toggle('stale',stale);box.classList.toggle('fresh',!stale)}}if(label)label.innerHTML=stale?'⚠ STALE DATA':'<span class="pulse"></span>ENGINE LIVE';if(stamp)stamp.innerHTML='ENGINE '+fmt(engineAt)+'<br>DASH SYNC '+fmt(DASH_SYNC)+(stale?'<br>AGE '+Math.round(age)+'m':'');}}catch(e){{const box=document.querySelector('.engine'),label=box&&box.querySelector('strong');if(box)box.classList.add('stale');if(label)label.textContent='⚠ DATA CHECK FAILED';}}}}health();setInterval(health,15000);}})();</script>'''
+          s=s.replace('</body>',guard+'</body>',1)
           p.write_text(s)
           PY
       - uses: actions/configure-pages@v5
