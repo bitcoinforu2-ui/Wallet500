@@ -1,6 +1,8 @@
 from __future__ import annotations
 from datetime import datetime, timezone
 
+MIN_INITIAL_LIQUIDITY_USD = 5000.0
+
 def _ratio(a,b): return float(a)/float(b) if b else (10.0 if a else 0.0)
 
 def score_snapshot(s:dict)->dict:
@@ -17,11 +19,18 @@ def score_snapshot(s:dict)->dict:
     if pc1>=20: score+=18; reasons.append(f"1h momentum +{pc1:.1f}%")
     elif pc1>=8: score+=10; reasons.append(f"1h momentum +{pc1:.1f}%")
     if pc5>=8: score+=10; reasons.append(f"5m impulse +{pc5:.1f}%")
-    if 5000<=liq<=250000: score+=9; reasons.append("early-liquidity range")
+    if MIN_INITIAL_LIQUIDITY_USD<=liq<=250000: score+=9; reasons.append("early-liquidity range")
     score=min(100.0,round(score,2))
     return {**s,"anomaly_score":score,"reasons":reasons,"volume_velocity":round(velocity,2),"buy_sell_ratio":round(buy_ratio,2),"turnover_h1":round(turnover,3),"observed_at":datetime.now(timezone.utc).isoformat()}
 
 def rank_anomalies(snapshots:list[dict],threshold:float=45)->list[dict]:
-    rows=[score_snapshot(x) for x in snapshots if x]
+    eligible=[]
+    for x in snapshots:
+        if not x: continue
+        try: liq=float(x.get("liquidity_usd") or 0)
+        except Exception: liq=0.0
+        if liq < MIN_INITIAL_LIQUIDITY_USD: continue
+        eligible.append(x)
+    rows=[score_snapshot(x) for x in eligible]
     rows.sort(key=lambda x:x["anomaly_score"],reverse=True)
     return [x for x in rows if x["anomaly_score"]>=threshold]
