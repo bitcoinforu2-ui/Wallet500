@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from .config import Settings
 from .market_pipeline import run_market_scan
 from .revival_radar import run_revival_scan
+from .market_data import snapshot as market_snapshot
 
 
 def _write(path, payload):
@@ -63,23 +64,26 @@ def _update_discovery_state(out: Path, universe: list[dict], snapshots: list[dic
     annotated=[]
     for row in universe:
         chain=row.get("chain"); token=row.get("token") or row.get("mint"); key=_token_key(chain,token); prev=tokens.get(key)
-        price=(snap.get(key) or {}).get("price_usd")
+        sx=snap.get(key) or {}; price=sx.get("price_usd"); pair=sx.get("pair_address"); dex=sx.get("dex")
         if prev:
             revisited_count+=1; by_chain.setdefault(chain,{"new":0,"revisited":0})["revisited"]+=1
             first_seen=prev.get("first_seen",now); scan_count=int(prev.get("scan_count",0))+1; status="REVISITED"
             entry_price=prev.get("entry_price_usd"); tracking_started_at=prev.get("tracking_started_at")
-            legacy=bool(prev.get("legacy_price_tracking",False))
+            legacy=bool(prev.get("legacy_price_tracking",False)); entry_pair=prev.get("entry_pair_address"); entry_dex=prev.get("entry_dex")
             if entry_price is None and price not in (None,0,0.0):
-                entry_price=price; tracking_started_at=now; legacy=True
+                entry_price=price; tracking_started_at=now; legacy=True; entry_pair=pair; entry_dex=dex
+            elif entry_price is not None and not entry_pair and pair:
+                entry_pair=pair; entry_dex=entry_dex or dex
         else:
             new_count+=1; by_chain.setdefault(chain,{"new":0,"revisited":0})["new"]+=1
             first_seen=now; scan_count=1; status="NEW"
             entry_price=price if price not in (None,0,0.0) else None
             tracking_started_at=now if entry_price is not None else None; legacy=False
-        tokens[key]={"chain":chain,"token":token,"first_seen":first_seen,"last_seen":now,"scan_count":scan_count,"last_source":row.get("source"),"last_discovery_page":row.get("discovery_page"),"entry_price_usd":entry_price,"tracking_started_at":tracking_started_at,"legacy_price_tracking":legacy}
-        annotated.append({**row,"discovery_status":status,"first_seen":first_seen,"last_seen":now,"scan_count":scan_count,"entry_price_usd":entry_price,"tracking_started_at":tracking_started_at,"legacy_price_tracking":legacy})
+            entry_pair=pair if entry_price is not None else None; entry_dex=dex if entry_price is not None else None
+        tokens[key]={"chain":chain,"token":token,"first_seen":first_seen,"last_seen":now,"scan_count":scan_count,"last_source":row.get("source"),"last_discovery_page":row.get("discovery_page"),"entry_price_usd":entry_price,"tracking_started_at":tracking_started_at,"legacy_price_tracking":legacy,"entry_pair_address":entry_pair,"entry_dex":entry_dex}
+        annotated.append({**row,"discovery_status":status,"first_seen":first_seen,"last_seen":now,"scan_count":scan_count,"entry_price_usd":entry_price,"tracking_started_at":tracking_started_at,"legacy_price_tracking":legacy,"entry_pair_address":entry_pair,"entry_dex":entry_dex})
     runs=int(state.get("runs",0))+1
-    state={"version":2,"runs":runs,"updated_at":now,"source_cursor":next_pages or state.get("source_cursor",{}),"unique_tokens_total":len(tokens),"last_run":{"discovered":len(universe),"new":new_count,"revisited":revisited_count,"new_ratio":round(new_count/len(universe),4) if universe else 0.0,"by_chain":by_chain},"tokens":tokens}
+    state={"version":3,"runs":runs,"updated_at":now,"source_cursor":next_pages or state.get("source_cursor",{}),"unique_tokens_total":len(tokens),"last_run":{"discovered":len(universe),"new":new_count,"revisited":revisited_count,"new_ratio":round(new_count/len(universe),4) if universe else 0.0,"by_chain":by_chain},"tokens":tokens}
     _write(path,state); return state,annotated
 
 
@@ -89,12 +93,14 @@ def _ensure_revival_tracking(out: Path, state: dict, revival_snapshots: list[dic
     for s in revival_snapshots or []:
         chain=s.get("chain"); token=s.get("token") or s.get("mint")
         if not chain or not token: continue
-        key=_token_key(chain,token); price=s.get("price_usd"); rec=tokens.get(key)
+        key=_token_key(chain,token); price=s.get("price_usd"); rec=tokens.get(key); pair=s.get("pair_address"); dex=s.get("dex")
         if rec:
             if rec.get("entry_price_usd") in (None,0,0.0) and price not in (None,0,0.0):
-                rec["entry_price_usd"]=price; rec["tracking_started_at"]=now; rec["legacy_price_tracking"]=True; changed=True
+                rec["entry_price_usd"]=price; rec["tracking_started_at"]=now; rec["legacy_price_tracking"]=True; rec["entry_pair_address"]=pair; rec["entry_dex"]=dex; changed=True
+            elif rec.get("entry_price_usd") not in (None,0,0.0) and not rec.get("entry_pair_address") and pair:
+                rec["entry_pair_address"]=pair; rec["entry_dex"]=dex; changed=True
             continue
-        tokens[key]={"chain":chain,"token":token,"first_seen":now,"last_seen":now,"scan_count":0,"last_source":"REVIVAL_RADAR","last_discovery_page":None,"entry_price_usd":price if price not in (None,0,0.0) else None,"tracking_started_at":now if price not in (None,0,0.0) else None,"legacy_price_tracking":True}
+        tokens[key]={"chain":chain,"token":token,"first_seen":now,"last_seen":now,"scan_count":0,"last_source":"REVIVAL_RADAR","last_discovery_page":None,"entry_price_usd":price if price not in (None,0,0.0) else None,"tracking_started_at":now if price not in (None,0,0.0) else None,"legacy_price_tracking":True,"entry_pair_address":pair if price not in (None,0,0.0) else None,"entry_dex":dex if price not in (None,0,0.0) else None}
         changed=True
     if changed:
         state["tokens"]=tokens; state["unique_tokens_total"]=len(tokens); state["updated_at"]=now; _write(out/"discovery-state.json",state)
@@ -107,10 +113,18 @@ def _update_outcomes(out: Path, state: dict, snapshots: list[dict], now: str) ->
     records=tracker.get("tokens") if isinstance(tracker.get("tokens"),dict) else {}
     snap=_snapshot_map(snapshots)
     horizons=((5,"5m"),(15,"15m"),(30,"30m"),(60,"1h"),(240,"4h"),(720,"12h"),(1440,"24h"))
-    now_dt=datetime.fromisoformat(now.replace("Z","+00:00")); updated=0
-    for key,s in snap.items():
-        meta=(state.get("tokens") or {}).get(key) or {}; entry=meta.get("entry_price_usd"); current=s.get("price_usd")
-        if entry in (None,0,0.0) or current in (None,0,0.0): continue
+    now_dt=datetime.fromisoformat(now.replace("Z","+00:00")); updated=0; pair_mismatch_refetched=0; pair_unavailable=0
+    for key,s in list(snap.items()):
+        meta=(state.get("tokens") or {}).get(key) or {}; entry=meta.get("entry_price_usd"); entry_pair=meta.get("entry_pair_address")
+        if entry in (None,0,0.0): continue
+        current_pair=s.get("pair_address")
+        if entry_pair and (not current_pair or str(entry_pair).lower()!=str(current_pair).lower()):
+            locked=market_snapshot(meta.get("chain") or s.get("chain"),meta.get("token") or s.get("token") or s.get("mint"),entry_pair)
+            if not locked or locked.get("price_usd") in (None,0,0.0):
+                pair_unavailable+=1; continue
+            s=locked; current_pair=s.get("pair_address"); pair_mismatch_refetched+=1
+        current=s.get("price_usd")
+        if current in (None,0,0.0): continue
         rec=records.get(key) if isinstance(records.get(key),dict) else {}
         tracking_started_at=meta.get("tracking_started_at") or rec.get("tracking_started_at") or now
         try: start_dt=datetime.fromisoformat(tracking_started_at.replace("Z","+00:00"))
@@ -119,11 +133,11 @@ def _update_outcomes(out: Path, state: dict, snapshots: list[dict], now: str) ->
         peak=max(float(rec.get("peak_price_usd") or current),float(current)); low=min(float(rec.get("low_price_usd") or current),float(current))
         checkpoints=rec.get("checkpoints") if isinstance(rec.get("checkpoints"),dict) else {}
         for mins,label in horizons:
-            if age_min>=mins and label not in checkpoints: checkpoints[label]={"price_usd":current,"return_pct":_pct(current,entry),"captured_at":now}
+            if age_min>=mins and label not in checkpoints: checkpoints[label]={"price_usd":current,"return_pct":_pct(current,entry),"captured_at":now,"pair_address":current_pair}
         history=rec.get("history") if isinstance(rec.get("history"),list) else []
-        history.append({"observed_at":now,"price_usd":current,"return_pct":_pct(current,entry),"liquidity_usd":s.get("liquidity_usd"),"volume_h1":s.get("volume_h1"),"buys_h1":s.get("buys_h1"),"sells_h1":s.get("sells_h1")}); history=history[-200:]
-        records[key]={"chain":meta.get("chain") or s.get("chain"),"token":meta.get("token") or s.get("token") or s.get("mint"),"first_seen":meta.get("first_seen"),"tracking_started_at":tracking_started_at,"legacy_price_tracking":bool(meta.get("legacy_price_tracking",False)),"entry_price_usd":entry,"current_price_usd":current,"current_return_pct":_pct(current,entry),"peak_price_usd":peak,"peak_return_pct":_pct(peak,entry),"low_price_usd":low,"low_return_pct":_pct(low,entry),"age_minutes":round(age_min,2),"checkpoints":checkpoints,"history":history,"updated_at":now}; updated+=1
-    tracker={"version":1,"method":"VERIFIED_POST_DISCOVERY_PRICE_TRACKING","note":"Legacy tokens without a stored historical discovery price begin verified price tracking from the first scan after this feature was deployed; no retroactive entry price is invented.","updated_at":now,"tracked_tokens":len(records),"updated_this_run":updated,"tokens":records}
+        history.append({"observed_at":now,"price_usd":current,"return_pct":_pct(current,entry),"pair_address":current_pair,"dex":s.get("dex"),"liquidity_usd":s.get("liquidity_usd"),"volume_h1":s.get("volume_h1"),"buys_h1":s.get("buys_h1"),"sells_h1":s.get("sells_h1")}); history=history[-200:]
+        records[key]={"chain":meta.get("chain") or s.get("chain"),"token":meta.get("token") or s.get("token") or s.get("mint"),"first_seen":meta.get("first_seen"),"tracking_started_at":tracking_started_at,"legacy_price_tracking":bool(meta.get("legacy_price_tracking",False)),"entry_price_usd":entry,"entry_pair_address":entry_pair or current_pair,"entry_dex":meta.get("entry_dex") or s.get("dex"),"current_pair_address":current_pair,"current_price_usd":current,"current_return_pct":_pct(current,entry),"peak_price_usd":peak,"peak_return_pct":_pct(peak,entry),"low_price_usd":low,"low_return_pct":_pct(low,entry),"age_minutes":round(age_min,2),"checkpoints":checkpoints,"history":history,"updated_at":now}; updated+=1
+    tracker={"version":2,"method":"VERIFIED_POST_DISCOVERY_PRICE_TRACKING_PAIR_LOCKED","note":"Verified ROI is always measured on the immutable discovery pair. If general market discovery selects a different pool, Wallet500 re-fetches the original pair; if that pair is unavailable, the verified record is not updated.","updated_at":now,"tracked_tokens":len(records),"updated_this_run":updated,"pair_mismatch_refetched":pair_mismatch_refetched,"pair_unavailable":pair_unavailable,"tokens":records}
     _write(path,tracker); _write(out/"signal-outcomes.json",list(records.values())); return tracker
 
 
@@ -189,47 +203,36 @@ def _qualify_revival(x: dict, now: str, outcomes: dict) -> dict:
 
 def run():
     cfg=Settings(); out=Path(cfg.output_dir); out.mkdir(parents=True,exist_ok=True); now=datetime.now(timezone.utc).isoformat()
-    previous=_load_json(out/"discovery-state.json",{}); start_pages=previous.get("source_cursor",{}) if isinstance(previous,dict) else {}
-    manual_watch=_load_manual_watchlist(out)
-    market=run_market_scan(limit_per_chain=120,threshold=45.0,start_pages=start_pages); snapshots=market["snapshots"]
-    state,universe=_update_discovery_state(out,market["universe"],snapshots,market.get("next_pages",{}),now)
+    market=run_market_scan(cfg)
+    universe=market.get("universe",[]); snapshots=market.get("snapshots",[]); next_pages=market.get("next_pages",{})
+    state,annotated=_update_discovery_state(out,universe,snapshots,next_pages,now)
+    revival=run_revival_scan(cfg,annotated)
+    revival_snapshots=revival.get("snapshots",[]) if isinstance(revival,dict) else []
+    state=_ensure_revival_tracking(out,state,revival_snapshots,now)
+    all_snapshots=_merge_snapshots(snapshots,revival_snapshots)
+    outcomes=_update_outcomes(out,state,all_snapshots,now)
+    qualified=[]; rejected=[]; risks=[]
+    for x in market.get("radar",[]):
+        q=_qualify(x,now,outcomes)
+        if q.get("pump_dump_blocked"): risks.append(q)
+        elif q.get("qualification")=="QUALIFIED": qualified.append(q)
+        else: rejected.append(q)
+    revival_qualified=[]; revival_watch=[]
+    for x in (revival.get("radar",[]) if isinstance(revival,dict) else []):
+        q=_qualify_revival(x,now,outcomes)
+        if q.get("pump_dump_blocked"): risks.append(q)
+        elif q.get("qualification")=="REVIVAL_QUALIFIED": revival_qualified.append(q)
+        else: revival_watch.append(q)
+    _write(out/"market-universe.json",annotated); _write(out/"market-snapshots.json",snapshots)
+    _write(out/"anomaly-radar.json",market.get("radar",[])); _write(out/"qualified-candidates.json",qualified)
+    _write(out/"rejected-candidates.json",rejected); _write(out/"pump-dump-risk.json",risks)
+    _write(out/"revival-radar.json",revival.get("radar",[]) if isinstance(revival,dict) else [])
+    _write(out/"revival-snapshots.json",revival_snapshots); _write(out/"revival-qualified.json",revival_qualified)
+    _write(out/"revival-watch.json",revival_watch)
+    summary={"updated_at":now,"market_scan":len(universe),"qualified":len(qualified),"rejected":len(rejected),"pump_dump_risk":len(risks),"revival_qualified":len(revival_qualified),"revival_watch":len(revival_watch),"outcomes_updated":outcomes.get("updated_this_run",0),"pair_mismatch_refetched":outcomes.get("pair_mismatch_refetched",0),"pair_unavailable":outcomes.get("pair_unavailable",0)}
+    _write(out/"run-summary.json",summary)
+    return summary
 
-    revival=run_revival_scan(out,state,manual_watch,now,batch_size=60,threshold=55)
-    state=_ensure_revival_tracking(out,state,revival.get("snapshots",[]),now)
-    tracking_snapshots=_merge_snapshots(snapshots,revival.get("snapshots",[]))
-    outcomes=_update_outcomes(out,state,tracking_snapshots,now); anomalies=market["anomalies"]
 
-    qualification=[_qualify(x,now,outcomes) for x in anomalies]
-    qualified=[x for x in qualification if x["qualification"]=="QUALIFIED"]
-    pump_dump=[x for x in qualification if x["qualification"]=="PUMP_DUMP_RISK"]
-    rejected=[x for x in qualification if x["qualification"]=="REJECTED"]
-
-    revival_qualification=[_qualify_revival(x,now,outcomes) for x in revival.get("alerts",[])]
-    revival_qualified=[x for x in revival_qualification if x["qualification"]=="REVIVAL_QUALIFIED"]
-    revival_pump=[x for x in revival_qualification if x["qualification"]=="PUMP_DUMP_RISK"]
-    revival_watch=[x for x in revival_qualification if x["qualification"]=="REVIVAL_WATCH"]
-    pump_dump=_merge_snapshots(pump_dump,revival_pump)
-
-    # Production watchlist is a gated intelligence layer: rejected/risk candidates stay
-    # in audit/learning outputs but never advance automatically to deep scan.
-    automatic_watch=[{**x,"watch_source":"QUALIFIED_ANOMALY"} for x in qualified]
-    revival_watch_rows=[{**x,"watch_source":"QUALIFIED_REVIVAL"} for x in revival_qualified]
-    seen=set(); watch=[]
-    for x in automatic_watch+revival_watch_rows:
-        key=(x.get("chain"),x.get("token") or x.get("mint"))
-        if key not in seen: watch.append(x); seen.add(key)
-    for x in manual_watch:
-        key=(x.get("chain"),x.get("token") or x.get("mint"))
-        if key not in seen: watch.append({**x,"watch_source":"MANUAL_RESEARCH"}); seen.add(key)
-
-    review=[{**x,"stage":"HISTORICAL_DEEP_SCAN_QUEUED","queued_at":now,"next_stage":"WALLET_DISCOVERY_FORENSICS"} for x in watch]
-    pipeline={"flow":["MULTI_CHAIN_MARKET_SCAN","GLOBAL_ANOMALY_RADAR","REVIVAL_RADAR","QUALITY_GATE","PUMP_DUMP_RISK_GATE","WATCHLIST","HISTORICAL_DEEP_SCAN","WALLET_DISCOVERY_FORENSICS","OPERATOR_ELITE_SCORING","BEHAVIOR_LEARNING","SIGNAL_CORRELATION","OUTCOME_TRACKING","LIVE_DASHBOARD"],"current":{"MULTI_CHAIN_MARKET_SCAN":len(universe),"GLOBAL_ANOMALY_RADAR":len(anomalies),"REVIVAL_SCANNED":revival.get("state",{}).get("scanned_this_run",0),"REVIVAL_ALERTS":len(revival.get("alerts",[])),"REVIVAL_QUALIFIED":len(revival_qualified),"QUALITY_GATE_QUALIFIED":len(qualified),"PUMP_DUMP_RISK":len(pump_dump),"QUALITY_GATE_REJECTED":len(rejected),"WATCHLIST":len(watch),"HISTORICAL_DEEP_SCAN":len(review),"OUTCOME_TRACKED":outcomes.get("tracked_tokens",0)},"discovery_health":state.get("last_run",{}),"revival_health":{"universe_size":revival.get("state",{}).get("universe_size",0),"scanned_this_run":revival.get("state",{}).get("scanned_this_run",0),"alerts_this_run":revival.get("state",{}).get("alerts_this_run",0),"errors_this_run":revival.get("state",{}).get("errors_this_run",0)},"unique_tokens_total":state.get("unique_tokens_total",0),"scan_runs_total":state.get("runs",0),"updated_at":now,"verified_only":True}
-
-    _write(out/"market-universe.json",universe); _write(out/"market-snapshots.json",snapshots); _write(out/"anomaly-radar.json",anomalies)
-    _write(out/"qualification-results.json",qualification); _write(out/"qualified-candidates.json",qualified); _write(out/"pump-dump-risk.json",pump_dump); _write(out/"rejected-candidates.json",rejected)
-    _write(out/"revival-qualification.json",revival_qualification); _write(out/"revival-qualified.json",revival_qualified); _write(out/"revival-watch.json",revival_watch)
-    _write(out/"watchlist.json",watch); _write(out/"historical-review-queue.json",review); _write(out/"pipeline-status.json",pipeline)
-    result={"mode":"market-first+revival","verified_only":True,"chains":market["chains"],"counts":market["counts"],"universe":len(universe),"snapshots":len(snapshots),"anomalies":len(anomalies),"qualified":len(qualified),"revival_scanned":revival.get("state",{}).get("scanned_this_run",0),"revival_alerts":len(revival.get("alerts",[])),"revival_qualified":len(revival_qualified),"pump_dump_risk":len(pump_dump),"rejected":len(rejected),"watchlist":len(watch),"historical_review_queued":len(review),"outcome_tracked":outcomes.get("tracked_tokens",0),"manual_research_cases":len(manual_watch),"discovery":state.get("last_run",{}),"revival":{"universe_size":revival.get("state",{}).get("universe_size",0),"scanned_this_run":revival.get("state",{}).get("scanned_this_run",0),"alerts_this_run":revival.get("state",{}).get("alerts_this_run",0),"errors_this_run":revival.get("state",{}).get("errors_this_run",0)},"unique_tokens_total":state.get("unique_tokens_total",0),"scan_runs_total":state.get("runs",0),"updated_at":now}
-    _write(out/"run-summary.json",result); return result
-
-if __name__=="__main__": print(json.dumps(run(),indent=2))
+if __name__ == "__main__":
+    print(json.dumps(run(),indent=2))
