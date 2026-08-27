@@ -28,62 +28,120 @@ def _dt(value):
         return None
 
 
-def evaluate(candidate: dict, outcomes: dict, now: datetime | None = None) -> dict:
-    """Live survival gate.
+def _verified_survival(candidate: dict, outcomes: dict) -> tuple[bool, list[str], dict]:
+    """Universal ACTIVE-board survival gate for every chain.
 
-    Qualification is immutable audit history. ACTIVE is temporary and must
-    continuously survive drawdown, liquidity and reversal checks. Failed
-    candidates remain in audit/learning files but are removed from live display.
+    Qualification is an immutable historical event. ACTIVE is temporary and
+    must survive current verified market structure. Failed items stay in audit
+    and learning data but are excluded from investor-facing live candidates.
     """
+    chain = candidate.get("chain")
+    token = candidate.get("token") or candidate.get("mint") or ""
+    rec = ((outcomes or {}).get("tokens") or {}).get(_key(chain, token), {}) or {}
+    reasons = []
+
+    liq = float(candidate.get("liquidity_usd") or 0)
+    vol = float(candidate.get("volume_h1") or 0)
+    buys = int(candidate.get("buys_h1") or 0)
+    sells = int(candidate.get("sells_h1") or 0)
+    tx = buys + sells
+    m5 = float(candidate.get("price_change_m5") or 0)
+    h1 = float(candidate.get("price_change_h1") or 0)
+
+    current_return = rec.get("current_return_pct")
+    try:
+        current_return = float(current_return) if current_return is not None else None
+    except Exception:
+        current_return = None
+
+    peak = float(rec.get("peak_price_usd") or 0)
+    cur = float(rec.get("current_price_usd") or candidate.get("price_usd") or 0)
+    peak_dd = ((cur / peak - 1.0) * 100.0) if peak > 0 and cur > 0 else None
+
+    if current_return is not None and current_return <= -25:
+        reasons.append("VERIFIED_RETURN_BELOW_MINUS_25PCT")
+    if peak_dd is not None and peak_dd <= -25:
+        reasons.append("VERIFIED_PEAK_DRAWDOWN_BELOW_MINUS_25PCT")
+    if liq < 20000:
+        reasons.append("CURRENT_LIQUIDITY_BELOW_20K")
+    if vol < 15000:
+        reasons.append("CURRENT_VOLUME_1H_BELOW_15K")
+    if tx < 50:
+        reasons.append("CURRENT_ACTIVITY_BELOW_50_TX_1H")
+    if h1 > 120 and m5 <= -15:
+        reasons.append("PUMP_THEN_FAST_REVERSAL")
+    if h1 > 400 and m5 < 0:
+        reasons.append("PARABOLIC_MOVE_ALREADY_REVERSING")
+
+    metrics = {
+        "live_current_return_pct": current_return,
+        "live_peak_drawdown_pct": round(peak_dd, 2) if peak_dd is not None else None,
+        "live_liquidity_usd": liq,
+        "live_volume_h1": vol,
+        "live_activity_h1": tx,
+    }
+    return not reasons, reasons, metrics
+
+
+def evaluate(candidate: dict, outcomes: dict, now: datetime | None = None) -> dict:
+    """Universal survival gate plus stricter very-fresh Solana checks."""
     now = now or datetime.now(timezone.utc)
     chain = candidate.get("chain")
     token = candidate.get("token") or candidate.get("mint") or ""
     pair_ms = candidate.get("pair_created_at")
-    rec = ((outcomes or {}).get("tokens") or {}).get(_key(chain, token), {}) or {}
-    history = rec.get("history") if isinstance(rec.get("history"), list) else []
 
+    survives, live_reasons, metrics = _verified_survival(candidate, outcomes)
     result = {
         **candidate,
+        **metrics,
+        "live_survival_gate": "ACTIVE" if survives else "FAILED",
+        "live_survival_reasons": ["PASSED_UNIVERSAL_LIVE_SURVIVAL_GATE"] if survives else live_reasons,
         "fresh_solana_gate": "NOT_APPLICABLE",
         "fresh_solana_reasons": [],
         "pair_age_minutes": None,
         "observation_span_minutes": 0.0,
         "liquidity_retention": None,
-        "peak_drawdown_pct": None,
-        "current_return_pct": rec.get("current_return_pct"),
+        "peak_drawdown_pct": metrics.get("live_peak_drawdown_pct"),
     }
+    if not survives:
+        return result
+
+    if chain != "solana" or not pair_ms:
+        return result
+
+    try:
+        pair_dt = datetime.fromtimestamp(float(pair_ms) / 1000.0, tz=timezone.utc)
+        pair_age = max(0.0, (now - pair_dt).total_seconds() / 60.0)
+    except Exception:
+        return result
+    result["pair_age_minutes"] = round(pair_age, 2)
+
+    # Established enough to leave the special fresh-launch lane, while still
+    # remaining subject to the universal live survival gate above.
+    if pair_age >= 120:
+        return result
+
+    rec = ((outcomes or {}).get("tokens") or {}).get(_key(chain, token), {}) or {}
+    history = rec.get("history") if isinstance(rec.get("history"), list) else []
+    reasons = []
+    hard_fail = []
 
     liq = float(candidate.get("liquidity_usd") or 0)
     buys = int(candidate.get("buys_h1") or 0)
     sells = int(candidate.get("sells_h1") or 0)
     tx = buys + sells
     ratio = buys / max(sells, 1)
-    h1 = float(candidate.get("price_change_h1") or 0)
-    m5 = float(candidate.get("price_change_m5") or 0)
-    hard_fail = []
-    reasons = []
 
-    # GLOBAL ACTIVE-DISPLAY KILL SWITCHES — all chains, all ages.
-    if candidate.get("pump_dump_blocked") or float(candidate.get("pump_dump_risk_score") or 0) >= 70:
-        hard_fail.append("PUMP_DUMP_RISK_BLOCKED")
-    current_ret = rec.get("current_return_pct")
-    if current_ret is not None and float(current_ret) <= -25:
-        hard_fail.append("VERIFIED_RETURN_BELOW_MINUS_25PCT")
-    peak = float(rec.get("peak_price_usd") or 0)
-    cur = float(rec.get("current_price_usd") or candidate.get("price_usd") or 0)
-    if peak > 0 and cur > 0:
-        dd = (cur / peak - 1.0) * 100.0
-        result["peak_drawdown_pct"] = round(dd, 2)
-        if dd <= -25:
-            hard_fail.append("PEAK_DRAWDOWN_GT_25PCT")
-    if h1 >= 100 and m5 <= -15:
-        hard_fail.append("PUMP_THEN_SHARP_5M_REVERSAL")
-    if liq < 20000:
-        hard_fail.append("LIVE_LIQUIDITY_LT_20K")
+    if pair_age < 60 and liq < 50000 and tx >= 500 and ratio >= 6.0:
+        hard_fail.append("EXTREME_BUY_SKEW_THIN_FRESH_LIQUIDITY")
+    if liq < 30000:
+        reasons.append("FRESH_SOLANA_LIQUIDITY_LT_30K")
 
     if history:
-        first, last = history[0], history[-1]
-        t0, t1 = _dt(first.get("observed_at")), _dt(last.get("observed_at"))
+        first = history[0]
+        last = history[-1]
+        t0 = _dt(first.get("observed_at"))
+        t1 = _dt(last.get("observed_at"))
         if t0 and t1:
             result["observation_span_minutes"] = round(max(0.0, (t1 - t0).total_seconds() / 60.0), 2)
         first_liq = float(first.get("liquidity_usd") or 0)
@@ -94,44 +152,40 @@ def evaluate(candidate: dict, outcomes: dict, now: datetime | None = None) -> di
             if retention < 0.70:
                 hard_fail.append("LIQUIDITY_RETENTION_LT_70PCT")
 
-    # Determine fresh-Solana age only for the extra launch-survival lane.
-    pair_age = None
-    if chain == "solana" and pair_ms:
-        try:
-            pair_dt = datetime.fromtimestamp(float(pair_ms) / 1000.0, tz=timezone.utc)
-            pair_age = max(0.0, (now - pair_dt).total_seconds() / 60.0)
-            result["pair_age_minutes"] = round(pair_age, 2)
-        except Exception:
-            pair_age = None
-
-    if pair_age is not None and pair_age < 120:
-        if pair_age < 60 and liq < 50000 and tx >= 500 and ratio >= 6.0:
-            hard_fail.append("EXTREME_BUY_SKEW_THIN_FRESH_LIQUIDITY")
-        if liq < 30000:
-            reasons.append("FRESH_SOLANA_LIQUIDITY_LT_30K")
-        if pair_age < 45:
-            reasons.append("PAIR_AGE_LT_45M")
-        if len(history) < 2:
-            reasons.append("NEED_2_VERIFIED_OBSERVATIONS")
-        if result["observation_span_minutes"] < 10:
-            reasons.append("OBSERVATION_SPAN_LT_10M")
-        if liq < 30000:
-            reasons.append("NEED_LIQUIDITY_GE_30K")
-        if ratio < 1.10 and sells >= 50:
-            reasons.append("BUYER_PRESSURE_NOT_SURVIVING")
+    peak = float(rec.get("peak_price_usd") or 0)
+    cur = float(rec.get("current_price_usd") or candidate.get("price_usd") or 0)
+    if peak > 0 and cur > 0:
+        dd = (cur / peak - 1.0) * 100.0
+        result["peak_drawdown_pct"] = round(dd, 2)
+        if dd <= -25:
+            hard_fail.append("FRESH_PEAK_DRAWDOWN_GT_25PCT")
 
     if hard_fail:
         result["fresh_solana_gate"] = "FAILED"
-        result["fresh_solana_reasons"] = list(dict.fromkeys(hard_fail + reasons))
-    elif reasons:
+        result["fresh_solana_reasons"] = hard_fail + reasons
+        result["live_survival_gate"] = "FAILED"
+        result["live_survival_reasons"] = hard_fail + reasons
+        return result
+
+    if pair_age < 45:
+        reasons.append("PAIR_AGE_LT_45M")
+    if len(history) < 2:
+        reasons.append("NEED_2_VERIFIED_OBSERVATIONS")
+    if result["observation_span_minutes"] < 10:
+        reasons.append("OBSERVATION_SPAN_LT_10M")
+    if liq < 30000:
+        reasons.append("NEED_LIQUIDITY_GE_30K")
+    if ratio < 1.10 and sells >= 50:
+        reasons.append("BUYER_PRESSURE_NOT_SURVIVING")
+
+    if reasons:
         result["fresh_solana_gate"] = "PENDING"
         result["fresh_solana_reasons"] = list(dict.fromkeys(reasons))
-    elif pair_age is not None and pair_age < 120:
-        result["fresh_solana_gate"] = "ACTIVE"
-        result["fresh_solana_reasons"] = ["PASSED_FRESH_SOLANA_SURVIVAL_GATE"]
+        result["live_survival_gate"] = "PENDING"
+        result["live_survival_reasons"] = list(dict.fromkeys(reasons))
     else:
         result["fresh_solana_gate"] = "ACTIVE"
-        result["fresh_solana_reasons"] = ["PASSED_GLOBAL_LIVE_SURVIVAL_GATE"]
+        result["fresh_solana_reasons"] = ["PASSED_FRESH_SOLANA_SURVIVAL_GATE"]
     return result
 
 
@@ -144,42 +198,60 @@ def apply(output_dir: str = "data") -> dict:
     now = datetime.now(timezone.utc)
 
     evaluations = [evaluate(x, outcomes, now) for x in qualified]
-    active = [x for x in evaluations if x.get("fresh_solana_gate") == "ACTIVE"]
-    pending = [x for x in evaluations if x.get("fresh_solana_gate") == "PENDING"]
-    failed = [x for x in evaluations if x.get("fresh_solana_gate") == "FAILED"]
-    active_keys = {(x.get("chain"), x.get("token") or x.get("mint")) for x in active}
+    active_keys = set()
+    pending = []
+    failed = []
+    active = []
+    for x in evaluations:
+        gate = x.get("live_survival_gate")
+        k = (x.get("chain"), (x.get("token") or x.get("mint") or "").lower() if x.get("chain") in {"ethereum", "bsc"} else x.get("token") or x.get("mint"))
+        if gate == "ACTIVE":
+            active.append(x)
+            active_keys.add(k)
+        elif gate == "PENDING":
+            pending.append(x)
+        else:
+            failed.append(x)
 
     filtered_watch = []
     for x in watch:
         if x.get("watch_source") != "QUALIFIED_ANOMALY":
             filtered_watch.append(x)
             continue
-        k = (x.get("chain"), x.get("token") or x.get("mint"))
-        if k in active_keys:
+        token = x.get("token") or x.get("mint") or ""
+        if x.get("chain") in {"ethereum", "bsc"}:
+            token = token.lower()
+        if (x.get("chain"), token) in active_keys:
             filtered_watch.append(x)
 
     review = [{**x, "stage": "HISTORICAL_DEEP_SCAN_QUEUED", "queued_at": now.isoformat(), "next_stage": "WALLET_DISCOVERY_FORENSICS"} for x in filtered_watch]
 
     _write(out / "fresh-solana-survival.json", evaluations)
-    _write(out / "fresh-solana-pending.json", pending)
-    _write(out / "fresh-solana-failed.json", failed)
+    _write(out / "fresh-solana-pending.json", [x for x in pending if x.get("chain") == "solana"])
+    _write(out / "fresh-solana-failed.json", [x for x in failed if x.get("chain") == "solana"])
     _write(out / "active-qualified-candidates.json", active)
+    _write(out / "live-survival-failed.json", failed)
+    _write(out / "live-survival-pending.json", pending)
     _write(out / "watchlist.json", filtered_watch)
     _write(out / "historical-review-queue.json", review)
 
     if isinstance(summary, dict):
         summary["quality_gate_qualified"] = len(qualified)
         summary["active_qualified"] = len(active)
-        summary["fresh_solana_pending"] = len(pending)
-        summary["fresh_solana_failed"] = len(failed)
+        summary["live_survival_pending"] = len(pending)
+        summary["live_survival_failed"] = len(failed)
+        summary["fresh_solana_pending"] = len([x for x in pending if x.get("chain") == "solana"])
+        summary["fresh_solana_failed"] = len([x for x in failed if x.get("chain") == "solana"])
         summary["watchlist"] = len(filtered_watch)
         summary["historical_review_queued"] = len(review)
-        summary["live_display_policy"] = {
+        summary["live_survival_policy"] = {
             "max_verified_loss_pct": -25,
             "max_peak_drawdown_pct": -25,
-            "min_live_liquidity_usd": 20000,
-            "block_pump_then_5m_reversal": True,
-            "audit_history_is_never_deleted": True,
+            "min_liquidity_usd": 20000,
+            "min_volume_h1_usd": 15000,
+            "min_activity_h1": 50,
+            "pump_reversal_h1_pct": 120,
+            "pump_reversal_m5_pct": -15,
         }
         summary["fresh_solana_policy"] = {
             "max_special_lane_age_minutes": 120,
@@ -195,8 +267,8 @@ def apply(output_dir: str = "data") -> dict:
     result = {
         "quality_gate_qualified": len(qualified),
         "active_qualified": len(active),
-        "pending": len(pending),
-        "failed_live_survival": len(failed),
+        "live_survival_pending": len(pending),
+        "live_survival_failed": len(failed),
         "watchlist": len(filtered_watch),
     }
     print(json.dumps(result, indent=2))
