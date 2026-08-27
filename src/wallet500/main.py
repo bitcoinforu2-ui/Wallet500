@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from .config import Settings
 from .market_pipeline import run_market_scan
 from .revival_radar import run_revival_scan
+from .market_data import snapshot as market_snapshot
 
 
 def _write(path, payload):
@@ -112,13 +113,18 @@ def _update_outcomes(out: Path, state: dict, snapshots: list[dict], now: str) ->
     records=tracker.get("tokens") if isinstance(tracker.get("tokens"),dict) else {}
     snap=_snapshot_map(snapshots)
     horizons=((5,"5m"),(15,"15m"),(30,"30m"),(60,"1h"),(240,"4h"),(720,"12h"),(1440,"24h"))
-    now_dt=datetime.fromisoformat(now.replace("Z","+00:00")); updated=0; pair_mismatch_skipped=0
-    for key,s in snap.items():
-        meta=(state.get("tokens") or {}).get(key) or {}; entry=meta.get("entry_price_usd"); current=s.get("price_usd")
-        entry_pair=meta.get("entry_pair_address"); current_pair=s.get("pair_address")
-        if entry in (None,0,0.0) or current in (None,0,0.0): continue
-        if entry_pair and current_pair and str(entry_pair).lower()!=str(current_pair).lower():
-            pair_mismatch_skipped+=1; continue
+    now_dt=datetime.fromisoformat(now.replace("Z","+00:00")); updated=0; pair_mismatch_refetched=0; pair_unavailable=0
+    for key,s in list(snap.items()):
+        meta=(state.get("tokens") or {}).get(key) or {}; entry=meta.get("entry_price_usd"); entry_pair=meta.get("entry_pair_address")
+        if entry in (None,0,0.0): continue
+        current_pair=s.get("pair_address")
+        if entry_pair and (not current_pair or str(entry_pair).lower()!=str(current_pair).lower()):
+            locked=market_snapshot(meta.get("chain") or s.get("chain"),meta.get("token") or s.get("token") or s.get("mint"),entry_pair)
+            if not locked or locked.get("price_usd") in (None,0,0.0):
+                pair_unavailable+=1; continue
+            s=locked; current_pair=s.get("pair_address"); pair_mismatch_refetched+=1
+        current=s.get("price_usd")
+        if current in (None,0,0.0): continue
         rec=records.get(key) if isinstance(records.get(key),dict) else {}
         tracking_started_at=meta.get("tracking_started_at") or rec.get("tracking_started_at") or now
         try: start_dt=datetime.fromisoformat(tracking_started_at.replace("Z","+00:00"))
@@ -131,7 +137,7 @@ def _update_outcomes(out: Path, state: dict, snapshots: list[dict], now: str) ->
         history=rec.get("history") if isinstance(rec.get("history"),list) else []
         history.append({"observed_at":now,"price_usd":current,"return_pct":_pct(current,entry),"pair_address":current_pair,"dex":s.get("dex"),"liquidity_usd":s.get("liquidity_usd"),"volume_h1":s.get("volume_h1"),"buys_h1":s.get("buys_h1"),"sells_h1":s.get("sells_h1")}); history=history[-200:]
         records[key]={"chain":meta.get("chain") or s.get("chain"),"token":meta.get("token") or s.get("token") or s.get("mint"),"first_seen":meta.get("first_seen"),"tracking_started_at":tracking_started_at,"legacy_price_tracking":bool(meta.get("legacy_price_tracking",False)),"entry_price_usd":entry,"entry_pair_address":entry_pair or current_pair,"entry_dex":meta.get("entry_dex") or s.get("dex"),"current_pair_address":current_pair,"current_price_usd":current,"current_return_pct":_pct(current,entry),"peak_price_usd":peak,"peak_return_pct":_pct(peak,entry),"low_price_usd":low,"low_return_pct":_pct(low,entry),"age_minutes":round(age_min,2),"checkpoints":checkpoints,"history":history,"updated_at":now}; updated+=1
-    tracker={"version":2,"method":"VERIFIED_POST_DISCOVERY_PRICE_TRACKING_PAIR_LOCKED","note":"Verified ROI is updated only when the current market snapshot matches the immutable discovery pair. Pair changes are never silently merged into the verified track record.","updated_at":now,"tracked_tokens":len(records),"updated_this_run":updated,"pair_mismatch_skipped":pair_mismatch_skipped,"tokens":records}
+    tracker={"version":2,"method":"VERIFIED_POST_DISCOVERY_PRICE_TRACKING_PAIR_LOCKED","note":"Verified ROI is always measured on the immutable discovery pair. If general market discovery selects a different pool, Wallet500 re-fetches the original pair; if that pair is unavailable, the verified record is not updated.","updated_at":now,"tracked_tokens":len(records),"updated_this_run":updated,"pair_mismatch_refetched":pair_mismatch_refetched,"pair_unavailable":pair_unavailable,"tokens":records}
     _write(path,tracker); _write(out/"signal-outcomes.json",list(records.values())); return tracker
 
 
@@ -223,7 +229,7 @@ def run():
     _write(out/"revival-radar.json",revival.get("radar",[]) if isinstance(revival,dict) else [])
     _write(out/"revival-snapshots.json",revival_snapshots); _write(out/"revival-qualified.json",revival_qualified)
     _write(out/"revival-watch.json",revival_watch)
-    summary={"updated_at":now,"market_scan":len(universe),"qualified":len(qualified),"rejected":len(rejected),"pump_dump_risk":len(risks),"revival_qualified":len(revival_qualified),"revival_watch":len(revival_watch),"outcomes_updated":outcomes.get("updated_this_run",0),"pair_mismatch_skipped":outcomes.get("pair_mismatch_skipped",0)}
+    summary={"updated_at":now,"market_scan":len(universe),"qualified":len(qualified),"rejected":len(rejected),"pump_dump_risk":len(risks),"revival_qualified":len(revival_qualified),"revival_watch":len(revival_watch),"outcomes_updated":outcomes.get("updated_this_run",0),"pair_mismatch_refetched":outcomes.get("pair_mismatch_refetched",0),"pair_unavailable":outcomes.get("pair_unavailable",0)}
     _write(out/"run-summary.json",summary)
     return summary
 
