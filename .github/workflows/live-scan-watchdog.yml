@@ -3,7 +3,7 @@ name: Wallet500 Live Scan Watchdog
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0,15,30,45 * * * *'
+    - cron: '7,17,27,37,47,57 * * * *'
 
 permissions:
   contents: write
@@ -32,14 +32,13 @@ jobs:
           from datetime import datetime, timezone
           from pathlib import Path
           p=Path('data/run-summary.json')
-          stale=True
-          age=999999
+          stale=True; age=999999
           if p.exists():
               try:
                   d=json.loads(p.read_text())
                   ts=datetime.fromisoformat(d['updated_at'])
                   age=(datetime.now(timezone.utc)-ts).total_seconds()/60
-                  stale=age>18
+                  stale=age>12
               except Exception:
                   stale=True
           print('stale=' + ('true' if stale else 'false'))
@@ -59,6 +58,29 @@ jobs:
       - name: Apply fresh Solana survival gate
         if: steps.freshness.outputs.stale == 'true'
         run: python -m wallet500.fresh_solana_gate
+      - name: Record watchdog telemetry
+        env:
+          W500_EVENT: ${{ github.event_name }}
+          W500_RUN_ID: ${{ github.run_id }}
+          W500_WORKFLOW: WATCHDOG
+          W500_SCHEDULE: ${{ github.event.schedule }}
+          W500_STALE: ${{ steps.freshness.outputs.stale }}
+          W500_AGE: ${{ steps.freshness.outputs.age_minutes }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          p=Path('data/scheduler-health.json')
+          try: d=json.loads(p.read_text()) if p.exists() else {}
+          except Exception: d={}
+          h=d.get('history') if isinstance(d.get('history'),list) else []
+          now=datetime.now(timezone.utc).isoformat()
+          row={'at':now,'workflow':os.getenv('W500_WORKFLOW'),'event':os.getenv('W500_EVENT'),'run_id':os.getenv('W500_RUN_ID'),'schedule':os.getenv('W500_SCHEDULE') or None,'stale':os.getenv('W500_STALE')=='true','age_minutes':float(os.getenv('W500_AGE') or 0)}
+          h.append(row); h=h[-100:]
+          d={'updated_at':now,'last':row,'history':h}
+          p.write_text(json.dumps(d,indent=2))
+          PY
       - name: Validate recovery output
         if: steps.freshness.outputs.stale == 'true'
         run: |
@@ -73,19 +95,18 @@ jobs:
           age=(datetime.now(timezone.utc)-ts).total_seconds()
           if age>300: raise SystemExit(f'FATAL: recovery output stale ({age:.0f}s)')
           if not d.get('verified_only'): raise SystemExit('FATAL: recovery output not verified-only')
-          for required in ('data/fresh-solana-survival.json','data/active-qualified-candidates.json'):
+          for required in ('data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/scheduler-health.json'):
               if not Path(required).exists(): raise SystemExit('FATAL: missing '+required)
           print('WATCHDOG RECOVERY HEALTHY', d['updated_at'], 'active', d.get('active_qualified',0), 'pending', d.get('fresh_solana_pending',0), 'failed', d.get('fresh_solana_failed',0))
           PY
-      - name: Publish recovered scan data
-        if: steps.freshness.outputs.stale == 'true'
+      - name: Publish watchdog telemetry or recovered scan data
         run: |
           set -euo pipefail
           git config user.name 'wallet500-watchdog'
           git config user.email 'wallet500-watchdog@users.noreply.github.com'
           git add data/
           git diff --cached --quiet && exit 0
-          git commit -m 'data: watchdog recovery scan'
+          git commit -m 'data: watchdog scheduler telemetry'
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git merge --no-edit -X ours origin/main
