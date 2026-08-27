@@ -10,17 +10,20 @@ from .liquidity_pool_radar import analyze_liquidity_pools
 
 CHAINS=("solana","ethereum","bsc")
 
-def run_market_scan(limit_per_chain:int=120,threshold:float=45.0,start_pages=None)->dict:
-    universe,next_pages=discover_tokens(CHAINS,limit_per_chain,start_pages=start_pages)
+def run_market_scan(limit_per_chain:int|Settings=120,threshold:float=45.0,start_pages=None)->dict:
+    cfg=limit_per_chain if isinstance(limit_per_chain,Settings) else Settings()
+    limit=120 if isinstance(limit_per_chain,Settings) else int(limit_per_chain)
+    effective_threshold=float(cfg.anomaly_threshold) if isinstance(limit_per_chain,Settings) else float(threshold)
+    universe,next_pages=discover_tokens(CHAINS,limit,start_pages=start_pages)
     diagnostics=discovery_diagnostics()
-    out=Path(Settings().output_dir);out.mkdir(parents=True,exist_ok=True)
+    out=Path(cfg.output_dir);out.mkdir(parents=True,exist_ok=True)
     (out/"discovery-health.json").write_text(json.dumps(diagnostics,indent=2),encoding="utf-8")
     snapshots=[]
     for row in universe:
         s=snapshot(row["chain"],row["token"])
         if s:
             snapshots.append(s)
-    anomalies=rank_anomalies(snapshots,threshold)
+    anomalies=rank_anomalies(snapshots,effective_threshold)
     liquidity_radar=analyze_liquidity_pools(snapshots,out,datetime.now(timezone.utc).isoformat())
     counts={c:{"discovered":0,"snapshots":0,"anomalies":0} for c in CHAINS}
     for x in universe:
