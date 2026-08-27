@@ -1,4 +1,5 @@
 name: Wallet500 Multi-Chain Live Scan
+
 on:
   workflow_dispatch:
   push:
@@ -9,22 +10,61 @@ on:
       - '.github/workflows/live-scan.yml'
       - 'data/manual-watchlist.json'
   schedule:
-    - cron: '*/15 * * * *'
+    # Avoid GitHub Actions' busiest top-of-hour/minute slots while keeping 15m cadence.
+    - cron: '7,22,37,52 * * * *'
+
 permissions:
   contents: write
+
+concurrency:
+  group: wallet500-live-scan
+  cancel-in-progress: false
+
 jobs:
   scan:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
       - name: Install
         run: pip install -e .
-      - name: Run real market-first scan
+
+      - name: Run verified real market scan
+        env:
+          PYTHONUNBUFFERED: '1'
         run: python -m wallet500.main
+
+      - name: Validate fresh scan output
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          p = Path('data/run-summary.json')
+          if not p.exists():
+              raise SystemExit('FATAL: run-summary.json missing')
+          d = json.loads(p.read_text())
+          ts = datetime.fromisoformat(d['updated_at'])
+          age = (datetime.now(timezone.utc) - ts).total_seconds()
+          if age > 300:
+              raise SystemExit(f'FATAL: stale scan output ({age:.0f}s old)')
+          if int(d.get('scan_runs_total', 0)) < 1:
+              raise SystemExit('FATAL: scan counter invalid')
+          counts = d.get('counts', {})
+          dead = [c for c in ('solana','ethereum','bsc') if int((counts.get(c) or {}).get('discovered',0)) <= 0]
+          if dead:
+              raise SystemExit('FATAL: zero discovery on chain(s): ' + ', '.join(dead))
+          print('HEALTHY:', d['updated_at'], counts)
+          PY
+
       - name: Publish verified scan data
         run: |
           git config user.name 'wallet500-bot'
