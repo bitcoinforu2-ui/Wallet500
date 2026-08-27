@@ -2,6 +2,8 @@ name: Wallet500 Multi-Chain Live Scan
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '5,20,35,50 * * * *'
   push:
     branches: [main]
     paths:
@@ -43,7 +45,7 @@ jobs:
         env:
           W500_EVENT: ${{ github.event_name }}
           W500_RUN_ID: ${{ github.run_id }}
-          W500_WORKFLOW: PRIMARY_ON_DEMAND
+          W500_WORKFLOW: PRIMARY_15M_LIVE
           W500_SCHEDULE: ${{ github.event.schedule }}
         run: |
           python3 - <<'PY'
@@ -82,7 +84,7 @@ jobs:
               print('WALLET FORENSICS:',w.get('verified_wallet_candidates',0),'verified candidates; EVM deferred',w.get('evm_candidates_deferred',0))
           else:
               print('DEGRADED RESEARCH LANE: wallet-candidates.json missing; primary lane remains healthy')
-          print('HEALTHY ON-DEMAND SCAN:',d['updated_at'],'active',d.get('active_qualified',0),'pending',d.get('live_survival_pending',0),'failed',d.get('live_survival_failed',0))
+          print('HEALTHY LIVE SCAN:',d['updated_at'],'active',d.get('active_qualified',0),'pending',d.get('live_survival_pending',0),'failed',d.get('live_survival_failed',0))
           PY
       - name: Publish verified scan data
         run: |
@@ -97,6 +99,7 @@ jobs:
             git merge --no-edit -X ours origin/main
             if git push origin HEAD:main; then exit 0; fi
             echo "Push raced with main; retrying publish (attempt $attempt)"
+            sleep 3
           done
           echo 'FATAL: failed to publish scan data after retries'
           exit 1
