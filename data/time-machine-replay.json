@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated_at": "2026-08-27T08:41:54.327963+00:00",
+  "generated_at": "2026-08-27T09:01:17.963665+00:00",
   "method": "NO_HINDSIGHT_SEQUENTIAL_REPLAY",
   "rule": "features at observation i are computed only from i and earlier; outcomes are measured only afterward",
   "horizon_points": [
@@ -10,256 +10,289 @@
     8
   ],
   "note": "with ~15m cadence these roughly represent 15m/30m/1h/2h; actual timestamps should replace cadence assumptions in a later version",
-  "patterns_tested": 18,
+  "patterns_tested": 21,
   "top_patterns": [
     {
       "pattern": "FUNDING_DIVERGENCE",
-      "samples": 462,
-      "future_5pct": 7,
-      "future_10pct": 6,
-      "future_20pct": 6,
-      "future_30pct": 6,
-      "avg_best_future_pct": 0.8241,
-      "hit_rate_10pct": 0.013,
-      "hit_rate_20pct": 0.013
+      "samples": 542,
+      "future_5pct": 10,
+      "future_10pct": 8,
+      "future_20pct": 8,
+      "future_30pct": 7,
+      "avg_best_future_pct": 0.9309,
+      "hit_rate_10pct": 0.0148,
+      "hit_rate_20pct": 0.0148
     },
     {
       "pattern": "PRICE_ACCEL",
-      "samples": 229,
-      "future_5pct": 14,
-      "future_10pct": 9,
+      "samples": 891,
+      "future_5pct": 19,
+      "future_10pct": 11,
       "future_20pct": 2,
       "future_30pct": 0,
-      "avg_best_future_pct": 1.2355,
-      "hit_rate_10pct": 0.0393,
-      "hit_rate_20pct": 0.0087
+      "avg_best_future_pct": 0.3499,
+      "hit_rate_10pct": 0.0123,
+      "hit_rate_20pct": 0.0022
     },
     {
       "pattern": "NONE",
-      "samples": 22089,
-      "future_5pct": 173,
-      "future_10pct": 40,
-      "future_20pct": 19,
-      "future_30pct": 3,
-      "avg_best_future_pct": 0.7153,
-      "hit_rate_10pct": 0.0018,
-      "hit_rate_20pct": 0.0009
+      "samples": 25598,
+      "future_5pct": 255,
+      "future_10pct": 57,
+      "future_20pct": 27,
+      "future_30pct": 14,
+      "avg_best_future_pct": 0.8368,
+      "hit_rate_10pct": 0.0022,
+      "hit_rate_20pct": 0.0011
+    },
+    {
+      "pattern": "PRICE_ACCEL>VOLUME_ACCEL>OI_ACCEL",
+      "samples": 31,
+      "future_5pct": 4,
+      "future_10pct": 1,
+      "future_20pct": 0,
+      "future_30pct": 0,
+      "avg_best_future_pct": 1.5281,
+      "hit_rate_10pct": 0.0323,
+      "hit_rate_20pct": 0.0
+    },
+    {
+      "pattern": "VOLUME_ACCEL>OI_ACCEL",
+      "samples": 80,
+      "future_5pct": 1,
+      "future_10pct": 1,
+      "future_20pct": 0,
+      "future_30pct": 0,
+      "avg_best_future_pct": 0.404,
+      "hit_rate_10pct": 0.0125,
+      "hit_rate_20pct": 0.0
     },
     {
       "pattern": "VOLUME_ACCEL",
-      "samples": 190,
-      "future_5pct": 1,
+      "samples": 490,
+      "future_5pct": 3,
       "future_10pct": 0,
       "future_20pct": 0,
       "future_30pct": 0,
-      "avg_best_future_pct": 0.5479,
+      "avg_best_future_pct": 0.3009,
       "hit_rate_10pct": 0.0,
       "hit_rate_20pct": 0.0
     },
     {
       "pattern": "OI_ACCEL",
-      "samples": 98,
+      "samples": 173,
       "future_5pct": 1,
       "future_10pct": 0,
       "future_20pct": 0,
       "future_30pct": 0,
-      "avg_best_future_pct": 0.4251,
-      "hit_rate_10pct": 0.0,
-      "hit_rate_20pct": 0.0
-    },
-    {
-      "pattern": "FUNDING_DIVERGENCE>CROWDED_LONG",
-      "samples": 48,
-      "future_5pct": 0,
-      "future_10pct": 0,
-      "future_20pct": 0,
-      "future_30pct": 0,
-      "avg_best_future_pct": 0.2699,
-      "hit_rate_10pct": 0.0,
-      "hit_rate_20pct": 0.0
-    },
-    {
-      "pattern": "VOLUME_ACCEL>OI_ACCEL",
-      "samples": 35,
-      "future_5pct": 0,
-      "future_10pct": 0,
-      "future_20pct": 0,
-      "future_30pct": 0,
-      "avg_best_future_pct": 0.4367,
+      "avg_best_future_pct": 0.2763,
       "hit_rate_10pct": 0.0,
       "hit_rate_20pct": 0.0
     },
     {
       "pattern": "PRICE_ACCEL>VOLUME_ACCEL",
-      "samples": 24,
+      "samples": 169,
       "future_5pct": 1,
       "future_10pct": 0,
       "future_20pct": 0,
       "future_30pct": 0,
-      "avg_best_future_pct": 0.6971,
+      "avg_best_future_pct": 0.0777,
       "hit_rate_10pct": 0.0,
       "hit_rate_20pct": 0.0
     },
     {
-      "pattern": "FUNDING_DIVERGENCE>SHORT_SQUEEZE",
-      "samples": 17,
+      "pattern": "FUNDING_DIVERGENCE>CROWDED_LONG",
+      "samples": 61,
       "future_5pct": 0,
       "future_10pct": 0,
       "future_20pct": 0,
       "future_30pct": 0,
-      "avg_best_future_pct": -0.287,
+      "avg_best_future_pct": 0.2895,
       "hit_rate_10pct": 0.0,
       "hit_rate_20pct": 0.0
     },
     {
       "pattern": "PRICE_ACCEL>OI_ACCEL",
-      "samples": 15,
+      "samples": 43,
       "future_5pct": 1,
       "future_10pct": 0,
       "future_20pct": 0,
       "future_30pct": 0,
-      "avg_best_future_pct": 0.5738,
+      "avg_best_future_pct": 0.2759,
+      "hit_rate_10pct": 0.0,
+      "hit_rate_20pct": 0.0
+    },
+    {
+      "pattern": "FUNDING_DIVERGENCE>SHORT_SQUEEZE",
+      "samples": 19,
+      "future_5pct": 0,
+      "future_10pct": 0,
+      "future_20pct": 0,
+      "future_30pct": 0,
+      "avg_best_future_pct": -0.2877,
       "hit_rate_10pct": 0.0,
       "hit_rate_20pct": 0.0
     },
     {
       "pattern": "PRICE_ACCEL>FUNDING_DIVERGENCE",
-      "samples": 11,
+      "samples": 18,
       "future_5pct": 0,
       "future_10pct": 0,
       "future_20pct": 0,
       "future_30pct": 0,
-      "avg_best_future_pct": 0.577,
-      "hit_rate_10pct": 0.0,
-      "hit_rate_20pct": 0.0
-    },
-    {
-      "pattern": "PRICE_ACCEL>VOLUME_ACCEL>OI_ACCEL",
-      "samples": 11,
-      "future_5pct": 1,
-      "future_10pct": 0,
-      "future_20pct": 0,
-      "future_30pct": 0,
-      "avg_best_future_pct": 0.3835,
-      "hit_rate_10pct": 0.0,
-      "hit_rate_20pct": 0.0
-    },
-    {
-      "pattern": "OI_ACCEL>FUNDING_DIVERGENCE",
-      "samples": 6,
-      "future_5pct": 0,
-      "future_10pct": 0,
-      "future_20pct": 0,
-      "future_30pct": 0,
-      "avg_best_future_pct": -0.2574,
+      "avg_best_future_pct": 0.3877,
       "hit_rate_10pct": 0.0,
       "hit_rate_20pct": 0.0
     },
     {
       "pattern": "VOLUME_ACCEL>FUNDING_DIVERGENCE",
-      "samples": 4,
+      "samples": 13,
       "future_5pct": 0,
       "future_10pct": 0,
       "future_20pct": 0,
       "future_30pct": 0,
-      "avg_best_future_pct": 0.2606,
+      "avg_best_future_pct": -0.0396,
       "hit_rate_10pct": 0.0,
       "hit_rate_20pct": 0.0
     },
     {
       "pattern": "VOLUME_ACCEL>OI_ACCEL>FUNDING_DIVERGENCE",
-      "samples": 3,
+      "samples": 8,
       "future_5pct": 0,
       "future_10pct": 0,
       "future_20pct": 0,
       "future_30pct": 0,
-      "avg_best_future_pct": -0.241,
+      "avg_best_future_pct": -1.9363,
+      "hit_rate_10pct": 0.0,
+      "hit_rate_20pct": 0.0
+    },
+    {
+      "pattern": "OI_ACCEL>FUNDING_DIVERGENCE",
+      "samples": 7,
+      "future_5pct": 0,
+      "future_10pct": 0,
+      "future_20pct": 0,
+      "future_30pct": 0,
+      "avg_best_future_pct": -0.2283,
       "hit_rate_10pct": 0.0,
       "hit_rate_20pct": 0.0
     },
     {
       "pattern": "PRICE_ACCEL>VOLUME_ACCEL>FUNDING_DIVERGENCE",
-      "samples": 1,
+      "samples": 5,
       "future_5pct": 0,
       "future_10pct": 0,
       "future_20pct": 0,
       "future_30pct": 0,
-      "avg_best_future_pct": 3.8462,
+      "avg_best_future_pct": 0.3195,
       "hit_rate_10pct": 0.0,
       "hit_rate_20pct": 0.0
     },
     {
       "pattern": "PRICE_ACCEL>FUNDING_DIVERGENCE>CROWDED_LONG",
-      "samples": 1,
+      "samples": 5,
       "future_5pct": 0,
       "future_10pct": 0,
       "future_20pct": 0,
       "future_30pct": 0,
-      "avg_best_future_pct": 0.0957,
+      "avg_best_future_pct": -0.2419,
       "hit_rate_10pct": 0.0,
       "hit_rate_20pct": 0.0
     },
     {
       "pattern": "PRICE_ACCEL>OI_ACCEL>FUNDING_DIVERGENCE>CROWDED_LONG",
+      "samples": 2,
+      "future_5pct": 0,
+      "future_10pct": 0,
+      "future_20pct": 0,
+      "future_30pct": 0,
+      "avg_best_future_pct": 0.1059,
+      "hit_rate_10pct": 0.0,
+      "hit_rate_20pct": 0.0
+    },
+    {
+      "pattern": "PRICE_ACCEL>VOLUME_ACCEL>OI_ACCEL>FUNDING_DIVERGENCE",
       "samples": 1,
       "future_5pct": 0,
       "future_10pct": 0,
       "future_20pct": 0,
       "future_30pct": 0,
-      "avg_best_future_pct": -0.4093,
+      "avg_best_future_pct": -3.967,
+      "hit_rate_10pct": 0.0,
+      "hit_rate_20pct": 0.0
+    },
+    {
+      "pattern": "VOLUME_ACCEL>OI_ACCEL>FUNDING_DIVERGENCE>CROWDED_LONG",
+      "samples": 1,
+      "future_5pct": 0,
+      "future_10pct": 0,
+      "future_20pct": 0,
+      "future_30pct": 0,
+      "avg_best_future_pct": 0.5916,
+      "hit_rate_10pct": 0.0,
+      "hit_rate_20pct": 0.0
+    },
+    {
+      "pattern": "PRICE_ACCEL>VOLUME_ACCEL>FUNDING_DIVERGENCE>CROWDED_LONG",
+      "samples": 1,
+      "future_5pct": 0,
+      "future_10pct": 0,
+      "future_20pct": 0,
+      "future_30pct": 0,
+      "avg_best_future_pct": -3.805,
       "hit_rate_10pct": 0.0,
       "hit_rate_20pct": 0.0
     }
   ],
   "source_forward_hit_rates": {
     "gate": {
-      "samples": 4685,
-      "wins_10pct": 10,
-      "wins_20pct": 6,
-      "hit_rate_10pct": 0.0021,
-      "hit_rate_20pct": 0.0013
+      "samples": 5622,
+      "wins_10pct": 14,
+      "wins_20pct": 8,
+      "hit_rate_10pct": 0.0025,
+      "hit_rate_20pct": 0.0014
     },
     "okx": {
-      "samples": 2190,
+      "samples": 2628,
       "wins_10pct": 0,
       "wins_20pct": 0,
       "hit_rate_10pct": 0.0,
       "hit_rate_20pct": 0.0
     },
     "bitget": {
-      "samples": 3805,
-      "wins_10pct": 3,
-      "wins_20pct": 3,
-      "hit_rate_10pct": 0.0008,
-      "hit_rate_20pct": 0.0008
+      "samples": 4566,
+      "wins_10pct": 4,
+      "wins_20pct": 4,
+      "hit_rate_10pct": 0.0009,
+      "hit_rate_20pct": 0.0009
     },
     "mexc": {
-      "samples": 5107,
-      "wins_10pct": 22,
-      "wins_20pct": 8,
-      "hit_rate_10pct": 0.0043,
-      "hit_rate_20pct": 0.0016
+      "samples": 6126,
+      "wins_10pct": 32,
+      "wins_20pct": 11,
+      "hit_rate_10pct": 0.0052,
+      "hit_rate_20pct": 0.0018
     },
     "kucoin": {
-      "samples": 1989,
+      "samples": 2652,
       "wins_10pct": 0,
       "wins_20pct": 0,
       "hit_rate_10pct": 0.0,
       "hit_rate_20pct": 0.0
     },
     "bingx": {
-      "samples": 4444,
-      "wins_10pct": 17,
-      "wins_20pct": 7,
-      "hit_rate_10pct": 0.0038,
-      "hit_rate_20pct": 0.0016
+      "samples": 5334,
+      "wins_10pct": 24,
+      "wins_20pct": 10,
+      "hit_rate_10pct": 0.0045,
+      "hit_rate_20pct": 0.0019
     },
     "coinex": {
-      "samples": 1025,
-      "wins_10pct": 3,
-      "wins_20pct": 3,
-      "hit_rate_10pct": 0.0029,
-      "hit_rate_20pct": 0.0029
+      "samples": 1230,
+      "wins_10pct": 4,
+      "wins_20pct": 4,
+      "hit_rate_10pct": 0.0033,
+      "hit_rate_20pct": 0.0033
     }
   },
   "samples": [
@@ -303,7 +336,7 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -331,6 +364,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.0,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "COFUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.0,
+        "volume_acceleration_pct": 0.3282051282051279,
+        "oi_acceleration_pct": 0.0,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.023,
       "future_points_checked": 1
     },
     {
@@ -372,8 +419,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 1.3562,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -400,7 +447,21 @@
         "oi_acceleration_pct": 0.3371719057993605,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 1.3587,
+      "best_future_pct": 1.5399,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "GLMUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.3586956521739246,
+        "volume_acceleration_pct": -1.7866619494073976,
+        "oi_acceleration_pct": -0.9305691981595365,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.1787,
       "future_points_checked": 1
     },
     {
@@ -443,7 +504,7 @@
         "funding_rate": 5e-05
       },
       "best_future_pct": -1.725,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -470,7 +531,21 @@
         "oi_acceleration_pct": -2.9356450717343385,
         "funding_rate": 5e-05
       },
-      "best_future_pct": -1.1202,
+      "best_future_pct": -0.611,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "HAEDALUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "VOLUME_ACCEL>OI_ACCEL",
+      "features": {
+        "price_acceleration_pct": -1.1201629327902363,
+        "volume_acceleration_pct": 42.636144578313264,
+        "oi_acceleration_pct": 54.69718777679362,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.5149,
       "future_points_checked": 1
     },
     {
@@ -512,8 +587,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 1.782,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -541,6 +616,20 @@
         "funding_rate": 5e-05
       },
       "best_future_pct": 2.1613,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "CETUSUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "PRICE_ACCEL",
+      "features": {
+        "price_acceleration_pct": 2.1612635078969156,
+        "volume_acceleration_pct": 7.244916651401345,
+        "oi_acceleration_pct": -0.7954986976730805,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": -0.0814,
       "future_points_checked": 1
     },
     {
@@ -582,8 +671,8 @@
         "oi_acceleration_pct": 0.09963063763607227,
         "funding_rate": -0.000701
       },
-      "best_future_pct": 0.1878,
-      "future_points_checked": 2
+      "best_future_pct": 1.2122,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -611,6 +700,20 @@
         "funding_rate": -0.000525
       },
       "best_future_pct": 2.2836,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "EDENUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "PRICE_ACCEL",
+      "features": {
+        "price_acceleration_pct": 2.2835719154737477,
+        "volume_acceleration_pct": -3.755402245489048,
+        "oi_acceleration_pct": 3.831197471765768,
+        "funding_rate": 0.0001
+      },
+      "best_future_pct": -1.2329,
       "future_points_checked": 1
     },
     {
@@ -652,8 +755,8 @@
         "oi_acceleration_pct": 0.01034850920593744,
         "funding_rate": -0.002565
       },
-      "best_future_pct": 1.1188,
-      "future_points_checked": 2
+      "best_future_pct": 1.4409,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -681,6 +784,20 @@
         "funding_rate": -0.00237
       },
       "best_future_pct": 0.8215,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "ONTUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "FUNDING_DIVERGENCE>SHORT_SQUEEZE",
+      "features": {
+        "price_acceleration_pct": 0.8214585079631131,
+        "volume_acceleration_pct": 0.039763491021216346,
+        "oi_acceleration_pct": 0.7653978473400436,
+        "funding_rate": -0.003016
+      },
+      "best_future_pct": -0.4988,
       "future_points_checked": 1
     },
     {
@@ -722,8 +839,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.5211,
-      "future_points_checked": 2
+      "best_future_pct": 1.407,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -751,6 +868,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.959,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "SMCIUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.959046137895303,
+        "volume_acceleration_pct": -0.3472352177699034,
+        "oi_acceleration_pct": 0.1756488921064836,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.077,
       "future_points_checked": 1
     },
     {
@@ -792,8 +923,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0001
       },
-      "best_future_pct": 0.2859,
-      "future_points_checked": 2
+      "best_future_pct": 2.0583,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -821,6 +952,20 @@
         "funding_rate": 0.0001
       },
       "best_future_pct": 1.7674,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "THETAUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.767388825541616,
+        "volume_acceleration_pct": 2.0971616186022723,
+        "oi_acceleration_pct": -1.7502584545481592,
+        "funding_rate": 0.0001
+      },
+      "best_future_pct": 0.0,
       "future_points_checked": 1
     },
     {
@@ -862,8 +1007,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 2.1059,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -890,7 +1035,21 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 1.7586,
+      "best_future_pct": 2.1059,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "FLUXUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "VOLUME_ACCEL>OI_ACCEL",
+      "features": {
+        "price_acceleration_pct": 1.758575770733839,
+        "volume_acceleration_pct": 32.44270938957614,
+        "oi_acceleration_pct": 11.773164103393551,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.3414,
       "future_points_checked": 1
     },
     {
@@ -932,8 +1091,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.0719,
-      "future_points_checked": 2
+      "best_future_pct": 0.6834,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -960,7 +1119,21 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.2516,
+      "best_future_pct": 0.611,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "CATUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "VOLUME_ACCEL",
+      "features": {
+        "price_acceleration_pct": 0.2515873966694615,
+        "volume_acceleration_pct": 16.090359105289444,
+        "oi_acceleration_pct": -1.987842943978968,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": 0.3585,
       "future_points_checked": 1
     },
     {
@@ -1003,7 +1176,7 @@
         "funding_rate": 0.0005
       },
       "best_future_pct": 0.6177,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -1031,6 +1204,20 @@
         "funding_rate": 0.0005
       },
       "best_future_pct": -0.1535,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "MRNAUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": -0.1534663374925027,
+        "volume_acceleration_pct": -0.9788169695591376,
+        "oi_acceleration_pct": -0.4168755441808947,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.989,
       "future_points_checked": 1
     },
     {
@@ -1072,8 +1259,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 0.4189,
-      "future_points_checked": 2
+      "best_future_pct": 2.0347,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -1100,7 +1287,21 @@
         "oi_acceleration_pct": -0.16582647917219306,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 1.2515,
+      "best_future_pct": 1.6091,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "PROVEUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.2514898688915421,
+        "volume_acceleration_pct": -0.23836180432662557,
+        "oi_acceleration_pct": 0.16610192013819525,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.3531,
       "future_points_checked": 1
     },
     {
@@ -1142,8 +1343,8 @@
         "oi_acceleration_pct": 0.01719178003689592,
         "funding_rate": 6e-05
       },
-      "best_future_pct": 0.3205,
-      "future_points_checked": 2
+      "best_future_pct": 2.4725,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -1170,7 +1371,21 @@
         "oi_acceleration_pct": 0.02291843329589316,
         "funding_rate": 7.9e-05
       },
-      "best_future_pct": 0.7303,
+      "best_future_pct": 2.1451,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "JCTUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.7302601551802956,
+        "volume_acceleration_pct": -1.183849835060169,
+        "oi_acceleration_pct": -0.37348486584332097,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 1.4046,
       "future_points_checked": 1
     },
     {
@@ -1212,8 +1427,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 0.215,
-      "future_points_checked": 2
+      "best_future_pct": 0.9005,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -1240,7 +1455,21 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 0.6667,
+      "best_future_pct": 0.6841,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "CAKEUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.6666666666666599,
+        "volume_acceleration_pct": 2.4632220307051034,
+        "oi_acceleration_pct": 0.03945987667703932,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.0173,
       "future_points_checked": 1
     },
     {
@@ -1282,8 +1511,8 @@
         "oi_acceleration_pct": 0.0030233240558841246,
         "funding_rate": 0.0001
       },
-      "best_future_pct": -0.1744,
-      "future_points_checked": 2
+      "best_future_pct": -0.1074,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -1310,7 +1539,21 @@
         "oi_acceleration_pct": 0.08669564227687943,
         "funding_rate": 0.0001
       },
-      "best_future_pct": 0.0135,
+      "best_future_pct": 0.2019,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "EVAAUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.013460761879113825,
+        "volume_acceleration_pct": -0.7570895948409206,
+        "oi_acceleration_pct": 0.1428572697736996,
+        "funding_rate": 0.0001
+      },
+      "best_future_pct": 0.1884,
       "future_points_checked": 1
     },
     {
@@ -1352,8 +1595,8 @@
         "oi_acceleration_pct": 0.00571787981016314,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 0.3488,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -1381,6 +1624,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.4883,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "KUAISHOUUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.48825854452452244,
+        "volume_acceleration_pct": 3.4389385323585264,
+        "oi_acceleration_pct": -0.1772340060602562,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.1388,
       "future_points_checked": 1
     },
     {
@@ -1423,7 +1680,7 @@
         "funding_rate": -0.000256
       },
       "best_future_pct": -0.2033,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -1451,6 +1708,20 @@
         "funding_rate": -0.000227
       },
       "best_future_pct": -0.102,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "LSKUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": -0.10204081632653184,
+        "volume_acceleration_pct": -1.5135724272571482,
+        "oi_acceleration_pct": 0.2133432088428755,
+        "funding_rate": -0.000342
+      },
+      "best_future_pct": 0.0,
       "future_points_checked": 1
     },
     {
@@ -1492,8 +1763,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 5e-05
       },
-      "best_future_pct": -0.1498,
-      "future_points_checked": 2
+      "best_future_pct": 1.892,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -1520,7 +1791,21 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 1.7764,
+      "best_future_pct": 2.0448,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "ORCAUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "VOLUME_ACCEL",
+      "features": {
+        "price_acceleration_pct": 1.7764092846991986,
+        "volume_acceleration_pct": 14.858478581228729,
+        "oi_acceleration_pct": 1.7107520086666161,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.2637,
       "future_points_checked": 1
     },
     {
@@ -1562,8 +1847,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": -3.7e-05
       },
-      "best_future_pct": -0.0779,
-      "future_points_checked": 2
+      "best_future_pct": 1.7451,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -1591,6 +1876,20 @@
         "funding_rate": 1.2e-05
       },
       "best_future_pct": 1.8868,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "CUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "VOLUME_ACCEL",
+      "features": {
+        "price_acceleration_pct": 1.886792452830166,
+        "volume_acceleration_pct": 11.412433223314844,
+        "oi_acceleration_pct": -4.74388154361558,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": -0.0612,
       "future_points_checked": 1
     },
     {
@@ -1633,7 +1932,7 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -1661,6 +1960,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": -0.4271,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "JPMUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": -0.4271102618860212,
+        "volume_acceleration_pct": 3.4140586416930407,
+        "oi_acceleration_pct": -0.07139273723613115,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.2427,
       "future_points_checked": 1
     },
     {
@@ -1702,8 +2015,8 @@
         "oi_acceleration_pct": 0.00969428211354817,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 1.1174,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -1731,6 +2044,20 @@
         "funding_rate": 5e-05
       },
       "best_future_pct": 1.5158,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "ASTERUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.515795438447376,
+        "volume_acceleration_pct": -0.9326604923229564,
+        "oi_acceleration_pct": -0.5529818771063066,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": -0.2372,
       "future_points_checked": 1
     },
     {
@@ -1773,7 +2100,7 @@
         "funding_rate": -0.0002
       },
       "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -1801,6 +2128,20 @@
         "funding_rate": -0.0002
       },
       "best_future_pct": -0.6669,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "AUS200USDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": -0.6668965253036063,
+        "volume_acceleration_pct": 0.6617647058823506,
+        "oi_acceleration_pct": 0.0,
+        "funding_rate": -0.0002
+      },
+      "best_future_pct": -0.0574,
       "future_points_checked": 1
     },
     {
@@ -1842,8 +2183,8 @@
         "oi_acceleration_pct": -1.1618555395553898e-05,
         "funding_rate": -0.000354
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 1.2925,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -1870,7 +2211,21 @@
         "oi_acceleration_pct": -0.8012455491176351,
         "funding_rate": -0.000295
       },
-      "best_future_pct": 1.0884,
+      "best_future_pct": 1.2925,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "TLMUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.0884353741496655,
+        "volume_acceleration_pct": -3.4391866665060777,
+        "oi_acceleration_pct": -1.8688718308353058,
+        "funding_rate": 8.8e-05
+      },
+      "best_future_pct": 0.2019,
       "future_points_checked": 1
     },
     {
@@ -1912,8 +2267,8 @@
         "oi_acceleration_pct": -2.765750094502195e-05,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 0.1336,
-      "future_points_checked": 2
+      "best_future_pct": 3.4728,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -1941,6 +2296,20 @@
         "funding_rate": 3.8e-05
       },
       "best_future_pct": 4.8466,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "TRUMPUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "PRICE_ACCEL",
+      "features": {
+        "price_acceleration_pct": 4.84659848821698,
+        "volume_acceleration_pct": 5.251684350324726,
+        "oi_acceleration_pct": -0.3790353192503648,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": -1.4419,
       "future_points_checked": 1
     },
     {
@@ -1982,8 +2351,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.0526,
-      "future_points_checked": 2
+      "best_future_pct": 1.2632,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -2011,6 +2380,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 1.3677,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "USARUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.3677012098895158,
+        "volume_acceleration_pct": -2.886870576583145,
+        "oi_acceleration_pct": 0.3311629995509602,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.1557,
       "future_points_checked": 1
     },
     {
@@ -2052,8 +2435,8 @@
         "oi_acceleration_pct": -0.005715401578398893,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 0.0126,
-      "future_points_checked": 2
+      "best_future_pct": 2.7061,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -2080,7 +2463,21 @@
         "oi_acceleration_pct": -0.0039295631754643345,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 2.3666,
+      "best_future_pct": 2.719,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "RAYUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "PRICE_ACCEL>VOLUME_ACCEL",
+      "features": {
+        "price_acceleration_pct": 2.3665659617321255,
+        "volume_acceleration_pct": 12.930467315415806,
+        "oi_acceleration_pct": -4.678150174753348,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.3443,
       "future_points_checked": 1
     },
     {
@@ -2123,7 +2520,7 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.0583,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -2150,7 +2547,21 @@
         "oi_acceleration_pct": -0.32163736827870437,
         "funding_rate": 0.0
       },
-      "best_future_pct": -0.0875,
+      "best_future_pct": 0.0584,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "XAGUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": -0.08754012255617338,
+        "volume_acceleration_pct": 7.444988940106034,
+        "oi_acceleration_pct": 0.4782859429103281,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": 0.146,
       "future_points_checked": 1
     },
     {
@@ -2192,8 +2603,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": -5.7e-05
       },
-      "best_future_pct": -0.3329,
-      "future_points_checked": 2
+      "best_future_pct": 2.5801,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -2220,7 +2631,21 @@
         "oi_acceleration_pct": -0.026512282220536587,
         "funding_rate": -2.1e-05
       },
-      "best_future_pct": 2.5909,
+      "best_future_pct": 3.0088,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "FORMUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "PRICE_ACCEL",
+      "features": {
+        "price_acceleration_pct": 2.5908900961136627,
+        "volume_acceleration_pct": -0.3605799967607459,
+        "oi_acceleration_pct": 0.3789457318420286,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.4073,
       "future_points_checked": 1
     },
     {
@@ -2262,8 +2687,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": -3.5e-05
       },
-      "best_future_pct": 0.2431,
-      "future_points_checked": 2
+      "best_future_pct": 1.9451,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -2290,7 +2715,21 @@
         "oi_acceleration_pct": 0.6074891648424563,
         "funding_rate": -2e-06
       },
-      "best_future_pct": 1.495,
+      "best_future_pct": 1.6978,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "NBISUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.494972658317173,
+        "volume_acceleration_pct": 1.4578663621546806,
+        "oi_acceleration_pct": -2.690543717357663,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": 0.1999,
       "future_points_checked": 1
     },
     {
@@ -2333,7 +2772,7 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.0673,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -2361,6 +2800,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": -0.2882,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "WMTUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "VOLUME_ACCEL",
+      "features": {
+        "price_acceleration_pct": -0.2881844380403398,
+        "volume_acceleration_pct": 10.169955813870391,
+        "oi_acceleration_pct": 2.944922698524244,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.183,
       "future_points_checked": 1
     },
     {
@@ -2403,7 +2856,7 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -2431,6 +2884,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": -0.0688,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "XLUUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "VOLUME_ACCEL",
+      "features": {
+        "price_acceleration_pct": -0.06882312456986117,
+        "volume_acceleration_pct": 17.569786535303766,
+        "oi_acceleration_pct": 0.0,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.023,
       "future_points_checked": 1
     },
     {
@@ -2472,8 +2939,8 @@
         "oi_acceleration_pct": -0.002982335800483238,
         "funding_rate": 5e-05
       },
-      "best_future_pct": -0.2622,
-      "future_points_checked": 2
+      "best_future_pct": 3.1469,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -2500,7 +2967,21 @@
         "oi_acceleration_pct": -1.2266195506696498,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 1.6257,
+      "best_future_pct": 3.6907,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "YGGUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.6256590509666102,
+        "volume_acceleration_pct": 3.4660258482517303,
+        "oi_acceleration_pct": 1.9090179250175865,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 2.032,
       "future_points_checked": 1
     },
     {
@@ -2542,8 +3023,8 @@
         "oi_acceleration_pct": 0.026997803286032962,
         "funding_rate": 5e-05
       },
-      "best_future_pct": -0.3187,
-      "future_points_checked": 2
+      "best_future_pct": 1.4022,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -2570,7 +3051,21 @@
         "oi_acceleration_pct": -0.0014479102011577538,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 1.1531,
+      "best_future_pct": 1.9218,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "REZUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "VOLUME_ACCEL",
+      "features": {
+        "price_acceleration_pct": 1.153106982703389,
+        "volume_acceleration_pct": 14.58648288128057,
+        "oi_acceleration_pct": 0.8175347196135885,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.76,
       "future_points_checked": 1
     },
     {
@@ -2612,8 +3107,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": -0.001031
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 1.6313,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -2640,7 +3135,21 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": -0.00091
       },
-      "best_future_pct": 1.4158,
+      "best_future_pct": 1.6313,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "BNTUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.415820252385358,
+        "volume_acceleration_pct": 2.2026431718061623,
+        "oi_acceleration_pct": 2.6894942615714568,
+        "funding_rate": 0.0001
+      },
+      "best_future_pct": 0.2124,
       "future_points_checked": 1
     },
     {
@@ -2683,7 +3192,7 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -2711,6 +3220,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": -0.3554,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "BUDUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": -0.3554201574003546,
+        "volume_acceleration_pct": 4.5685279187817285,
+        "oi_acceleration_pct": 0.0,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.051,
       "future_points_checked": 1
     },
     {
@@ -2752,8 +3275,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0001
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 2.3922,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -2781,6 +3304,20 @@
         "funding_rate": 8e-05
       },
       "best_future_pct": 2.3922,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "FLRUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "PRICE_ACCEL",
+      "features": {
+        "price_acceleration_pct": 2.392193893610317,
+        "volume_acceleration_pct": 6.624869383490073,
+        "oi_acceleration_pct": -1.3541689057025574,
+        "funding_rate": 0.0001
+      },
+      "best_future_pct": 0.0,
       "future_points_checked": 1
     },
     {
@@ -2823,7 +3360,7 @@
         "funding_rate": 5e-05
       },
       "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -2851,6 +3388,20 @@
         "funding_rate": 5e-05
       },
       "best_future_pct": -0.3762,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "NESUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": -0.3762227238525262,
+        "volume_acceleration_pct": 0.19979755611863048,
+        "oi_acceleration_pct": 2.950669516290838,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": -0.4532,
       "future_points_checked": 1
     },
     {
@@ -2893,7 +3444,7 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -2921,6 +3472,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": -0.495,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "PFEUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": -0.4950320002828801,
+        "volume_acceleration_pct": -0.43570669500531123,
+        "oi_acceleration_pct": 0.0,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.3944,
       "future_points_checked": 1
     },
     {
@@ -2963,7 +3528,7 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -2991,6 +3556,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": -0.1458,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "XOMUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": -0.1457910750507052,
+        "volume_acceleration_pct": 1.2816940651992237,
+        "oi_acceleration_pct": 0.024816974810759618,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.0254,
       "future_points_checked": 1
     },
     {
@@ -3032,8 +3611,8 @@
         "oi_acceleration_pct": 0.026729642070799642,
         "funding_rate": 0.0001
       },
-      "best_future_pct": -0.1259,
-      "future_points_checked": 2
+      "best_future_pct": 1.5743,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -3061,6 +3640,20 @@
         "funding_rate": 0.0001
       },
       "best_future_pct": 1.8916,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "0GUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.8915510718789497,
+        "volume_acceleration_pct": 5.422189940076261,
+        "oi_acceleration_pct": 0.26347209052597353,
+        "funding_rate": 0.0001
+      },
+      "best_future_pct": -0.1856,
       "future_points_checked": 1
     },
     {
@@ -3102,8 +3695,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 0.3404,
-      "future_points_checked": 2
+      "best_future_pct": 1.4636,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -3130,7 +3723,21 @@
         "oi_acceleration_pct": -0.049234254841734604,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 0.6106,
+      "best_future_pct": 1.1194,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "ALCHUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.6105834464043447,
+        "volume_acceleration_pct": -16.612189682278522,
+        "oi_acceleration_pct": -3.19831562061359,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.5057,
       "future_points_checked": 1
     },
     {
@@ -3172,8 +3779,8 @@
         "oi_acceleration_pct": 0.005037420475462184,
         "funding_rate": 5e-05
       },
-      "best_future_pct": -0.1235,
-      "future_points_checked": 2
+      "best_future_pct": 1.9753,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -3200,7 +3807,21 @@
         "oi_acceleration_pct": -0.06284537627914144,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 1.4224,
+      "best_future_pct": 2.1645,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "BLURUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.4223871366728646,
+        "volume_acceleration_pct": -5.294684448590559,
+        "oi_acceleration_pct": -0.474172118738303,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.7317,
       "future_points_checked": 1
     },
     {
@@ -3242,8 +3863,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.1819,
-      "future_points_checked": 2
+      "best_future_pct": 0.5733,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -3270,7 +3891,21 @@
         "oi_acceleration_pct": -0.0025022989871947843,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.302,
+      "best_future_pct": 0.3907,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "DELLUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.3019872025003645,
+        "volume_acceleration_pct": 0.846197617891109,
+        "oi_acceleration_pct": 0.48295578952637364,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": 0.0884,
       "future_points_checked": 1
     },
     {
@@ -3312,8 +3947,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 0.0929,
-      "future_points_checked": 2
+      "best_future_pct": 1.5175,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -3340,7 +3975,21 @@
         "oi_acceleration_pct": 0.3110006157277745,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 1.5509,
+      "best_future_pct": 1.6749,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "GUNUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.5508684863523525,
+        "volume_acceleration_pct": 1.7576689737674123,
+        "oi_acceleration_pct": 0.32850887199793455,
+        "funding_rate": 5.3e-05
+      },
+      "best_future_pct": 0.1222,
       "future_points_checked": 1
     },
     {
@@ -3382,8 +4031,8 @@
         "oi_acceleration_pct": -0.22572759229849693,
         "funding_rate": 0.00156
       },
-      "best_future_pct": -0.2974,
-      "future_points_checked": 2
+      "best_future_pct": 0.2198,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -3410,7 +4059,21 @@
         "oi_acceleration_pct": -0.11356624846864394,
         "funding_rate": 0.001689
       },
-      "best_future_pct": 0.2079,
+      "best_future_pct": 0.7147,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "POWERUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "FUNDING_DIVERGENCE>CROWDED_LONG",
+      "features": {
+        "price_acceleration_pct": 0.20790020790020236,
+        "volume_acceleration_pct": 6.2712825414311,
+        "oi_acceleration_pct": -4.483357504789531,
+        "funding_rate": 0.002939
+      },
+      "best_future_pct": 0.5057,
       "future_points_checked": 1
     },
     {
@@ -3452,8 +4115,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0001
       },
-      "best_future_pct": 0.1821,
-      "future_points_checked": 2
+      "best_future_pct": 3.3698,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -3480,7 +4143,21 @@
         "oi_acceleration_pct": 1.0412355219265867,
         "funding_rate": 0.0001
       },
-      "best_future_pct": 2.5478,
+      "best_future_pct": 3.2757,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "SUPERUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "PRICE_ACCEL",
+      "features": {
+        "price_acceleration_pct": 2.547770700636942,
+        "volume_acceleration_pct": 0.07408788738640926,
+        "oi_acceleration_pct": 0.9877707734105678,
+        "funding_rate": 0.0001
+      },
+      "best_future_pct": 0.7098,
       "future_points_checked": 1
     },
     {
@@ -3522,8 +4199,8 @@
         "oi_acceleration_pct": 1.7114236303716446,
         "funding_rate": 0.0001
       },
-      "best_future_pct": 0.1323,
-      "future_points_checked": 2
+      "best_future_pct": 0.3589,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -3551,6 +4228,20 @@
         "funding_rate": 0.0001
       },
       "best_future_pct": 0.4122,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "XMRUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.4121956137010274,
+        "volume_acceleration_pct": -0.9686532502699352,
+        "oi_acceleration_pct": -1.4079074252651869,
+        "funding_rate": 0.000265
+      },
+      "best_future_pct": -0.1852,
       "future_points_checked": 1
     },
     {
@@ -3592,8 +4283,8 @@
         "oi_acceleration_pct": -0.06721150559756417,
         "funding_rate": -8.6e-05
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 2.4213,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -3621,6 +4312,20 @@
         "funding_rate": -0.000112
       },
       "best_future_pct": 2.9056,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "FETUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "PRICE_ACCEL",
+      "features": {
+        "price_acceleration_pct": 2.9055690072639306,
+        "volume_acceleration_pct": 5.104456977189575,
+        "oi_acceleration_pct": 1.1837139897711513,
+        "funding_rate": 7.4e-05
+      },
+      "best_future_pct": -0.4706,
       "future_points_checked": 1
     },
     {
@@ -3663,7 +4368,7 @@
         "funding_rate": 0.0
       },
       "best_future_pct": -0.3552,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -3690,7 +4395,21 @@
         "oi_acceleration_pct": 0.012797542871778589,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.5133,
+      "best_future_pct": 0.6802,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "WENUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.5133470225872738,
+        "volume_acceleration_pct": 0.8087064236418362,
+        "oi_acceleration_pct": 0.10236724248240403,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": 0.166,
       "future_points_checked": 1
     },
     {
@@ -3732,8 +4451,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": -0.000605
       },
-      "best_future_pct": 0.0348,
-      "future_points_checked": 2
+      "best_future_pct": 0.08,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -3761,6 +4480,20 @@
         "funding_rate": -0.000636
       },
       "best_future_pct": 0.2156,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "METAXUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.2156484235056766,
+        "volume_acceleration_pct": 0.19656906240757,
+        "oi_acceleration_pct": 0.1360180168127112,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.1701,
       "future_points_checked": 1
     },
     {
@@ -3802,8 +4535,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0001
       },
-      "best_future_pct": -0.485,
-      "future_points_checked": 2
+      "best_future_pct": 1.5519,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -3830,7 +4563,21 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0001
       },
-      "best_future_pct": 0.5604,
+      "best_future_pct": 2.0468,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "NEWTUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "VOLUME_ACCEL",
+      "features": {
+        "price_acceleration_pct": 0.5604288499025278,
+        "volume_acceleration_pct": 8.51342501637198,
+        "oi_acceleration_pct": -0.9935158108869024,
+        "funding_rate": 0.0001
+      },
+      "best_future_pct": 1.4781,
       "future_points_checked": 1
     },
     {
@@ -3872,8 +4619,8 @@
         "oi_acceleration_pct": -0.002333355071426624,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 1.9213,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -3901,6 +4648,20 @@
         "funding_rate": 5e-05
       },
       "best_future_pct": 2.8414,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "REDUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "PRICE_ACCEL",
+      "features": {
+        "price_acceleration_pct": 2.8414298808432603,
+        "volume_acceleration_pct": 3.471662637657813,
+        "oi_acceleration_pct": 1.078096003847917,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": -0.713,
       "future_points_checked": 1
     },
     {
@@ -3942,8 +4703,8 @@
         "oi_acceleration_pct": 0.4965295368649869,
         "funding_rate": -0.001528
       },
-      "best_future_pct": -0.1673,
-      "future_points_checked": 2
+      "best_future_pct": 1.1231,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -3970,7 +4731,21 @@
         "oi_acceleration_pct": -0.13652475666956487,
         "funding_rate": -0.001524
       },
-      "best_future_pct": 1.1252,
+      "best_future_pct": 1.3167,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "SANDUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "FUNDING_DIVERGENCE",
+      "features": {
+        "price_acceleration_pct": 1.125209480488376,
+        "volume_acceleration_pct": 0.6941018127871734,
+        "oi_acceleration_pct": 0.237727088091777,
+        "funding_rate": -0.001219
+      },
+      "best_future_pct": 0.1894,
       "future_points_checked": 1
     },
     {
@@ -4012,8 +4787,8 @@
         "oi_acceleration_pct": -0.038778407012307614,
         "funding_rate": 0.0
       },
-      "best_future_pct": 1.0398,
-      "future_points_checked": 2
+      "best_future_pct": 1.1293,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -4041,6 +4816,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.2453,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "ZHIPUUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "FUNDING_DIVERGENCE",
+      "features": {
+        "price_acceleration_pct": 0.24534859946843124,
+        "volume_acceleration_pct": 1.2799508920072311,
+        "oi_acceleration_pct": -0.3898744210966698,
+        "funding_rate": -0.00111
+      },
+      "best_future_pct": -0.1564,
       "future_points_checked": 1
     },
     {
@@ -4082,8 +4871,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 2.6163,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -4110,7 +4899,21 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0
       },
-      "best_future_pct": 2.1802,
+      "best_future_pct": 2.6163,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "BTGOONUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "PRICE_ACCEL",
+      "features": {
+        "price_acceleration_pct": 2.18023255813955,
+        "volume_acceleration_pct": 4.65782873522036,
+        "oi_acceleration_pct": 0.013678864389499168,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": 0.4267,
       "future_points_checked": 1
     },
     {
@@ -4152,8 +4955,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 7e-05
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 1.5954,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -4180,7 +4983,21 @@
         "oi_acceleration_pct": -5.09622238061297,
         "funding_rate": 0.000143
       },
-      "best_future_pct": 1.6035,
+      "best_future_pct": 2.1137,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "FLUIDUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.60349854227404,
+        "volume_acceleration_pct": -18.183149809895617,
+        "oi_acceleration_pct": -1.9057453999248963,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.5022,
       "future_points_checked": 1
     },
     {
@@ -4222,8 +5039,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 1.2219,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -4251,6 +5068,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 1.2219,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "CGNXUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.221864951768481,
+        "volume_acceleration_pct": 0.04659832246038942,
+        "oi_acceleration_pct": 0.0,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": 0.0,
       "future_points_checked": 1
     },
     {
@@ -4293,7 +5124,7 @@
         "funding_rate": 0.0
       },
       "best_future_pct": -0.0391,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -4321,6 +5152,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.213,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "IBMUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.213043478260877,
+        "volume_acceleration_pct": 1.5454707470993867,
+        "oi_acceleration_pct": 0.026058292400099603,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.3254,
       "future_points_checked": 1
     },
     {
@@ -4362,8 +5207,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0001
       },
-      "best_future_pct": 0.7517,
-      "future_points_checked": 2
+      "best_future_pct": 2.665,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -4390,7 +5235,21 @@
         "oi_acceleration_pct": 0.018894693277649033,
         "funding_rate": 0.0001
       },
-      "best_future_pct": 1.7363,
+      "best_future_pct": 1.8991,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "MANAUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.736299511665762,
+        "volume_acceleration_pct": -0.39230438521066224,
+        "oi_acceleration_pct": 1.2510818376616717,
+        "funding_rate": 0.0001
+      },
+      "best_future_pct": 0.16,
       "future_points_checked": 1
     },
     {
@@ -4433,7 +5292,7 @@
         "funding_rate": -0.000789
       },
       "best_future_pct": 0.0549,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -4461,6 +5320,20 @@
         "funding_rate": -0.000774
       },
       "best_future_pct": -0.1259,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "MSFTUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "VOLUME_ACCEL",
+      "features": {
+        "price_acceleration_pct": -0.12593946780418142,
+        "volume_acceleration_pct": 18.320233449264368,
+        "oi_acceleration_pct": -3.921724804332971,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.183,
       "future_points_checked": 1
     },
     {
@@ -4503,7 +5376,7 @@
         "funding_rate": 5e-05
       },
       "best_future_pct": 0.3937,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -4530,7 +5403,21 @@
         "oi_acceleration_pct": -0.004316445492369425,
         "funding_rate": 5e-05
       },
-      "best_future_pct": -1.5882,
+      "best_future_pct": -0.6471,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "SKYAIUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": -1.5882352941176459,
+        "volume_acceleration_pct": -5.080942375199071,
+        "oi_acceleration_pct": 0.0631273035210711,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.9564,
       "future_points_checked": 1
     },
     {
@@ -4572,8 +5459,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 0.1594,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -4601,6 +5488,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.1694,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "TUNGSTENUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "VOLUME_ACCEL",
+      "features": {
+        "price_acceleration_pct": 0.16937331872073358,
+        "volume_acceleration_pct": 10.28557599225557,
+        "oi_acceleration_pct": -4.1666666666666625,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.0099,
       "future_points_checked": 1
     },
     {
@@ -4642,8 +5543,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0001
       },
-      "best_future_pct": -0.2983,
-      "future_points_checked": 2
+      "best_future_pct": 1.1184,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -4671,6 +5572,20 @@
         "funding_rate": 0.0001
       },
       "best_future_pct": 1.8546,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "AXSUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "VOLUME_ACCEL",
+      "features": {
+        "price_acceleration_pct": 1.8546312178387536,
+        "volume_acceleration_pct": 8.39617484292743,
+        "oi_acceleration_pct": -0.7790756253940101,
+        "funding_rate": 0.0001
+      },
+      "best_future_pct": -0.0842,
       "future_points_checked": 1
     },
     {
@@ -4712,8 +5627,8 @@
         "oi_acceleration_pct": 0.031486667881952535,
         "funding_rate": 0.0001
       },
-      "best_future_pct": 0.1416,
-      "future_points_checked": 2
+      "best_future_pct": 1.9122,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -4741,6 +5656,20 @@
         "funding_rate": 0.0001
       },
       "best_future_pct": 2.0509,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "AZTECUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "PRICE_ACCEL",
+      "features": {
+        "price_acceleration_pct": 2.0509193776520496,
+        "volume_acceleration_pct": 2.03764163625888,
+        "oi_acceleration_pct": 0.09113806588454398,
+        "funding_rate": 0.0001
+      },
+      "best_future_pct": -0.2772,
       "future_points_checked": 1
     },
     {
@@ -4782,8 +5711,8 @@
         "oi_acceleration_pct": -0.0011432425789270617,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.2665,
-      "future_points_checked": 2
+      "best_future_pct": 1.5991,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -4810,7 +5739,21 @@
         "oi_acceleration_pct": -0.0428720868416943,
         "funding_rate": 0.0
       },
-      "best_future_pct": 1.2759,
+      "best_future_pct": 1.3291,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "CBRSUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.2759170653907637,
+        "volume_acceleration_pct": 1.277998960314486,
+        "oi_acceleration_pct": -1.8187467593863471,
+        "funding_rate": 6.6e-05
+      },
+      "best_future_pct": 0.0525,
       "future_points_checked": 1
     },
     {
@@ -4852,8 +5795,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0001
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 1.5056,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -4881,6 +5824,20 @@
         "funding_rate": 0.0001
       },
       "best_future_pct": 1.9152,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "DUSKUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.915223207998884,
+        "volume_acceleration_pct": -0.5728563593150104,
+        "oi_acceleration_pct": -0.028464745575407235,
+        "funding_rate": 0.000135
+      },
+      "best_future_pct": -0.3178,
       "future_points_checked": 1
     },
     {
@@ -4923,7 +5880,7 @@
         "funding_rate": 3e-06
       },
       "best_future_pct": -0.3162,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -4950,7 +5907,21 @@
         "oi_acceleration_pct": -0.33869062782242443,
         "funding_rate": -2.7e-05
       },
-      "best_future_pct": -0.3542,
+      "best_future_pct": -0.1771,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "LAUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": -0.35417035594120794,
+        "volume_acceleration_pct": 5.630523350089178,
+        "oi_acceleration_pct": -0.623333468882703,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.1777,
       "future_points_checked": 1
     },
     {
@@ -4993,7 +5964,7 @@
         "funding_rate": 0.0
       },
       "best_future_pct": -0.0696,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -5021,6 +5992,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": -0.3682,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "RDDTONUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": -0.36820721178263405,
+        "volume_acceleration_pct": 0.48517520215634047,
+        "oi_acceleration_pct": 0.0,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": -0.0765,
       "future_points_checked": 1
     },
     {
@@ -5062,8 +6047,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.0106,
-      "future_points_checked": 2
+      "best_future_pct": 0.3536,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -5091,6 +6076,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.343,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "SOFIUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.34302601720406223,
+        "volume_acceleration_pct": 7.114567924798387,
+        "oi_acceleration_pct": -4.668773478027544,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": 0.0,
       "future_points_checked": 1
     },
     {
@@ -5133,7 +6132,7 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -5153,6 +6152,20 @@
       "exchange": "gate",
       "symbol": "CLSKUSDT",
       "observed_at": "2026-08-27T07:21:49.125897+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.0,
+        "volume_acceleration_pct": 0.0,
+        "oi_acceleration_pct": 0.0,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": 0.0,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "CLSKUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
       "pattern": "NONE",
       "features": {
         "price_acceleration_pct": 0.0,
@@ -5202,8 +6215,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 5e-05
       },
-      "best_future_pct": -0.055,
-      "future_points_checked": 2
+      "best_future_pct": 0.9901,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -5231,6 +6244,20 @@
         "funding_rate": 5e-05
       },
       "best_future_pct": 1.1013,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "HMSTRUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.1013215859030812,
+        "volume_acceleration_pct": 1.1308917085515402,
+        "oi_acceleration_pct": 0.11599311795518208,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.0,
       "future_points_checked": 1
     },
     {
@@ -5273,7 +6300,7 @@
         "funding_rate": 0.0
       },
       "best_future_pct": -0.0543,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -5301,6 +6328,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.6305,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "HPSPUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.6304824561403688,
+        "volume_acceleration_pct": -0.302571860816947,
+        "oi_acceleration_pct": -0.016420361247948545,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": 0.0,
       "future_points_checked": 1
     },
     {
@@ -5342,8 +6383,8 @@
         "oi_acceleration_pct": 0.10503333923408409,
         "funding_rate": 0.0001
       },
-      "best_future_pct": 0.0985,
-      "future_points_checked": 2
+      "best_future_pct": 1.5271,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -5371,6 +6412,20 @@
         "funding_rate": 0.0001
       },
       "best_future_pct": 1.4272,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "NXPCUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.4271653543307172,
+        "volume_acceleration_pct": -0.6035415361840268,
+        "oi_acceleration_pct": -1.3936871396399098,
+        "funding_rate": 0.0001
+      },
+      "best_future_pct": 0.0,
       "future_points_checked": 1
     },
     {
@@ -5412,8 +6467,8 @@
         "oi_acceleration_pct": -0.06401610968508331,
         "funding_rate": 5e-05
       },
-      "best_future_pct": -0.1257,
-      "future_points_checked": 2
+      "best_future_pct": 4.0831,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -5441,6 +6496,20 @@
         "funding_rate": 5e-05
       },
       "best_future_pct": 4.6985,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "RENDERUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "PRICE_ACCEL",
+      "features": {
+        "price_acceleration_pct": 4.698475811795899,
+        "volume_acceleration_pct": 6.322730928519693,
+        "oi_acceleration_pct": -1.8160001989455887,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": -0.4494,
       "future_points_checked": 1
     },
     {
@@ -5482,8 +6551,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 0.0282,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -5510,7 +6579,21 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0
       },
-      "best_future_pct": -0.883,
+      "best_future_pct": 0.0282,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "SSPCUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": -0.882960736426841,
+        "volume_acceleration_pct": -0.303030303030305,
+        "oi_acceleration_pct": -0.03481894150417775,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": 0.9193,
       "future_points_checked": 1
     },
     {
@@ -5552,8 +6635,8 @@
         "oi_acceleration_pct": -0.044730021514149954,
         "funding_rate": -4.9e-05
       },
-      "best_future_pct": 0.0475,
-      "future_points_checked": 2
+      "best_future_pct": 1.8061,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -5581,6 +6664,20 @@
         "funding_rate": -5.6e-05
       },
       "best_future_pct": 2.3278,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "ADAUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "PRICE_ACCEL>VOLUME_ACCEL",
+      "features": {
+        "price_acceleration_pct": 2.327790973871746,
+        "volume_acceleration_pct": 9.295943388348782,
+        "oi_acceleration_pct": -1.7131061404442427,
+        "funding_rate": 1e-05
+      },
+      "best_future_pct": -0.5571,
       "future_points_checked": 1
     },
     {
@@ -5622,8 +6719,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 0.0863,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -5651,6 +6748,20 @@
         "funding_rate": 0.0
       },
       "best_future_pct": 0.0863,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "BIIBUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "VOLUME_ACCEL",
+      "features": {
+        "price_acceleration_pct": 0.08628519527702494,
+        "volume_acceleration_pct": 9.067894131185273,
+        "oi_acceleration_pct": 0.0,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": 0.0,
       "future_points_checked": 1
     },
     {
@@ -5692,8 +6803,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 2.2035,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -5720,7 +6831,21 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0
       },
-      "best_future_pct": 1.718,
+      "best_future_pct": 2.2035,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "PENGUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.7180205415499472,
+        "volume_acceleration_pct": 1.4128728414442682,
+        "oi_acceleration_pct": -0.9287925696594423,
+        "funding_rate": 0.0
+      },
+      "best_future_pct": 0.4773,
       "future_points_checked": 1
     },
     {
@@ -5762,8 +6887,8 @@
         "oi_acceleration_pct": 0.0,
         "funding_rate": 5e-05
       },
-      "best_future_pct": -0.1348,
-      "future_points_checked": 2
+      "best_future_pct": 1.078,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -5790,7 +6915,21 @@
         "oi_acceleration_pct": 0.025208761946005076,
         "funding_rate": 5e-05
       },
-      "best_future_pct": 1.1739,
+      "best_future_pct": 1.2144,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "XAIUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.1739306436378438,
+        "volume_acceleration_pct": 3.1968902367508267,
+        "oi_acceleration_pct": 4.846183846442709,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": 0.04,
       "future_points_checked": 1
     },
     {
@@ -5833,7 +6972,7 @@
         "funding_rate": 5e-05
       },
       "best_future_pct": -0.0487,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -5861,6 +7000,20 @@
         "funding_rate": 5e-05
       },
       "best_future_pct": -0.1463,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "AIGENSYNUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": -0.14627011214041197,
+        "volume_acceleration_pct": 2.380548391475501,
+        "oi_acceleration_pct": -0.6724431214118698,
+        "funding_rate": 5e-05
+      },
+      "best_future_pct": -0.0977,
       "future_points_checked": 1
     },
     {
@@ -5902,8 +7055,8 @@
         "oi_acceleration_pct": 0.02623937407166821,
         "funding_rate": 6.1e-05
       },
-      "best_future_pct": 0.3741,
-      "future_points_checked": 2
+      "best_future_pct": 2.0239,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -5931,6 +7084,20 @@
         "funding_rate": 6e-05
       },
       "best_future_pct": 1.7294,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "BCHUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 1.7294073797987197,
+        "volume_acceleration_pct": 4.254386103814167,
+        "oi_acceleration_pct": -0.18010481139618673,
+        "funding_rate": -5.4e-05
+      },
+      "best_future_pct": -0.0843,
       "future_points_checked": 1
     },
     {
@@ -5972,8 +7139,8 @@
         "oi_acceleration_pct": 0.02056197234667767,
         "funding_rate": -1.4e-05
       },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "best_future_pct": 2.3938,
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -6000,7 +7167,21 @@
         "oi_acceleration_pct": 0.1432787632485777,
         "funding_rate": -2e-05
       },
-      "best_future_pct": 2.2442,
+      "best_future_pct": 2.3938,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "DOGEUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "PRICE_ACCEL>VOLUME_ACCEL",
+      "features": {
+        "price_acceleration_pct": 2.244216825871792,
+        "volume_acceleration_pct": 8.716022199726892,
+        "oi_acceleration_pct": 0.07706393559481217,
+        "funding_rate": -2.6e-05
+      },
+      "best_future_pct": 0.1463,
       "future_points_checked": 1
     },
     {
@@ -6043,7 +7224,7 @@
         "funding_rate": 0.0001
       },
       "best_future_pct": 0.0,
-      "future_points_checked": 2
+      "future_points_checked": 3
     },
     {
       "exchange": "gate",
@@ -6067,6 +7248,20 @@
       "features": {
         "price_acceleration_pct": 0.0,
         "volume_acceleration_pct": 0.0,
+        "oi_acceleration_pct": 0.0,
+        "funding_rate": 0.0001
+      },
+      "best_future_pct": 0.0,
+      "future_points_checked": 2
+    },
+    {
+      "exchange": "gate",
+      "symbol": "EVOLUSDT",
+      "observed_at": "2026-08-27T08:41:54.327963+00:00",
+      "pattern": "NONE",
+      "features": {
+        "price_acceleration_pct": 0.0,
+        "volume_acceleration_pct": -1.0555946516537684,
         "oi_acceleration_pct": 0.0,
         "funding_rate": 0.0001
       },
@@ -6100,1168 +7295,6 @@
       },
       "best_future_pct": 0.5443,
       "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "FILUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.19539427773901386,
-        "volume_acceleration_pct": -2.904275527208622,
-        "oi_acceleration_pct": -0.028719385583142465,
-        "funding_rate": -6e-05
-      },
-      "best_future_pct": -0.0839,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "FILUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.08390434904208544,
-        "volume_acceleration_pct": 0.14011503362068023,
-        "oi_acceleration_pct": -0.08255864928226053,
-        "funding_rate": -6.5e-05
-      },
-      "best_future_pct": 0.8258,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "FILUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.12596221133660546,
-        "volume_acceleration_pct": 0.814998935164235,
-        "oi_acceleration_pct": -0.08732115752001501,
-        "funding_rate": -8.3e-05
-      },
-      "best_future_pct": 0.9529,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "SAFEUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.8773830155979212,
-        "volume_acceleration_pct": 1.427420798281731,
-        "oi_acceleration_pct": -0.06790969099944588,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 0.1611,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "SAFEUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.042950714055622896,
-        "volume_acceleration_pct": 0.4279348833105434,
-        "oi_acceleration_pct": 0.01772013032610431,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 0.5908,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "SAFEUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.05371146202599597,
-        "volume_acceleration_pct": -0.5315410296960144,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 0.1503,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "SAFEUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.09662873094264945,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 0.4398,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "SAFEUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.05363080553471011,
-        "volume_acceleration_pct": 0.13249127765755375,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 0.3859,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "TJXUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.007283321194473391,
-        "volume_acceleration_pct": -0.045729964559282354,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.2258,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "TJXUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.22579940272415833,
-        "volume_acceleration_pct": 0.1944412672995499,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": -0.0872,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "TJXUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.17441860465114978,
-        "volume_acceleration_pct": -0.5936073059360725,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "TJXUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.045934772622868714,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.0874,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "TJXUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.04591368227730985,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.0874,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "ARCUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.5957446808510514,
-        "volume_acceleration_pct": 0.7830791933103765,
-        "oi_acceleration_pct": 0.011831107797322105,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 0.3853,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "ARCUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.12842465753424293,
-        "volume_acceleration_pct": 0.9263416824473403,
-        "oi_acceleration_pct": -0.025832219972699022,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 1.1686,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "ARCUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.11400883568477571,
-        "volume_acceleration_pct": -2.84249721940133,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 0.1423,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "ARCUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.1565836298932588,
-        "volume_acceleration_pct": 0.039818427968474346,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 1.2119,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "ARCUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.29940119760478723,
-        "volume_acceleration_pct": 0.8856073873587,
-        "oi_acceleration_pct": -0.0028495229705383096,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 0.9097,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "FNUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": -0.08231299516411328,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.2442,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "FNUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.2442273534635886,
-        "volume_acceleration_pct": 0.1853568118628468,
-        "oi_acceleration_pct": -0.016556291390723565,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 1.1074,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "FNUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.022148394241428004,
-        "volume_acceleration_pct": -0.4111419467571209,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "FNUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 1.1298,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "FNUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.06645990252546197,
-        "volume_acceleration_pct": 1.7339250696666308,
-        "oi_acceleration_pct": -0.41397582381188514,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 1.1971,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "WFCUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": -0.164372303266902,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.0234,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "WFCUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.023424689622864037,
-        "volume_acceleration_pct": 2.0991973657131124,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.0,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "WFCUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": -1.1892763555734764,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "WFCUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "WFCUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": -0.1054,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "WUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.40572282724749,
-        "volume_acceleration_pct": -11.009254896950438,
-        "oi_acceleration_pct": -0.05870256400043461,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 0.4892,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "WUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 2.0311,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "WUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.48915355168015484,
-        "volume_acceleration_pct": -7.56164531064929,
-        "oi_acceleration_pct": -0.004345586193310602,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": -0.1587,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "WUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.15873015873014706,
-        "volume_acceleration_pct": 0.03300426143257873,
-        "oi_acceleration_pct": 0.014934531615318214,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 1.6958,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "WUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 1.6958,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "BATUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.6080379652973589,
-        "volume_acceleration_pct": -0.3995183887915976,
-        "oi_acceleration_pct": -0.0056345435080706885,
-        "funding_rate": 0.0001
-      },
-      "best_future_pct": 0.4178,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "BATUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.3730229782154648,
-        "volume_acceleration_pct": 0.19781306665200837,
-        "oi_acceleration_pct": -0.001878287002254897,
-        "funding_rate": 0.0001
-      },
-      "best_future_pct": 0.8919,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "BATUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.04459640255687347,
-        "volume_acceleration_pct": -2.40745818480943,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0001
-      },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "BATUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0001
-      },
-      "best_future_pct": 0.847,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "BATUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0001
-      },
-      "best_future_pct": 0.847,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "MAVUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "FUNDING_DIVERGENCE",
-      "features": {
-        "price_acceleration_pct": 0.5514705882352811,
-        "volume_acceleration_pct": 6.437705302674801,
-        "oi_acceleration_pct": 0.2593663209204733,
-        "funding_rate": 0.000527
-      },
-      "best_future_pct": 1.8282,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "MAVUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "VOLUME_ACCEL",
-      "features": {
-        "price_acceleration_pct": 1.8281535648994485,
-        "volume_acceleration_pct": 12.388746521176053,
-        "oi_acceleration_pct": 1.5367951173513639,
-        "funding_rate": 0.00047
-      },
-      "best_future_pct": 0.4488,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "MAVUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": -1.118003285360536,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.000452
-      },
-      "best_future_pct": 0.4488,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "MAVUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.4488330341113178,
-        "volume_acceleration_pct": 0.04463068111377755,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.000459
-      },
-      "best_future_pct": -0.4468,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "MAVUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.44682752457551045,
-        "volume_acceleration_pct": 1.4895040769288048,
-        "oi_acceleration_pct": -0.1589033773927384,
-        "funding_rate": 0.000431
-      },
-      "best_future_pct": -0.1795,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "QQQXUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0433093967420195,
-        "volume_acceleration_pct": 1.2378830246701167,
-        "oi_acceleration_pct": 0.24299741889812765,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.2206,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "QQQXUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.10054602075157959,
-        "volume_acceleration_pct": 0.48275727571762683,
-        "oi_acceleration_pct": 0.1705983638426778,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.4185,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "QQQXUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.022321117171930638,
-        "volume_acceleration_pct": -0.12202132332835847,
-        "oi_acceleration_pct": -0.4732973178498412,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.0976,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "QQQXUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.04184275492697953,
-        "volume_acceleration_pct": 0.2412378725352715,
-        "oi_acceleration_pct": -0.24434018202149632,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.3541,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "QQQXUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.05576700545122382,
-        "volume_acceleration_pct": 0.38127613207399325,
-        "oi_acceleration_pct": -0.5185997805923992,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.2982,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "WOOUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.2835416935172086,
-        "oi_acceleration_pct": -0.0020898652787093575,
-        "funding_rate": 0.0001
-      },
-      "best_future_pct": 0.4378,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "WOOUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.26269702276708884,
-        "volume_acceleration_pct": 0.017135758043096416,
-        "oi_acceleration_pct": -0.011467705547907325,
-        "funding_rate": 0.0001
-      },
-      "best_future_pct": 1.8341,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "WOOUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": -1.2335631986979068,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0001
-      },
-      "best_future_pct": 0.1747,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "WOOUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.08733624454149158,
-        "volume_acceleration_pct": 0.07372392558220309,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0001
-      },
-      "best_future_pct": 1.7452,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "WOOUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.08726003490400203,
-        "volume_acceleration_pct": 0.008667013347207764,
-        "oi_acceleration_pct": -0.0008574968808572336,
-        "funding_rate": 0.0001
-      },
-      "best_future_pct": 1.6565,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "APHUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.302447071762435,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.0123,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "APHUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.01227596366315531,
-        "volume_acceleration_pct": 0.49342105263157077,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.4051,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "APHUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": -1.2547735951991323,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "APHUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.02762430939227123,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.4051,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "APHUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.13808340237504435,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.4051,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "COAIUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "VOLUME_ACCEL",
-      "features": {
-        "price_acceleration_pct": 0.3390979993218135,
-        "volume_acceleration_pct": 22.92461034182889,
-        "oi_acceleration_pct": -0.8693421072490493,
-        "funding_rate": 0.0001
-      },
-      "best_future_pct": 0.2704,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "COAIUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.10138560324435275,
-        "volume_acceleration_pct": 1.965607313887685,
-        "oi_acceleration_pct": -0.07257299168201836,
-        "funding_rate": 0.0001
-      },
-      "best_future_pct": 0.1688,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "COAIUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.16880486158001862,
-        "volume_acceleration_pct": -0.40774502060072493,
-        "oi_acceleration_pct": 0.005586592178774552,
-        "funding_rate": 0.0001
-      },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "COAIUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0001
-      },
-      "best_future_pct": -0.5056,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "COAIUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.5055611729019249,
-        "volume_acceleration_pct": 1.6087198833919292,
-        "oi_acceleration_pct": -0.041135335252984184,
-        "funding_rate": 0.0001
-      },
-      "best_future_pct": -0.2371,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "ALLUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.14184397163120588,
-        "volume_acceleration_pct": 4.613541042540437,
-        "oi_acceleration_pct": -0.034565108094519736,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 0.0,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "ALLUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 1.8466,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "ALLUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": -0.1718213058419238,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "ALLUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 1.8466,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "ALLUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 5e-05
-      },
-      "best_future_pct": 1.8466,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "BZUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.6495012758060748,
-        "volume_acceleration_pct": -0.48924547773768756,
-        "oi_acceleration_pct": 0.06598342280574876,
-        "funding_rate": -4.5e-05
-      },
-      "best_future_pct": -0.035,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "BZUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.03502218071445018,
-        "volume_acceleration_pct": 1.3428500244273556,
-        "oi_acceleration_pct": -0.6352912161136093,
-        "funding_rate": -4.7e-05
-      },
-      "best_future_pct": 0.8408,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "BZUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.1634941025341563,
-        "volume_acceleration_pct": -3.8203978328394506,
-        "oi_acceleration_pct": -0.08571527763090447,
-        "funding_rate": -4.5e-05
-      },
-      "best_future_pct": -0.0468,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "BZUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.2456427652356874,
-        "volume_acceleration_pct": 0.3358902326370483,
-        "oi_acceleration_pct": 0.027717614224331832,
-        "funding_rate": -4.2e-05
-      },
-      "best_future_pct": 1.2547,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "BZUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.19934333958724348,
-        "volume_acceleration_pct": 1.3251584558533036,
-        "oi_acceleration_pct": -0.03377896816032511,
-        "funding_rate": -3.4e-05
-      },
-      "best_future_pct": 1.0532,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "LMTUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.33709048772778694,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": -0.09532888465204614,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": -0.2992,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "LMTUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.29921259842520254,
-        "volume_acceleration_pct": 1.4139344262295017,
-        "oi_acceleration_pct": -0.2862595419847347,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": -0.1755,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "LMTUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.17550325558539637,
-        "volume_acceleration_pct": -0.444534249343298,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "LMTUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.0,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "LMTUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": -0.1319,
-      "future_points_checked": 1
-    },
-    {
-      "exchange": "gate",
-      "symbol": "MINIMAXHKDUSDT",
-      "observed_at": "2026-08-27T06:41:21.030993+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": -0.1799370220422869,
-        "volume_acceleration_pct": -5.365210843373491,
-        "oi_acceleration_pct": -0.1568012544100328,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 1.1427,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "MINIMAXHKDUSDT",
-      "observed_at": "2026-08-27T06:59:57.622960+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 1.1427,
-      "future_points_checked": 3
-    },
-    {
-      "exchange": "gate",
-      "symbol": "MINIMAXHKDUSDT",
-      "observed_at": "2026-08-27T07:03:50.935974+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": -1.5675353093296152,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 1.1427,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "MINIMAXHKDUSDT",
-      "observed_at": "2026-08-27T07:07:25.355513+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 0.0,
-        "volume_acceleration_pct": 0.0,
-        "oi_acceleration_pct": 0.0,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 1.1427,
-      "future_points_checked": 2
-    },
-    {
-      "exchange": "gate",
-      "symbol": "MINIMAXHKDUSDT",
-      "observed_at": "2026-08-27T07:21:49.125897+00:00",
-      "pattern": "NONE",
-      "features": {
-        "price_acceleration_pct": 1.1427283847292635,
-        "volume_acceleration_pct": 0.3920617598318632,
-        "oi_acceleration_pct": -0.2944640753828054,
-        "funding_rate": 0.0
-      },
-      "best_future_pct": 0.0,
-      "future_points_checked": 1
     }
   ]
 }
