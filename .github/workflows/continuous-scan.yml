@@ -6,14 +6,12 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/continuous-scan.yml'
-  schedule:
-    - cron: '*/15 * * * *'
 
 permissions:
   contents: write
 
 concurrency:
-  group: wallet500-continuous-scan
+  group: wallet500-live-scan
   cancel-in-progress: false
 
 jobs:
@@ -62,10 +60,10 @@ jobs:
           except Exception: h={}
           hist=h.get('history') if isinstance(h.get('history'),list) else []
           now=datetime.now(timezone.utc).isoformat()
-          item={'at':now,'workflow':'PRIMARY_15M','event':os.getenv('W500_EVENT'),'run_id':os.getenv('W500_RUN_ID'),'schedule':os.getenv('W500_SCHEDULE') or None,'scan_updated_at':d['updated_at'],'scan_run_total':d.get('scan_runs_total')}
+          item={'at':now,'workflow':'MANUAL_FALLBACK','event':os.getenv('W500_EVENT'),'run_id':os.getenv('W500_RUN_ID'),'schedule':os.getenv('W500_SCHEDULE') or None,'scan_updated_at':d['updated_at'],'scan_run_total':d.get('scan_runs_total')}
           hist.append(item); hist=hist[-200:]
           hp.write_text(json.dumps({'updated_at':now,'last':item,'history':hist},indent=2))
-          print('HEALTHY PRIMARY SCAN',d['updated_at'],'run',d.get('scan_runs_total'))
+          print('HEALTHY FALLBACK SCAN',d['updated_at'],'run',d.get('scan_runs_total'))
           PY
       - name: Publish verified scan data
         run: |
@@ -74,7 +72,7 @@ jobs:
           git config user.email 'wallet500-scheduler@users.noreply.github.com'
           git add data/
           git diff --cached --quiet && exit 0
-          git commit -m 'data: primary scheduled verified scan'
+          git commit -m 'data: manual fallback verified scan'
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git merge --no-edit -X ours origin/main || true
