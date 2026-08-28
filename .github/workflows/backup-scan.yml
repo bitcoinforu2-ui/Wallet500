@@ -7,13 +7,13 @@ on:
     paths:
       - '.github/workflows/backup-scan.yml'
   schedule:
-    - cron: '9,24,39,54 * * * *'
+    - cron: '33 * * * *'
 
 permissions:
   contents: write
 
 concurrency:
-  group: wallet500-backup-scan
+  group: wallet500-live-scan
   cancel-in-progress: false
 
 jobs:
@@ -41,7 +41,7 @@ jobs:
                   d=json.loads(p.read_text())
                   ts=datetime.fromisoformat(d['updated_at'])
                   age=(datetime.now(timezone.utc)-ts).total_seconds()
-                  stale=age>720
+                  stale=age>1200
                   print(f'current scan age={age:.0f}s stale={stale}')
               except Exception as e:
                   print('cannot parse run-summary:',e)
