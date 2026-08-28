@@ -8,9 +8,11 @@ on:
       - 'src/wallet500/holder_cluster_gate.py'
       - 'src/wallet500/cluster_corroboration.py'
       - 'src/wallet500/holder_cluster_promotion.py'
+      - 'src/wallet500/holder_cluster_production_gate.py'
       - 'tests/test_holder_cluster_gate.py'
       - 'tests/test_cluster_corroboration.py'
       - 'tests/test_holder_cluster_promotion.py'
+      - 'tests/test_holder_cluster_production_gate.py'
       - '.github/workflows/holder-cluster-test.yml'
       - 'data/qualified-candidates.json'
       - 'data/active-qualified-candidates.json'
@@ -29,8 +31,8 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e . pytest
-      - name: Unit-test holder cluster and promotion truth rules
-        run: pytest -q tests/test_holder_cluster_gate.py tests/test_cluster_corroboration.py tests/test_holder_cluster_promotion.py
+      - name: Unit-test holder cluster production truth rules
+        run: pytest -q tests/test_holder_cluster_gate.py tests/test_cluster_corroboration.py tests/test_holder_cluster_promotion.py tests/test_holder_cluster_production_gate.py
       - name: Analyze research qualified cohort
         env:
           HOLDER_CLUSTER_INPUT: qualified-candidates.json
@@ -39,40 +41,24 @@ jobs:
         run: python -m wallet500.holder_cluster_gate
       - name: Run shadow promotion gate
         run: python -m wallet500.holder_cluster_promotion
-      - name: Validate fail-closed research and promotion output
+      - name: Run production quarantine gate against active cohort
+        run: python -m wallet500.holder_cluster_production_gate
+      - name: Validate fail-closed production output
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          p=Path('data/holder-cluster-gate.json')
-          if not p.exists(): raise SystemExit('holder cluster output missing')
-          d=json.loads(p.read_text()); rows=d.get('rows',[])
+          for required in ('data/holder-cluster-gate.json','data/holder-cluster-promoted.json','data/holder-cluster-review.json','data/holder-cluster-blocked.json','data/holder-cluster-promotion-summary.json','data/holder-cluster-production-qualified.json','data/holder-cluster-quarantine.json','data/holder-cluster-production-blocked.json','data/holder-cluster-production-report.json'):
+              if not Path(required).exists(): raise SystemExit('FATAL: holder cluster output missing '+required)
+          d=json.loads(Path('data/holder-cluster-gate.json').read_text()); rows=d.get('rows',[])
           if any(r.get('status')=='PASS' for r in rows):
-              raise SystemExit('FATAL: research holder/cluster gate emitted PASS before verified production policy')
-          for r in rows:
-              chain=str(r.get('chain') or '').lower(); meta=r.get('metadata') or {}; reasons=r.get('reasons') or []
-              if chain=='solana' and r.get('holders') and meta.get('owner_resolution_complete') and r.get('evidence_level')!='ONCHAIN_OWNER_CONCENTRATION_RESOLVED':
-                  raise SystemExit('FATAL: complete Solana holders were not owner-resolved')
-              if chain in ('ethereum','eth','bsc','bnb') and not meta.get('complete') and r.get('status')=='BLOCK':
-                  raise SystemExit('FATAL: incomplete EVM reconstruction was allowed to hard-block')
-              for c in r.get('linked_cluster_candidates') or []:
-                  if c.get('ownership_claim') is not False:
-                      raise SystemExit('FATAL: transfer linkage was mislabeled as common ownership proof')
-              if r.get('cluster_verified') and not r.get('corroborated_cluster_risks'):
-                  raise SystemExit('FATAL: cluster_verified without corroboration evidence')
-              for c in r.get('blockable_cluster_risks') or []:
-                  if not c.get('risk_corroborated') or c.get('ownership_claim') is not False:
-                      raise SystemExit('FATAL: blockable cluster lacks verified risk corroboration or claims ownership')
-                  if float(c.get('combined_pct') or 0) < 20:
-                      raise SystemExit('FATAL: blockable cluster below configured hard-block share')
-              if 'CORROBORATED_LINKED_HOLDER_CLUSTER_GE_20PCT' in reasons and not meta.get('complete'):
-                  raise SystemExit('FATAL: incomplete EVM ledger received hard-block corroboration reason')
-          for required in ('data/holder-cluster-promoted.json','data/holder-cluster-review.json','data/holder-cluster-blocked.json','data/holder-cluster-promotion-summary.json'):
-              if not Path(required).exists(): raise SystemExit('FATAL: promotion output missing '+required)
-          promoted=json.loads(Path('data/holder-cluster-promoted.json').read_text())
-          if any(not r.get('holder_cluster_verified') or r.get('holder_cluster_status')!='PASS' for r in promoted):
-              raise SystemExit('FATAL: unsafe candidate promoted')
-          s=json.loads(Path('data/holder-cluster-promotion-summary.json').read_text())
-          if s.get('mode')!='SHADOW_FAIL_CLOSED': raise SystemExit('FATAL: promotion gate left shadow mode unexpectedly')
-          print('HOLDER CLUSTER PROMOTION SHADOW:',s)
+              raise SystemExit('FATAL: research gate emitted PASS before verified production evidence')
+          promoted=json.loads(Path('data/holder-cluster-production-qualified.json').read_text())
+          if any(r.get('holder_cluster_production_status')!='PASS' or not r.get('holder_cluster_verified') for r in promoted):
+              raise SystemExit('FATAL: unsafe candidate reached production-qualified output')
+          report=json.loads(Path('data/holder-cluster-production-report.json').read_text())
+          if report.get('mode')!='PRODUCTION_FAIL_CLOSED': raise SystemExit('FATAL: production gate not fail-closed')
+          if report.get('input_count') != report.get('promoted_count') + report.get('quarantine_count') + report.get('blocked_count'):
+              raise SystemExit('FATAL: production gate lost candidates')
+          print('HOLDER CLUSTER PRODUCTION:',report)
           PY
