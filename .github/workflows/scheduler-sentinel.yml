@@ -1,0 +1,31 @@
+name: Wallet500 Scheduler Sentinel
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/scheduler-sentinel.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: wallet500-scheduler-sentinel
+  cancel-in-progress: true
+
+jobs:
+  dispatch-primary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Dispatch primary Wallet500 live scan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run live-scan.yml --repo "${{ github.repository }}" --ref main
+          echo "Primary live scan dispatched by scheduler sentinel."
