@@ -1,4 +1,5 @@
 name: Deploy Wallet500 Dashboard
+
 on:
   workflow_dispatch:
   push:
@@ -8,13 +9,16 @@ on:
       - 'data/**'
       - 'wallet500_option2_emblem.jpg'
       - '.github/workflows/pages.yml'
+
 permissions:
   contents: read
   pages: write
   id-token: write
+
 concurrency:
   group: pages
   cancel-in-progress: true
+
 jobs:
   deploy:
     environment:
@@ -23,71 +27,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare investor-safe live dashboard
+
+      - name: Build Wallet500 site
         run: |
-          cp dashboard-live.html index.html
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
+          set -euo pipefail
+          rm -rf _site
+          mkdir -p _site
+          cp dashboard-live.html _site/index.html
+          cp -r data _site/data
+          if [ -f wallet500_option2_emblem.jpg ]; then
+            cp wallet500_option2_emblem.jpg _site/
+          fi
+          test -s _site/index.html
+          test -s _site/data/run-summary.json
 
-          # Build a compact, public, audit-safe performance feed from the engine's
-          # immutable discovery entry + post-discovery outcome tracking.
-          src=Path('data/signal-outcomes.json')
-          perf=[]
-          if src.exists():
-              try:
-                  rows=json.loads(src.read_text(encoding='utf-8'))
-                  if isinstance(rows,list):
-                      for x in rows:
-                          if not isinstance(x,dict): continue
-                          entry=x.get('entry_price_usd'); current=x.get('current_price_usd')
-                          if entry in (None,0,0.0) or current in (None,0,0.0): continue
-                          peak=x.get('peak_price_usd') or current
-                          peak_return=x.get('peak_return_pct')
-                          current_return=x.get('current_return_pct')
-                          try:
-                              drawdown=round((float(current)/float(peak)-1)*100,4) if float(peak)>0 else None
-                          except Exception:
-                              drawdown=None
-                          perf.append({
-                              'chain':x.get('chain'),'token':x.get('token'),
-                              'discovery_time':x.get('tracking_started_at') or x.get('first_seen'),
-                              'discovery_price_usd':entry,'current_price_usd':current,
-                              'since_discovery_pct':current_return,
-                              'peak_price_usd':peak,'max_gain_pct':peak_return,
-                              'drawdown_from_peak_pct':drawdown,
-                              'age_minutes':x.get('age_minutes'),'updated_at':x.get('updated_at'),
-                              'legacy_price_tracking':bool(x.get('legacy_price_tracking',False))
-                          })
-                  perf.sort(key=lambda x: float(x.get('max_gain_pct') or -999999), reverse=True)
-              except Exception as e:
-                  print('performance feed build warning:',e)
-          Path('data/discovery-performance.json').write_text(json.dumps(perf[:250],indent=2),encoding='utf-8')
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
 
-          p=Path('index.html'); s=p.read_text()
-          old='<div class="emblem"><div class="ring"></div><div class="wmark">W<span>V</span></div></div>'
-          new='<div class="logoMark"><img src="wallet500_option2_emblem.jpg" alt="Wallet500"></div>'
-          if old not in s: raise SystemExit('Expected hero emblem not found')
-          s=s.replace(old,new,1)
-          s=s.replace('liquidity ≥$20K','liquidity ≥$50K')
-          css='''.logoMark{position:relative;z-index:2;width:142px;height:142px;overflow:hidden;border:1px solid #2d6f95;background:#020912;box-shadow:0 0 24px #40d7ff44;align-self:flex-start}.logoMark img{display:block;width:100%;height:100%;object-fit:cover}.engine.stale{border-color:#ff7380;background:#1a0709bb;box-shadow:0 0 18px #ff738044}.engine.stale strong{color:#ff7380}.engine.fresh{border-color:#13a789}.qualifiedStrip{margin-top:12px;padding:12px}.qualifiedStrip h2{margin:0 0 8px;font-size:16px}.qualifiedGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.qualifiedCard{border:1px solid #1f5a73;background:#071722;padding:10px;position:relative}.qualifiedCard .qtag{position:absolute;right:0;top:0;background:#0d6b57;padding:3px 6px;font-size:8px;color:#dfffee}.qualifiedCard .qmint{font:11px monospace;color:#e7f7ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:70px}.qualifiedCard .qscore{font-size:24px;color:#55e4ad;font-weight:900;margin:6px 0}.qualifiedCard .qmeta{display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:9px}.qualifiedCard .qmeta div{border:1px solid #18364c;padding:5px}.qualifiedCard .qlinks{margin-top:6px;font-size:9px}.qualifiedCard .qlinks a{color:#40d7ff;text-decoration:none;margin-right:8px}.qualifiedEmpty{color:#86a3b7;padding:10px;border:1px solid #18364c}.perfStrip{margin-top:12px;padding:12px}.perfStrip h2{margin:0}.perfNote{color:#86a3b7;font-size:10px;margin:5px 0 10px}.perfGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.perfCard{border:1px solid #24475f;background:#071722;padding:10px}.perfTop{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.perfMint{font:11px monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.perfPct{font-size:22px;font-weight:900}.perfMeta{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:8px}.perfMeta div{border:1px solid #18364c;padding:6px;font-size:9px}.perfMeta strong{display:block;margin-top:3px;font-size:12px}.perfTime{margin-top:7px;color:#86a3b7;font-size:9px}.legacyTag{display:inline-block;margin-top:6px;padding:2px 5px;border:1px solid #6e5828;color:#d7ad55;font-size:8px}@media(max-width:760px){.hero{grid-template-columns:104px minmax(0,1fr);column-gap:14px;padding-left:24px;padding-right:24px}.logoMark{width:104px;height:104px}.qualifiedGrid,.perfGrid{grid-template-columns:1fr}.perfMeta{grid-template-columns:repeat(2,1fr)}}@media(max-width:390px){.hero{grid-template-columns:96px minmax(0,1fr);column-gap:12px;padding-left:18px;padding-right:18px}.logoMark{width:96px;height:96px}}'''
-          s=s.replace('</style>',css+'</style>',1)
-          marker='<section class="sec"><div class="head"><h2>LIVE NETWORK INTELLIGENCE · TOP 1–10 PER CHAIN</h2>'
-          block='''<section class="qualifiedStrip panel"><h2>LIVE ACTIVE QUALIFIED · CURRENT MARKET STATUS</h2><div class="m" style="margin-bottom:8px">Only candidates still passing the live survival gate are shown here. Failed/dumped candidates remain in audit history and learning, never on the investor live board.</div><div class="qualifiedGrid" id="officialQualified"><div class="qualifiedEmpty">Live revalidation…</div></div></section>'''
-          if marker in s: s=s.replace(marker,block+marker,1)
-          perfmarker='<section class="sec panel" style="padding:12px"><div class="head"><h2>LIVE ENGINE FEED</h2>'
-          perfblock='''<section class="perfStrip panel"><div class="head"><h2>PERFORMANCE SINCE DISCOVERY</h2><span>investor-safe live survivors · full history retained for audit</span></div><div class="perfNote">Only assets still tradable now are shown here: live liquidity ≥ $50K, meaningful 1H activity, and no severe post-peak dump. Rejected cases remain in immutable audit/learning history.</div><div class="perfGrid" id="discoveryPerformance"><div class="qualifiedEmpty">Revalidating verified track record…</div></div></section>'''
-          if perfmarker in s: s=s.replace(perfmarker,perfblock+perfmarker,1)
-          guard=r'''<script>(function(){let lastEngineAt=null;const fmt=d=>d.toLocaleTimeString([],{hour12:false});function clock(){const stamp=document.getElementById('stamp');if(!stamp||!lastEngineAt)return;const age=Math.max(0,Date.now()-lastEngineAt.getTime()),remain=15*60*1000-age;const mm=Math.max(0,Math.floor(Math.abs(remain)/60000)),ss=Math.max(0,Math.floor((Math.abs(remain)%60000)/1000));stamp.innerHTML='LAST SCAN '+fmt(lastEngineAt)+'<br>'+(remain>0?'NEXT SCAN ~ '+String(mm).padStart(2,'0')+':'+String(ss).padStart(2,'0'):'NEXT SCAN DUE');}async function health(){try{const r=await fetch('data/run-summary.json?health='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('summary '+r.status);const x=await r.json(),engineAt=new Date(x.updated_at),age=(Date.now()-engineAt.getTime())/60000,stale=!Number.isFinite(age)||age>30,box=document.querySelector('.engine'),label=box&&box.querySelector('strong');lastEngineAt=engineAt;if(box){box.classList.toggle('stale',stale);box.classList.toggle('fresh',!stale)}if(label)label.innerHTML=stale?'⚠ STALE DATA':'<span class="pulse"></span>ENGINE LIVE';clock()}catch(e){const box=document.querySelector('.engine'),label=box&&box.querySelector('strong');if(box)box.classList.add('stale');if(label)label.textContent='⚠ DATA CHECK FAILED'}}const cn=c=>c==='bsc'?'BNB':c==='ethereum'?'ETH':'SOL',sh=t=>t?t.slice(0,8)+'…'+t.slice(-5):'—',ex=(c,t)=>c==='solana'?'https://solscan.io/token/'+encodeURIComponent(t):c==='ethereum'?'https://etherscan.io/token/'+encodeURIComponent(t):'https://bscscan.com/token/'+encodeURIComponent(t),usd=v=>{v=Number(v||0);return !v?'$0':v<.01?'$'+v.toExponential(3):'$'+v.toLocaleString(undefined,{maximumFractionDigits:6})},pct=v=>{v=Number(v||0);return (v>=0?'+':'')+v.toFixed(2)+'%'};async function live(x){const t=x.token||x.mint||'';try{const r=await fetch('https://api.dexscreener.com/latest/dex/tokens/'+encodeURIComponent(t),{cache:'no-store'});if(!r.ok)return null;const d=await r.json(),ps=(d.pairs||[]).filter(p=>p&&p.baseToken&&String(p.baseToken.address).toLowerCase()===String(t).toLowerCase());if(!ps.length)return null;ps.sort((a,b)=>Number(b.liquidity?.usd||0)-Number(a.liquidity?.usd||0));const p=ps[0],price=Number(p.priceUsd||0),liq=Number(p.liquidity?.usd||0),vol=Number(p.volume?.h1||0),buys=Number(p.txns?.h1?.buys||0),sells=Number(p.txns?.h1?.sells||0),m5=Number(p.priceChange?.m5||0),h1=Number(p.priceChange?.h1||0),base=Number(x.price_usd||0),since=base>0?(price/base-1)*100:0;if(!price||liq<50000||vol<15000||buys+sells<50||since<=-20||(h1>=100&&m5<=-15))return null;return {...x,price_usd:price,current_price_usd:price,since_discovery_pct:since,liquidity_usd:liq,volume_h1:vol,buys_h1:buys,sells_h1:sells,price_change_m5:m5,price_change_h1:h1,live_url:p.url||x.url||''}}catch(e){return null}}async function official(){const box=document.getElementById('officialQualified');if(!box)return;try{const r=await fetch('data/active-qualified-candidates.json?q='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('active '+r.status);const src=await r.json(),checked=(await Promise.all((Array.isArray(src)?src:[]).slice(0,18).map(live))).filter(Boolean);if(!checked.length){box.innerHTML='<div class="qualifiedEmpty">No candidate safely passes the LIVE survival gate right now.</div>';return}box.innerHTML=checked.map(x=>{const t=x.token||x.mint||'',u=x.live_url||x.url||'https://dexscreener.com/search?q='+encodeURIComponent(t);return '<article class="qualifiedCard"><span class="qtag">LIVE ACTIVE</span><div class="qmint">'+sh(t)+'</div><div class="qscore">'+Math.round(Number(x.anomaly_score||0))+'</div><div class="m">'+cn(x.chain)+' · LIVE REVALIDATED</div><div class="qmeta"><div>LIQ<br>$'+Math.round(Number(x.liquidity_usd||0)).toLocaleString()+'</div><div>VOL 1H<br>$'+Math.round(Number(x.volume_h1||0)).toLocaleString()+'</div><div>BUYS<br>'+Number(x.buys_h1||0).toLocaleString()+'</div><div>SELLS<br>'+Number(x.sells_h1||0).toLocaleString()+'</div></div><div class="qlinks"><a target="_blank" rel="noopener" href="'+ex(x.chain,t)+'">Explorer ↗</a><a target="_blank" rel="noopener" href="'+u+'">Dex ↗</a></div></article>'}).join('')}catch(e){box.innerHTML='<div class="qualifiedEmpty">Live qualified feed unavailable.</div>'}}async function performance(){const box=document.getElementById('discoveryPerformance');if(!box)return;try{const r=await fetch('data/discovery-performance.json?p='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('performance '+r.status);let a=await r.json();if(!Array.isArray(a)||!a.length){box.innerHTML='<div class="qualifiedEmpty">No verified post-discovery price records yet.</div>';return}a=(await Promise.all(a.slice(0,36).map(x=>live({...x,price_usd:x.discovery_price_usd})))).filter(Boolean).filter(x=>{const peak=Number(x.peak_price_usd||0),cur=Number(x.current_price_usd||0),dd=peak>0?(cur/peak-1)*100:0;return dd>-80}).slice(0,12);if(!a.length){box.innerHTML='<div class="qualifiedEmpty">No historical discovery currently passes the investor live-survival gate. Full history remains in audit/learning.</div>';return}box.innerHTML=a.map(x=>{const t=x.token||'',ret=Number(x.since_discovery_pct||0),peak=Number(x.max_gain_pct||0),peakPrice=Number(x.peak_price_usd||0),cur=Number(x.current_price_usd||0),dd=peakPrice>0?(cur/peakPrice-1)*100:Number(x.drawdown_from_peak_pct||0),when=x.discovery_time?new Date(x.discovery_time).toLocaleString():'—';return '<article class="perfCard"><div class="perfTop"><div><div class="m">'+cn(x.chain)+' · DISCOVERED · LIVE SURVIVOR</div><div class="perfMint">'+sh(t)+'</div></div><div class="perfPct '+(ret>=0?'up':'dn')+'">'+pct(ret)+'</div></div><div class="perfMeta"><div>DISCOVERY PRICE<strong>'+usd(x.discovery_price_usd)+'</strong></div><div>CURRENT PRICE<strong>'+usd(cur)+'</strong></div><div>MAX GAIN<strong class="'+(peak>=0?'up':'dn')+'">'+pct(peak)+'</strong></div><div>LIVE LIQUIDITY<strong>$'+Math.round(Number(x.liquidity_usd||0)).toLocaleString()+'</strong></div><div>FROM PEAK<strong class="'+(dd>=0?'up':'dn')+'">'+pct(dd)+'</strong></div><div>AGE<strong>'+Math.round(Number(x.age_minutes||0))+'m</strong></div></div><div class="perfTime">DISCOVERY '+when+' · immutable tracked entry</div>'+(x.legacy_price_tracking?'<span class="legacyTag">LEGACY: tracking began when verified price became available</span>':'')+'<div class="qlinks"><a target="_blank" rel="noopener" href="'+ex(x.chain,t)+'">Explorer ↗</a><a target="_blank" rel="noopener" href="'+(x.live_url||'https://dexscreener.com/search?q='+encodeURIComponent(t))+'">Dex ↗</a></div></article>'}).join('')}catch(e){box.innerHTML='<div class="qualifiedEmpty">Verified discovery-performance feed unavailable.</div>'}}health();official();performance();clock();setInterval(clock,1000);setInterval(health,10000);setInterval(official,30000);setInterval(performance,60000)})();</script>'''
-          s=s.replace('</body>',guard+'</body>',1)
-          p.write_text(s)
-          PY
-      - uses: actions/configure-pages@v5
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: '.'
+          path: _site
+
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
