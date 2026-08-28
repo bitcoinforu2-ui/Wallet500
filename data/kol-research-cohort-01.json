@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "created_at": "2026-08-28",
+  "status": "RESEARCH_ONLY",
+  "purpose": "Evidence-first audit of public crypto callers. No creator is treated as alpha until original timestamped calls are independently verified against immutable token/pair market data.",
+  "verification_rules": {
+    "original_post_required": true,
+    "timestamp_required": true,
+    "contract_or_unambiguous_asset_required": true,
+    "pair_identity_locked": true,
+    "entry_market_cap_reconstructed": true,
+    "entry_liquidity_reconstructed": true,
+    "misses_retained": true,
+    "deleted_or_unverifiable_calls": "UNVERIFIED_RETROSPECTIVE_CLAIM",
+    "minimum_calls_before_alpha_label": 30,
+    "metrics": [
+      "2x_rate",
+      "5x_rate",
+      "10x_rate",
+      "median_return",
+      "median_max_gain",
+      "median_drawdown",
+      "survival_rate",
+      "liquidity_survival_rate",
+      "rug_or_liquidity_collapse_rate",
+      "pre_call_runup",
+      "time_to_peak"
+    ]
+  },
+  "benchmark_sources": [
+    {
+      "name": "SmugCalls",
+      "type": "immutable_memecoin_call_dataset",
+      "status": "PUBLIC_DATASET_BENCHMARK",
+      "notes": "Use as a methodological benchmark because misses are retained and calls are timestamped."
+    },
+    {
+      "name": "CallScore",
+      "type": "public_creator_accuracy_tracker",
+      "status": "PUBLIC_TRACKER_BENCHMARK",
+      "notes": "Useful for methodology and larger-cap creator benchmarking; not accepted as proof of low-cap alpha without Wallet500 reconstruction."
+    }
+  ],
+  "candidates": [
+    {
+      "handle": "@exitliquid1ty",
+      "status": "PENDING_INDEPENDENT_AUDIT",
+      "reason": "Reported by external low-cap call tracker; original calls and misses must be reconstructed."
+    },
+    {
+      "handle": "@MageArez",
+      "status": "PENDING_INDEPENDENT_AUDIT",
+      "reason": "Reported by external low-cap call tracker; original calls and misses must be reconstructed."
+    },
+    {
+      "handle": "@rekzed1",
+      "status": "PENDING_INDEPENDENT_AUDIT",
+      "reason": "Reported by external low-cap call tracker; original calls and misses must be reconstructed."
+    },
+    {
+      "handle": "@degenmaya",
+      "status": "PENDING_INDEPENDENT_AUDIT",
+      "reason": "Reported by external low-cap call tracker; contract-address calls make historical verification potentially feasible."
+    },
+    {
+      "handle": "@VeigarCrypto",
+      "status": "PENDING_INDEPENDENT_AUDIT",
+      "reason": "Reported by external call tracker; archived calls may allow timestamp/CA reconstruction."
+    },
+    {
+      "handle": "@theunipcs",
+      "status": "CASE_STUDY_PENDING_FULL_TRACK_RECORD",
+      "reason": "Known large BONK outcome is a candidate success case, but full call history is required before consistency claims."
+    },
+    {
+      "handle": "@fluffycrypt",
+      "status": "CONTROL_SUSPECT_RETROSPECTIVE_CLAIMS",
+      "reason": "Use as negative/control case because retrospective X claims showed internal numerical inconsistencies; verify every original call independently."
+    }
+  ]
+}
