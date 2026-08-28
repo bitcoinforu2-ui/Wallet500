@@ -33,6 +33,13 @@ jobs:
         run: python -m wallet500.orchestrator
       - name: Apply universal live survival gate
         run: python -m wallet500.fresh_solana_gate
+      - name: Capture immutable qualified evidence
+        run: python -m wallet500.evidence_capture
+      - name: Send gated Telegram alerts
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m wallet500.telegram_alerts
       - name: Extract verified Solana wallet candidates
         continue-on-error: true
         run: python -m wallet500.wallet_candidate_discovery
@@ -53,7 +60,7 @@ jobs:
           age=(datetime.now(timezone.utc)-ts).total_seconds()
           if age>300: raise SystemExit(f'FATAL: scan output stale ({age:.0f}s)')
           if not d.get('verified_only'): raise SystemExit('FATAL: scan is not verified-only')
-          for required in ('data/fresh-solana-survival.json','data/active-qualified-candidates.json'):
+          for required in ('data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/telegram-alert-report.json'):
               if not Path(required).exists(): raise SystemExit('FATAL: missing '+required)
           hp=Path('data/scheduler-health.json')
           try: h=json.loads(hp.read_text()) if hp.exists() else {}
