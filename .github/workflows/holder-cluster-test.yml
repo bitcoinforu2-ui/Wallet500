@@ -6,7 +6,9 @@ on:
     branches: [holder-cluster-gate-v1]
     paths:
       - 'src/wallet500/holder_cluster_gate.py'
+      - 'src/wallet500/cluster_corroboration.py'
       - 'tests/test_holder_cluster_gate.py'
+      - 'tests/test_cluster_corroboration.py'
       - '.github/workflows/holder-cluster-test.yml'
       - 'data/qualified-candidates.json'
 
@@ -25,7 +27,7 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Unit-test holder and cluster truth rules
-        run: pytest -q tests/test_holder_cluster_gate.py
+        run: pytest -q tests/test_holder_cluster_gate.py tests/test_cluster_corroboration.py
       - name: Analyze research qualified cohort
         env:
           HOLDER_CLUSTER_INPUT: qualified-candidates.json
@@ -40,22 +42,26 @@ jobs:
           p=Path('data/holder-cluster-gate.json')
           if not p.exists(): raise SystemExit('holder cluster output missing')
           d=json.loads(p.read_text()); rows=d.get('rows',[])
-          bad_pass=[r for r in rows if r.get('status')=='PASS' and not r.get('cluster_verified')]
-          if bad_pass: raise SystemExit('FATAL: PASS emitted without independently verified cluster evidence')
+          if any(r.get('status')=='PASS' for r in rows):
+              raise SystemExit('FATAL: research holder/cluster gate emitted PASS before production promotion policy exists')
           for r in rows:
-              chain=str(r.get('chain') or '').lower()
-              meta=r.get('metadata') or {}
-              reasons=r.get('reasons') or []
-              if chain=='solana' and r.get('holders') and meta.get('owner_resolution_complete'):
-                  if r.get('evidence_level')!='ONCHAIN_OWNER_CONCENTRATION_RESOLVED':
-                      raise SystemExit('FATAL: complete Solana holders were not owner-resolved')
+              chain=str(r.get('chain') or '').lower(); meta=r.get('metadata') or {}; reasons=r.get('reasons') or []
+              if chain=='solana' and r.get('holders') and meta.get('owner_resolution_complete') and r.get('evidence_level')!='ONCHAIN_OWNER_CONCENTRATION_RESOLVED':
+                  raise SystemExit('FATAL: complete Solana holders were not owner-resolved')
               if chain in ('ethereum','eth','bsc','bnb') and not meta.get('complete') and r.get('status')=='BLOCK':
                   raise SystemExit('FATAL: incomplete EVM reconstruction was allowed to hard-block')
               for c in r.get('linked_cluster_candidates') or []:
                   if c.get('ownership_claim') is not False:
                       raise SystemExit('FATAL: transfer linkage was mislabeled as common ownership proof')
-              if 'LINKED_TOP_HOLDER_COMPONENT_REQUIRES_CORROBORATION' in reasons and r.get('cluster_verified'):
-                  raise SystemExit('FATAL: uncorroborated linked component marked verified')
+              if r.get('cluster_verified') and not r.get('corroborated_cluster_risks'):
+                  raise SystemExit('FATAL: cluster_verified without corroboration evidence')
+              for c in r.get('blockable_cluster_risks') or []:
+                  if not c.get('risk_corroborated') or c.get('ownership_claim') is not False:
+                      raise SystemExit('FATAL: blockable cluster lacks verified risk corroboration or claims ownership')
+                  if float(c.get('combined_pct') or 0) < 20:
+                      raise SystemExit('FATAL: blockable cluster below configured hard-block share')
+              if 'CORROBORATED_LINKED_HOLDER_CLUSTER_GE_20PCT' in reasons and not meta.get('complete'):
+                  raise SystemExit('FATAL: incomplete EVM ledger received hard-block corroboration reason')
           s=json.loads(Path('data/holder-cluster-gate-summary.json').read_text())
           print('HOLDER CLUSTER RESEARCH:',s)
           PY
