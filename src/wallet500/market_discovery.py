@@ -68,7 +68,7 @@ def _blocked(chain:str,token:str)->bool:
 
 
 def _add(rows,seen,counts,filtered,chain,token,source,limit,**extra):
-    if chain not in counts or counts[chain]>=limit or not token:return
+    if chain not in counts or not token:return
     if _blocked(chain,token):
         filtered[chain]=filtered.get(chain,0)+1
         return
@@ -81,6 +81,7 @@ def _add(rows,seen,counts,filtered,chain,token,source,limit,**extra):
                 row["source_confirmations"]=len(sources);row.update({k:v for k,v in extra.items() if v is not None})
                 break
         return
+    if counts[chain]>=limit:return
     seen.add(key);counts[chain]+=1
     rows.append({"chain":chain,"token":token,"source":source,"sources":[source],"source_confirmations":1,**extra})
 
@@ -96,7 +97,6 @@ def _moonshot(wanted,limit,rows,seen,counts,filtered,errors):
             _add(rows,seen,counts,filtered,"solana",token,"moonshot:"+view,limit,moonshot_view=view,
                  moonshot_pair=x.get("pairId") or x.get("pairAddress"),moonshot_price=x.get("priceUsd") or x.get("price"),
                  moonshot_volume=x.get("volumeUsd") or x.get("volume"),moonshot_marketcap=x.get("marketCap") or x.get("marketCapUsd"))
-            if counts["solana"]>=limit:break
 
 
 def _dex_latest(wanted,limit,rows,seen,counts,filtered,errors):
@@ -121,24 +121,38 @@ def _gecko_pool_page(chain,network,endpoint,page,limit,rows,seen,counts,filtered
         rel=(pool.get("relationships") or {}).get("base_token",{}).get("data") or {};tid=rel.get("id");a=pool.get("attributes") or {}
         token_obj=included.get(tid,{}) or {};ta=token_obj.get("attributes") or {}
         _add(rows,seen,counts,filtered,chain,_extract_address(tid,token_obj),source,limit,pool_address=a.get("address"),pool_created_at=a.get("pool_created_at"),name=a.get("name"),symbol=ta.get("symbol"),token_name=ta.get("name"),discovery_page=page,reserve_usd=a.get("reserve_in_usd"),volume_usd=a.get("volume_usd"),transactions=a.get("transactions"),price_change_percentage=a.get("price_change_percentage"))
-        if counts[chain]>=limit:break
     return counts[chain]-before
 
 
-def _gecko_discovery(wanted,limit,rows,seen,counts,filtered,start_pages=None,pages_per_run:int=3,max_page:int=12,errors=None):
-    start_pages=start_pages or {};errors=errors if errors is not None else [];next_pages={};pages_used={}
+def _gecko_fresh_lane(wanted,limit,rows,seen,counts,filtered,errors=None,fresh_pages:int=3):
+    """Always rescan newest pool pages so scheduler cadence/API lag cannot create discovery gaps."""
+    errors=errors if errors is not None else [];pages_used={}
     for chain in sorted(wanted):
         network=GECKO_NETWORK.get(chain)
         if not network:continue
-        start=max(1,int(start_pages.get(chain,1)));pages=[];p=start
-        for _ in range(max(1,pages_per_run)):pages.append(p);p=1 if p>=max_page else p+1
+        pages=list(range(1,max(1,fresh_pages)+1));pages_used[chain]=pages
+        for page in pages:
+            try:_gecko_pool_page(chain,network,"new_pools",page,limit,rows,seen,counts,filtered,"geckoterminal:new_pools:fresh")
+            except Exception as e:errors.append({"source":"geckoterminal:new_pools:fresh","chain":chain,"page":page,"error":repr(e)})
+    return pages_used
+
+
+def _gecko_deep_lane(wanted,limit,rows,seen,counts,filtered,start_pages=None,pages_per_run:int=3,max_page:int=12,errors=None,fresh_pages:int=3):
+    """Rotate through older new-pool pages independently from the always-on fresh overlap lane."""
+    start_pages=start_pages or {};errors=errors if errors is not None else [];next_pages={};pages_used={}
+    deep_first=max(2,fresh_pages+1);max_page=max(deep_first,max_page)
+    for chain in sorted(wanted):
+        network=GECKO_NETWORK.get(chain)
+        if not network:continue
+        raw=int(start_pages.get(chain,deep_first));start=raw if deep_first<=raw<=max_page else deep_first
+        pages=[];p=start
+        for _ in range(max(1,pages_per_run)):
+            pages.append(p);p=deep_first if p>=max_page else p+1
         next_pages[chain]=p;pages_used[chain]=pages
         for page in pages:
-            if counts[chain]>=limit:break
-            try:_gecko_pool_page(chain,network,"new_pools",page,limit,rows,seen,counts,filtered,"geckoterminal:new_pools")
-            except Exception as e:errors.append({"source":"geckoterminal:new_pools","chain":chain,"page":page,"error":repr(e)})
+            try:_gecko_pool_page(chain,network,"new_pools",page,limit,rows,seen,counts,filtered,"geckoterminal:new_pools:deep")
+            except Exception as e:errors.append({"source":"geckoterminal:new_pools:deep","chain":chain,"page":page,"error":repr(e)})
         for endpoint,source in (("trending_pools","geckoterminal:trending_pools"),("pools","geckoterminal:top_pools")):
-            if counts[chain]>=limit:break
             try:_gecko_pool_page(chain,network,endpoint,1,limit,rows,seen,counts,filtered,source)
             except Exception as e:errors.append({"source":source,"chain":chain,"error":repr(e)})
     return next_pages,pages_used
@@ -150,12 +164,28 @@ def discovery_diagnostics()->dict:return dict(_LAST_DIAGNOSTICS)
 def discover_tokens(chains=CHAINS,limit_per_chain:int=120,start_pages=None,pages_per_run:int=3,max_page:int=12)->tuple[list[dict],dict]:
     global _LAST_DIAGNOSTICS
     wanted=set(chains);rows=[];seen=set();errors=[];counts={c:0 for c in wanted};filtered={c:0 for c in wanted}
+
+    # Fresh overlap is first-class: pages 1-3 are rescanned every run. This is
+    # intentionally independent from the deep cursor so a token born just after
+    # the previous 15-minute scan remains discoverable on the next run.
+    fresh_pages_used=_gecko_fresh_lane(wanted,limit_per_chain,rows,seen,counts,filtered,errors,fresh_pages=3)
+
+    # Independent latest/trending sources enrich/confirm the same candidates.
+    # _add still records confirmations even after a chain reaches its new-token cap.
     _moonshot(wanted,limit_per_chain,rows,seen,counts,filtered,errors)
     _dex_latest(wanted,limit_per_chain,rows,seen,counts,filtered,errors)
-    next_pages,pages_used=_gecko_discovery(wanted,limit_per_chain,rows,seen,counts,filtered,start_pages,pages_per_run,max_page,errors)
+
+    # Deep coverage rotates pages 4-12 and never replaces the fresh overlap lane.
+    next_pages,deep_pages_used=_gecko_deep_lane(wanted,limit_per_chain,rows,seen,counts,filtered,start_pages,pages_per_run,max_page,errors,fresh_pages=3)
     dead=[c for c in sorted(wanted) if counts.get(c,0)==0]
     health={c:("FAILED" if counts.get(c,0)==0 else "DEGRADED" if counts.get(c,0)<10 else "HEALTHY") for c in sorted(wanted)}
-    _LAST_DIAGNOSTICS={"counts":dict(counts),"health":health,"filtered_base_assets":dict(filtered),"cursor_in":dict(start_pages or {}),"cursor_out":dict(next_pages),"pages_scanned":pages_used,"errors_count":len(errors),"recent_errors":errors[-20:]}
+    _LAST_DIAGNOSTICS={
+        "counts":dict(counts),"health":health,"filtered_base_assets":dict(filtered),
+        "cursor_in":dict(start_pages or {}),"cursor_out":dict(next_pages),
+        "fresh_overlap_pages":fresh_pages_used,"deep_pages_scanned":deep_pages_used,
+        "fresh_overlap_enabled":True,"fresh_overlap_page_count":3,
+        "errors_count":len(errors),"recent_errors":errors[-20:]
+    }
     if dead:raise RuntimeError(f"Discovery health failure: zero tokens on {dead}; recent_errors={errors[-12:]}")
     return rows,next_pages
 
