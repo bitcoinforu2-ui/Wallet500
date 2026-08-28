@@ -8,4 +8,8 @@ class Settings:
     seed_wallets: list[str] = field(default_factory=lambda: [x for x in os.getenv("WALLET500_SEEDS", "").split(",") if x])
     signatures_per_wallet: int = field(default_factory=lambda: int(os.getenv("WALLET500_SIGNATURES", "20")))
     anomaly_threshold: float = field(default_factory=lambda: float(os.getenv("WALLET500_ANOMALY_THRESHOLD", "60")))
+    verified_min_liquidity_usd: float = field(default_factory=lambda: float(os.getenv("WALLET500_VERIFIED_MIN_LIQUIDITY_USD", "50000")))
+    require_pair_survival_for_verified: bool = True
+    require_liquidity_survival_for_verified: bool = True
+    require_lp_cluster_verification_for_verified: bool = True
     output_dir: str = field(default_factory=lambda: os.getenv("WALLET500_OUTPUT_DIR", "data"))
