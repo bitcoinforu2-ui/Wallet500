@@ -10,11 +10,13 @@ on:
       - 'src/wallet500/holder_cluster_promotion.py'
       - 'src/wallet500/holder_cluster_production_gate.py'
       - 'src/wallet500/rejected_candidate_learning.py'
+      - 'src/wallet500/rejected_outcome_tracker.py'
       - 'tests/test_holder_cluster_gate.py'
       - 'tests/test_cluster_corroboration.py'
       - 'tests/test_holder_cluster_promotion.py'
       - 'tests/test_holder_cluster_production_gate.py'
       - 'tests/test_rejected_candidate_learning.py'
+      - 'tests/test_rejected_outcome_tracker.py'
       - '.github/workflows/holder-cluster-test.yml'
       - 'data/qualified-candidates.json'
       - 'data/active-qualified-candidates.json'
@@ -34,7 +36,7 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Unit-test holder cluster production truth rules
-        run: pytest -q tests/test_holder_cluster_gate.py tests/test_cluster_corroboration.py tests/test_holder_cluster_promotion.py tests/test_holder_cluster_production_gate.py tests/test_rejected_candidate_learning.py
+        run: pytest -q tests/test_holder_cluster_gate.py tests/test_cluster_corroboration.py tests/test_holder_cluster_promotion.py tests/test_holder_cluster_production_gate.py tests/test_rejected_candidate_learning.py tests/test_rejected_outcome_tracker.py
       - name: Analyze research qualified cohort
         env:
           HOLDER_CLUSTER_INPUT: qualified-candidates.json
@@ -47,12 +49,14 @@ jobs:
         run: python -m wallet500.holder_cluster_production_gate
       - name: Update immutable rejected candidate learning ledger
         run: python -m wallet500.rejected_candidate_learning
+      - name: Track rejected outcomes and false negatives
+        run: python -m wallet500.rejected_outcome_tracker
       - name: Validate fail-closed production output
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          required=('data/holder-cluster-gate.json','data/holder-cluster-promoted.json','data/holder-cluster-review.json','data/holder-cluster-blocked.json','data/holder-cluster-promotion-summary.json','data/holder-cluster-production-qualified.json','data/holder-cluster-quarantine.json','data/holder-cluster-production-blocked.json','data/holder-cluster-production-report.json','data/rejected-candidate-ledger.json','data/rejected-candidate-learning-summary.json')
+          required=('data/holder-cluster-gate.json','data/holder-cluster-promoted.json','data/holder-cluster-review.json','data/holder-cluster-blocked.json','data/holder-cluster-promotion-summary.json','data/holder-cluster-production-qualified.json','data/holder-cluster-quarantine.json','data/holder-cluster-production-blocked.json','data/holder-cluster-production-report.json','data/rejected-candidate-ledger.json','data/rejected-candidate-learning-summary.json','data/rejected-outcome-report.json','data/rejected-filter-attribution.json')
           for name in required:
               if not Path(name).exists(): raise SystemExit('FATAL: output missing '+name)
           rows=json.loads(Path('data/holder-cluster-gate.json').read_text()).get('rows',[])
@@ -71,6 +75,9 @@ jobs:
               raise SystemExit('FATAL: production gate lost candidates')
           ledger=json.loads(Path('data/rejected-candidate-ledger.json').read_text())
           if ledger.get('policy')!='IMMUTABLE_FIRST_REJECT_APPEND_ONLY_OBSERVATIONS_EXACT_PAIR_LOCKED': raise SystemExit('FATAL: reject ledger policy changed')
+          outcomes=json.loads(Path('data/rejected-outcome-report.json').read_text())
+          if outcomes.get('false_negative_winners',0)>outcomes.get('records',0): raise SystemExit('FATAL: invalid false-negative accounting')
           print('HOLDER CLUSTER PRODUCTION:',report)
           print('REJECT LEARNING:',json.loads(Path('data/rejected-candidate-learning-summary.json').read_text()))
+          print('FALSE NEGATIVES:',outcomes.get('false_negative_winners',0),'major',outcomes.get('major_false_negatives',0))
           PY
