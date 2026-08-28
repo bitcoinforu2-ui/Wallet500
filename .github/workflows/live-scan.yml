@@ -57,6 +57,8 @@ jobs:
         run: python -m wallet500.rejected_candidate_learning
       - name: Track rejected outcomes and false negatives
         run: python -m wallet500.rejected_outcome_tracker
+      - name: Generate evidence-based filter tuning advice
+        run: python -m wallet500.filter_tuning_advisor
       - name: Capture immutable qualified evidence
         env:
           WALLET500_EVIDENCE_INPUT: holder-cluster-production-qualified.json
@@ -111,7 +113,7 @@ jobs:
             'data/production-risk-evaluations.json','data/production-risk-blocked.json','data/exact-pair-survival-report.json',
             'data/holder-cluster-gate.json','data/holder-cluster-production-qualified.json','data/holder-cluster-quarantine.json',
             'data/holder-cluster-production-blocked.json','data/holder-cluster-production-report.json',
-            'data/rejected-candidate-ledger.json','data/rejected-candidate-learning-summary.json','data/rejected-outcome-report.json','data/rejected-filter-attribution.json')
+            'data/rejected-candidate-ledger.json','data/rejected-candidate-learning-summary.json','data/rejected-outcome-report.json','data/rejected-filter-attribution.json','data/filter-tuning-advisor.json')
           for name in required:
               if not Path(name).exists(): raise SystemExit('FATAL: missing '+name)
           hreport=json.loads(Path('data/holder-cluster-production-report.json').read_text())
@@ -121,24 +123,15 @@ jobs:
               if row.get('holder_cluster_production_status')!='PASS' or row.get('holder_cluster_verification_complete') is not True:
                   raise SystemExit('FATAL: unsafe holder/cluster candidate reached downstream')
           ap=json.loads(Path('data/telegram-alert-report.json').read_text())
-          if (ap.get('policy') or {}).get('source')!='holder-cluster-production-qualified.json':
-              raise SystemExit('FATAL: Telegram bypasses holder cluster production gate')
+          if (ap.get('policy') or {}).get('source')!='holder-cluster-production-qualified.json': raise SystemExit('FATAL: Telegram bypasses holder cluster production gate')
           ev=json.loads(Path('data/discovery-evidence-ledger.json').read_text())
-          if ev.get('source')!='holder-cluster-production-qualified.json':
-              raise SystemExit('FATAL: evidence capture bypasses holder cluster production gate')
+          if ev.get('source')!='holder-cluster-production-qualified.json': raise SystemExit('FATAL: evidence capture bypasses holder cluster production gate')
           reject=json.loads(Path('data/rejected-outcome-report.json').read_text())
-          if reject.get('records',0) < reject.get('false_negative_winners',0):
-              raise SystemExit('FATAL: invalid false-negative accounting')
-          wp=Path('data/wallet-candidates.json')
-          if wp.exists():
-              w=json.loads(wp.read_text()); print('WALLET FORENSICS:',w.get('verified_wallet_candidates',0),'verified candidates; EVM deferred',w.get('evm_candidates_deferred',0))
-          else: print('DEGRADED RESEARCH LANE: wallet-candidates.json missing; primary lane remains healthy')
-          rg=d.get('production_risk_gate') or {}
-          print('PRODUCTION RISK GATE: before',rg.get('active_before_gate',0),'after',rg.get('active_after_gate',0),'blocked',rg.get('blocked_now',0),'min_liq',rg.get('min_live_liquidity_usd'))
-          print('HOLDER CLUSTER: input',hreport.get('input_count'),'promoted',hreport.get('promoted_count'),'quarantine',hreport.get('quarantine_count'),'blocked',hreport.get('blocked_count'))
-          print('REJECT LEARNING:',json.loads(Path('data/rejected-candidate-learning-summary.json').read_text()))
+          if reject.get('records',0) < reject.get('false_negative_winners',0): raise SystemExit('FATAL: invalid false-negative accounting')
+          tune=json.loads(Path('data/filter-tuning-advisor.json').read_text())
+          if tune.get('mode')!='RESEARCH_ADVISORY_ONLY' or tune.get('production_thresholds_modified') is not False: raise SystemExit('FATAL: tuning advisor may not mutate production')
+          print('FILTER TUNING:',len(tune.get('review_candidates',[])),'review candidates from',tune.get('ledger_records',0),'reject records')
           print('FALSE NEGATIVES:',reject.get('false_negative_winners',0),'major',reject.get('major_false_negatives',0))
-          print('TELEGRAM ALERTS: configured',ap.get('configured'),'eligible',ap.get('eligible_count',0),'delivered',ap.get('delivered_count',0),'errors',ap.get('error_count',0))
           print('HEALTHY LIVE SCAN:',d['updated_at'],'active',d.get('active_qualified',0),'pending',d.get('live_survival_pending',0),'failed',d.get('live_survival_failed',0))
           PY
       - name: Publish verified scan data
@@ -153,12 +146,8 @@ jobs:
               git fetch origin main
               git merge --no-edit -X ours origin/main
               if git push origin HEAD:main; then break; fi
-              echo "Push raced with main; retrying publish (attempt $attempt)"
               sleep 3
-              if [ "$attempt" = 5 ]; then
-                echo 'FATAL: failed to publish scan data after retries'
-                exit 1
-              fi
+              if [ "$attempt" = 5 ]; then exit 1; fi
             done
           fi
 
@@ -179,15 +168,10 @@ jobs:
           mkdir -p _site
           cp dashboard-live.html _site/index.html
           cp -r data _site/data
-          if [ -f wallet500_option2_emblem.jpg ]; then cp wallet500_option2_emblem.jpg _site/; fi
-          test -s _site/index.html
-          test -s _site/data/run-summary.json
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-      - name: Upload site artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
-      - name: Deploy fresh verified dashboard
+      - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
