@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'dashboard-live.html'
+      - 'dashboard-performance.html'
       - 'data/**'
       - 'wallet500_option2_emblem.jpg'
       - '.github/workflows/pages.yml'
@@ -32,13 +33,15 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf _site
-          mkdir -p _site
+          mkdir -p _site/performance
           cp dashboard-live.html _site/index.html
+          cp dashboard-performance.html _site/performance/index.html
           cp -r data _site/data
           if [ -f wallet500_option2_emblem.jpg ]; then
             cp wallet500_option2_emblem.jpg _site/
           fi
           test -s _site/index.html
+          test -s _site/performance/index.html
           test -s _site/data/run-summary.json
 
       - name: Configure GitHub Pages
