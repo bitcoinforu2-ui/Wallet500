@@ -128,15 +128,23 @@ def run() -> dict:
     positive=sum(1 for x in verified if float(x.get("current_return_pct") or 0)>0)
     negative=sum(1 for x in verified if float(x.get("current_return_pct") or 0)<0)
     flat=len(verified)-positive-negative
-    payload={"version":4,"method":"IMMUTABLE_PERFORMANCE_SINCE_DISCOVERY_EXACT_PAIR","updated_at":now_s,"tracked_tokens":len(records),"seeded_from_discovery_state":seeded,"updated_this_run":updated,"verified_positive_now":positive,"verified_negative_now":negative,"verified_flat_now":flat,"anti_erasure_rule":"NON_EMPTY_TRACK_RECORD_MAY_NEVER_BE_REPLACED_BY_EMPTY_OUTPUT","tokens":records}
+
+    all_discovery_investment=round(float(len(records)),2)
+    verified_investment=round(float(len(verified)),2)
+    verified_value=round(sum(1.0 + float(x.get("current_return_pct") or 0)/100.0 for x in verified),6)
+    verified_profit=round(verified_value-verified_investment,6)
+    verified_roi=round((verified_profit/verified_investment)*100.0,4) if verified_investment else 0.0
+    unverified_count=max(0,len(records)-len(verified))
+
+    payload={"version":5,"method":"IMMUTABLE_PERFORMANCE_SINCE_DISCOVERY_EXACT_PAIR","updated_at":now_s,"tracked_tokens":len(records),"seeded_from_discovery_state":seeded,"updated_this_run":updated,"verified_positive_now":positive,"verified_negative_now":negative,"verified_flat_now":flat,"anti_erasure_rule":"NON_EMPTY_TRACK_RECORD_MAY_NEVER_BE_REPLACED_BY_EMPTY_OUTPUT","tokens":records}
     _write(DATA/"outcome-tracker.json",payload)
     _write(DATA/"signal-outcomes.json",list(records.values()))
     leaders=sorted((_leader_row(x) for x in verified),key=lambda x:float(x.get("current_return_pct") or 0),reverse=True)
     win_rate=round(positive/(positive+negative)*100,2) if positive+negative else 0.0
-    leaderboard={"updated_at":now_s,"verified_count":len(leaders),"verified_winners":positive,"verified_losers":negative,"verified_flat":flat,"win_rate_pct":win_rate,"best_current_return_pct":leaders[0].get("current_return_pct") if leaders else None,"best_peak_return_pct":max((float(x.get("peak_return_pct") or 0) for x in leaders),default=None),"rows":leaders}
+    leaderboard={"updated_at":now_s,"verified_count":len(leaders),"verified_winners":positive,"verified_losers":negative,"verified_flat":flat,"win_rate_pct":win_rate,"best_current_return_pct":leaders[0].get("current_return_pct") if leaders else None,"best_peak_return_pct":max((float(x.get("peak_return_pct") or 0) for x in leaders),default=None),"all_discoveries_hypothetical_investment_usd":all_discovery_investment,"verified_cohort_investment_usd":verified_investment,"verified_cohort_current_value_usd":verified_value,"verified_cohort_profit_usd":verified_profit,"verified_cohort_roi_pct":verified_roi,"unverified_or_not_currently_measurable_count":unverified_count,"portfolio_rule":"$1 AT IMMUTABLE DISCOVERY ENTRY; CURRENT P/L ONLY COUNTED WHEN EXACT PAIR IS CURRENTLY VERIFIED","rows":leaders}
     _write(DATA/"performance-leaderboard.json",leaderboard)
-    _write(DATA/"performance-measurement-report.json",{"updated_at":now_s,"tracked_tokens":len(records),"seeded":seeded,"updated":updated,"verified_positive_now":positive,"verified_negative_now":negative,"verified_flat_now":flat,"verified_exact_pair_now":len(verified),"win_rate_pct":win_rate,"legacy_missing_pair":sum(1 for x in records.values() if x.get("pair_identity_status")!="LOCKED")})
-    print(json.dumps({"tracked_tokens":len(records),"updated_this_run":updated,"verified_exact_pair_now":len(verified),"verified_positive_now":positive,"verified_negative_now":negative,"win_rate_pct":win_rate},indent=2))
+    _write(DATA/"performance-measurement-report.json",{"updated_at":now_s,"tracked_tokens":len(records),"seeded":seeded,"updated":updated,"verified_positive_now":positive,"verified_negative_now":negative,"verified_flat_now":flat,"verified_exact_pair_now":len(verified),"win_rate_pct":win_rate,"legacy_missing_pair":sum(1 for x in records.values() if x.get("pair_identity_status")!="LOCKED"),"all_discoveries_hypothetical_investment_usd":all_discovery_investment,"verified_cohort_investment_usd":verified_investment,"verified_cohort_current_value_usd":verified_value,"verified_cohort_profit_usd":verified_profit,"verified_cohort_roi_pct":verified_roi,"unverified_or_not_currently_measurable_count":unverified_count})
+    print(json.dumps({"tracked_tokens":len(records),"updated_this_run":updated,"verified_exact_pair_now":len(verified),"verified_positive_now":positive,"verified_negative_now":negative,"win_rate_pct":win_rate,"all_discoveries_hypothetical_investment_usd":all_discovery_investment,"verified_cohort_current_value_usd":verified_value,"verified_cohort_profit_usd":verified_profit,"verified_cohort_roi_pct":verified_roi},indent=2))
     return payload
 
 
