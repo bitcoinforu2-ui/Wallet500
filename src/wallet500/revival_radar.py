@@ -91,7 +91,26 @@ def _score(s: dict, history: list[dict], now_dt) -> dict:
     return {**s,'revival_score':score,'revival_eligible':True,'revival_reasons':reasons,'pair_age_days':round(age_days,2),'revival_metrics':{'volume_clock_ratio':round(volume_clock,2),'tx_clock_ratio':round(tx_clock,2),'volume_baseline_ratio':round(volume_baseline,2),'tx_baseline_ratio':round(tx_baseline,2),'liquidity_change_pct':round(liquidity_change,2),'buy_sell_ratio':round(buy_ratio,2)}}
 
 
-def run_revival_scan(out: Path, discovery_state: dict, manual_watch: list[dict], now: str, batch_size: int=60, threshold: int=55) -> dict:
+def run_revival_scan(out, discovery_state, manual_watch=None, now=None, batch_size: int=60, threshold: int=55) -> dict:
+    # Backward-compatible adapter: main.py historically calls (Settings, annotated_rows),
+    # while the newer engine calls (output_path, discovery_state, manual_watch, now).
+    if not isinstance(out, Path):
+        cfg=out
+        out=Path(cfg.output_dir)
+        rows=discovery_state if isinstance(discovery_state,list) else []
+        tokens={}
+        for row in rows:
+            c=row.get('chain'); t=row.get('token') or row.get('mint')
+            if c and t:
+                tokens[_key(c,t)]={'chain':c,'token':t}
+        discovery_state={'tokens':tokens}
+    out.mkdir(parents=True,exist_ok=True)
+    if manual_watch is None:
+        manual_watch=_load(out/'manual-watchlist.json',[])
+        if not isinstance(manual_watch,list): manual_watch=[]
+    if now is None:
+        now=datetime.now(timezone.utc).isoformat()
+
     path=out/'revival-state.json'; state=_load(path,{})
     if not isinstance(state,dict): state={}
     records=state.get('tokens') if isinstance(state.get('tokens'),dict) else {}
@@ -140,8 +159,8 @@ def run_revival_scan(out: Path, discovery_state: dict, manual_watch: list[dict],
             alerts.append(scored)
 
     alerts.sort(key=lambda x:(x.get('revival_score',0),x.get('volume_h1',0)),reverse=True)
-    state={'version':1,'cursor':next_cursor,'updated_at':now,'batch_size':batch_size,'universe_size':len(pool),'scanned_this_run':len(snapshots),'alerts_this_run':len(alerts),'errors_this_run':len(errors),'tokens':records}
+    state={'version':2,'cursor':next_cursor,'updated_at':now,'batch_size':batch_size,'universe_size':len(pool),'scanned_this_run':len(snapshots),'alerts_this_run':len(alerts),'errors_this_run':len(errors),'tokens':records}
     (out/'revival-state.json').write_text(json.dumps(state,indent=2),encoding='utf-8')
     (out/'revival-radar.json').write_text(json.dumps(alerts,indent=2),encoding='utf-8')
     (out/'revival-snapshots.json').write_text(json.dumps(snapshots,indent=2),encoding='utf-8')
-    return {'state':state,'snapshots':snapshots,'alerts':alerts,'errors':errors}
+    return {'state':state,'snapshots':snapshots,'alerts':alerts,'radar':alerts,'errors':errors}
