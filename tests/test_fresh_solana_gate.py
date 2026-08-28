@@ -6,7 +6,7 @@ from wallet500.fresh_solana_gate import evaluate
 NOW = datetime(2026, 8, 27, 10, 33, 27, tzinfo=timezone.utc)
 
 
-def test_extreme_buy_skew_thin_fresh_liquidity_fails():
+def test_sub_50k_fresh_candidate_fails_universal_live_gate():
     candidate = {
         "chain": "solana",
         "token": "bulldoge",
@@ -18,12 +18,11 @@ def test_extreme_buy_skew_thin_fresh_liquidity_fails():
         "price_usd": 0.0001635,
     }
     out = evaluate(candidate, {"tokens": {}}, NOW)
-    assert out["fresh_solana_gate"] == "FAILED"
     assert out["live_survival_gate"] == "FAILED"
-    assert "EXTREME_BUY_SKEW_THIN_FRESH_LIQUIDITY" in out["fresh_solana_reasons"]
+    assert "CURRENT_LIQUIDITY_BELOW_50K" in out["live_survival_reasons"]
 
 
-def test_fresh_candidate_waits_for_verified_survival():
+def test_sub_50k_candidate_cannot_wait_as_pending():
     candidate = {
         "chain": "solana",
         "token": "survivor",
@@ -35,12 +34,11 @@ def test_fresh_candidate_waits_for_verified_survival():
         "price_usd": 0.0001911,
     }
     out = evaluate(candidate, {"tokens": {}}, NOW)
-    assert out["fresh_solana_gate"] == "PENDING"
-    assert out["live_survival_gate"] == "PENDING"
-    assert "NEED_2_VERIFIED_OBSERVATIONS" in out["fresh_solana_reasons"]
+    assert out["live_survival_gate"] == "FAILED"
+    assert "CURRENT_LIQUIDITY_BELOW_50K" in out["live_survival_reasons"]
 
 
-def test_survived_candidate_becomes_active():
+def test_even_historically_survived_sub_50k_candidate_is_not_active():
     candidate = {
         "chain": "solana",
         "token": "survivor",
@@ -65,7 +63,35 @@ def test_survived_candidate_becomes_active():
         }
     }
     out = evaluate(candidate, outcomes, NOW)
-    assert out["fresh_solana_gate"] == "ACTIVE"
+    assert out["live_survival_gate"] == "FAILED"
+    assert "CURRENT_LIQUIDITY_BELOW_50K" in out["live_survival_reasons"]
+
+
+def test_above_50k_survived_candidate_can_become_active():
+    candidate = {
+        "chain": "solana",
+        "token": "survivor",
+        "pair_created_at": 1787823307000,
+        "liquidity_usd": 52000,
+        "volume_h1": 90000,
+        "buys_h1": 1200,
+        "sells_h1": 700,
+        "price_usd": 0.00020,
+    }
+    outcomes = {
+        "tokens": {
+            "solana:survivor": {
+                "current_return_pct": 5.0,
+                "peak_price_usd": 0.00021,
+                "current_price_usd": 0.00020,
+                "history": [
+                    {"observed_at": "2026-08-27T10:10:00+00:00", "liquidity_usd": 51000},
+                    {"observed_at": "2026-08-27T10:25:00+00:00", "liquidity_usd": 52000},
+                ],
+            }
+        }
+    }
+    out = evaluate(candidate, outcomes, NOW)
     assert out["live_survival_gate"] == "ACTIVE"
 
 
