@@ -68,3 +68,15 @@ def test_linked_component_is_review_not_ownership_proof(monkeypatch):
     assert len(out['linked_cluster_candidates'])==1
     assert out['linked_cluster_candidates'][0]['ownership_claim'] is False
     assert 'LINKED_TOP_HOLDER_COMPONENT_REQUIRES_CORROBORATION' in out['reasons']
+
+
+def test_rows_from_source_accepts_plain_list():
+    rows=[{'chain':'solana','token':'abc'}]
+    assert h._rows_from_source(rows)==rows
+
+
+def test_rows_from_source_accepts_wrapped_rows_only():
+    rows=[{'chain':'bsc','token':'0x123'}]
+    assert h._rows_from_source({'rows':rows})==rows
+    assert h._rows_from_source({'rows':{}})==[]
+    assert h._rows_from_source(None)==[]
