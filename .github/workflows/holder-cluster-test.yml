@@ -7,10 +7,13 @@ on:
     paths:
       - 'src/wallet500/holder_cluster_gate.py'
       - 'src/wallet500/cluster_corroboration.py'
+      - 'src/wallet500/holder_cluster_promotion.py'
       - 'tests/test_holder_cluster_gate.py'
       - 'tests/test_cluster_corroboration.py'
+      - 'tests/test_holder_cluster_promotion.py'
       - '.github/workflows/holder-cluster-test.yml'
       - 'data/qualified-candidates.json'
+      - 'data/active-qualified-candidates.json'
 
 permissions:
   contents: read
@@ -26,15 +29,17 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e . pytest
-      - name: Unit-test holder and cluster truth rules
-        run: pytest -q tests/test_holder_cluster_gate.py tests/test_cluster_corroboration.py
+      - name: Unit-test holder cluster and promotion truth rules
+        run: pytest -q tests/test_holder_cluster_gate.py tests/test_cluster_corroboration.py tests/test_holder_cluster_promotion.py
       - name: Analyze research qualified cohort
         env:
           HOLDER_CLUSTER_INPUT: qualified-candidates.json
           ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
           BSC_RPC_URL: ${{ secrets.BSC_RPC_URL }}
         run: python -m wallet500.holder_cluster_gate
-      - name: Validate fail-closed research output
+      - name: Run shadow promotion gate
+        run: python -m wallet500.holder_cluster_promotion
+      - name: Validate fail-closed research and promotion output
         run: |
           python - <<'PY'
           import json
@@ -43,7 +48,7 @@ jobs:
           if not p.exists(): raise SystemExit('holder cluster output missing')
           d=json.loads(p.read_text()); rows=d.get('rows',[])
           if any(r.get('status')=='PASS' for r in rows):
-              raise SystemExit('FATAL: research holder/cluster gate emitted PASS before production promotion policy exists')
+              raise SystemExit('FATAL: research holder/cluster gate emitted PASS before verified production policy')
           for r in rows:
               chain=str(r.get('chain') or '').lower(); meta=r.get('metadata') or {}; reasons=r.get('reasons') or []
               if chain=='solana' and r.get('holders') and meta.get('owner_resolution_complete') and r.get('evidence_level')!='ONCHAIN_OWNER_CONCENTRATION_RESOLVED':
@@ -62,6 +67,12 @@ jobs:
                       raise SystemExit('FATAL: blockable cluster below configured hard-block share')
               if 'CORROBORATED_LINKED_HOLDER_CLUSTER_GE_20PCT' in reasons and not meta.get('complete'):
                   raise SystemExit('FATAL: incomplete EVM ledger received hard-block corroboration reason')
-          s=json.loads(Path('data/holder-cluster-gate-summary.json').read_text())
-          print('HOLDER CLUSTER RESEARCH:',s)
+          for required in ('data/holder-cluster-promoted.json','data/holder-cluster-review.json','data/holder-cluster-blocked.json','data/holder-cluster-promotion-summary.json'):
+              if not Path(required).exists(): raise SystemExit('FATAL: promotion output missing '+required)
+          promoted=json.loads(Path('data/holder-cluster-promoted.json').read_text())
+          if any(not r.get('holder_cluster_verified') or r.get('holder_cluster_status')!='PASS' for r in promoted):
+              raise SystemExit('FATAL: unsafe candidate promoted')
+          s=json.loads(Path('data/holder-cluster-promotion-summary.json').read_text())
+          if s.get('mode')!='SHADOW_FAIL_CLOSED': raise SystemExit('FATAL: promotion gate left shadow mode unexpectedly')
+          print('HOLDER CLUSTER PROMOTION SHADOW:',s)
           PY
