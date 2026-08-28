@@ -55,6 +55,8 @@ jobs:
         run: python -m wallet500.holder_cluster_production_gate
       - name: Preserve rejected and quarantined candidates for learning
         run: python -m wallet500.rejected_candidate_learning
+      - name: Track rejected outcomes and false negatives
+        run: python -m wallet500.rejected_outcome_tracker
       - name: Capture immutable qualified evidence
         env:
           WALLET500_EVIDENCE_INPUT: holder-cluster-production-qualified.json
@@ -109,7 +111,7 @@ jobs:
             'data/production-risk-evaluations.json','data/production-risk-blocked.json','data/exact-pair-survival-report.json',
             'data/holder-cluster-gate.json','data/holder-cluster-production-qualified.json','data/holder-cluster-quarantine.json',
             'data/holder-cluster-production-blocked.json','data/holder-cluster-production-report.json',
-            'data/rejected-candidate-ledger.json','data/rejected-candidate-learning-summary.json')
+            'data/rejected-candidate-ledger.json','data/rejected-candidate-learning-summary.json','data/rejected-outcome-report.json','data/rejected-filter-attribution.json')
           for name in required:
               if not Path(name).exists(): raise SystemExit('FATAL: missing '+name)
           hreport=json.loads(Path('data/holder-cluster-production-report.json').read_text())
@@ -124,6 +126,9 @@ jobs:
           ev=json.loads(Path('data/discovery-evidence-ledger.json').read_text())
           if ev.get('source')!='holder-cluster-production-qualified.json':
               raise SystemExit('FATAL: evidence capture bypasses holder cluster production gate')
+          reject=json.loads(Path('data/rejected-outcome-report.json').read_text())
+          if reject.get('records',0) < reject.get('false_negative_winners',0):
+              raise SystemExit('FATAL: invalid false-negative accounting')
           wp=Path('data/wallet-candidates.json')
           if wp.exists():
               w=json.loads(wp.read_text()); print('WALLET FORENSICS:',w.get('verified_wallet_candidates',0),'verified candidates; EVM deferred',w.get('evm_candidates_deferred',0))
@@ -132,6 +137,7 @@ jobs:
           print('PRODUCTION RISK GATE: before',rg.get('active_before_gate',0),'after',rg.get('active_after_gate',0),'blocked',rg.get('blocked_now',0),'min_liq',rg.get('min_live_liquidity_usd'))
           print('HOLDER CLUSTER: input',hreport.get('input_count'),'promoted',hreport.get('promoted_count'),'quarantine',hreport.get('quarantine_count'),'blocked',hreport.get('blocked_count'))
           print('REJECT LEARNING:',json.loads(Path('data/rejected-candidate-learning-summary.json').read_text()))
+          print('FALSE NEGATIVES:',reject.get('false_negative_winners',0),'major',reject.get('major_false_negatives',0))
           print('TELEGRAM ALERTS: configured',ap.get('configured'),'eligible',ap.get('eligible_count',0),'delivered',ap.get('delivered_count',0),'errors',ap.get('error_count',0))
           print('HEALTHY LIVE SCAN:',d['updated_at'],'active',d.get('active_qualified',0),'pending',d.get('live_survival_pending',0),'failed',d.get('live_survival_failed',0))
           PY
