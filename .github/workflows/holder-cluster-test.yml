@@ -3,9 +3,10 @@ name: Wallet500 Holder Cluster Research Gate
 on:
   workflow_dispatch:
   push:
-    branches: [holder-cluster-gate-build-3]
+    branches: [holder-cluster-gate-v1]
     paths:
       - 'src/wallet500/holder_cluster_gate.py'
+      - 'tests/test_holder_cluster_gate.py'
       - '.github/workflows/holder-cluster-test.yml'
       - 'data/qualified-candidates.json'
 
@@ -22,26 +23,39 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install
-        run: pip install -e .
+        run: pip install -e . pytest
+      - name: Unit-test holder and cluster truth rules
+        run: pytest -q tests/test_holder_cluster_gate.py
       - name: Analyze research qualified cohort
         env:
           HOLDER_CLUSTER_INPUT: qualified-candidates.json
+          ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
+          BSC_RPC_URL: ${{ secrets.BSC_RPC_URL }}
         run: python -m wallet500.holder_cluster_gate
-      - name: Validate truth rules
+      - name: Validate fail-closed research output
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
           p=Path('data/holder-cluster-gate.json')
           if not p.exists(): raise SystemExit('holder cluster output missing')
-          d=json.loads(p.read_text())
-          rows=d.get('rows',[])
-          bad=[r for r in rows if r.get('status')=='PASS' and not r.get('cluster_verified')]
-          if bad: raise SystemExit('FATAL: PASS emitted without independently verified cluster evidence')
+          d=json.loads(p.read_text()); rows=d.get('rows',[])
+          bad_pass=[r for r in rows if r.get('status')=='PASS' and not r.get('cluster_verified')]
+          if bad_pass: raise SystemExit('FATAL: PASS emitted without independently verified cluster evidence')
           for r in rows:
-              if str(r.get('chain')).lower()=='solana' and r.get('holders'):
+              chain=str(r.get('chain') or '').lower()
+              meta=r.get('metadata') or {}
+              reasons=r.get('reasons') or []
+              if chain=='solana' and r.get('holders') and meta.get('owner_resolution_complete'):
                   if r.get('evidence_level')!='ONCHAIN_OWNER_CONCENTRATION_RESOLVED':
-                      raise SystemExit('FATAL: Solana holders were not owner-resolved')
+                      raise SystemExit('FATAL: complete Solana holders were not owner-resolved')
+              if chain in ('ethereum','eth','bsc','bnb') and not meta.get('complete') and r.get('status')=='BLOCK':
+                  raise SystemExit('FATAL: incomplete EVM reconstruction was allowed to hard-block')
+              for c in r.get('linked_cluster_candidates') or []:
+                  if c.get('ownership_claim') is not False:
+                      raise SystemExit('FATAL: transfer linkage was mislabeled as common ownership proof')
+              if 'LINKED_TOP_HOLDER_COMPONENT_REQUIRES_CORROBORATION' in reasons and r.get('cluster_verified'):
+                  raise SystemExit('FATAL: uncorroborated linked component marked verified')
           s=json.loads(Path('data/holder-cluster-gate-summary.json').read_text())
           print('HOLDER CLUSTER RESEARCH:',s)
           PY
