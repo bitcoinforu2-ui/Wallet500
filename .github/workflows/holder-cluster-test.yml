@@ -9,6 +9,7 @@ on:
       - 'src/wallet500/cluster_corroboration.py'
       - 'src/wallet500/holder_cluster_promotion.py'
       - 'src/wallet500/holder_cluster_production_gate.py'
+      - 'src/wallet500/rejected_candidate_learning.py'
       - 'tests/test_holder_cluster_gate.py'
       - 'tests/test_cluster_corroboration.py'
       - 'tests/test_holder_cluster_promotion.py'
@@ -43,22 +44,32 @@ jobs:
         run: python -m wallet500.holder_cluster_promotion
       - name: Run production quarantine gate against active cohort
         run: python -m wallet500.holder_cluster_production_gate
+      - name: Update immutable rejected candidate learning ledger
+        run: python -m wallet500.rejected_candidate_learning
       - name: Validate fail-closed production output
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          for required in ('data/holder-cluster-gate.json','data/holder-cluster-promoted.json','data/holder-cluster-review.json','data/holder-cluster-blocked.json','data/holder-cluster-promotion-summary.json','data/holder-cluster-production-qualified.json','data/holder-cluster-quarantine.json','data/holder-cluster-production-blocked.json','data/holder-cluster-production-report.json'):
-              if not Path(required).exists(): raise SystemExit('FATAL: holder cluster output missing '+required)
-          d=json.loads(Path('data/holder-cluster-gate.json').read_text()); rows=d.get('rows',[])
-          if any(r.get('status')=='PASS' for r in rows):
-              raise SystemExit('FATAL: research gate emitted PASS before verified production evidence')
+          required=('data/holder-cluster-gate.json','data/holder-cluster-promoted.json','data/holder-cluster-review.json','data/holder-cluster-blocked.json','data/holder-cluster-promotion-summary.json','data/holder-cluster-production-qualified.json','data/holder-cluster-quarantine.json','data/holder-cluster-production-blocked.json','data/holder-cluster-production-report.json','data/rejected-candidate-ledger.json','data/rejected-candidate-learning-summary.json')
+          for name in required:
+              if not Path(name).exists(): raise SystemExit('FATAL: output missing '+name)
+          rows=json.loads(Path('data/holder-cluster-gate.json').read_text()).get('rows',[])
+          for r in rows:
+              st=r.get('status'); complete=r.get('verification_complete') is True
+              if st=='PASS' and not complete: raise SystemExit('FATAL: PASS without complete verification')
+              if st=='PASS' and (r.get('linked_cluster_candidates') or []): raise SystemExit('FATAL: linked cluster candidate received PASS')
+              if st=='BLOCK' and str(r.get('chain') or '').lower() in ('ethereum','eth','bsc','bnb') and not (r.get('metadata') or {}).get('complete'):
+                  raise SystemExit('FATAL: incomplete EVM reconstruction hard-blocked')
           promoted=json.loads(Path('data/holder-cluster-production-qualified.json').read_text())
-          if any(r.get('holder_cluster_production_status')!='PASS' or not r.get('holder_cluster_verified') for r in promoted):
+          if any(r.get('holder_cluster_production_status')!='PASS' or r.get('holder_cluster_verification_complete') is not True for r in promoted):
               raise SystemExit('FATAL: unsafe candidate reached production-qualified output')
           report=json.loads(Path('data/holder-cluster-production-report.json').read_text())
           if report.get('mode')!='PRODUCTION_FAIL_CLOSED': raise SystemExit('FATAL: production gate not fail-closed')
           if report.get('input_count') != report.get('promoted_count') + report.get('quarantine_count') + report.get('blocked_count'):
               raise SystemExit('FATAL: production gate lost candidates')
+          ledger=json.loads(Path('data/rejected-candidate-ledger.json').read_text())
+          if ledger.get('policy')!='IMMUTABLE_FIRST_REJECT_APPEND_ONLY_OBSERVATIONS_EXACT_PAIR_LOCKED': raise SystemExit('FATAL: reject ledger policy changed')
           print('HOLDER CLUSTER PRODUCTION:',report)
+          print('REJECT LEARNING:',json.loads(Path('data/rejected-candidate-learning-summary.json').read_text()))
           PY
