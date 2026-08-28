@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json
-from datetime import datetime, timezone
 from pathlib import Path
+from datetime import datetime, timezone
 
 
 def _load(path:Path,default):
@@ -47,31 +47,41 @@ def analyze_liquidity_pools(snapshots:list[dict],output_dir:Path,now:str)->dict:
             delta=liq-prev_liq if prev else 0.0
             pct=((liq/prev_liq)-1.0)*100.0 if prev and prev_liq>0 else None
             age=_pool_age_minutes(p.get("pair_created_at"),now_dt)
-            reasons=[]; score=0
+            reasons=[]; score=0; direction='INFLOW'; hard_block=False
             if prev:
+                if prev_liq>=50000 and liq<50000:
+                    reasons.append("TRADABLE_LIQUIDITY_LOST_BELOW_50K");score=100;direction='OUTFLOW';hard_block=True
+                if prev_liq>=50000 and pct is not None and pct<=-90:
+                    reasons.append("LIQUIDITY_EVACUATION_90PCT_PLUS");score=100;direction='OUTFLOW';hard_block=True
+                elif prev_liq>=50000 and pct is not None and pct<=-55:
+                    reasons.append("LIQUIDITY_EVACUATION_55PCT_PLUS");score=max(score,90);direction='OUTFLOW';hard_block=True
+                elif prev_liq>=50000 and pct is not None and pct<=-30:
+                    reasons.append("LIQUIDITY_OUTFLOW_30PCT_PLUS");score=max(score,65);direction='OUTFLOW'
                 if delta>=10000 and pct is not None and pct>=50:
                     reasons.append("LIQUIDITY_SURGE_50PCT_PLUS");score+=35
                 if prev_liq<20000<=liq and delta>=10000:
                     reasons.append("LIQUIDITY_THRESHOLD_BREAKOUT_20K");score+=25
                 if prev_liq<40000<=liq and delta>=15000:
                     reasons.append("LIQUIDITY_THRESHOLD_BREAKOUT_40K");score+=25
+                if prev_liq<50000<=liq:
+                    reasons.append("TRADABLE_LIQUIDITY_THRESHOLD_50K_CROSSED");score+=25
                 if delta>=50000:
                     reasons.append("MAJOR_LIQUIDITY_INFLOW_50K");score+=40
                 elif delta>=25000:
                     reasons.append("STRONG_LIQUIDITY_INFLOW_25K");score+=25
-            elif age is not None and age<=120 and liq>=25000:
-                reasons.append("NEW_POOL_FUNDED_25K_PLUS");score+=35
+            elif age is not None and age<=120 and liq>=50000:
+                reasons.append("NEW_POOL_FUNDED_50K_PLUS");score+=35
             vol=float(p.get("volume_h1") or 0); buys=int(p.get("buys_h1") or 0); sells=int(p.get("sells_h1") or 0)
-            if reasons and vol>=15000:
+            if reasons and direction=='INFLOW' and vol>=15000:
                 reasons.append("LIQUIDITY_PLUS_ACTIVE_VOLUME");score+=15
-            if reasons and buys>=50 and buys>sells:
+            if reasons and direction=='INFLOW' and buys>=50 and buys>sells:
                 reasons.append("BUYER_CONFIRMATION");score+=10
             score=min(100,score)
             if reasons:
-                signals.append({"chain":chain,"token":token,"pair_address":pair,"dex":p.get("dex"),"url":p.get("url"),"liquidity_usd":round(liq,2),"previous_liquidity_usd":round(prev_liq,2) if prev else None,"liquidity_delta_usd":round(delta,2) if prev else None,"liquidity_change_pct":round(pct,2) if pct is not None else None,"pool_age_minutes":round(age,1) if age is not None else None,"volume_h1":vol,"buys_h1":buys,"sells_h1":sells,"liquidity_signal_score":score,"reasons":reasons,"observed_at":now})
+                signals.append({"chain":chain,"token":token,"pair_address":pair,"dex":p.get("dex"),"url":p.get("url"),"liquidity_usd":round(liq,2),"previous_liquidity_usd":round(prev_liq,2) if prev else None,"liquidity_delta_usd":round(delta,2) if prev else None,"liquidity_change_pct":round(pct,2) if pct is not None else None,"pool_age_minutes":round(age,1) if age is not None else None,"volume_h1":vol,"buys_h1":buys,"sells_h1":sells,"liquidity_signal_score":score,"liquidity_direction":direction,"hard_block":hard_block,"reasons":reasons,"observed_at":now})
             pools_state[key]={"chain":chain,"token":token,"pair_address":pair,"dex":p.get("dex"),"first_seen":prev.get("first_seen") or now,"last_seen":now,"observations":int(prev.get("observations") or 0)+1,"last_liquidity_usd":liq,"peak_liquidity_usd":max(float(prev.get("peak_liquidity_usd") or 0),liq),"last_price_usd":p.get("price_usd"),"last_volume_h1":vol,"pair_created_at":p.get("pair_created_at")}
-    signals.sort(key=lambda x:(x.get("liquidity_signal_score",0),x.get("liquidity_delta_usd") or 0),reverse=True)
-    payload={"version":1,"method":"PAIR_LEVEL_LIQUIDITY_INFLOW_RADAR","updated_at":now,"observed_pools":observed,"signals":signals[:100]}
-    _write(state_path,{"version":1,"updated_at":now,"pools":pools_state})
+    signals.sort(key=lambda x:(bool(x.get('hard_block')),x.get("liquidity_signal_score",0),abs(x.get("liquidity_delta_usd") or 0)),reverse=True)
+    payload={"version":2,"method":"PAIR_LEVEL_LIQUIDITY_INFLOW_AND_EVACUATION_RADAR","updated_at":now,"observed_pools":observed,"hard_blocks":sum(1 for x in signals if x.get('hard_block')),"signals":signals[:100]}
+    _write(state_path,{"version":2,"updated_at":now,"pools":pools_state})
     _write(output_dir/"pool-liquidity-radar.json",payload)
     return payload
