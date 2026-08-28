@@ -41,6 +41,8 @@ jobs:
         run: python -m wallet500.orchestrator
       - name: Apply universal live survival gate
         run: python -m wallet500.fresh_solana_gate
+      - name: Revalidate immutable exact pairs
+        run: python -m wallet500.exact_pair_survival
       - name: Apply production liquidity hardening gate
         run: python -m wallet500.production_risk_gate
       - name: Capture immutable qualified evidence
@@ -88,7 +90,7 @@ jobs:
           c=json.loads(cpath.read_text())
           if c.get('contracts_seen',0)<=0: raise SystemExit('FATAL: CEX radar empty')
           if c.get('healthy_sources',0)<2: raise SystemExit('FATAL: fewer than 2 healthy CEX sources')
-          for required in ('data/cex-state.json','data/cex-learning.json','data/time-machine-replay.json','data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/discovery-evidence-ledger.json','data/scheduler-health.json','data/telegram-alert-report.json','data/production-risk-evaluations.json','data/production-risk-blocked.json'):
+          for required in ('data/cex-state.json','data/cex-learning.json','data/time-machine-replay.json','data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/discovery-evidence-ledger.json','data/scheduler-health.json','data/telegram-alert-report.json','data/production-risk-evaluations.json','data/production-risk-blocked.json','data/exact-pair-survival-report.json'):
               if not Path(required).exists(): raise SystemExit('FATAL: missing '+required)
           wp=Path('data/wallet-candidates.json')
           if wp.exists():
