@@ -1,0 +1,71 @@
+name: Wallet500 Immutable Performance Tracker
+
+on:
+  workflow_run:
+    workflows: ["Wallet500 Multi-Chain Live Scan"]
+    types: [completed]
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/performance_tracker.py'
+      - '.github/workflows/performance-tracker.yml'
+  schedule:
+    - cron: '9,24,39,54 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-performance-tracker
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e .
+      - name: Rebuild and update immutable Performance Since Discovery
+        run: python -m wallet500.performance_tracker
+      - name: Validate measurement integrity
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/outcome-tracker.json')
+          s=Path('data/signal-outcomes.json')
+          r=Path('data/performance-measurement-report.json')
+          for x in (p,s,r):
+              if not x.exists() or x.stat().st_size == 0:
+                  raise SystemExit('FATAL: empty measurement output: '+str(x))
+          d=json.loads(p.read_text())
+          if d.get('tracked_tokens',0) <= 0:
+              raise SystemExit('FATAL: tracker attempted to publish zero tracked tokens')
+          print('PERFORMANCE TRACKER:',d.get('tracked_tokens'),'tracked;',d.get('updated_this_run'),'updated;',d.get('verified_positive_now'),'positive;',d.get('verified_negative_now'),'negative')
+          PY
+      - name: Publish measurement data
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-bot'
+          git config user.email 'wallet500-bot@users.noreply.github.com'
+          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'data: refresh immutable performance measurements'
+            for attempt in 1 2 3 4 5; do
+              git fetch origin main
+              git merge --no-edit -X ours origin/main
+              if git push origin HEAD:main; then break; fi
+              sleep 3
+              if [ "$attempt" = 5 ]; then exit 1; fi
+            done
+          fi
