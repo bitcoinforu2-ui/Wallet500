@@ -2,6 +2,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+MIN_LIVE_LIQUIDITY_USD = 50_000.0
+
 
 def _load(path: Path, default):
     try:
@@ -31,9 +33,8 @@ def _dt(value):
 def _verified_survival(candidate: dict, outcomes: dict) -> tuple[bool, list[str], dict]:
     """Universal ACTIVE-board survival gate for every chain.
 
-    Qualification is an immutable historical event. ACTIVE is temporary and
-    must survive current verified market structure. Failed items stay in audit
-    and learning data but are excluded from investor-facing live candidates.
+    Qualification is immutable history. ACTIVE requires current tradable market
+    structure, including Wallet500's hard $50K live-liquidity floor.
     """
     chain = candidate.get("chain")
     token = candidate.get("token") or candidate.get("mint") or ""
@@ -62,8 +63,8 @@ def _verified_survival(candidate: dict, outcomes: dict) -> tuple[bool, list[str]
         reasons.append("VERIFIED_RETURN_BELOW_MINUS_25PCT")
     if peak_dd is not None and peak_dd <= -25:
         reasons.append("VERIFIED_PEAK_DRAWDOWN_BELOW_MINUS_25PCT")
-    if liq < 20000:
-        reasons.append("CURRENT_LIQUIDITY_BELOW_20K")
+    if liq < MIN_LIVE_LIQUIDITY_USD:
+        reasons.append("CURRENT_LIQUIDITY_BELOW_50K")
     if vol < 15000:
         reasons.append("CURRENT_VOLUME_1H_BELOW_15K")
     if tx < 50:
@@ -116,8 +117,6 @@ def evaluate(candidate: dict, outcomes: dict, now: datetime | None = None) -> di
         return result
     result["pair_age_minutes"] = round(pair_age, 2)
 
-    # Established enough to leave the special fresh-launch lane, while still
-    # remaining subject to the universal live survival gate above.
     if pair_age >= 120:
         return result
 
@@ -132,10 +131,8 @@ def evaluate(candidate: dict, outcomes: dict, now: datetime | None = None) -> di
     tx = buys + sells
     ratio = buys / max(sells, 1)
 
-    if pair_age < 60 and liq < 50000 and tx >= 500 and ratio >= 6.0:
+    if pair_age < 60 and liq < MIN_LIVE_LIQUIDITY_USD and tx >= 500 and ratio >= 6.0:
         hard_fail.append("EXTREME_BUY_SKEW_THIN_FRESH_LIQUIDITY")
-    if liq < 30000:
-        reasons.append("FRESH_SOLANA_LIQUIDITY_LT_30K")
 
     if history:
         first = history[0]
@@ -173,8 +170,6 @@ def evaluate(candidate: dict, outcomes: dict, now: datetime | None = None) -> di
         reasons.append("NEED_2_VERIFIED_OBSERVATIONS")
     if result["observation_span_minutes"] < 10:
         reasons.append("OBSERVATION_SPAN_LT_10M")
-    if liq < 30000:
-        reasons.append("NEED_LIQUIDITY_GE_30K")
     if ratio < 1.10 and sells >= 50:
         reasons.append("BUYER_PRESSURE_NOT_SURVIVING")
 
@@ -247,7 +242,7 @@ def apply(output_dir: str = "data") -> dict:
         summary["live_survival_policy"] = {
             "max_verified_loss_pct": -25,
             "max_peak_drawdown_pct": -25,
-            "min_liquidity_usd": 20000,
+            "min_liquidity_usd": int(MIN_LIVE_LIQUIDITY_USD),
             "min_volume_h1_usd": 15000,
             "min_activity_h1": 50,
             "pump_reversal_h1_pct": 120,
@@ -257,7 +252,7 @@ def apply(output_dir: str = "data") -> dict:
             "max_special_lane_age_minutes": 120,
             "min_pair_age_for_active_minutes": 45,
             "min_verified_observation_span_minutes": 10,
-            "min_fresh_liquidity_usd": 30000,
+            "min_fresh_liquidity_usd": int(MIN_LIVE_LIQUIDITY_USD),
             "min_liquidity_retention": 0.70,
             "max_peak_drawdown_pct": -25,
             "extreme_buy_skew_ratio": 6.0,
