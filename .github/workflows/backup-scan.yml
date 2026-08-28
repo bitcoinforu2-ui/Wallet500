@@ -59,6 +59,15 @@ jobs:
       - name: Apply universal live survival gate
         if: steps.stale.outputs.stale == 'true'
         run: python -m wallet500.fresh_solana_gate
+      - name: Capture immutable qualified evidence
+        if: steps.stale.outputs.stale == 'true'
+        run: python -m wallet500.evidence_capture
+      - name: Send gated Telegram alerts
+        if: steps.stale.outputs.stale == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m wallet500.telegram_alerts
       - name: Extract verified Solana wallet candidates
         if: steps.stale.outputs.stale == 'true'
         continue-on-error: true
@@ -87,6 +96,9 @@ jobs:
           hist.append(item); hist=hist[-200:]
           hp.write_text(json.dumps({'updated_at':now,'last':item,'history':hist},indent=2))
           PY
+      - name: Validate alert report
+        if: steps.stale.outputs.stale == 'true'
+        run: test -s data/telegram-alert-report.json
       - name: Publish recovered scan data
         if: steps.stale.outputs.stale == 'true'
         run: |
