@@ -40,6 +40,11 @@ jobs:
         run: python -m wallet500.fresh_solana_gate
       - name: Capture immutable qualified evidence
         run: python -m wallet500.evidence_capture
+      - name: Send gated Telegram alerts
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m wallet500.telegram_alerts
       - name: Extract verified Solana wallet candidates
         continue-on-error: true
         run: python -m wallet500.wallet_candidate_discovery
@@ -78,7 +83,7 @@ jobs:
           c=json.loads(cpath.read_text())
           if c.get('contracts_seen',0)<=0: raise SystemExit('FATAL: CEX radar empty')
           if c.get('healthy_sources',0)<2: raise SystemExit('FATAL: fewer than 2 healthy CEX sources')
-          for required in ('data/cex-state.json','data/cex-learning.json','data/time-machine-replay.json','data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/discovery-evidence-ledger.json','data/scheduler-health.json'):
+          for required in ('data/cex-state.json','data/cex-learning.json','data/time-machine-replay.json','data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/discovery-evidence-ledger.json','data/scheduler-health.json','data/telegram-alert-report.json'):
               if not Path(required).exists(): raise SystemExit('FATAL: missing '+required)
           wp=Path('data/wallet-candidates.json')
           if wp.exists():
@@ -86,6 +91,9 @@ jobs:
               print('WALLET FORENSICS:',w.get('verified_wallet_candidates',0),'verified candidates; EVM deferred',w.get('evm_candidates_deferred',0))
           else:
               print('DEGRADED RESEARCH LANE: wallet-candidates.json missing; primary lane remains healthy')
+          ap=Path('data/telegram-alert-report.json')
+          a=json.loads(ap.read_text())
+          print('TELEGRAM ALERTS: configured',a.get('configured'),'eligible',a.get('eligible_count',0),'delivered',a.get('delivered_count',0),'errors',a.get('error_count',0))
           print('HEALTHY LIVE SCAN:',d['updated_at'],'active',d.get('active_qualified',0),'pending',d.get('live_survival_pending',0),'failed',d.get('live_survival_failed',0))
           PY
       - name: Publish verified scan data
