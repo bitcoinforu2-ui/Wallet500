@@ -42,23 +42,24 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          p=Path('data/outcome-tracker.json')
-          s=Path('data/signal-outcomes.json')
-          r=Path('data/performance-measurement-report.json')
-          for x in (p,s,r):
+          paths=[Path('data/outcome-tracker.json'),Path('data/signal-outcomes.json'),Path('data/performance-measurement-report.json'),Path('data/performance-leaderboard.json')]
+          for x in paths:
               if not x.exists() or x.stat().st_size == 0:
                   raise SystemExit('FATAL: empty measurement output: '+str(x))
-          d=json.loads(p.read_text())
+          d=json.loads(paths[0].read_text())
+          lb=json.loads(paths[3].read_text())
           if d.get('tracked_tokens',0) <= 0:
               raise SystemExit('FATAL: tracker attempted to publish zero tracked tokens')
-          print('PERFORMANCE TRACKER:',d.get('tracked_tokens'),'tracked;',d.get('updated_this_run'),'updated;',d.get('verified_positive_now'),'positive;',d.get('verified_negative_now'),'negative')
+          if lb.get('verified_count',0) != len(lb.get('rows') or []):
+              raise SystemExit('FATAL: leaderboard count mismatch')
+          print('PERFORMANCE TRACKER:',d.get('tracked_tokens'),'tracked;',d.get('updated_this_run'),'updated;',lb.get('verified_winners'),'winners;',lb.get('verified_losers'),'losers; win rate',lb.get('win_rate_pct'))
           PY
       - name: Publish measurement data
         run: |
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json
+          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json
           if ! git diff --cached --quiet; then
             git commit -m 'data: refresh immutable performance measurements'
             for attempt in 1 2 3 4 5; do
