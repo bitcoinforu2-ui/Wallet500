@@ -134,21 +134,26 @@ def analyze(row):
  sol_complete=c in ('SOL','SOLANA') and bool(meta.get('owner_resolution_complete'))
  evm_complete=c in ('ETH','ETHEREUM','BSC','BNB') and bool(meta.get('complete'))
  if c in ('SOL','SOLANA') and not sol_complete: reasons.append('SOME_TOKEN_ACCOUNT_OWNERS_UNRESOLVED')
- # Concentration can hard-block only when the holder denominator is trustworthy.
  hard_concentration=sol_complete or evm_complete
  if top1>MAX_TOP1: reasons.append('TOP1_OWNER_CONCENTRATION_HIGH' if hard_concentration else 'TOP1_CONCENTRATION_HIGH_REVIEW_ONLY')
  if top5>MAX_TOP5: reasons.append('TOP5_OWNER_CONCENTRATION_HIGH' if hard_concentration else 'TOP5_CONCENTRATION_HIGH_REVIEW_ONLY')
  if top10>MAX_TOP10: reasons.append('TOP10_OWNER_CONCENTRATION_HIGH' if hard_concentration else 'TOP10_CONCENTRATION_HIGH_REVIEW_ONLY')
  linked=[x for x in clusters if x.get('combined_pct',0)>=CLUSTER_REVIEW_PCT]
  if linked: reasons.append('LINKED_TOP_HOLDER_COMPONENT_REQUIRES_CORROBORATION')
- # Direct token transfers are linkage evidence, never proof of common ownership.
  hard_block=hard_concentration and any(x in reasons for x in ('TOP1_OWNER_CONCENTRATION_HIGH','TOP5_OWNER_CONCENTRATION_HIGH','TOP10_OWNER_CONCENTRATION_HIGH'))
  status='BLOCK' if hard_block else 'REVIEW'
  level='ONCHAIN_OWNER_CONCENTRATION_RESOLVED' if sol_complete and holders else ('FULL_EVM_TRANSFER_LEDGER' if evm_complete and holders else ('BOUNDED_ONCHAIN_TRANSFER_LEDGER' if holders else 'INSUFFICIENT_EVIDENCE'))
  return {'chain':chain,'token':token,'pair_address':row.get('pair_address') or row.get('locked_pair_address'),'checked_at':datetime.now(timezone.utc).isoformat(),'status':status,'top_holders_count':len(holders),'top1_pct':round(top1,4),'top5_pct':round(top5,4),'top10_pct':round(top10,4),'cluster_verified':False,'linked_cluster_candidates':linked,'reasons':list(dict.fromkeys(reasons)),'evidence_level':level,'metadata':meta,'holders':holders,'token_accounts':token_accounts,'transfer_graph':graph}
 
+def _rows_from_source(src):
+ if isinstance(src,list): return src
+ if isinstance(src,dict):
+  rows=src.get('rows',[])
+  return rows if isinstance(rows,list) else []
+ return []
+
 def run():
- src=_load(DATA/INPUT_FILE,{}); rows=src.get('rows',src if isinstance(src,list) else []); rows=rows if isinstance(rows,list) else []; out=[]; seen=set()
+ src=_load(DATA/INPUT_FILE,{}); rows=_rows_from_source(src); out=[]; seen=set()
  for r in rows:
   if not isinstance(r,dict): continue
   chain=r.get('chain'); token=r.get('token') or r.get('token_address') or r.get('mint'); key=(str(chain),str(token))
