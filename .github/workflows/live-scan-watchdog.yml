@@ -58,6 +58,15 @@ jobs:
       - name: Apply fresh Solana survival gate
         if: steps.freshness.outputs.stale == 'true'
         run: python -m wallet500.fresh_solana_gate
+      - name: Capture immutable qualified evidence
+        if: steps.freshness.outputs.stale == 'true'
+        run: python -m wallet500.evidence_capture
+      - name: Send gated Telegram alerts
+        if: steps.freshness.outputs.stale == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m wallet500.telegram_alerts
       - name: Record watchdog telemetry
         env:
           W500_EVENT: ${{ github.event_name }}
@@ -95,7 +104,7 @@ jobs:
           age=(datetime.now(timezone.utc)-ts).total_seconds()
           if age>300: raise SystemExit(f'FATAL: recovery output stale ({age:.0f}s)')
           if not d.get('verified_only'): raise SystemExit('FATAL: recovery output not verified-only')
-          for required in ('data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/scheduler-health.json'):
+          for required in ('data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/scheduler-health.json','data/telegram-alert-report.json'):
               if not Path(required).exists(): raise SystemExit('FATAL: missing '+required)
           print('WATCHDOG RECOVERY HEALTHY', d['updated_at'], 'active', d.get('active_qualified',0), 'pending', d.get('fresh_solana_pending',0), 'failed', d.get('fresh_solana_failed',0))
           PY
