@@ -3,7 +3,7 @@ name: Wallet500 Live Scan Watchdog
 on:
   workflow_dispatch:
   schedule:
-    - cron: '7,17,27,37,47,57 * * * *'
+    - cron: '13,28,43,58 * * * *'
 
 permissions:
   contents: write
@@ -112,6 +112,7 @@ jobs:
             git merge --no-edit -X ours origin/main
             if git push origin HEAD:main; then exit 0; fi
             echo "Push raced with main; retrying watchdog publish (attempt $attempt)"
+            sleep 3
           done
           echo 'FATAL: watchdog failed to publish after retries'
           exit 1
