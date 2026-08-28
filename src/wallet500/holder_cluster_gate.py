@@ -4,10 +4,12 @@ from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import Request, urlopen
+from .cluster_corroboration import verify_evm_deployer, verified_native_funding_edges, corroborate_clusters
 
 DATA=Path('data'); TOP_N=20
 MAX_TOP1=20.0; MAX_TOP5=50.0; MAX_TOP10=65.0
 CLUSTER_REVIEW_PCT=float(os.getenv('HOLDER_CLUSTER_REVIEW_PCT','10'))
+CLUSTER_BLOCK_PCT=float(os.getenv('HOLDER_CLUSTER_BLOCK_PCT','20'))
 TRANSFER_TOPIC='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 TOTAL_SUPPLY_SELECTOR='0x18160ddd'
 ZERO='0x0000000000000000000000000000000000000000'
@@ -122,11 +124,16 @@ def _evm_holders(chain,token,row):
  return holders,graph,clusters,{'complete':complete,'reason':reason,'from_block':start,'to_block':latest_i,'logs_seen':logs_seen,'chunks':chunks,'lookback_blocks':latest_i-start,'observed_positive_holders':len(positive),'total_supply_raw':str(total_supply) if total_supply else None,'start_block_verified':start_verified,'start_block_source':start_source,'infrastructure_exclusions':sorted(x for x in exclusions if x)}
 
 def analyze(row):
- chain=row.get('chain'); token=row.get('token') or row.get('token_address') or row.get('mint'); c=str(chain or '').upper(); reasons=[]; token_accounts=[]; graph=[]; clusters=[]; meta={}
+ chain=row.get('chain'); token=row.get('token') or row.get('token_address') or row.get('mint'); c=str(chain or '').upper(); reasons=[]; token_accounts=[]; graph=[]; clusters=[]; meta={}; deployer_evidence={'verified':False,'reason':'NOT_APPLICABLE'}; funding=[]
  if c in ('SOL','SOLANA'):
   holders,token_accounts,meta=_sol_holders(token)
  elif c in ('ETH','ETHEREUM','BSC','BNB'):
   holders,graph,clusters,meta=_evm_holders(c,str(token).lower(),row)
+  url=RPC.get(c,'')
+  deployer_evidence=verify_evm_deployer(lambda method,params:_rpc_url(url,method,params),str(token).lower(),row)
+  funding=verified_native_funding_edges(row)
+  clusters=corroborate_clusters(clusters,graph,deployer_evidence,funding)
+  meta={**meta,'deployer_evidence':deployer_evidence,'verified_native_funding_edges':len(funding)}
   if not meta.get('complete'): reasons.append(meta.get('reason','EVM_EVIDENCE_INCOMPLETE'))
  else: holders=[]; reasons.append('UNSUPPORTED_CHAIN')
  p=sorted((float(x.get('pct') or 0) for x in holders),reverse=True); top1=sum(p[:1]); top5=sum(p[:5]); top10=sum(p[:10])
@@ -139,11 +146,13 @@ def analyze(row):
  if top5>MAX_TOP5: reasons.append('TOP5_OWNER_CONCENTRATION_HIGH' if hard_concentration else 'TOP5_CONCENTRATION_HIGH_REVIEW_ONLY')
  if top10>MAX_TOP10: reasons.append('TOP10_OWNER_CONCENTRATION_HIGH' if hard_concentration else 'TOP10_CONCENTRATION_HIGH_REVIEW_ONLY')
  linked=[x for x in clusters if x.get('combined_pct',0)>=CLUSTER_REVIEW_PCT]
+ corroborated=[x for x in linked if x.get('risk_corroborated') and x.get('combined_pct',0)>=CLUSTER_BLOCK_PCT]
  if linked: reasons.append('LINKED_TOP_HOLDER_COMPONENT_REQUIRES_CORROBORATION')
- hard_block=hard_concentration and any(x in reasons for x in ('TOP1_OWNER_CONCENTRATION_HIGH','TOP5_OWNER_CONCENTRATION_HIGH','TOP10_OWNER_CONCENTRATION_HIGH'))
+ if corroborated: reasons.append('CORROBORATED_LINKED_HOLDER_CLUSTER_GE_20PCT')
+ hard_block=(hard_concentration and any(x in reasons for x in ('TOP1_OWNER_CONCENTRATION_HIGH','TOP5_OWNER_CONCENTRATION_HIGH','TOP10_OWNER_CONCENTRATION_HIGH'))) or bool(corroborated)
  status='BLOCK' if hard_block else 'REVIEW'
  level='ONCHAIN_OWNER_CONCENTRATION_RESOLVED' if sol_complete and holders else ('FULL_EVM_TRANSFER_LEDGER' if evm_complete and holders else ('BOUNDED_ONCHAIN_TRANSFER_LEDGER' if holders else 'INSUFFICIENT_EVIDENCE'))
- return {'chain':chain,'token':token,'pair_address':row.get('pair_address') or row.get('locked_pair_address'),'checked_at':datetime.now(timezone.utc).isoformat(),'status':status,'top_holders_count':len(holders),'top1_pct':round(top1,4),'top5_pct':round(top5,4),'top10_pct':round(top10,4),'cluster_verified':False,'linked_cluster_candidates':linked,'reasons':list(dict.fromkeys(reasons)),'evidence_level':level,'metadata':meta,'holders':holders,'token_accounts':token_accounts,'transfer_graph':graph}
+ return {'chain':chain,'token':token,'pair_address':row.get('pair_address') or row.get('locked_pair_address'),'checked_at':datetime.now(timezone.utc).isoformat(),'status':status,'top_holders_count':len(holders),'top1_pct':round(top1,4),'top5_pct':round(top5,4),'top10_pct':round(top10,4),'cluster_verified':bool(corroborated),'linked_cluster_candidates':linked,'corroborated_cluster_risks':corroborated,'deployer_evidence':deployer_evidence,'verified_native_funding_edges':funding,'reasons':list(dict.fromkeys(reasons)),'evidence_level':level,'metadata':meta,'holders':holders,'token_accounts':token_accounts,'transfer_graph':graph}
 
 def _rows_from_source(src):
  if isinstance(src,list): return src
@@ -159,8 +168,8 @@ def run():
   chain=r.get('chain'); token=r.get('token') or r.get('token_address') or r.get('mint'); key=(str(chain),str(token))
   if not chain or not token or key in seen: continue
   seen.add(key); out.append(analyze(r))
- now=datetime.now(timezone.utc).isoformat(); payload={'updated_at':now,'method':'WALLET500_HOLDER_CLUSTER_PRETRADE_GATE_V1_3_LINKED_COMPONENTS','input_file':INPUT_FILE,'truth_note':'Solana concentration is owner-resolved. EVM can hard-block concentration only with a verified start block and verified total supply. Direct token-transfer components are linkage evidence only, never proof of common ownership; they remain REVIEW until corroborated by funding/deployer/insider evidence. No incomplete evidence can PASS.','rows':out}
- _write(DATA/'holder-cluster-gate.json',payload); _write(DATA/'holder-cluster-gate-summary.json',{'updated_at':now,'input_file':INPUT_FILE,'checked':len(out),'block':sum(x['status']=='BLOCK' for x in out),'review':sum(x['status']=='REVIEW' for x in out),'pass':sum(x['status']=='PASS' for x in out),'linked_cluster_candidates':sum(len(x.get('linked_cluster_candidates') or []) for x in out)})
+ now=datetime.now(timezone.utc).isoformat(); payload={'updated_at':now,'method':'WALLET500_HOLDER_CLUSTER_PRETRADE_GATE_V1_4_CORROBORATION','input_file':INPUT_FILE,'truth_note':'Direct token-transfer components are linkage evidence only. A linked cluster can hard-block only when >= configured block share and corroborated by a verified contract deployer distributing directly to multiple component wallets or an independently verified common native funder. Common ownership is never claimed. Incomplete EVM history cannot hard-block concentration.','rows':out}
+ _write(DATA/'holder-cluster-gate.json',payload); _write(DATA/'holder-cluster-gate-summary.json',{'updated_at':now,'input_file':INPUT_FILE,'checked':len(out),'block':sum(x['status']=='BLOCK' for x in out),'review':sum(x['status']=='REVIEW' for x in out),'pass':sum(x['status']=='PASS' for x in out),'linked_cluster_candidates':sum(len(x.get('linked_cluster_candidates') or []) for x in out),'corroborated_cluster_risks':sum(len(x.get('corroborated_cluster_risks') or []) for x in out)})
  print(json.dumps(_load(DATA/'holder-cluster-gate-summary.json',{}),indent=2)); return payload
 
 if __name__=='__main__': run()
