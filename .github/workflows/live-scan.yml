@@ -45,12 +45,25 @@ jobs:
         run: python -m wallet500.exact_pair_survival
       - name: Apply production liquidity hardening gate
         run: python -m wallet500.production_risk_gate
+      - name: Analyze holder and cluster risk on exact active pairs
+        env:
+          HOLDER_CLUSTER_INPUT: active-qualified-candidates.json
+          ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
+          BSC_RPC_URL: ${{ secrets.BSC_RPC_URL }}
+        run: python -m wallet500.holder_cluster_gate
+      - name: Apply fail-closed holder cluster production gate
+        run: python -m wallet500.holder_cluster_production_gate
+      - name: Preserve rejected and quarantined candidates for learning
+        run: python -m wallet500.rejected_candidate_learning
       - name: Capture immutable qualified evidence
+        env:
+          WALLET500_EVIDENCE_INPUT: holder-cluster-production-qualified.json
         run: python -m wallet500.evidence_capture
       - name: Send gated Telegram alerts
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          WALLET500_ALERT_INPUT: holder-cluster-production-qualified.json
         run: python -m wallet500.telegram_alerts
       - name: Extract verified Solana wallet candidates
         continue-on-error: true
@@ -75,7 +88,7 @@ jobs:
           h.append(row); h=h[-200:]
           p.write_text(json.dumps({'updated_at':now,'last':row,'history':h},indent=2))
           PY
-      - name: Validate primary revival lane and report degraded research lanes
+      - name: Validate primary live lane and learning integrity
         run: |
           python - <<'PY'
           import json
@@ -90,19 +103,36 @@ jobs:
           c=json.loads(cpath.read_text())
           if c.get('contracts_seen',0)<=0: raise SystemExit('FATAL: CEX radar empty')
           if c.get('healthy_sources',0)<2: raise SystemExit('FATAL: fewer than 2 healthy CEX sources')
-          for required in ('data/cex-state.json','data/cex-learning.json','data/time-machine-replay.json','data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/discovery-evidence-ledger.json','data/scheduler-health.json','data/telegram-alert-report.json','data/production-risk-evaluations.json','data/production-risk-blocked.json','data/exact-pair-survival-report.json'):
-              if not Path(required).exists(): raise SystemExit('FATAL: missing '+required)
+          required=(
+            'data/cex-state.json','data/cex-learning.json','data/time-machine-replay.json','data/fresh-solana-survival.json',
+            'data/active-qualified-candidates.json','data/discovery-evidence-ledger.json','data/scheduler-health.json','data/telegram-alert-report.json',
+            'data/production-risk-evaluations.json','data/production-risk-blocked.json','data/exact-pair-survival-report.json',
+            'data/holder-cluster-gate.json','data/holder-cluster-production-qualified.json','data/holder-cluster-quarantine.json',
+            'data/holder-cluster-production-blocked.json','data/holder-cluster-production-report.json',
+            'data/rejected-candidate-ledger.json','data/rejected-candidate-learning-summary.json')
+          for name in required:
+              if not Path(name).exists(): raise SystemExit('FATAL: missing '+name)
+          hreport=json.loads(Path('data/holder-cluster-production-report.json').read_text())
+          if hreport.get('mode')!='PRODUCTION_FAIL_CLOSED': raise SystemExit('FATAL: holder cluster gate not fail-closed')
+          promoted=json.loads(Path('data/holder-cluster-production-qualified.json').read_text())
+          for row in promoted:
+              if row.get('holder_cluster_production_status')!='PASS' or row.get('holder_cluster_verification_complete') is not True:
+                  raise SystemExit('FATAL: unsafe holder/cluster candidate reached downstream')
+          ap=json.loads(Path('data/telegram-alert-report.json').read_text())
+          if (ap.get('policy') or {}).get('source')!='holder-cluster-production-qualified.json':
+              raise SystemExit('FATAL: Telegram bypasses holder cluster production gate')
+          ev=json.loads(Path('data/discovery-evidence-ledger.json').read_text())
+          if ev.get('source')!='holder-cluster-production-qualified.json':
+              raise SystemExit('FATAL: evidence capture bypasses holder cluster production gate')
           wp=Path('data/wallet-candidates.json')
           if wp.exists():
-              w=json.loads(wp.read_text())
-              print('WALLET FORENSICS:',w.get('verified_wallet_candidates',0),'verified candidates; EVM deferred',w.get('evm_candidates_deferred',0))
-          else:
-              print('DEGRADED RESEARCH LANE: wallet-candidates.json missing; primary lane remains healthy')
-          ap=Path('data/telegram-alert-report.json')
-          a=json.loads(ap.read_text())
+              w=json.loads(wp.read_text()); print('WALLET FORENSICS:',w.get('verified_wallet_candidates',0),'verified candidates; EVM deferred',w.get('evm_candidates_deferred',0))
+          else: print('DEGRADED RESEARCH LANE: wallet-candidates.json missing; primary lane remains healthy')
           rg=d.get('production_risk_gate') or {}
           print('PRODUCTION RISK GATE: before',rg.get('active_before_gate',0),'after',rg.get('active_after_gate',0),'blocked',rg.get('blocked_now',0),'min_liq',rg.get('min_live_liquidity_usd'))
-          print('TELEGRAM ALERTS: configured',a.get('configured'),'eligible',a.get('eligible_count',0),'delivered',a.get('delivered_count',0),'errors',a.get('error_count',0))
+          print('HOLDER CLUSTER: input',hreport.get('input_count'),'promoted',hreport.get('promoted_count'),'quarantine',hreport.get('quarantine_count'),'blocked',hreport.get('blocked_count'))
+          print('REJECT LEARNING:',json.loads(Path('data/rejected-candidate-learning-summary.json').read_text()))
+          print('TELEGRAM ALERTS: configured',ap.get('configured'),'eligible',ap.get('eligible_count',0),'delivered',ap.get('delivered_count',0),'errors',ap.get('error_count',0))
           print('HEALTHY LIVE SCAN:',d['updated_at'],'active',d.get('active_qualified',0),'pending',d.get('live_survival_pending',0),'failed',d.get('live_survival_failed',0))
           PY
       - name: Publish verified scan data
