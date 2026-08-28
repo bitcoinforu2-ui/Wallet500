@@ -14,6 +14,7 @@ on:
       - 'tests/test_cluster_corroboration.py'
       - 'tests/test_holder_cluster_promotion.py'
       - 'tests/test_holder_cluster_production_gate.py'
+      - 'tests/test_rejected_candidate_learning.py'
       - '.github/workflows/holder-cluster-test.yml'
       - 'data/qualified-candidates.json'
       - 'data/active-qualified-candidates.json'
@@ -33,7 +34,7 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Unit-test holder cluster production truth rules
-        run: pytest -q tests/test_holder_cluster_gate.py tests/test_cluster_corroboration.py tests/test_holder_cluster_promotion.py tests/test_holder_cluster_production_gate.py
+        run: pytest -q tests/test_holder_cluster_gate.py tests/test_cluster_corroboration.py tests/test_holder_cluster_promotion.py tests/test_holder_cluster_production_gate.py tests/test_rejected_candidate_learning.py
       - name: Analyze research qualified cohort
         env:
           HOLDER_CLUSTER_INPUT: qualified-candidates.json
