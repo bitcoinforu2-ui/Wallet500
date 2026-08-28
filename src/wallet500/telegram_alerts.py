@@ -59,18 +59,19 @@ def _tier(row: dict) -> str | None:
     activity = int(row.get("live_activity_h1") or 0)
     risk = str(row.get("pump_dump_risk_level") or "").upper()
 
-    if liquidity < 20_000 or volume < 15_000 or activity < 50:
+    # Wallet500 iron rule: no live/Telegram alert below $50K liquidity.
+    if liquidity < 50_000 or volume < 15_000 or activity < 50:
         return None
     if risk in {"HIGH", "CRITICAL"}:
         return None
 
-    if score >= 90 and liquidity >= 50_000 and volume >= 30_000 and risk == "LOW":
+    if score >= 90 and volume >= 30_000 and risk == "LOW":
         return "HIGH_CONVICTION"
     return "QUALIFIED"
 
 
 def _message(row: dict, tier: str) -> str:
-    chain = str(row.get("chain") or "unknown").upper()
+    chain = str(row.get("chain") or "unknown").upper().replace("BSC", "BNB")
     token = str(row.get("token") or row.get("mint") or "unknown")
     score = float(row.get("anomaly_score") or 0)
     risk = str(row.get("pump_dump_risk_level") or "n/a").upper()
@@ -80,7 +81,7 @@ def _message(row: dict, tier: str) -> str:
     sells = int(row.get("sells_h1") or 0)
     price = row.get("price_usd")
     age = row.get("pair_age_minutes")
-    title = "🔥 HIGH CONVICTION" if tier == "HIGH_CONVICTION" else "🚨 QUALIFIED"
+    title = "🔥 HIGH CONVICTION" if tier == "HIGH_CONVICTION" else "🚨 VERIFIED LIVE"
     age_text = f"{float(age):.0f}m" if age is not None else "n/a"
     dex_url = row.get("url") or ""
 
@@ -90,12 +91,13 @@ def _message(row: dict, tier: str) -> str:
         f"Token: {token}",
         f"Score: {score:.0f}/100",
         f"Price: {_fmt_money(price)}",
-        f"Liquidity: {_fmt_money(liquidity)}",
+        f"Liquidity: {_fmt_money(liquidity)} ✅ min $50K",
         f"Volume 1H: {_fmt_money(volume)}",
         f"Buys/Sells 1H: {buys}/{sells}",
         f"Age: {age_text}",
         f"Pump/Dump Risk: {risk}",
         "Discovery snapshot locked: YES",
+        "Verified Intelligence. The Pure Truth.",
     ]
     if dex_url:
         lines.append(f"DexScreener: {dex_url}")
@@ -157,13 +159,12 @@ def run() -> dict:
         except Exception as exc:
             errors.append({"key": key, "error": f"{type(exc).__name__}: {exc}"[:300]})
 
-    # Keep bounded dedupe history so this file never grows without limit.
     if len(sent) > 5000:
         items = sorted(sent.items(), key=lambda kv: kv[1].get("sent_at", ""), reverse=True)[:5000]
         sent = dict(items)
 
     report = {
-        "version": 1,
+        "version": 2,
         "updated_at": now,
         "configured": configured,
         "candidate_count": len(candidates),
@@ -179,7 +180,7 @@ def run() -> dict:
                 "qualification=QUALIFIED",
                 "live_survival_gate=ACTIVE",
                 "pump_dump_blocked=false",
-                "liquidity>=20000",
+                "liquidity>=50000",
                 "volume_h1>=15000",
                 "activity_h1>=50",
                 "risk not HIGH/CRITICAL",
