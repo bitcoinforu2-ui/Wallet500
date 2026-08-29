@@ -5,25 +5,59 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 DATA = Path('data')
 OUT = DATA / 'mature-pool-research.json'
 BASE = 'https://api.geckoterminal.com/api/v2'
-NETWORKS = {'ethereum': 'eth', 'bsc': 'bsc', 'solana': 'solana'}
+NETWORKS = {'bsc': 'bsc', 'solana': 'solana', 'ethereum': 'eth'}
 MIN_AGE_DAYS = 365
 MIN_LIQUIDITY_USD = 50_000.0
 MAX_PER_CHAIN = 8
 PAGES_PER_CHAIN = 3
 WINDOWS = (7, 30, 90)
-UA = {'User-Agent': 'Wallet500-MaturePoolResearch/1.0', 'Accept': 'application/json;version=20230203'}
+MAX_HTTP_ATTEMPTS = 4
+BASE_BACKOFF_SECONDS = 8.0
+REQUEST_GAP_SECONDS = 5.0
+UA = {'User-Agent': 'Wallet500-MaturePoolResearch/1.1', 'Accept': 'application/json;version=20230203'}
+
+
+def _load(path: Path, default: Any) -> Any:
+    try:
+        return json.loads(path.read_text(encoding='utf-8')) if path.exists() else default
+    except Exception:
+        return default
 
 
 def _http_json(url: str) -> dict[str, Any]:
-    req = Request(url, headers=UA)
-    with urlopen(req, timeout=30) as r:
-        return json.loads(r.read().decode())
+    last: Exception | None = None
+    for attempt in range(MAX_HTTP_ATTEMPTS):
+        try:
+            req = Request(url, headers=UA)
+            with urlopen(req, timeout=30) as r:
+                payload = json.loads(r.read().decode())
+            time.sleep(REQUEST_GAP_SECONDS)
+            return payload
+        except HTTPError as e:
+            last = e
+            if e.code != 429 or attempt + 1 >= MAX_HTTP_ATTEMPTS:
+                raise
+            retry_after = e.headers.get('Retry-After') if e.headers else None
+            try:
+                delay = max(float(retry_after), BASE_BACKOFF_SECONDS * (2 ** attempt)) if retry_after else BASE_BACKOFF_SECONDS * (2 ** attempt)
+            except Exception:
+                delay = BASE_BACKOFF_SECONDS * (2 ** attempt)
+            time.sleep(delay)
+        except Exception as e:
+            last = e
+            if attempt + 1 >= MAX_HTTP_ATTEMPTS:
+                raise
+            time.sleep(BASE_BACKOFF_SECONDS * (2 ** attempt))
+    if last:
+        raise last
+    raise RuntimeError('HTTP request failed without exception')
 
 
 def _parse_dt(value: Any) -> datetime | None:
@@ -69,7 +103,6 @@ def _top_pools(network: str) -> list[dict[str, Any]]:
             })
         if len(rows) >= MAX_PER_CHAIN:
             break
-        time.sleep(2.0)
     rows.sort(key=lambda x: (-x['current_liquidity_usd'], -x['age_days']))
     return rows[:MAX_PER_CHAIN]
 
@@ -112,18 +145,39 @@ def _window_return(candles: list[dict[str, Any]], days: int, now_ts: int) -> dic
     }
 
 
+def _complete_90(row: dict[str, Any]) -> bool:
+    return ((row.get('windows') or {}).get('90') or {}).get('status') == 'PRICE_REPLAY_AVAILABLE'
+
+
 def run() -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     now_ts = int(now.timestamp())
-    rows = []
+    prior = _load(OUT, {})
+    prior_rows = prior.get('rows') if isinstance(prior, dict) else []
+    if not isinstance(prior_rows, list):
+        prior_rows = []
+    cached = {(str(r.get('chain')), str(r.get('pool_address')).lower()): r for r in prior_rows if isinstance(r, dict) and _complete_90(r)}
+
+    rows = list(cached.values())
     errors = []
+    cache_hits = len(rows)
+    new_rows = 0
+
+    # Missing chains first. Ethereum is intentionally last because the initial run
+    # already proved the mechanism there and repeated calls were starving BSC/Solana.
     for chain, network in NETWORKS.items():
+        existing_chain = [r for r in rows if r.get('chain') == chain and _complete_90(r)]
+        if len(existing_chain) >= MAX_PER_CHAIN:
+            continue
         try:
             pools = _top_pools(network)
         except Exception as e:
             errors.append({'chain': chain, 'stage': 'pool_discovery', 'error': f'{type(e).__name__}: {e}'[:300]})
             continue
         for pool in pools:
+            key = (chain, str(pool['pool_address']).lower())
+            if key in cached:
+                continue
             try:
                 candles = _ohlcv(network, pool['pool_address'])
                 row = {
@@ -135,11 +189,25 @@ def run() -> dict[str, Any]:
                     'windows': {str(d): _window_return(candles, d, now_ts) for d in WINDOWS},
                 }
                 rows.append(row)
+                if _complete_90(row):
+                    cached[key] = row
+                new_rows += 1
             except Exception as e:
                 errors.append({'chain': chain, 'pool_address': pool['pool_address'], 'stage': 'ohlcv', 'error': f'{type(e).__name__}: {e}'[:300]})
-            time.sleep(3.0)
+            if sum(1 for r in rows if r.get('chain') == chain and _complete_90(r)) >= MAX_PER_CHAIN:
+                break
+
+    # De-duplicate while keeping the newest result for each exact pool.
+    dedup = {}
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        dedup[(str(r.get('chain')), str(r.get('pool_address')).lower())] = r
+    rows = list(dedup.values())
+    rows.sort(key=lambda r: (str(r.get('chain')), -float(r.get('current_liquidity_usd') or 0)))
+
     payload = {
-        'version': 1,
+        'version': 2,
         'generated_at': now.isoformat(),
         'mode': 'RESEARCH_ONLY_MATURE_POOL_INFRASTRUCTURE_REPLAY',
         'production_portfolio_impact': 'NONE',
@@ -147,10 +215,14 @@ def run() -> dict[str, Any]:
         'survivorship_bias_warning': 'CURRENTLY_SURVIVING_1Y_POOLS_ARE_SELECTED TODAY. RESULTS MUST NEVER BE LABELED WALLET500 BACKTEST PERFORMANCE.',
         'purpose': 'Validate 7/30/90 historical data acquisition and replay mechanics on exact pools known to have long records while historical-universe reconstruction is built separately.',
         'selection': {'min_age_days': MIN_AGE_DAYS, 'min_current_liquidity_usd': MIN_LIQUIDITY_USD, 'max_per_chain': MAX_PER_CHAIN, 'pages_per_chain': PAGES_PER_CHAIN},
+        'http_policy': {'max_attempts': MAX_HTTP_ATTEMPTS, 'base_backoff_seconds': BASE_BACKOFF_SECONDS, 'request_gap_seconds': REQUEST_GAP_SECONDS, 'incremental_cache': True, 'missing_chains_first': True},
         'rows': rows,
         'errors': errors,
         'counts': {
             'pools': len(rows),
+            'cache_hits': cache_hits,
+            'new_rows_this_run': new_rows,
+            'by_chain': {c: sum(r.get('chain') == c and _complete_90(r) for r in rows) for c in NETWORKS},
             'window_7_available': sum((r.get('windows') or {}).get('7', {}).get('status') == 'PRICE_REPLAY_AVAILABLE' for r in rows),
             'window_30_available': sum((r.get('windows') or {}).get('30', {}).get('status') == 'PRICE_REPLAY_AVAILABLE' for r in rows),
             'window_90_available': sum((r.get('windows') or {}).get('90', {}).get('status') == 'PRICE_REPLAY_AVAILABLE' for r in rows),
