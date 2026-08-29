@@ -60,12 +60,14 @@ jobs:
           for x in paths:
               if not x.exists() or x.stat().st_size == 0: raise SystemExit('FATAL: empty measurement output: '+str(x))
           d=json.loads(paths[0].read_text()); lb=json.loads(paths[3].read_text()); ls=json.loads(paths[5].read_text()); rp=json.loads(paths[6].read_text()); cv=json.loads(paths[8].read_text())
-          if d.get('tracked_tokens',0)<=0: raise SystemExit('FATAL: tracker attempted to publish zero tracked tokens')
+          total=d.get('tracked_tokens',0)
+          if total<=0: raise SystemExit('FATAL: tracker attempted to publish zero tracked tokens')
           if lb.get('verified_count',0)!=len(lb.get('rows') or []): raise SystemExit('FATAL: leaderboard count mismatch')
-          if rp.get('tracked_cohort_count',0)+rp.get('unknown_not_scored_count',0)!=lb.get('verified_count',0): raise SystemExit('FATAL: survivorship cohort accounting mismatch')
+          if rp.get('all_discoveries_count',0)!=total: raise SystemExit('FATAL: current-return source is not full immutable ledger')
+          if rp.get('tracked_cohort_count',0)+rp.get('unknown_not_scored_count',0)!=total: raise SystemExit('FATAL: full immutable cohort accounting mismatch')
           if cv.get('source_market_eligible_count',0)!=rp.get('market_execution_plausible_count',0): raise SystemExit('FATAL: cash quote cohort mismatch')
           if ls.get('retroactive_policy')!='NO_RETROACTIVE_SELLS_BEFORE_POLICY_ACTIVATION': raise SystemExit('FATAL: lifecycle retroactive policy changed')
-          print('CURRENT RETURN:',rp.get('tracked_cohort_count'),'tracked; dead',rp.get('dead_zero_value_count'),'unknown',rp.get('unknown_not_scored_count'),'ROI',(rp.get('current_return_portfolio') or {}).get('roi_pct'))
+          print('CURRENT RETURN:',rp.get('tracked_cohort_count'),'measured of',total,'; dead',rp.get('dead_zero_value_count'),'unknown',rp.get('unknown_not_scored_count'),'ROI',(rp.get('current_return_portfolio') or {}).get('roi_pct'))
           print('LIFECYCLE:',ls.get('positions_total'),'positions; partial sells',ls.get('partial_sell_signals'),'liq exits',ls.get('liquidity_exit_signals'),'ROI',ls.get('model_roi_pct'))
           print('CASH QUOTES:',cv.get('cash_quote_verified_count'),'verified;',cv.get('quote_unavailable_count'),'unavailable; ROI',cv.get('cash_verified_roi_pct'))
           PY
