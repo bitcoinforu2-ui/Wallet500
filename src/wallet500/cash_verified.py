@@ -88,18 +88,31 @@ def _position_base_units(entry,decimals):
     except (InvalidOperation,ValueError,TypeError,OverflowError):
         return None
 
+def _evm_request(params):
+    if not KEY:return None,'ZEROX_API_KEY_MISSING'
+    q=urllib.parse.urlencode(params)
+    req=urllib.request.Request(EVM_API+'?'+q,headers={'0x-api-key':KEY,'0x-version':'v2','Accept':'application/json','User-Agent':'Wallet500/0.2'})
+    try:
+        with urllib.request.urlopen(req,timeout=20) as r:return json.loads(r.read()),None
+    except urllib.error.HTTPError as e:return None,_http_error('QUOTE',e)
+    except Exception as e:return None,'QUOTE_ERROR:'+type(e).__name__
+
 def evm_quote(chain,token,amount):
     cid=CHAIN_IDS.get(str(chain).upper())
     if not cid:return None,'CHAIN_NOT_SUPPORTED_BY_EVM_QUOTER'
-    if not KEY:return None,'ZEROX_API_KEY_MISSING'
     stable,stable_decimals,stable_symbol=STABLE[cid]
-    q=urllib.parse.urlencode({'chainId':cid,'sellToken':token,'buyToken':stable,'sellAmount':str(amount),'taker':EVM_TAKER})
-    req=urllib.request.Request(EVM_API+'?'+q,headers={'0x-api-key':KEY,'0x-version':'v2','Accept':'application/json','User-Agent':'Wallet500/0.2'})
-    try:
-        with urllib.request.urlopen(req,timeout=20) as r:
-            return {'quote':json.loads(r.read()),'stable_decimals':stable_decimals,'stable_symbol':stable_symbol},None
-    except urllib.error.HTTPError as e:return None,_http_error('QUOTE',e)
-    except Exception as e:return None,'QUOTE_ERROR:'+type(e).__name__
+    q,err=_evm_request({'chainId':cid,'sellToken':token,'buyToken':stable,'sellAmount':str(amount),'taker':EVM_TAKER})
+    if err:return None,err
+    return {'quote':q,'stable_decimals':stable_decimals,'stable_symbol':stable_symbol},None
+
+def evm_entry_quote(chain,token):
+    cid=CHAIN_IDS.get(str(chain).upper())
+    if not cid:return None,'CHAIN_NOT_SUPPORTED_BY_EVM_QUOTER'
+    stable,stable_decimals,stable_symbol=STABLE[cid]
+    sell_amount=10**stable_decimals
+    q,err=_evm_request({'chainId':cid,'sellToken':stable,'buyToken':token,'sellAmount':str(sell_amount),'taker':EVM_TAKER})
+    if err:return None,err
+    return {'quote':q,'stable_decimals':stable_decimals,'stable_symbol':stable_symbol},None
 
 def solana_quote(token,amount):
     if not KEY:return None,'ZEROX_API_KEY_MISSING'
@@ -112,6 +125,17 @@ def solana_quote(token,amount):
     except urllib.error.HTTPError as e:return None,_http_error('SOLANA_QUOTE',e)
     except Exception as e:return None,'SOLANA_QUOTE_ERROR:'+type(e).__name__
 
+def solana_entry_quote(token):
+    if not KEY:return None,'ZEROX_API_KEY_MISSING'
+    payload={'token_in':SOLANA_USDC,'token_out':token,'amount_in':10**SOLANA_USDC_DECIMALS,'taker':SOLANA_TAKER,'slippage_bps':50}
+    try:
+        q=_post_json(SOLANA_API,payload,{'0x-api-key':KEY})
+        amount_out=int(q.get('amount_out') or 0)
+        if amount_out<=0:return None,'SOLANA_ENTRY_QUOTE_ZERO_OUTPUT'
+        return {'quote':q,'stable_decimals':SOLANA_USDC_DECIMALS,'stable_symbol':'USDC'},None
+    except urllib.error.HTTPError as e:return None,_http_error('SOLANA_ENTRY_QUOTE',e)
+    except Exception as e:return None,'SOLANA_ENTRY_QUOTE_ERROR:'+type(e).__name__
+
 def run():
     src=load(DATA/'realizable-performance.json',{})
     rows=src.get('plausible_rows') or []
@@ -122,7 +146,6 @@ def run():
         except Exception: entry=0.0
         if not token or entry<=0:
             out.append({**r,'cash_status':'QUOTE_UNAVAILABLE','cash_reason':'TOKEN_OR_ENTRY_INVALID','quote_checked_at':now}); continue
-
         source_dec=r.get('token_decimals')
         if source_dec is not None:
             try: dec=int(source_dec); dec_err=None
@@ -131,47 +154,22 @@ def run():
             dec,dec_err=solana_token_decimals(token)
         else:
             dec,dec_err=evm_token_decimals(chain,token)
-
         if dec is None:
             out.append({**r,'cash_status':'QUOTE_UNAVAILABLE','cash_reason':dec_err or 'TOKEN_DECIMALS_NOT_VERIFIED','quote_checked_at':now}); continue
         amount=_position_base_units(entry,dec)
         if amount is None:
             out.append({**r,'cash_status':'QUOTE_UNAVAILABLE','cash_reason':'POSITION_BASE_UNITS_INVALID','quote_checked_at':now,'token_decimals_verified':dec}); continue
-
         result,err=(solana_quote(token,amount) if chain in ('SOL','SOLANA') else evm_quote(chain,token,amount))
         if err:
             out.append({**r,'cash_status':'QUOTE_UNAVAILABLE','cash_reason':err,'quote_checked_at':now,'token_decimals_verified':dec,'sell_amount_base_units':amount}); continue
-
         q=result['quote']; stable_decimals=int(result['stable_decimals'])
         raw_out=int(q.get('amount_out') or 0) if chain in ('SOL','SOLANA') else int(q.get('buyAmount') or 0)
         net=Decimal(raw_out)/(Decimal(10)**stable_decimals)
-        out.append({
-            **r,'cash_status':'EXIT_QUOTE_VERIFIED','cash_reason':None,'quote_checked_at':now,
-            'token_decimals_verified':dec,'sell_amount_base_units':amount,
-            'quote_stable_symbol':result['stable_symbol'],'quote_stable_decimals':stable_decimals,
-            'quoted_usd_value':round(float(net),6),
-            'quote_liquidity_available':q.get('liquidityAvailable') if isinstance(q,dict) else None,
-            'quote_issues':q.get('issues') if isinstance(q,dict) else None,
-            'quote_route':q.get('route') if chain not in ('SOL','SOLANA') else q.get('route_plan'),
-            'proof_level':'0X_EXIT_FIRM_QUOTE_NOT_EXECUTED_NOT_ENTRY_PROOF'
-        })
+        out.append({**r,'cash_status':'EXIT_QUOTE_VERIFIED','cash_reason':None,'quote_checked_at':now,'token_decimals_verified':dec,'sell_amount_base_units':amount,'quote_stable_symbol':result['stable_symbol'],'quote_stable_decimals':stable_decimals,'quoted_usd_value':round(float(net),6),'quote_liquidity_available':q.get('liquidityAvailable') if isinstance(q,dict) else None,'quote_issues':q.get('issues') if isinstance(q,dict) else None,'quote_route':q.get('route') if chain not in ('SOL','SOLANA') else q.get('route_plan'),'proof_level':'0X_EXIT_FIRM_QUOTE_NOT_EXECUTED_NOT_ENTRY_PROOF'})
     verified=[x for x in out if x.get('cash_status')=='EXIT_QUOTE_VERIFIED']
-    invested=len(verified); value=sum(float(x.get('quoted_usd_value') or 0) for x in verified)
-    profit=value-invested
+    invested=len(verified); value=sum(float(x.get('quoted_usd_value') or 0) for x in verified); profit=value-invested
     roi=((value/invested)-1)*100 if invested else 0.0
-    payload={
-        'updated_at':now,'method':'CASH_EXIT_QUOTE_VERIFIED_V2_0X',
-        'source_market_eligible_count':len(rows),'cash_quote_verified_count':len(verified),
-        'exit_quote_verified_count':len(verified),'quote_unavailable_count':len(out)-len(verified),
-        'cash_verified_investment_usd':float(invested),'cash_verified_quoted_value_usd':round(value,6),
-        'cash_verified_profit_usd':round(profit,6),'cash_verified_roi_pct':round(roi,4),
-        'hypothetical_entry_cost_usd':float(invested),'quoted_exit_value_usd':round(value,6),
-        'quoted_exit_profit_vs_hypothetical_entry_usd':round(profit,6),
-        'quoted_exit_roi_vs_hypothetical_entry_pct':round(roi,4),
-        'truth_note':'A verified row proves a current 0x exit quote for the token quantity implied by a historical $1 entry price. It does NOT prove that the historical buy was executable or executed.',
-        'important_limit':'FIRM EXIT QUOTE VERIFIED, NOT TRADE EXECUTED AND NOT HISTORICAL ENTRY-EXECUTION PROOF.',
-        'rows':out
-    }
+    payload={'updated_at':now,'method':'CASH_EXIT_QUOTE_VERIFIED_V2_0X','source_market_eligible_count':len(rows),'cash_quote_verified_count':len(verified),'exit_quote_verified_count':len(verified),'quote_unavailable_count':len(out)-len(verified),'cash_verified_investment_usd':float(invested),'cash_verified_quoted_value_usd':round(value,6),'cash_verified_profit_usd':round(profit,6),'cash_verified_roi_pct':round(roi,4),'hypothetical_entry_cost_usd':float(invested),'quoted_exit_value_usd':round(value,6),'quoted_exit_profit_vs_hypothetical_entry_usd':round(profit,6),'quoted_exit_roi_vs_hypothetical_entry_pct':round(roi,4),'truth_note':'A verified row proves a current 0x exit quote for the token quantity implied by a historical $1 entry price. It does NOT prove that the historical buy was executable or executed.','important_limit':'FIRM EXIT QUOTE VERIFIED, NOT TRADE EXECUTED AND NOT HISTORICAL ENTRY-EXECUTION PROOF.','rows':out}
     write(DATA/'cash-verified-performance.json',payload)
     write(DATA/'cash-verified-summary.json',{k:v for k,v in payload.items() if k!='rows'})
     print(json.dumps(load(DATA/'cash-verified-summary.json',{}),indent=2)); return payload
