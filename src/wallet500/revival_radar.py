@@ -1,9 +1,15 @@
 from __future__ import annotations
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime, timezone
 from statistics import median
 from .market_data import snapshot
+
+OLD_MIN_AGE_DAYS = 7.0
+OLD_PREFERRED_AGE_DAYS = 30.0
+DEFAULT_BATCH_SIZE = 180
+MAX_WORKERS = 8
 
 
 def _key(chain: str, token: str) -> str:
@@ -45,8 +51,15 @@ def _age_days(pair_created_at, now_dt):
 
 def _score(s: dict, history: list[dict], now_dt) -> dict:
     age_days=_age_days(s.get('pair_created_at'), now_dt)
-    if age_days is None or age_days < 2.0:
-        return {**s,'revival_score':0,'revival_eligible':False,'revival_reasons':['PAIR_TOO_NEW_OR_AGE_UNKNOWN'],'pair_age_days':round(age_days,2) if age_days is not None else None}
+    if age_days is None or age_days < OLD_MIN_AGE_DAYS:
+        return {
+            **s,
+            'revival_score':0,
+            'revival_eligible':False,
+            'revival_reasons':['PAIR_LT_7D_OR_AGE_UNKNOWN'],
+            'pair_age_days':round(age_days,2) if age_days is not None else None,
+            'old_coin_age_class':'INELIGIBLE_LT_7D_OR_UNKNOWN',
+        }
 
     v1=float(s.get('volume_h1') or 0); v24=float(s.get('volume_h24') or 0)
     liq=float(s.get('liquidity_usd') or 0)
@@ -68,6 +81,8 @@ def _score(s: dict, history: list[dict], now_dt) -> dict:
     buy_ratio=_ratio(buys,max(sells,1))
 
     score=0; reasons=[]
+    if age_days >= OLD_PREFERRED_AGE_DAYS:
+        score+=5; reasons.append('established pool age 30d+')
     if volume_clock>=4: score+=28; reasons.append(f'24h-normalized volume acceleration {volume_clock:.1f}x')
     elif volume_clock>=2.5: score+=20; reasons.append(f'24h-normalized volume acceleration {volume_clock:.1f}x')
     elif volume_clock>=1.8: score+=12; reasons.append(f'24h-normalized volume acceleration {volume_clock:.1f}x')
@@ -85,13 +100,33 @@ def _score(s: dict, history: list[dict], now_dt) -> dict:
     if pc1>=12: score+=10; reasons.append(f'1h revival momentum +{pc1:.1f}%')
     elif pc1>=5: score+=5; reasons.append(f'1h revival momentum +{pc1:.1f}%')
     if pc5>=5: score+=5; reasons.append(f'5m impulse +{pc5:.1f}%')
-    if liq>=20000: score+=5; reasons.append('usable liquidity')
+    if liq>=50000: score+=5; reasons.append('tradable liquidity 50k+')
 
     score=min(100,int(score))
-    return {**s,'revival_score':score,'revival_eligible':True,'revival_reasons':reasons,'pair_age_days':round(age_days,2),'revival_metrics':{'volume_clock_ratio':round(volume_clock,2),'tx_clock_ratio':round(tx_clock,2),'volume_baseline_ratio':round(volume_baseline,2),'tx_baseline_ratio':round(tx_baseline,2),'liquidity_change_pct':round(liquidity_change,2),'buy_sell_ratio':round(buy_ratio,2)}}
+    return {
+        **s,
+        'revival_score':score,
+        'revival_eligible':True,
+        'revival_reasons':reasons,
+        'pair_age_days':round(age_days,2),
+        'old_coin_age_class':'PREFERRED_30D_PLUS' if age_days >= OLD_PREFERRED_AGE_DAYS else 'ESTABLISHED_7D_PLUS',
+        'revival_metrics':{
+            'volume_clock_ratio':round(volume_clock,2),
+            'tx_clock_ratio':round(tx_clock,2),
+            'volume_baseline_ratio':round(volume_baseline,2),
+            'tx_baseline_ratio':round(tx_baseline,2),
+            'liquidity_change_pct':round(liquidity_change,2),
+            'buy_sell_ratio':round(buy_ratio,2),
+        }
+    }
 
 
-def run_revival_scan(out, discovery_state, manual_watch=None, now=None, batch_size: int=60, threshold: int=55) -> dict:
+def _fetch_selected(item):
+    k,c,t,is_manual=item
+    return item, snapshot(c,t)
+
+
+def run_revival_scan(out, discovery_state, manual_watch=None, now=None, batch_size: int=DEFAULT_BATCH_SIZE, threshold: int=55) -> dict:
     # Backward-compatible adapter: main.py historically calls (Settings, annotated_rows),
     # while the newer engine calls (output_path, discovery_state, manual_watch, now).
     if not isinstance(out, Path):
@@ -117,15 +152,17 @@ def run_revival_scan(out, discovery_state, manual_watch=None, now=None, batch_si
     cursor=int(state.get('cursor',0) or 0)
 
     pool=[]; seen=set()
-    # Manual research cases are always checked first (e.g. older tokens explicitly tracked).
+    # Manual research cases are always checked first.
     for x in manual_watch:
         c=x.get('chain'); t=x.get('token') or x.get('mint')
         if c and t:
             k=_key(c,t)
             if k not in seen: pool.append((k,c,t,True)); seen.add(k)
+    # Rotate across every token already discovered on Solana / Ethereum / BSC.
     for k,m in sorted(((discovery_state.get('tokens') or {}).items())):
         c=m.get('chain'); t=m.get('token')
-        if c and t and k not in seen: pool.append((k,c,t,False)); seen.add(k)
+        if c in {'solana','ethereum','bsc'} and t and k not in seen:
+            pool.append((k,c,t,False)); seen.add(k)
 
     manual=[x for x in pool if x[3]]
     rotating=[x for x in pool if not x[3]]
@@ -141,8 +178,21 @@ def run_revival_scan(out, discovery_state, manual_watch=None, now=None, batch_si
 
     now_dt=datetime.fromisoformat(now.replace('Z','+00:00'))
     snapshots=[]; alerts=[]; errors=[]
-    for k,c,t,is_manual in selected:
-        s=snapshot(c,t)
+    fetched=[]
+    # DEX lookups are I/O bound. Parallel fetching increases old-pool coverage
+    # without extending the primary 15-minute live lane linearly.
+    with ThreadPoolExecutor(max_workers=min(MAX_WORKERS,max(1,len(selected)))) as pool_exec:
+        futures={pool_exec.submit(_fetch_selected,item):item for item in selected}
+        for fut in as_completed(futures):
+            item=futures[fut]
+            try:
+                fetched.append(fut.result())
+            except Exception as e:
+                _,c,t,_=item
+                errors.append({'chain':c,'token':t,'error':f'{type(e).__name__}: {e}'[:300]})
+
+    for item,s in fetched:
+        k,c,t,is_manual=item
         if not s:
             errors.append({'chain':c,'token':t,'error':'NO_MARKET_SNAPSHOT'})
             continue
@@ -151,15 +201,36 @@ def run_revival_scan(out, discovery_state, manual_watch=None, now=None, batch_si
         scored=_score(s,hist,now_dt)
         scored['revival_manual_watch']=is_manual
         scored['revival_observed_at']=now
+        scored['revival_source']='DEX_ROTATING_DISCOVERY_STATE'
         snapshots.append(scored)
         hrow={'observed_at':now,'price_usd':s.get('price_usd'),'liquidity_usd':s.get('liquidity_usd'),'volume_h1':s.get('volume_h1'),'tx_h1':int(s.get('buys_h1') or 0)+int(s.get('sells_h1') or 0),'revival_score':scored.get('revival_score')}
         hist=(hist+[hrow])[-48:]
-        records[k]={'chain':c,'token':t,'history':hist,'last_score':scored.get('revival_score',0),'last_seen':now,'pair_age_days':scored.get('pair_age_days')}
+        records[k]={'chain':c,'token':t,'history':hist,'last_score':scored.get('revival_score',0),'last_seen':now,'pair_age_days':scored.get('pair_age_days'),'old_coin_age_class':scored.get('old_coin_age_class')}
         if scored.get('revival_eligible') and int(scored.get('revival_score') or 0)>=threshold:
             alerts.append(scored)
 
     alerts.sort(key=lambda x:(x.get('revival_score',0),x.get('volume_h1',0)),reverse=True)
-    state={'version':2,'cursor':next_cursor,'updated_at':now,'batch_size':batch_size,'universe_size':len(pool),'scanned_this_run':len(snapshots),'alerts_this_run':len(alerts),'errors_this_run':len(errors),'tokens':records}
+    by_chain={c:sum(1 for x in snapshots if x.get('chain')==c) for c in ('solana','ethereum','bsc')}
+    age_eligible=sum(1 for x in snapshots if x.get('revival_eligible'))
+    preferred_30d=sum(1 for x in snapshots if x.get('old_coin_age_class')=='PREFERRED_30D_PLUS')
+    state={
+        'version':3,
+        'cursor':next_cursor,
+        'updated_at':now,
+        'method':'DEX_OLD_COIN_REVIVAL_ROTATING_EXACT_PAIR_SCAN',
+        'min_age_days':OLD_MIN_AGE_DAYS,
+        'preferred_age_days':OLD_PREFERRED_AGE_DAYS,
+        'batch_size':batch_size,
+        'max_workers':MAX_WORKERS,
+        'universe_size':len(pool),
+        'scanned_this_run':len(snapshots),
+        'age_eligible_this_run':age_eligible,
+        'preferred_30d_plus_this_run':preferred_30d,
+        'alerts_this_run':len(alerts),
+        'errors_this_run':len(errors),
+        'scanned_by_chain':by_chain,
+        'tokens':records,
+    }
     (out/'revival-state.json').write_text(json.dumps(state,indent=2),encoding='utf-8')
     (out/'revival-radar.json').write_text(json.dumps(alerts,indent=2),encoding='utf-8')
     (out/'revival-snapshots.json').write_text(json.dumps(snapshots,indent=2),encoding='utf-8')
