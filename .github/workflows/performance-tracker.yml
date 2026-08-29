@@ -11,6 +11,8 @@ on:
       - 'src/wallet500/performance_tracker.py'
       - 'src/wallet500/realizable_performance.py'
       - 'src/wallet500/cash_verified.py'
+      - 'src/wallet500/lifecycle_strategy.py'
+      - 'tests/test_lifecycle_strategy.py'
       - '.github/workflows/performance-tracker.yml'
   schedule:
     - cron: '9,24,39,54 * * * *'
@@ -37,8 +39,12 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e .
+      - name: Run lifecycle strategy tests
+        run: python -m pytest -q tests/test_lifecycle_strategy.py
       - name: Rebuild immutable Performance Since Discovery
         run: python -m wallet500.performance_tracker
+      - name: Update forward lifecycle strategy ledger
+        run: python -m wallet500.lifecycle_strategy
       - name: Recheck market execution quality
         run: python -m wallet500.realizable_performance
       - name: Verify executable cash quotes
@@ -50,14 +56,16 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          paths=[Path('data/outcome-tracker.json'),Path('data/signal-outcomes.json'),Path('data/performance-measurement-report.json'),Path('data/performance-leaderboard.json'),Path('data/realizable-performance.json'),Path('data/realizable-performance-summary.json'),Path('data/cash-verified-performance.json'),Path('data/cash-verified-summary.json')]
+          paths=[Path('data/outcome-tracker.json'),Path('data/signal-outcomes.json'),Path('data/performance-measurement-report.json'),Path('data/performance-leaderboard.json'),Path('data/lifecycle-strategy-ledger.json'),Path('data/lifecycle-strategy-summary.json'),Path('data/realizable-performance.json'),Path('data/realizable-performance-summary.json'),Path('data/cash-verified-performance.json'),Path('data/cash-verified-summary.json')]
           for x in paths:
               if not x.exists() or x.stat().st_size == 0: raise SystemExit('FATAL: empty measurement output: '+str(x))
-          d=json.loads(paths[0].read_text()); lb=json.loads(paths[3].read_text()); rp=json.loads(paths[4].read_text()); cv=json.loads(paths[6].read_text())
+          d=json.loads(paths[0].read_text()); lb=json.loads(paths[3].read_text()); ls=json.loads(paths[5].read_text()); rp=json.loads(paths[6].read_text()); cv=json.loads(paths[8].read_text())
           if d.get('tracked_tokens',0)<=0: raise SystemExit('FATAL: tracker attempted to publish zero tracked tokens')
           if lb.get('verified_count',0)!=len(lb.get('rows') or []): raise SystemExit('FATAL: leaderboard count mismatch')
           if rp.get('verified_rows_seen',0)!=lb.get('verified_count',0): raise SystemExit('FATAL: execution-quality cohort mismatch')
           if cv.get('source_market_eligible_count',0)!=rp.get('market_execution_plausible_count',0): raise SystemExit('FATAL: cash quote cohort mismatch')
+          if ls.get('retroactive_policy')!='NO_RETROACTIVE_SELLS_BEFORE_POLICY_ACTIVATION': raise SystemExit('FATAL: lifecycle retroactive policy changed')
+          print('LIFECYCLE:',ls.get('positions_total'),'positions; partial sells',ls.get('partial_sell_signals'),'liq exits',ls.get('liquidity_exit_signals'),'ROI',ls.get('model_roi_pct'))
           print('CASH QUOTES:',cv.get('cash_quote_verified_count'),'verified;',cv.get('quote_unavailable_count'),'unavailable; ROI',cv.get('cash_verified_roi_pct'))
           PY
       - name: Publish measurement data
@@ -65,9 +73,9 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json
+          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json
           if ! git diff --cached --quiet; then
-            git commit -m 'data: refresh immutable market and cash-quote performance'
+            git commit -m 'data: refresh immutable performance and lifecycle strategy'
             for attempt in 1 2 3 4 5; do
               git fetch origin main
               git merge --no-edit -X ours origin/main
