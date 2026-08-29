@@ -8,7 +8,7 @@ from .market_data import snapshot
 
 OLD_MIN_AGE_DAYS = 7.0
 OLD_PREFERRED_AGE_DAYS = 30.0
-DEFAULT_BATCH_SIZE = 180
+DEFAULT_BATCH_SIZE = 300
 MAX_WORKERS = 8
 
 
@@ -214,10 +214,10 @@ def run_revival_scan(out, discovery_state, manual_watch=None, now=None, batch_si
     age_eligible=sum(1 for x in snapshots if x.get('revival_eligible'))
     preferred_30d=sum(1 for x in snapshots if x.get('old_coin_age_class')=='PREFERRED_30D_PLUS')
     state={
-        'version':3,
+        'version':4,
         'cursor':next_cursor,
         'updated_at':now,
-        'method':'DEX_OLD_COIN_REVIVAL_ROTATING_EXACT_PAIR_SCAN',
+        'method':'DEX_OLD_COIN_REVIVAL_ROTATING_EXACT_PAIR_SCAN_80_20_EXPERIMENT',
         'min_age_days':OLD_MIN_AGE_DAYS,
         'preferred_age_days':OLD_PREFERRED_AGE_DAYS,
         'batch_size':batch_size,
