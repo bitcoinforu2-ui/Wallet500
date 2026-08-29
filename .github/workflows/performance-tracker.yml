@@ -28,7 +28,7 @@ jobs:
   measure:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,16 +60,20 @@ jobs:
           for x in paths:
               if not x.exists() or x.stat().st_size == 0: raise SystemExit('FATAL: empty measurement output: '+str(x))
           d=json.loads(paths[0].read_text()); lb=json.loads(paths[3].read_text()); ls=json.loads(paths[5].read_text()); rp=json.loads(paths[6].read_text()); cv=json.loads(paths[8].read_text())
-          total=d.get('tracked_tokens',0)
+          total=int(d.get('tracked_tokens') or 0); measured=int(rp.get('tracked_cohort_count') or 0); unknown=int(rp.get('unknown_not_scored_count') or 0); dead=int(rp.get('dead_zero_value_count') or 0)
           if total<=0: raise SystemExit('FATAL: tracker attempted to publish zero tracked tokens')
           if lb.get('verified_count',0)!=len(lb.get('rows') or []): raise SystemExit('FATAL: leaderboard count mismatch')
-          if rp.get('all_discoveries_count',0)!=total: raise SystemExit('FATAL: current-return source is not full immutable ledger')
-          if rp.get('tracked_cohort_count',0)+rp.get('unknown_not_scored_count',0)!=total: raise SystemExit('FATAL: full immutable cohort accounting mismatch')
+          if int(rp.get('all_discoveries_count') or 0)!=total: raise SystemExit('FATAL: current-return source is not full immutable ledger')
+          if measured+unknown!=total: raise SystemExit(f'FATAL: full immutable cohort accounting mismatch measured={measured} unknown={unknown} total={total}')
+          p=rp.get('current_return_portfolio') or {}
+          if int(p.get('count') or 0)!=measured: raise SystemExit('FATAL: portfolio denominator differs from measured cohort')
+          if abs(float(p.get('investment_usd') or 0)-float(measured))>1e-6: raise SystemExit('FATAL: $1 model investment does not equal measured cohort')
+          if dead>measured: raise SystemExit('FATAL: dead count exceeds measured cohort')
           if cv.get('source_market_eligible_count',0)!=rp.get('market_execution_plausible_count',0): raise SystemExit('FATAL: cash quote cohort mismatch')
           if ls.get('retroactive_policy')!='NO_RETROACTIVE_SELLS_BEFORE_POLICY_ACTIVATION': raise SystemExit('FATAL: lifecycle retroactive policy changed')
-          print('CURRENT RETURN:',rp.get('tracked_cohort_count'),'measured of',total,'; dead',rp.get('dead_zero_value_count'),'unknown',rp.get('unknown_not_scored_count'),'ROI',(rp.get('current_return_portfolio') or {}).get('roi_pct'))
-          print('LIFECYCLE:',ls.get('positions_total'),'positions; partial sells',ls.get('partial_sell_signals'),'liq exits',ls.get('liquidity_exit_signals'),'ROI',ls.get('model_roi_pct'))
-          print('CASH QUOTES:',cv.get('cash_quote_verified_count'),'verified;',cv.get('quote_unavailable_count'),'unavailable; ROI',cv.get('cash_verified_roi_pct'))
+          print('TRUTH ACCOUNTING PASS')
+          print('TOTAL',total,'MEASURED',measured,'DEAD',dead,'UNKNOWN',unknown)
+          print('CURRENT RETURN',p.get('investment_usd'),'->',p.get('marked_value_usd'),'PNL',p.get('pnl_usd'),'ROI',p.get('roi_pct'))
           PY
       - name: Publish measurement data
         run: |
