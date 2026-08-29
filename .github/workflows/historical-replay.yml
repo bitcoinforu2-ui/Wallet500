@@ -1,0 +1,50 @@
+name: Wallet500 Historical Replay Research
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build isolated historical research report
+        run: |
+          export PYTHONPATH="$PWD/src"
+          python -m wallet500.historical_replay
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/historical-replay-report.json')
+          assert p.exists()
+          d=json.loads(p.read_text())
+          assert d['mode']=='RESEARCH_ONLY_NO_PRODUCTION_WRITES'
+          assert d['production_portfolio_impact']=='NONE'
+          assert d['lookahead_policy']=='FORBIDDEN'
+          assert set(d['windows'])=={'7','30','90'}
+          print('Historical replay research report validated')
+          PY
+
+      - name: Commit research report only
+        run: |
+          if git diff --quiet -- data/historical-replay-report.json; then
+            echo 'No research report change'
+            exit 0
+          fi
+          git config user.name 'wallet500-bot'
+          git config user.email 'wallet500-bot@users.noreply.github.com'
+          git add data/historical-replay-report.json
+          git commit -m 'research: update historical replay report'
+          git pull --rebase origin main
+          git push origin HEAD:main
