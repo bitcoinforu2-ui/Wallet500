@@ -1,4 +1,4 @@
-# force redeploy: exact-pair link integrity hardened
+# force redeploy: exact-pair + freshness integrity hardened
 name: Deploy Wallet500 Dashboard
 
 on:
@@ -68,7 +68,7 @@ jobs:
               raise SystemExit('expected dashboard link function exactly once')
           s=s.replace(old_link,new_link,1)
 
-          # Do not present holder/cluster-pending research candidates as HIGH POTENTIAL.
+          # Only fully production-qualified records may be presented as live/investable.
           old_potential="""$('potential').innerHTML=q.length?q.map(x=>card(x,P.has(key(x))?'PRODUCTION QUALIFIED · $1 ELIGIBLE':'SURVIVAL PASS · HOLDER/CLUSTER PENDING')).join(''):'<div class=\"candidate\">NO SURVIVAL-QUALIFIED CANDIDATE RIGHT NOW</div>';"""
           new_potential="""$('potential').innerHTML=prod.length?prod.map(x=>card(x,'PRODUCTION QUALIFIED · $1 ELIGIBLE')).join(''):'<div class=\"candidate\">NO FULLY VERIFIED INVESTABLE CANDIDATE RIGHT NOW</div>';"""
           if s.count(old_potential) != 1:
@@ -77,11 +77,13 @@ jobs:
           s=s.replace('⚡ WALLET500 HIGH POTENTIAL — LIVE','⚡ WALLET500 VERIFIED INVESTABLE — LIVE',1)
           s=s.replace('SURVIVAL PASS ≠ INVESTABLE UNTIL HOLDER/CLUSTER PASS','ONLY FULL PRODUCTION + HOLDER/CLUSTER VERIFIED CANDIDATES',1)
 
-          tag='<script src="dashboard-reference-fix.js?v=2"></script>'
+          # Versioned bridge prevents the phone/browser from reusing an older cached guard.
+          tag='<script src="dashboard-reference-fix.js?v=3"></script>'
+          s=s.replace('<script src="dashboard-reference-fix.js?v=2"></script>',tag)
           if tag not in s:
               s=s.replace('</body>', tag+'</body>')
 
-          # Build must fail closed if the old unsafe link path or misleading live renderer survives.
+          # Build must fail closed if old unsafe or misleading paths survive.
           if 'function links(x,t){let p=x.pair_address||x.locked_pair_address' in s:
               raise SystemExit('unsafe dashboard link function survived build')
           if "q.map(x=>card(x,P.has(key(x))" in s:
@@ -101,6 +103,9 @@ jobs:
           test -s _site/backtest/index.html
           test -s _site/dashboard-reference-fix.js
           test -s _site/data/run-summary.json
+          grep -q "Fail-closed policy" _site/dashboard-reference-fix.js
+          grep -q "age>5" _site/dashboard-reference-fix.js
+          grep -q "LIVE DISPLAY BLOCKED" _site/dashboard-reference-fix.js
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
