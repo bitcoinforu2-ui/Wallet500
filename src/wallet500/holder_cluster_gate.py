@@ -12,7 +12,19 @@ CLUSTER_REVIEW_PCT=float(os.getenv('HOLDER_CLUSTER_REVIEW_PCT','10'))
 CLUSTER_BLOCK_PCT=float(os.getenv('HOLDER_CLUSTER_BLOCK_PCT','20'))
 TRANSFER_TOPIC='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 TOTAL_SUPPLY_SELECTOR='0x18160ddd'; ZERO='0x0000000000000000000000000000000000000000'
-RPC={'SOLANA':os.getenv('SOLANA_RPC_URL','https://api.mainnet-beta.solana.com'),'SOL':os.getenv('SOLANA_RPC_URL','https://api.mainnet-beta.solana.com'),'ETHEREUM':os.getenv('ETHEREUM_RPC_URL') or os.getenv('ETH_RPC_URL',''),'ETH':os.getenv('ETHEREUM_RPC_URL') or os.getenv('ETH_RPC_URL',''),'BSC':os.getenv('BSC_RPC_URL') or os.getenv('BNB_RPC_URL',''),'BNB':os.getenv('BSC_RPC_URL') or os.getenv('BNB_RPC_URL','')}
+DEFAULT_RPC={'SOLANA':['https://api.mainnet-beta.solana.com'],'ETHEREUM':['https://ethereum-rpc.publicnode.com','https://eth.llamarpc.com'],'BSC':['https://bsc-rpc.publicnode.com','https://bsc-dataseed.binance.org']}
+def _urls(*values):
+ out=[]
+ for value in values:
+  for x in str(value or '').split(','):
+   x=x.strip()
+   if x and x not in out:out.append(x)
+ return out
+RPC={
+ 'SOLANA':_urls(os.getenv('SOLANA_RPC_URL'),*DEFAULT_RPC['SOLANA']),
+ 'ETHEREUM':_urls(os.getenv('ETHEREUM_RPC_URL'),os.getenv('ETH_RPC_URL'),os.getenv('ETH_RPC_FALLBACK_URLS'),*DEFAULT_RPC['ETHEREUM']),
+ 'BSC':_urls(os.getenv('BSC_RPC_URL'),os.getenv('BNB_RPC_URL'),os.getenv('BSC_RPC_FALLBACK_URLS'),*DEFAULT_RPC['BSC'])}
+RPC['SOL']=RPC['SOLANA'];RPC['ETH']=RPC['ETHEREUM'];RPC['BNB']=RPC['BSC']
 INPUT_FILE=os.getenv('HOLDER_CLUSTER_INPUT','active-qualified-candidates.json'); EVM_LOOKBACK=int(os.getenv('HOLDER_EVM_LOOKBACK_BLOCKS','50000')); EVM_CHUNK=max(100,int(os.getenv('HOLDER_EVM_LOG_CHUNK','5000'))); INFRA_EXCLUSIONS={x.strip().lower() for x in os.getenv('HOLDER_CLUSTER_INFRA_EXCLUSIONS','').split(',') if x.strip()}
 
 def _load(p,d):
@@ -28,7 +40,13 @@ def _rpc_url(url,method,params):
    x=json.loads(r.read().decode());return None if x.get('error') else x.get('result')
  except Exception:return None
 
-def _rpc(method,params):return _rpc_url(RPC['SOL'],method,params)
+def _rpc_any(urls,method,params):
+ for url in urls or []:
+  result=_rpc_url(url,method,params)
+  if result is not None:return result,url
+ return None,None
+
+def _rpc(method,params):return _rpc_any(RPC['SOL'],method,params)[0]
 def _addr(topic):return ('0x'+str(topic)[-40:]).lower() if topic else ''
 def _as_int_hex(x):
  try:return int(x,16) if isinstance(x,str) else int(x)
@@ -49,8 +67,8 @@ def _sol_holders(token):
  owners=[{'owner':o,'amount':a,'pct':a/total*100 if total else 0} for o,a in by_owner.items()]; owners.sort(key=lambda x:x['amount'],reverse=True); rc=sum(1 for x in resolved if x.get('owner'))
  return owners,resolved,{'supply':total,'largest_accounts_returned':len(token_accounts),'owners_resolved':rc,'owner_resolution_complete':rc==len(token_accounts) and rc>0}
 
-def _evm_total_supply(url,token):
- x=_rpc_url(url,'eth_call',[{'to':token,'data':TOTAL_SUPPLY_SELECTOR},'latest']); return _as_int_hex(x) if x else 0
+def _evm_total_supply(urls,token):
+ x,url=_rpc_any(urls,'eth_call',[{'to':token,'data':TOTAL_SUPPLY_SELECTOR},'latest']); return (_as_int_hex(x) if x else 0),url
 
 def _evm_start_block(row,latest_i):
  for k in ('deployment_block','contract_creation_block','token_creation_block','start_block'):
@@ -81,12 +99,13 @@ def _components(holders,graph,exclusions):
  out.sort(key=lambda x:(x['combined_pct'],x['direct_transfer_count']),reverse=True);return out
 
 def _evm_holders(chain,token,row):
- url=RPC.get(chain,''); latest=_rpc_url(url,'eth_blockNumber',[])
- if not latest:return [],[],[],{'complete':False,'reason':'EVM_RPC_UNAVAILABLE'}
- latest_i=int(latest,16); start,start_source,start_verified=_evm_start_block(row,latest_i); balances=defaultdict(int); edges=defaultdict(int); logs_seen=0; chunks=0
+ urls=RPC.get(chain,[]); latest,latest_url=_rpc_any(urls,'eth_blockNumber',[])
+ if not latest:return [],[],[],{'complete':False,'reason':'EVM_RPC_UNAVAILABLE','rpc_candidates':len(urls)}
+ latest_i=int(latest,16); start,start_source,start_verified=_evm_start_block(row,latest_i); balances=defaultdict(int); edges=defaultdict(int); logs_seen=0; chunks=0; used={latest_url} if latest_url else set()
  for a in range(start,latest_i+1,EVM_CHUNK):
-  b=min(latest_i,a+EVM_CHUNK-1);chunks+=1; logs=_rpc_url(url,'eth_getLogs',[{'fromBlock':hex(a),'toBlock':hex(b),'address':token,'topics':[TRANSFER_TOPIC]}])
-  if logs is None:return [],[],[],{'complete':False,'reason':'EVM_LOG_RANGE_UNAVAILABLE','from_block':start,'to_block':latest_i,'failed_chunk':[a,b],'chunks_completed':chunks-1,'start_block_verified':start_verified,'start_block_source':start_source}
+  b=min(latest_i,a+EVM_CHUNK-1);chunks+=1; logs,url=_rpc_any(urls,'eth_getLogs',[{'fromBlock':hex(a),'toBlock':hex(b),'address':token,'topics':[TRANSFER_TOPIC]}]);
+  if url:used.add(url)
+  if logs is None:return [],[],[],{'complete':False,'reason':'EVM_LOG_RANGE_UNAVAILABLE','from_block':start,'to_block':latest_i,'failed_chunk':[a,b],'chunks_completed':chunks-1,'start_block_verified':start_verified,'start_block_source':start_source,'rpc_candidates':len(urls),'rpc_endpoints_used':len(used)}
   for log in logs:
    topics=log.get('topics') or []
    if len(topics)<3:continue
@@ -96,16 +115,22 @@ def _evm_holders(chain,token,row):
    if f and f!=ZERO:balances[f]-=value
    if t and t!=ZERO:balances[t]+=value
    if f and t and f!=ZERO and t!=ZERO:edges[(f,t)]+=1
- total_supply=_evm_total_supply(url,token); positive=[(o,a) for o,a in balances.items() if a>0]; denom=total_supply if total_supply>0 else 0
+ total_supply,supply_url=_evm_total_supply(urls,token)
+ if supply_url:used.add(supply_url)
+ positive=[(o,a) for o,a in balances.items() if a>0]; denom=total_supply if total_supply>0 else 0
  holders=[{'owner':o,'raw_amount':str(a),'pct':a/denom*100 if denom else 0} for o,a in positive]; holders.sort(key=lambda x:int(x['raw_amount']),reverse=True); holders=holders[:TOP_N]; graph=[{'from':f,'to':t,'transfer_count':n} for (f,t),n in sorted(edges.items(),key=lambda x:x[1],reverse=True)[:500]]; exclusions=set(INFRA_EXCLUSIONS)|{ZERO,token.lower(),str(row.get('pair_address') or row.get('locked_pair_address') or '').lower()}; clusters=_components(holders,graph,exclusions); complete=bool(start_verified and total_supply>0)
  reason='FULL_TRANSFER_LEDGER_FROM_VERIFIED_START_BLOCK' if complete else ('FULL_START_BLOCK_BUT_TOTAL_SUPPLY_UNVERIFIED' if start_verified else 'BOUNDED_LOOKBACK_RECONSTRUCTION')
- return holders,graph,clusters,{'complete':complete,'reason':reason,'from_block':start,'to_block':latest_i,'logs_seen':logs_seen,'chunks':chunks,'lookback_blocks':latest_i-start,'observed_positive_holders':len(positive),'total_supply_raw':str(total_supply) if total_supply else None,'pct_authoritative':bool(total_supply>0),'start_block_verified':start_verified,'start_block_source':start_source,'infrastructure_exclusions':sorted(x for x in exclusions if x)}
+ return holders,graph,clusters,{'complete':complete,'reason':reason,'from_block':start,'to_block':latest_i,'logs_seen':logs_seen,'chunks':chunks,'lookback_blocks':latest_i-start,'observed_positive_holders':len(positive),'total_supply_raw':str(total_supply) if total_supply else None,'pct_authoritative':bool(total_supply>0),'start_block_verified':start_verified,'start_block_source':start_source,'infrastructure_exclusions':sorted(x for x in exclusions if x),'rpc_candidates':len(urls),'rpc_endpoints_used':len(used)}
 
 def analyze(row):
  chain=row.get('chain'); token=row.get('token') or row.get('token_address') or row.get('mint'); c=str(chain or '').upper(); reasons=[];token_accounts=[];graph=[];clusters=[];meta={};deployer_evidence={'verified':False,'reason':'NOT_APPLICABLE'};funding=[]
  if c in ('SOL','SOLANA'):holders,token_accounts,meta=_sol_holders(token)
  elif c in ('ETH','ETHEREUM','BSC','BNB'):
-  holders,graph,clusters,meta=_evm_holders(c,str(token).lower(),row);url=RPC.get(c,'');deployer_evidence=verify_evm_deployer(lambda method,params:_rpc_url(url,method,params),str(token).lower(),row);funding=verified_native_funding_edges(row);clusters=corroborate_clusters(clusters,graph,deployer_evidence,funding);meta={**meta,'deployer_evidence':deployer_evidence,'verified_native_funding_edges':len(funding)}
+  holders,graph,clusters,meta=_evm_holders(c,str(token).lower(),row);urls=RPC.get(c,[]);deployer_evidence={'verified':False,'reason':'RPC_FALLBACK_SET_USED'}
+  for url in urls:
+   deployer_evidence=verify_evm_deployer(lambda method,params,u=url:_rpc_url(u,method,params),str(token).lower(),row)
+   if deployer_evidence.get('verified'):break
+  funding=verified_native_funding_edges(row);clusters=corroborate_clusters(clusters,graph,deployer_evidence,funding);meta={**meta,'deployer_evidence':deployer_evidence,'verified_native_funding_edges':len(funding)}
   if not meta.get('complete'):reasons.append(meta.get('reason','EVM_EVIDENCE_INCOMPLETE'))
  else:holders=[];reasons.append('UNSUPPORTED_CHAIN')
  p=sorted((float(x.get('pct') or 0) for x in holders),reverse=True); top1=sum(p[:1]);top5=sum(p[:5]);top10=sum(p[:10])
@@ -138,7 +163,7 @@ def run():
   chain=r.get('chain');token=r.get('token') or r.get('token_address') or r.get('mint');pair=r.get('pair_address') or r.get('locked_pair_address');key=(str(chain),str(token),str(pair))
   if not chain or not token or key in seen:continue
   seen.add(key);out.append(analyze(r))
- now=datetime.now(timezone.utc).isoformat();payload={'updated_at':now,'method':'WALLET500_HOLDER_CLUSTER_PRETRADE_GATE_V1_5_PRODUCTION_PASS','input_file':INPUT_FILE,'truth_note':'PASS means holder/cluster evidence coverage is complete and no configured concentration or linked-cluster review/block condition was found. Direct token-transfer components remain linkage evidence only; common ownership is never claimed. Incomplete evidence always remains REVIEW.','rows':out}
+ now=datetime.now(timezone.utc).isoformat();payload={'updated_at':now,'method':'WALLET500_HOLDER_CLUSTER_PRETRADE_GATE_V1_6_RESILIENT_RPC','input_file':INPUT_FILE,'truth_note':'PASS means holder/cluster evidence coverage is complete and no configured concentration or linked-cluster review/block condition was found. Multiple RPC endpoints improve evidence availability only; incomplete evidence always remains REVIEW and thresholds are unchanged.','rows':out}
  _write(DATA/'holder-cluster-gate.json',payload);_write(DATA/'holder-cluster-gate-summary.json',{'updated_at':now,'input_file':INPUT_FILE,'checked':len(out),'block':sum(x['status']=='BLOCK' for x in out),'review':sum(x['status']=='REVIEW' for x in out),'pass':sum(x['status']=='PASS' for x in out),'linked_cluster_candidates':sum(len(x.get('linked_cluster_candidates') or []) for x in out),'corroborated_cluster_risks':sum(len(x.get('corroborated_cluster_risks') or []) for x in out),'blockable_cluster_risks':sum(len(x.get('blockable_cluster_risks') or []) for x in out)});print(json.dumps(_load(DATA/'holder-cluster-gate-summary.json',{}),indent=2));return payload
 
 if __name__=='__main__':run()
