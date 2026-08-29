@@ -84,21 +84,54 @@ def run():
     eligible_roi=((eligible_value/eligible_invested)-1)*100 if eligible_invested else 0.0
     paper_invested=verified_n*POSITION_USD
     paper_value=sum(x['marked_value_usd'] for x in plausible+blocked if x.get('current_return_pct') is not None)
+
+    # HARD TRUTH GATE:
+    # This module can prove only CURRENT exact-pair market plausibility. It cannot
+    # prove that a token would have been discovered/qualified historically at the
+    # original timestamp. Therefore fields consumed by the dashboard's historical
+    # ROI boxes are intentionally locked to zero until the dedicated historical
+    # replay marks decisions as BACKTEST_VERIFIED.
+    historical_backtest_verified=False
+
     payload={
-      'updated_at':now,'method':'REALIZABLE_PERFORMANCE_GATE_V3_LIVE_RETURN_RECOMPUTED','position_size_usd':POSITION_USD,
+      'updated_at':now,'method':'REALIZABLE_PERFORMANCE_GATE_V4_TRUTH_LOCK','position_size_usd':POSITION_USD,
       'all_discoveries_count':all_discoveries,'all_discoveries_hypothetical_investment_usd':round(all_discoveries*POSITION_USD,6),
       'verified_rows_seen':verified_n,'paper_verified_investment_usd':round(paper_invested,6),'paper_verified_value_usd':round(paper_value,6),
       'market_execution_plausible_count':eligible_n,'not_realizable_now_count':len(blocked),
       'eligible_investment_usd':round(eligible_invested,6),'eligible_current_value_usd':round(eligible_value,6),
       'eligible_profit_usd':round(eligible_profit,6),'eligible_roi_pct':round(eligible_roi,4),
-      'truth_note':'Every current return in this report is recomputed from the immutable entry price and the current exact-pair live price in the same run. Stale leaderboard return percentages are retained only as source_leaderboard_return_pct for audit.',
-      'important_limit':'MARKET-DATA PROXY ONLY. A row still requires a router exit quote before it can be called exit-quote verified.',
+      'current_realizability_reference':{
+        'count':eligible_n,
+        'investment_usd':round(eligible_invested,6),
+        'marked_value_usd':round(eligible_value,6),
+        'pnl_usd':round(eligible_profit,6),
+        'roi_pct':round(eligible_roi,4),
+        'status':'CURRENT_MARKET_REFERENCE_ONLY_NOT_HISTORICAL_BACKTEST'
+      },
+      'historical_backtest_verified':historical_backtest_verified,
+      'historical_backtest_status':'NOT_BACKTEST_VERIFIED',
+      'historical_backtest_block_reasons':[
+        'HISTORICAL_DISCOVERY_UNIVERSE_NOT_VERIFIED',
+        'POINT_IN_TIME_LIQUIDITY_NOT_VERIFIED',
+        'POINT_IN_TIME_HOLDER_CLUSTER_NOT_VERIFIED',
+        'EXACT_TIMESTAMP_DECISION_REPLAY_NOT_VERIFIED'
+      ],
+      # Compatibility fields used by dashboard-live.html. Keep counts truthful,
+      # but never expose an unverified historical dollar value/ROI as performance.
+      'tracked_discoveries':all_discoveries,
+      'eligible_now':eligible_n,
+      'blocked_now':len(blocked),
+      'invested_usd':0.0,
+      'current_value_usd':0.0,
+      'roi_pct':0.0,
+      'truth_note':'Current returns are recomputed from immutable entry price and current exact-pair live price. Historical ROI is HARD-LOCKED until point-in-time discovery, liquidity, holder/cluster and exact decision replay are verified.',
+      'important_limit':'CURRENT MARKET-DATA PROXY ONLY. This report must never be presented as a verified historical backtest. A row also requires a router exit quote before exit-quote verification.',
       'rules':{'min_liquidity_usd':MIN_LIQ,'min_volume_h1_usd':MIN_VOL_H1,'min_txns_h1':MIN_TXNS_H1,'max_position_fraction_of_liquidity':0.0001},
       'plausible_rows':sorted(plausible,key=lambda x:float(x.get('current_return_pct') or -1e99),reverse=True),
       'blocked_rows':sorted(blocked,key=lambda x:float(x.get('current_return_pct') or -1e99),reverse=True)
     }
     _write(DATA/'realizable-performance.json',payload)
-    keys=('updated_at','position_size_usd','all_discoveries_count','all_discoveries_hypothetical_investment_usd','verified_rows_seen','paper_verified_investment_usd','paper_verified_value_usd','market_execution_plausible_count','not_realizable_now_count','eligible_investment_usd','eligible_current_value_usd','eligible_profit_usd','eligible_roi_pct','truth_note','important_limit')
+    keys=('updated_at','position_size_usd','all_discoveries_count','all_discoveries_hypothetical_investment_usd','verified_rows_seen','paper_verified_investment_usd','paper_verified_value_usd','market_execution_plausible_count','not_realizable_now_count','eligible_investment_usd','eligible_current_value_usd','eligible_profit_usd','eligible_roi_pct','current_realizability_reference','historical_backtest_verified','historical_backtest_status','historical_backtest_block_reasons','tracked_discoveries','eligible_now','blocked_now','invested_usd','current_value_usd','roi_pct','truth_note','important_limit')
     _write(DATA/'realizable-performance-summary.json',{k:payload[k] for k in keys})
     print(json.dumps(_load(DATA/'realizable-performance-summary.json',{}),indent=2)); return payload
 
