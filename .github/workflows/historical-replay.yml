@@ -9,6 +9,7 @@ on:
       - '.github/workflows/historical-replay.yml'
       - 'src/wallet500/historical_backfill.py'
       - 'src/wallet500/historical_replay.py'
+      - 'src/wallet500/historical_truth_backtest.py'
       - 'data/discovery-evidence-ledger.json'
       - 'data/cash-verified-performance.json'
 
@@ -41,22 +42,37 @@ jobs:
         run: |
           export PYTHONPATH="$PWD/src"
           python -m wallet500.historical_replay
+
+      - name: Build strict no-hindsight truth backtest
+        run: |
+          export PYTHONPATH="$PWD/src"
+          python -m wallet500.historical_truth_backtest
           python - <<'PY'
           import json
           from pathlib import Path
           bp=Path('data/historical-backfill-report.json')
           rp=Path('data/historical-replay-report.json')
-          assert bp.exists() and rp.exists()
+          tp=Path('data/historical-truth-backtest.json')
+          assert bp.exists() and rp.exists() and tp.exists()
           b=json.loads(bp.read_text())
           r=json.loads(rp.read_text())
+          t=json.loads(tp.read_text())
           assert b['mode']=='RESEARCH_ONLY_INCREMENTAL_BACKFILL'
           assert b['production_portfolio_impact']=='NONE'
           assert b['lookahead_policy']=='FORBIDDEN'
           assert r['mode']=='RESEARCH_ONLY_NO_PRODUCTION_WRITES'
           assert r['production_portfolio_impact']=='NONE'
           assert r['lookahead_policy']=='FORBIDDEN'
-          assert set(r['windows'])=={'7','30','90'}
-          print('Historical research lane validated: no production impact, no look-ahead')
+          assert t['mode']=='STRICT_NO_HINDSIGHT_BACKTEST_VERIFIER'
+          assert t['lookahead_policy']=='FORBIDDEN'
+          assert t['pair_identity_policy']=='EXACT_LOCKED_PAIR_ONLY'
+          assert t['minimum_entry_liquidity_usd']==50000.0
+          assert set(t['windows'])=={'7','30','90'}
+          for w in t['windows'].values():
+              if w['status'] != 'BACKTEST_VERIFIED':
+                  assert w['verified_roi_pct'] is None
+                  assert w['verified_pnl_usd'] is None
+          print('Strict historical truth verifier validated: no hindsight, no fake ROI')
           PY
 
       - name: Commit research outputs only
@@ -64,12 +80,12 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-research-bot'
           git config user.email 'wallet500-research-bot@users.noreply.github.com'
-          git add data/historical-backfill-state.json data/historical-backfill-report.json data/historical-replay-report.json
+          git add data/historical-backfill-state.json data/historical-backfill-report.json data/historical-replay-report.json data/historical-truth-backtest.json
           if git diff --cached --quiet; then
             echo 'No research output change'
             exit 0
           fi
-          git commit -m 'research: advance historical backfill checkpoint'
+          git commit -m 'research: advance historical truth checkpoint'
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git merge --no-edit -X ours origin/main
