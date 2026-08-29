@@ -46,6 +46,10 @@ jobs:
         run: python -m wallet500.fresh_solana_gate
       - name: Revalidate immutable exact pairs
         run: python -m wallet500.exact_pair_survival
+      - name: Refresh immutable performance exact-pair marks
+        run: python -m wallet500.performance_tracker
+      - name: Refresh current tradability truth
+        run: python -m wallet500.realizable_performance
       - name: Apply production liquidity hardening gate
         run: python -m wallet500.production_risk_gate
       - name: Enrich verified EVM deployment blocks on-chain
@@ -125,9 +129,15 @@ jobs:
           c=json.loads(cpath.read_text())
           if c.get('contracts_seen',0)<=0: raise SystemExit('FATAL: CEX radar empty')
           if c.get('healthy_sources',0)<2: raise SystemExit('FATAL: fewer than 2 healthy CEX sources')
-          required=('data/cex-state.json','data/cex-learning.json','data/time-machine-replay.json','data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/discovery-evidence-ledger.json','data/scheduler-health.json','data/telegram-alert-report.json','data/production-risk-evaluations.json','data/production-risk-blocked.json','data/exact-pair-survival-report.json','data/holder-cluster-gate.json','data/holder-cluster-production-qualified.json','data/holder-cluster-quarantine.json','data/holder-cluster-production-blocked.json','data/holder-cluster-production-report.json','data/paper-portfolio-ledger.json','data/paper-portfolio-summary.json','data/rejected-candidate-ledger.json','data/rejected-candidate-learning-summary.json','data/rejected-outcome-report.json','data/rejected-filter-attribution.json','data/filter-tuning-advisor.json','data/system-health.json')
+          required=('data/cex-state.json','data/cex-learning.json','data/time-machine-replay.json','data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/discovery-evidence-ledger.json','data/scheduler-health.json','data/telegram-alert-report.json','data/production-risk-evaluations.json','data/production-risk-blocked.json','data/exact-pair-survival-report.json','data/holder-cluster-gate.json','data/holder-cluster-production-qualified.json','data/holder-cluster-quarantine.json','data/holder-cluster-production-blocked.json','data/holder-cluster-production-report.json','data/paper-portfolio-ledger.json','data/paper-portfolio-summary.json','data/rejected-candidate-ledger.json','data/rejected-candidate-learning-summary.json','data/rejected-outcome-report.json','data/rejected-filter-attribution.json','data/filter-tuning-advisor.json','data/system-health.json','data/realizable-performance.json','data/realizable-performance-summary.json')
           for name in required:
-              if not Path(name).exists(): raise SystemExit('FATAL: missing '+name)
+              if not Path(name).exists() or Path(name).stat().st_size == 0: raise SystemExit('FATAL: missing/empty '+name)
+          perf=json.loads(Path('data/realizable-performance.json').read_text())
+          pts=datetime.fromisoformat(perf['updated_at']); page=(datetime.now(timezone.utc)-pts).total_seconds()
+          if page>300: raise SystemExit(f'FATAL: stale performance truth ({page:.0f}s old)')
+          for row in perf.get('plausible_rows') or []:
+              if float(row.get('liquidity_usd') or 0) < 50000: raise SystemExit('FATAL: sub-$50K pair reached tradable performance display')
+              if row.get('current_status') != 'CURRENTLY_TRADABLE': raise SystemExit('FATAL: blocked pair reached tradable performance display')
           hreport=json.loads(Path('data/holder-cluster-production-report.json').read_text())
           if hreport.get('mode')!='PRODUCTION_FAIL_CLOSED': raise SystemExit('FATAL: holder cluster gate not fail-closed')
           promoted=json.loads(Path('data/holder-cluster-production-qualified.json').read_text())
@@ -148,6 +158,7 @@ jobs:
           if health.get('overall')=='FAILED': raise SystemExit('FATAL: system health failed: '+str(health.get('checks')))
           print('SYSTEM HEALTH:',health.get('overall'))
           print('PAPER PORTFOLIO:','$'+str(portfolio.get('total_equity_usd')),'open',portfolio.get('open_positions'),'closed',portfolio.get('closed_positions'),'pnl',portfolio.get('total_pnl_usd'))
+          print('PERFORMANCE TRUTH:',perf.get('updated_at'),'tradable',perf.get('currently_tradable_count'),'blocked',perf.get('not_realizable_now_count'))
           print('HEALTHY LIVE SCAN:',d['updated_at'],'active',d.get('active_qualified',0),'pending',d.get('live_survival_pending',0),'failed',d.get('live_survival_failed',0))
           PY
       - name: Publish verified scan data
