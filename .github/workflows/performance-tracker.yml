@@ -38,14 +38,14 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install
-        run: pip install -e .
+        run: pip install -e . pytest
       - name: Run lifecycle strategy tests
         run: python -m pytest -q tests/test_lifecycle_strategy.py
       - name: Rebuild immutable Performance Since Discovery
         run: python -m wallet500.performance_tracker
       - name: Update forward lifecycle strategy ledger
         run: python -m wallet500.lifecycle_strategy
-      - name: Recheck market execution quality
+      - name: Recheck survivorship-corrected current return
         run: python -m wallet500.realizable_performance
       - name: Verify executable cash quotes
         env:
@@ -62,9 +62,10 @@ jobs:
           d=json.loads(paths[0].read_text()); lb=json.loads(paths[3].read_text()); ls=json.loads(paths[5].read_text()); rp=json.loads(paths[6].read_text()); cv=json.loads(paths[8].read_text())
           if d.get('tracked_tokens',0)<=0: raise SystemExit('FATAL: tracker attempted to publish zero tracked tokens')
           if lb.get('verified_count',0)!=len(lb.get('rows') or []): raise SystemExit('FATAL: leaderboard count mismatch')
-          if rp.get('verified_rows_seen',0)!=lb.get('verified_count',0): raise SystemExit('FATAL: execution-quality cohort mismatch')
+          if rp.get('tracked_cohort_count',0)+rp.get('unknown_not_scored_count',0)!=lb.get('verified_count',0): raise SystemExit('FATAL: survivorship cohort accounting mismatch')
           if cv.get('source_market_eligible_count',0)!=rp.get('market_execution_plausible_count',0): raise SystemExit('FATAL: cash quote cohort mismatch')
           if ls.get('retroactive_policy')!='NO_RETROACTIVE_SELLS_BEFORE_POLICY_ACTIVATION': raise SystemExit('FATAL: lifecycle retroactive policy changed')
+          print('CURRENT RETURN:',rp.get('tracked_cohort_count'),'tracked; dead',rp.get('dead_zero_value_count'),'unknown',rp.get('unknown_not_scored_count'),'ROI',(rp.get('current_return_portfolio') or {}).get('roi_pct'))
           print('LIFECYCLE:',ls.get('positions_total'),'positions; partial sells',ls.get('partial_sell_signals'),'liq exits',ls.get('liquidity_exit_signals'),'ROI',ls.get('model_roi_pct'))
           print('CASH QUOTES:',cv.get('cash_quote_verified_count'),'verified;',cv.get('quote_unavailable_count'),'unavailable; ROI',cv.get('cash_verified_roi_pct'))
           PY
