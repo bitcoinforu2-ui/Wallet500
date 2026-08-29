@@ -52,12 +52,14 @@ jobs:
         env:
           ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
           BSC_RPC_URL: ${{ secrets.BSC_RPC_URL }}
+          BSC_RPC_FALLBACK_URLS: https://bsc.drpc.org,https://rpc.nodeflare.app/bnb/public
         run: python -m wallet500.evm_deployment_enrichment
       - name: Analyze holder and cluster risk on exact active pairs
         env:
           HOLDER_CLUSTER_INPUT: active-qualified-candidates.json
           ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
           BSC_RPC_URL: ${{ secrets.BSC_RPC_URL }}
+          BSC_RPC_FALLBACK_URLS: https://bsc.drpc.org,https://rpc.nodeflare.app/bnb/public
         run: python -m wallet500.holder_cluster_gate
       - name: Apply fail-closed holder cluster production gate
         run: python -m wallet500.holder_cluster_production_gate
