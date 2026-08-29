@@ -17,6 +17,10 @@ def _ret(cur,entry):
         cur=float(cur);entry=float(entry);return ((cur/entry)-1)*100 if cur>=0 and entry>0 else None
     except:return None
 
+def _live_return(cur,entry):
+    """Backward-compatible truth helper: recompute return from same-run exact-pair price."""
+    return _ret(cur,entry)
+
 def _k(chain,token,pair):
     if chain in {'ethereum','bsc'}: token=str(token).lower();pair=str(pair).lower()
     return f'{chain}:{token}:{pair}'
@@ -83,7 +87,7 @@ def run():
         if terminal:
             ret=-100.0;marked=0.0;dead+=1;status='CONFIRMED_DEAD_CURRENT_VALUE_ZERO';reasons=['CONFIRMED_TERMINAL_PAIR_EVIDENCE'];live_price=0.0
         elif live:
-            status,reasons=_market_status(live);live_price=live['price_usd'];ret=_ret(live_price,entry);marked=max(0.0,POSITION_USD*(1+ret/100))
+            status,reasons=_market_status(live);live_price=live['price_usd'];ret=_live_return(live_price,entry);marked=max(0.0,POSITION_USD*(1+ret/100))
             if status=='CURRENTLY_TRADABLE':tradable+=1
             else:blocked+=1
         else:
