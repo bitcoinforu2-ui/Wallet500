@@ -81,9 +81,15 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           WALLET500_ALERT_INPUT: holder-cluster-production-qualified.json
         run: python -m wallet500.telegram_alerts
-      - name: Extract verified Solana wallet candidates
+      - name: Fast wallet-forensics heartbeat
         continue-on-error: true
+        env:
+          WALLET500_FORENSICS_MAX_TOKENS: '1'
+          WALLET500_FORENSICS_SIGNATURES: '5'
+          WALLET500_FORENSICS_UPDATE_RUN_SUMMARY: '1'
         run: python -m wallet500.wallet_candidate_discovery
+      - name: Assess explicit system health
+        run: python -m wallet500.system_health
       - name: Record scheduler telemetry
         env:
           W500_EVENT: ${{ github.event_name }}
@@ -119,7 +125,7 @@ jobs:
           c=json.loads(cpath.read_text())
           if c.get('contracts_seen',0)<=0: raise SystemExit('FATAL: CEX radar empty')
           if c.get('healthy_sources',0)<2: raise SystemExit('FATAL: fewer than 2 healthy CEX sources')
-          required=('data/cex-state.json','data/cex-learning.json','data/time-machine-replay.json','data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/discovery-evidence-ledger.json','data/scheduler-health.json','data/telegram-alert-report.json','data/production-risk-evaluations.json','data/production-risk-blocked.json','data/exact-pair-survival-report.json','data/holder-cluster-gate.json','data/holder-cluster-production-qualified.json','data/holder-cluster-quarantine.json','data/holder-cluster-production-blocked.json','data/holder-cluster-production-report.json','data/paper-portfolio-ledger.json','data/paper-portfolio-summary.json','data/rejected-candidate-ledger.json','data/rejected-candidate-learning-summary.json','data/rejected-outcome-report.json','data/rejected-filter-attribution.json','data/filter-tuning-advisor.json')
+          required=('data/cex-state.json','data/cex-learning.json','data/time-machine-replay.json','data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/discovery-evidence-ledger.json','data/scheduler-health.json','data/telegram-alert-report.json','data/production-risk-evaluations.json','data/production-risk-blocked.json','data/exact-pair-survival-report.json','data/holder-cluster-gate.json','data/holder-cluster-production-qualified.json','data/holder-cluster-quarantine.json','data/holder-cluster-production-blocked.json','data/holder-cluster-production-report.json','data/paper-portfolio-ledger.json','data/paper-portfolio-summary.json','data/rejected-candidate-ledger.json','data/rejected-candidate-learning-summary.json','data/rejected-outcome-report.json','data/rejected-filter-attribution.json','data/filter-tuning-advisor.json','data/system-health.json')
           for name in required:
               if not Path(name).exists(): raise SystemExit('FATAL: missing '+name)
           hreport=json.loads(Path('data/holder-cluster-production-report.json').read_text())
@@ -138,6 +144,9 @@ jobs:
           if reject.get('records',0) < reject.get('false_negative_winners',0): raise SystemExit('FATAL: invalid false-negative accounting')
           tune=json.loads(Path('data/filter-tuning-advisor.json').read_text())
           if tune.get('mode')!='RESEARCH_ADVISORY_ONLY' or tune.get('production_thresholds_modified') is not False: raise SystemExit('FATAL: tuning advisor may not mutate production')
+          health=json.loads(Path('data/system-health.json').read_text())
+          if health.get('overall')=='FAILED': raise SystemExit('FATAL: system health failed: '+str(health.get('checks')))
+          print('SYSTEM HEALTH:',health.get('overall'))
           print('PAPER PORTFOLIO:','$'+str(portfolio.get('total_equity_usd')),'open',portfolio.get('open_positions'),'closed',portfolio.get('closed_positions'),'pnl',portfolio.get('total_pnl_usd'))
           print('HEALTHY LIVE SCAN:',d['updated_at'],'active',d.get('active_qualified',0),'pending',d.get('live_survival_pending',0),'failed',d.get('live_survival_failed',0))
           PY
