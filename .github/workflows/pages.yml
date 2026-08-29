@@ -9,6 +9,7 @@ on:
       - 'dashboard-live.html'
       - 'dashboard-performance.html'
       - 'dashboard-backtest.html'
+      - 'dashboard-reference-fix.js'
       - 'data/**'
       - 'wallet500_option2_emblem.jpg'
       - '.github/workflows/pages.yml'
@@ -39,6 +40,16 @@ jobs:
           cp dashboard-live.html _site/index.html
           cp dashboard-performance.html _site/performance/index.html
           cp dashboard-backtest.html _site/backtest/index.html
+          cp dashboard-reference-fix.js _site/dashboard-reference-fix.js
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('_site/index.html')
+          s=p.read_text()
+          tag='<script src="dashboard-reference-fix.js?v=2"></script>'
+          if tag not in s:
+              s=s.replace('</body>', tag+'</body>')
+          p.write_text(s)
+          PY
           cp -r data _site/data
           if [ -f wallet500_option2_emblem.jpg ]; then
             cp wallet500_option2_emblem.jpg _site/
@@ -46,6 +57,7 @@ jobs:
           test -s _site/index.html
           test -s _site/performance/index.html
           test -s _site/backtest/index.html
+          test -s _site/dashboard-reference-fix.js
           test -s _site/data/run-summary.json
 
       - name: Configure GitHub Pages
@@ -60,4 +72,4 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-# redeploy marker: 2026-08-29T12:29:00+03:00
+# redeploy marker: 2026-08-29T14:04:00+03:00
