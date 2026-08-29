@@ -1,0 +1,61 @@
+name: Wallet500 Deep Wallet Forensics
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '12,42 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-wallet-forensics
+  cancel-in-progress: true
+
+jobs:
+  forensics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e .
+      - name: Run deeper verified Solana wallet forensics
+        env:
+          WALLET500_FORENSICS_MAX_TOKENS: '5'
+          WALLET500_FORENSICS_SIGNATURES: '12'
+          WALLET500_FORENSICS_UPDATE_RUN_SUMMARY: '0'
+        run: python -m wallet500.wallet_candidate_discovery
+      - name: Validate isolated output
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/wallet-forensics-summary.json')
+          if not p.exists(): raise SystemExit('FATAL: wallet-forensics-summary.json missing')
+          d=json.loads(p.read_text())
+          if d.get('source')!='holder-cluster-production-qualified.json': raise SystemExit('FATAL: forensics source bypassed production holder gate')
+          if d.get('method')!='VERIFIED_POOL_TRANSACTION_SIGNERS': raise SystemExit('FATAL: unverified wallet method')
+          print('WALLET FORENSICS:',d.get('solana_candidates_scanned',0),'pools',d.get('verified_wallet_candidates',0),'verified wallets')
+          PY
+      - name: Publish wallet-forensics data only
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-forensics-bot'
+          git config user.email 'wallet500-forensics-bot@users.noreply.github.com'
+          git add data/wallet-candidates.json data/wallet-forensics-summary.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'data: refresh verified wallet forensics'
+            for attempt in 1 2 3 4 5; do
+              git fetch origin main
+              git merge --no-edit -X ours origin/main
+              if git push origin HEAD:main; then break; fi
+              sleep 3
+              if [ "$attempt" = 5 ]; then exit 1; fi
+            done
+          fi
