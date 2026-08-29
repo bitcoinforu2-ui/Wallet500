@@ -1,0 +1,63 @@
+name: Wallet500 Blocked Cohort Paper Experiment
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/blocked_cohort_experiment.py'
+      - '.github/workflows/blocked-cohort-paper.yml'
+  schedule:
+    - cron: '11 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-blocked-cohort-paper
+  cancel-in-progress: false
+
+jobs:
+  paper-experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e .
+      - name: Freeze or mark top-10 blocked paper cohort
+        run: python -m wallet500.blocked_cohort_experiment
+      - name: Validate experiment isolation
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          l=json.loads(Path('data/blocked-cohort-paper-ledger.json').read_text())
+          s=json.loads(Path('data/blocked-cohort-paper-summary.json').read_text())
+          if l.get('mode')!='PAPER_ONLY_BLOCKED_COHORT_EXPERIMENT': raise SystemExit('invalid experiment mode')
+          if l.get('paper_only') is not True or l.get('production_bypass') is not False: raise SystemExit('experiment isolation failure')
+          if any(float(p.get('cost_usd') or 0)!=1.0 for p in l.get('positions',[])): raise SystemExit('position size changed')
+          if len(l.get('positions',[]))>10: raise SystemExit('cohort exceeds 10')
+          print('BLOCKED COHORT PAPER:',s)
+          PY
+      - name: Publish experiment marks
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-experiment-bot'
+          git config user.email 'wallet500-experiment-bot@users.noreply.github.com'
+          git add data/blocked-cohort-paper-ledger.json data/blocked-cohort-paper-summary.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'experiment: mark frozen blocked top-10 paper cohort'
+            for attempt in 1 2 3 4 5; do
+              git fetch origin main
+              git merge --no-edit -X ours origin/main
+              if git push origin HEAD:main; then break; fi
+              sleep 3
+              if [ "$attempt" = 5 ]; then exit 1; fi
+            done
+          fi
