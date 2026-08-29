@@ -9,6 +9,9 @@ GECKO="https://api.geckoterminal.com/api/v2"
 MOONSHOT="https://api.moonshot.cc"
 CHAINS=("solana","ethereum","bsc")
 GECKO_NETWORK={"solana":"solana","ethereum":"eth","bsc":"bsc"}
+BSC_MIN_DISCOVERY_CAP=300
+FRESH_PAGE_COUNT=5
+DEEP_MAX_PAGE=15
 
 BLOCKED_BASE_TOKENS={
     "solana":{"So11111111111111111111111111111111111111112","EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","Es9vMFrzaCERmJfrF4H2FYD9iG6vGvL5JZtJm6Gq5tQ"},
@@ -40,6 +43,7 @@ def _blocked(chain:str,token:str)->bool:
     if not token:return True
     norm=token.lower() if chain in {"ethereum","bsc"} else token
     return norm in BLOCKED_BASE_TOKENS.get(chain,set())
+def _chain_limit(chain:str,limit:int)->int:return max(int(limit),BSC_MIN_DISCOVERY_CAP) if chain=="bsc" else int(limit)
 
 def _add(rows,seen,counts,filtered,chain,token,source,limit,**extra):
     if chain not in counts or not token:return
@@ -53,7 +57,7 @@ def _add(rows,seen,counts,filtered,chain,token,source,limit,**extra):
                 row["source_confirmations"]=len(sources);row.update({k:v for k,v in extra.items() if v is not None})
                 break
         return
-    if counts[chain]>=limit:return
+    if counts[chain]>=_chain_limit(chain,limit):return
     seen.add(key);counts[chain]+=1
     rows.append({"chain":chain,"token":token,"source":source,"sources":[source],"source_confirmations":1,**extra})
 
@@ -93,7 +97,7 @@ def _gecko_pool_page(chain,network,endpoint,page,limit,rows,seen,counts,filtered
         _add(rows,seen,counts,filtered,chain,_extract_address(tid,token_obj),source,limit,pool_address=a.get("address"),pool_created_at=a.get("pool_created_at"),name=a.get("name"),symbol=ta.get("symbol"),token_name=ta.get("name"),discovery_page=page,reserve_usd=a.get("reserve_in_usd"),volume_usd=a.get("volume_usd"),transactions=a.get("transactions"),price_change_percentage=a.get("price_change_percentage"))
     return counts[chain]-before
 
-def _gecko_fresh_lane(wanted,limit,rows,seen,counts,filtered,errors=None,fresh_pages:int=3):
+def _gecko_fresh_lane(wanted,limit,rows,seen,counts,filtered,errors=None,fresh_pages:int=FRESH_PAGE_COUNT):
     errors=errors if errors is not None else [];pages_used={}
     for chain in sorted(wanted):
         network=GECKO_NETWORK.get(chain)
@@ -104,7 +108,7 @@ def _gecko_fresh_lane(wanted,limit,rows,seen,counts,filtered,errors=None,fresh_p
             except Exception as e:errors.append({"source":"geckoterminal:new_pools:fresh","chain":chain,"page":page,"error":repr(e)})
     return pages_used
 
-def _gecko_deep_lane(wanted,limit,rows,seen,counts,filtered,start_pages=None,pages_per_run:int=3,max_page:int=12,errors=None,fresh_pages:int=3):
+def _gecko_deep_lane(wanted,limit,rows,seen,counts,filtered,start_pages=None,pages_per_run:int=3,max_page:int=DEEP_MAX_PAGE,errors=None,fresh_pages:int=FRESH_PAGE_COUNT):
     start_pages=start_pages or {};errors=errors if errors is not None else [];next_pages={};pages_used={};deep_first=max(2,fresh_pages+1);max_page=max(deep_first,max_page)
     for chain in sorted(wanted):
         network=GECKO_NETWORK.get(chain)
@@ -121,15 +125,17 @@ def _gecko_deep_lane(wanted,limit,rows,seen,counts,filtered,start_pages=None,pag
     return next_pages,pages_used
 
 def discovery_diagnostics()->dict:return dict(_LAST_DIAGNOSTICS)
-def discover_tokens(chains=CHAINS,limit_per_chain:int=120,start_pages=None,pages_per_run:int=3,max_page:int=12)->tuple[list[dict],dict]:
+def discover_tokens(chains=CHAINS,limit_per_chain:int=120,start_pages=None,pages_per_run:int=3,max_page:int=DEEP_MAX_PAGE)->tuple[list[dict],dict]:
     global _LAST_DIAGNOSTICS
     wanted=set(chains);rows=[];seen=set();errors=[];counts={c:0 for c in wanted};filtered={c:0 for c in wanted}
-    fresh_pages_used=_gecko_fresh_lane(wanted,limit_per_chain,rows,seen,counts,filtered,errors,fresh_pages=3)
+    effective_limits={c:_chain_limit(c,limit_per_chain) for c in wanted}
+    fresh_pages_used=_gecko_fresh_lane(wanted,limit_per_chain,rows,seen,counts,filtered,errors,fresh_pages=FRESH_PAGE_COUNT)
     _moonshot(wanted,limit_per_chain,rows,seen,counts,filtered,errors);_dex_latest(wanted,limit_per_chain,rows,seen,counts,filtered,errors)
-    next_pages,deep_pages_used=_gecko_deep_lane(wanted,limit_per_chain,rows,seen,counts,filtered,start_pages,pages_per_run,max_page,errors,fresh_pages=3)
+    next_pages,deep_pages_used=_gecko_deep_lane(wanted,limit_per_chain,rows,seen,counts,filtered,start_pages,pages_per_run,max_page,errors,fresh_pages=FRESH_PAGE_COUNT)
     dead=[c for c in sorted(wanted) if counts.get(c,0)==0];health={c:("FAILED" if counts.get(c,0)==0 else "DEGRADED" if counts.get(c,0)<10 else "HEALTHY") for c in sorted(wanted)}
     boosted=[x for x in rows if x.get("dex_boost_active")]
-    _LAST_DIAGNOSTICS={"counts":dict(counts),"health":health,"filtered_base_assets":dict(filtered),"cursor_in":dict(start_pages or {}),"cursor_out":dict(next_pages),"fresh_overlap_pages":fresh_pages_used,"deep_pages_scanned":deep_pages_used,"fresh_overlap_enabled":True,"fresh_overlap_page_count":3,"dex_boosted_seen":len(boosted),"dex_boost_top_seen":sum(1 for x in boosted if x.get("dex_boost_top_rank") is not None),"errors_count":len(errors),"recent_errors":errors[-20:]}
+    saturated={c:counts.get(c,0)>=effective_limits.get(c,0) for c in sorted(wanted)}
+    _LAST_DIAGNOSTICS={"counts":dict(counts),"effective_limits":effective_limits,"cap_saturated":saturated,"health":health,"filtered_base_assets":dict(filtered),"cursor_in":dict(start_pages or {}),"cursor_out":dict(next_pages),"fresh_overlap_pages":fresh_pages_used,"deep_pages_scanned":deep_pages_used,"fresh_overlap_enabled":True,"fresh_overlap_page_count":FRESH_PAGE_COUNT,"dex_boosted_seen":len(boosted),"dex_boost_top_seen":sum(1 for x in boosted if x.get("dex_boost_top_rank") is not None),"errors_count":len(errors),"recent_errors":errors[-20:]}
     if dead:raise RuntimeError(f"Discovery health failure: zero tokens on {dead}; recent_errors={errors[-12:]}")
     return rows,next_pages
 
