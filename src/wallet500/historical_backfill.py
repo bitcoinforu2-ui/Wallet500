@@ -81,13 +81,22 @@ def _evidence_pairs() -> list[dict[str, Any]]:
     return out
 
 
+def _is_fetched_with_data(row: dict[str, Any] | None) -> bool:
+    if not isinstance(row, dict) or row.get('status') != 'FETCHED':
+        return False
+    candles = row.get('candles')
+    return isinstance(candles, list) and len(candles) > 0
+
+
 def run() -> dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
     pairs = _evidence_pairs()
     state = _load(STATE, {})
     done = state.get('pairs', {}) if isinstance(state, dict) and isinstance(state.get('pairs'), dict) else {}
 
-    pending = [p for p in pairs if p['key'] not in done or done[p['key']].get('status') != 'FETCHED']
+    # Truth fix: a provider response with zero usable candles is not a completed backfill.
+    # Old state entries previously marked FETCHED with an empty candle list are retried.
+    pending = [p for p in pairs if not _is_fetched_with_data(done.get(p['key']))]
     batch = pending[:MAX_PAIRS_PER_RUN]
     errors = []
 
@@ -107,30 +116,45 @@ def run() -> dict[str, Any]:
                     'volume_usd': float(row[5]),
                 })
             normalized.sort(key=lambda x: x['timestamp'])
-            done[p['key']] = {
-                **p,
-                'status': 'FETCHED',
-                'fetched_at': now,
-                'provider': 'GECKOTERMINAL_PUBLIC_API',
-                'granularity': '1D',
-                'candles': normalized,
-                'oldest_timestamp': normalized[0]['timestamp'] if normalized else None,
-                'newest_timestamp': normalized[-1]['timestamp'] if normalized else None,
-                'candles_count': len(normalized),
-                'historical_liquidity_verified': False,
-                'historical_holder_cluster_verified': False,
-                'countable_as_full_wallet500_backtest': False,
-            }
+            if normalized:
+                done[p['key']] = {
+                    **p,
+                    'status': 'FETCHED',
+                    'fetched_at': now,
+                    'provider': 'GECKOTERMINAL_PUBLIC_API',
+                    'granularity': '1D',
+                    'candles': normalized,
+                    'oldest_timestamp': normalized[0]['timestamp'],
+                    'newest_timestamp': normalized[-1]['timestamp'],
+                    'candles_count': len(normalized),
+                    'historical_liquidity_verified': False,
+                    'historical_holder_cluster_verified': False,
+                    'countable_as_full_wallet500_backtest': False,
+                }
+            else:
+                done[p['key']] = {
+                    **p,
+                    'status': 'RETRY_EMPTY',
+                    'last_attempt_at': now,
+                    'provider': 'GECKOTERMINAL_PUBLIC_API',
+                    'granularity': '1D',
+                    'candles': [],
+                    'candles_count': 0,
+                    'last_error': 'NO_USABLE_OHLCV_RETURNED',
+                    'historical_liquidity_verified': False,
+                    'historical_holder_cluster_verified': False,
+                    'countable_as_full_wallet500_backtest': False,
+                }
         except Exception as e:
             errors.append({'key': p['key'], 'error': f'{type(e).__name__}: {e}'[:300]})
             done[p['key']] = {**p, 'status': 'RETRY', 'last_attempt_at': now, 'last_error': errors[-1]['error']}
         if idx + 1 < len(batch):
             time.sleep(7.0)
 
-    fetched = sum(1 for x in done.values() if x.get('status') == 'FETCHED')
-    retry = sum(1 for x in done.values() if x.get('status') == 'RETRY')
+    fetched = sum(1 for x in done.values() if _is_fetched_with_data(x))
+    retry = sum(1 for x in done.values() if str(x.get('status') or '').startswith('RETRY'))
     state_out = {
-        'version': 1,
+        'version': 2,
         'updated_at': now,
         'mode': 'RESEARCH_ONLY_INCREMENTAL_BACKFILL',
         'lookahead_policy': 'FORBIDDEN',
@@ -158,7 +182,7 @@ def run() -> dict[str, Any]:
         }
 
     report = {
-        'version': 1,
+        'version': 2,
         'generated_at': now,
         'mode': 'RESEARCH_ONLY_INCREMENTAL_BACKFILL',
         'lookahead_policy': 'FORBIDDEN',
@@ -169,6 +193,7 @@ def run() -> dict[str, Any]:
         'remaining_pairs': max(0, len(pairs) - fetched),
         'processed_this_run': len(batch),
         'errors_this_run': errors,
+        'empty_response_policy': 'ZERO_USABLE_CANDLES_IS_RETRY_NOT_FETCHED',
         'windows': window_coverage,
         'important_limit': 'Phase 2a reconstructs historical OHLCV for exact pairs already known to Wallet500. It does not yet claim that Wallet500 would have discovered those pairs in the past. Historical liquidity, holder/cluster state, and full historical discovery universe must be reconstructed before any 7/30/90-day result is labeled BACKTEST VERIFIED.',
         'next_required_layers': [
