@@ -11,6 +11,8 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/paper_truth_portfolio.py'
+      - 'src/wallet500/paper_truth_exact_runner.py'
+      - 'src/wallet500/exact_pair_quote.py'
       - 'src/wallet500/cash_verified.py'
       - '.github/workflows/paper-truth.yml'
 
@@ -36,13 +38,13 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e .
-      - name: Reconcile quote-verified paper truth ledger
+      - name: Reconcile exact-pair quote-verified paper truth ledger
         env:
           ZEROX_API_KEY: ${{ secrets.ZEROX_API_KEY }}
           ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
           BSC_RPC_URL: ${{ secrets.BSC_RPC_URL }}
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
-        run: python -m wallet500.paper_truth_portfolio
+        run: python -m wallet500.paper_truth_exact_runner
       - name: Validate truth accounting
         run: |
           python - <<'PY'
@@ -61,6 +63,8 @@ jobs:
               raise SystemExit('FATAL: wrong exact-pair truth mode')
           if float(s.get('position_size_usd', 0)) != 1.0:
               raise SystemExit('FATAL: position size changed')
+          if s.get('generic_router_booking_disabled') is not True:
+              raise SystemExit('FATAL: generic router booking unexpectedly enabled')
 
           closed_status = 'CLOSED_EXACT_PAIR_QUOTE_VERIFIED'
           positions = l.get('positions') or []
