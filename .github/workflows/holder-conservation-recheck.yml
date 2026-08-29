@@ -1,0 +1,82 @@
+name: Wallet500 Holder Conservation Recheck
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/holder_cluster_conservation_gate.py'
+      - '.github/workflows/holder-conservation-recheck.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-holder-conservation-recheck
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e .
+      - name: Run adaptive conservation holder gate
+        env:
+          HOLDER_CLUSTER_INPUT: active-qualified-candidates.json
+          ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
+          BSC_RPC_URL: ${{ secrets.BSC_RPC_URL }}
+          BSC_RPC_FALLBACK_URLS: https://bsc.drpc.org,https://rpc.nodeflare.app/bnb/public
+          HOLDER_EVM_LOG_CHUNK: '5000'
+          HOLDER_EVM_LOOKBACK_BLOCKS: '50000'
+        run: python -m wallet500.holder_cluster_conservation_gate
+      - name: Apply unchanged production gate
+        run: python -m wallet500.holder_cluster_production_gate
+      - name: Reconcile unchanged paper portfolio
+        run: python -m wallet500.paper_portfolio
+      - name: Validate fail-closed proof
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          gate=json.loads(Path('data/holder-cluster-gate.json').read_text())
+          rows=gate.get('rows',[])
+          promoted=json.loads(Path('data/holder-cluster-production-qualified.json').read_text())
+          for r in rows:
+              meta=r.get('metadata') or {}
+              if r.get('verification_complete'):
+                  assert meta.get('start_block_verified') is True or meta.get('supply_conservation_proven') is True
+              if meta.get('supply_conservation_proven'):
+                  assert meta.get('observed_negative_holders') == 0
+                  assert meta.get('total_supply_raw') == meta.get('reconstructed_positive_supply_raw')
+          for r in promoted:
+              assert r.get('holder_cluster_production_status') == 'PASS'
+              assert r.get('holder_cluster_verification_complete') is True
+          print('checked',len(rows),'promoted',len(promoted))
+          for r in rows:
+              m=r.get('metadata') or {}
+              print(r.get('chain'),r.get('token'),r.get('status'),m.get('reason'),m.get('coverage_verification_method'))
+          PY
+      - name: Publish recheck evidence
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-holder-proof-bot'
+          git config user.email 'wallet500-holder-proof-bot@users.noreply.github.com'
+          git add data/holder-cluster-gate.json data/holder-cluster-gate-summary.json data/holder-cluster-production-qualified.json data/holder-cluster-quarantine.json data/holder-cluster-production-blocked.json data/holder-cluster-production-report.json data/paper-portfolio-ledger.json data/paper-portfolio-summary.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'data: refresh adaptive holder conservation evidence'
+            for attempt in 1 2 3 4 5; do
+              git fetch origin main
+              git merge --no-edit -X ours origin/main
+              if git push origin HEAD:main; then break; fi
+              sleep 3
+              if [ "$attempt" = 5 ]; then exit 1; fi
+            done
+          fi
