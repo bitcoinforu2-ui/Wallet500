@@ -48,6 +48,11 @@ jobs:
         run: python -m wallet500.exact_pair_survival
       - name: Apply production liquidity hardening gate
         run: python -m wallet500.production_risk_gate
+      - name: Enrich verified EVM deployment blocks on-chain
+        env:
+          ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
+          BSC_RPC_URL: ${{ secrets.BSC_RPC_URL }}
+        run: python -m wallet500.evm_deployment_enrichment
       - name: Analyze holder and cluster risk on exact active pairs
         env:
           HOLDER_CLUSTER_INPUT: active-qualified-candidates.json
