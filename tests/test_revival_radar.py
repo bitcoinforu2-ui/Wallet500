@@ -46,4 +46,4 @@ def test_old_coin_policy_is_7d_minimum_and_30d_preferred():
 def test_revival_scan_expanded_batch_policy():
     assert OLD_MIN_AGE_DAYS == 7.0
     assert OLD_PREFERRED_AGE_DAYS == 30.0
-    assert DEFAULT_BATCH_SIZE == 180
+    assert DEFAULT_BATCH_SIZE == 300
