@@ -4,135 +4,53 @@ from datetime import datetime, timezone
 from pathlib import Path
 from .market_data import snapshot
 
-DATA=Path('data')
-MIN_LIQ=50000.0
-MIN_VOL_H1=15000.0
-MIN_TXNS_H1=50
-POSITION_USD=1.0
+DATA=Path('data'); MIN_LIQ=50000.0; MIN_VOL_H1=15000.0; MIN_TXNS_H1=50; POSITION_USD=1.0
 
-
-def _load(path, default):
+def _load(path,default):
     try:
-        if not path.exists() or path.stat().st_size==0: return default
+        if not path.exists() or path.stat().st_size==0:return default
         return json.loads(path.read_text())
-    except Exception:
-        return default
+    except Exception:return default
 
-
-def _write(path,payload):
-    path.write_text(json.dumps(payload,indent=2))
-
+def _write(path,payload):path.write_text(json.dumps(payload,indent=2))
+def _live_return(cur,entry):
+    try:
+        cur=float(cur);entry=float(entry);return ((cur/entry)-1)*100 if cur>0 and entry>0 else None
+    except:return None
 
 def _status(live):
     reasons=[]
-    if not live: return 'NOT_REALIZABLE_NOW',['LOCKED_PAIR_NOT_RETURNED']
-    price=float(live.get('price_usd') or 0); liq=float(live.get('liquidity_usd') or 0)
-    vol=float(live.get('volume_h1') or 0); tx=int(live.get('buys_h1') or 0)+int(live.get('sells_h1') or 0)
-    if price<=0: reasons.append('PRICE_ZERO_OR_UNAVAILABLE')
-    if liq<MIN_LIQ: reasons.append('LIQUIDITY_LT_50K')
-    if vol<MIN_VOL_H1: reasons.append('VOLUME_H1_LT_15K')
-    if tx<MIN_TXNS_H1: reasons.append('TXNS_H1_LT_50')
-    if liq>0 and POSITION_USD/liq>0.0001: reasons.append('POSITION_TOO_LARGE_FOR_VISIBLE_LIQUIDITY')
-    return ('NOT_REALIZABLE_NOW',reasons) if reasons else ('MARKET_EXECUTION_PLAUSIBLE',[])
-
-
-def _live_return(live_price,entry_price):
-    try:
-        cur=float(live_price); entry=float(entry_price)
-        return ((cur/entry)-1.0)*100.0 if cur>0 and entry>0 else None
-    except Exception:
-        return None
-
+    if not live:return 'DEAD_OR_UNAVAILABLE',['LOCKED_PAIR_NOT_RETURNED']
+    price=float(live.get('price_usd') or 0);liq=float(live.get('liquidity_usd') or 0);vol=float(live.get('volume_h1') or 0);tx=int(live.get('buys_h1') or 0)+int(live.get('sells_h1') or 0)
+    if price<=0:reasons.append('PRICE_ZERO_OR_UNAVAILABLE')
+    if liq<MIN_LIQ:reasons.append('LIQUIDITY_LT_50K')
+    if vol<MIN_VOL_H1:reasons.append('VOLUME_H1_LT_15K')
+    if tx<MIN_TXNS_H1:reasons.append('TXNS_H1_LT_50')
+    return ('CURRENTLY_BLOCKED',reasons) if reasons else ('CURRENTLY_TRADABLE',[])
 
 def run():
-    src=_load(DATA/'performance-leaderboard.json',{})
-    rows=src.get('rows') if isinstance(src,dict) else []
-    if not isinstance(rows,list): rows=[]
-    plausible=[]; blocked=[]; now=datetime.now(timezone.utc).isoformat()
+    src=_load(DATA/'performance-leaderboard.json',{});rows=src.get('rows') if isinstance(src,dict) else []
+    if not isinstance(rows,list):rows=[]
+    cohort=[];now=datetime.now(timezone.utc).isoformat();dead=unknown=tradable=blocked=0
     for r in rows:
-        if not isinstance(r,dict): continue
-        chain=r.get('chain'); token=r.get('token'); pair=r.get('pair_address')
-        live=snapshot(chain,token,pair) if chain and token and pair else None
-        status,reasons=_status(live)
-        live_price=(live or {}).get('price_usd')
-        entry=r.get('entry_price_usd')
-        ret=_live_return(live_price,entry)
-        if live and ret is None:
-            status='NOT_REALIZABLE_NOW'
-            reasons=list(dict.fromkeys([*reasons,'LIVE_RETURN_NOT_RECOMPUTABLE']))
-        marked=max(0.0,POSITION_USD*(1.0+ret/100.0)) if ret is not None else 0.0
-        row={
-            'chain':chain,'token':token,'pair_address':pair,'dex':(live or {}).get('dex') or r.get('dex'),
-            'discovery_time':r.get('discovery_time'),'entry_price_usd':entry,
-            'current_price_usd':live_price if live_price not in (None,0,0.0) else r.get('current_price_usd'),
-            'current_return_pct':round(ret,4) if ret is not None else None,
-            'source_leaderboard_return_pct':r.get('current_return_pct'),
-            'peak_return_pct':r.get('peak_return_pct'),
-            'liquidity_usd':float((live or {}).get('liquidity_usd') or 0),
-            'volume_h1':float((live or {}).get('volume_h1') or 0),
-            'txns_h1':int((live or {}).get('buys_h1') or 0)+int((live or {}).get('sells_h1') or 0),
-            'position_usd':POSITION_USD,'marked_value_usd':round(marked,6),
-            'execution_status':status,'block_reasons':reasons,'checked_at':now,
-            'proof_level':'EXACT_PAIR_LIVE_MARKET_PROXY_RETURN_RECOMPUTED'
-        }
-        (plausible if status=='MARKET_EXECUTION_PLAUSIBLE' else blocked).append(row)
-    all_discoveries=int(src.get('all_discoveries_hypothetical_investment_usd') or 0)
-    verified_n=len(rows); eligible_n=len(plausible)
-    eligible_invested=eligible_n*POSITION_USD
-    eligible_value=sum(x['marked_value_usd'] for x in plausible)
-    eligible_profit=eligible_value-eligible_invested
-    eligible_roi=((eligible_value/eligible_invested)-1)*100 if eligible_invested else 0.0
-    paper_invested=verified_n*POSITION_USD
-    paper_value=sum(x['marked_value_usd'] for x in plausible+blocked if x.get('current_return_pct') is not None)
-
-    # HARD TRUTH GATE:
-    # This module can prove only CURRENT exact-pair market plausibility. It cannot
-    # prove that a token would have been discovered/qualified historically at the
-    # original timestamp. Therefore fields consumed by the dashboard's historical
-    # ROI boxes are intentionally locked to zero until the dedicated historical
-    # replay marks decisions as BACKTEST_VERIFIED.
-    historical_backtest_verified=False
-
-    payload={
-      'updated_at':now,'method':'REALIZABLE_PERFORMANCE_GATE_V4_TRUTH_LOCK','position_size_usd':POSITION_USD,
-      'all_discoveries_count':all_discoveries,'all_discoveries_hypothetical_investment_usd':round(all_discoveries*POSITION_USD,6),
-      'verified_rows_seen':verified_n,'paper_verified_investment_usd':round(paper_invested,6),'paper_verified_value_usd':round(paper_value,6),
-      'market_execution_plausible_count':eligible_n,'not_realizable_now_count':len(blocked),
-      'eligible_investment_usd':round(eligible_invested,6),'eligible_current_value_usd':round(eligible_value,6),
-      'eligible_profit_usd':round(eligible_profit,6),'eligible_roi_pct':round(eligible_roi,4),
-      'current_realizability_reference':{
-        'count':eligible_n,
-        'investment_usd':round(eligible_invested,6),
-        'marked_value_usd':round(eligible_value,6),
-        'pnl_usd':round(eligible_profit,6),
-        'roi_pct':round(eligible_roi,4),
-        'status':'CURRENT_MARKET_REFERENCE_ONLY_NOT_HISTORICAL_BACKTEST'
-      },
-      'historical_backtest_verified':historical_backtest_verified,
-      'historical_backtest_status':'NOT_BACKTEST_VERIFIED',
-      'historical_backtest_block_reasons':[
-        'HISTORICAL_DISCOVERY_UNIVERSE_NOT_VERIFIED',
-        'POINT_IN_TIME_LIQUIDITY_NOT_VERIFIED',
-        'POINT_IN_TIME_HOLDER_CLUSTER_NOT_VERIFIED',
-        'EXACT_TIMESTAMP_DECISION_REPLAY_NOT_VERIFIED'
-      ],
-      # Compatibility fields used by dashboard-live.html. Keep counts truthful,
-      # but never expose an unverified historical dollar value/ROI as performance.
-      'tracked_discoveries':all_discoveries,
-      'eligible_now':eligible_n,
-      'blocked_now':len(blocked),
-      'invested_usd':0.0,
-      'current_value_usd':0.0,
-      'roi_pct':0.0,
-      'truth_note':'Current returns are recomputed from immutable entry price and current exact-pair live price. Historical ROI is HARD-LOCKED until point-in-time discovery, liquidity, holder/cluster and exact decision replay are verified.',
-      'important_limit':'CURRENT MARKET-DATA PROXY ONLY. This report must never be presented as a verified historical backtest. A row also requires a router exit quote before exit-quote verification.',
-      'rules':{'min_liquidity_usd':MIN_LIQ,'min_volume_h1_usd':MIN_VOL_H1,'min_txns_h1':MIN_TXNS_H1,'max_position_fraction_of_liquidity':0.0001},
-      'plausible_rows':sorted(plausible,key=lambda x:float(x.get('current_return_pct') or -1e99),reverse=True),
-      'blocked_rows':sorted(blocked,key=lambda x:float(x.get('current_return_pct') or -1e99),reverse=True)
-    }
+        if not isinstance(r,dict):continue
+        chain=r.get('chain');token=r.get('token');pair=r.get('pair_address');entry=r.get('entry_price_usd')
+        if not chain or not token or not pair or not entry:
+            unknown+=1;continue
+        live=snapshot(chain,token,pair);status,reasons=_status(live);live_price=(live or {}).get('price_usd');ret=_live_return(live_price,entry)
+        # Truth rule: once a discovery has a valid immutable entry, it never vanishes from the cohort.
+        # If its locked pair is gone / price is zero, current hold-to-now value is $0 (-100%).
+        # Low liquidity/volume does NOT erase it: if an exact-pair price still exists we mark to that price.
+        if status=='DEAD_OR_UNAVAILABLE' or (live and float(live.get('price_usd') or 0)<=0):
+            ret=-100.0;marked=0.0;dead+=1;status='DEAD_CURRENT_VALUE_ZERO'
+        elif ret is None:
+            unknown+=1;continue
+        else:
+            marked=max(0.0,POSITION_USD*(1+ret/100));tradable+=status=='CURRENTLY_TRADABLE';blocked+=status=='CURRENTLY_BLOCKED'
+        cohort.append({'chain':chain,'token':token,'pair_address':pair,'dex':(live or {}).get('dex') or r.get('dex'),'discovery_time':r.get('discovery_time'),'entry_price_usd':entry,'current_price_usd':live_price or 0,'current_return_pct':round(ret,4),'peak_return_pct':r.get('peak_return_pct'),'liquidity_usd':float((live or {}).get('liquidity_usd') or 0),'position_usd':POSITION_USD,'marked_value_usd':round(marked,6),'current_status':status,'reasons':reasons,'checked_at':now,'proof_level':'IMMUTABLE_ENTRY_TO_CURRENT_EXACT_PAIR_MARK_OR_ZERO_IF_DEAD'})
+    n=len(cohort);invested=n*POSITION_USD;value=sum(x['marked_value_usd'] for x in cohort);pnl=value-invested;roi=((value/invested)-1)*100 if invested else 0
+    payload={'updated_at':now,'method':'PERFORMANCE_SINCE_DISCOVERY_CURRENT_RETURN_V5_SURVIVORSHIP_CORRECTED','position_size_usd':POSITION_USD,'all_discoveries_count':int(src.get('all_discoveries_hypothetical_investment_usd') or 0),'tracked_cohort_count':n,'unknown_not_scored_count':unknown,'dead_zero_value_count':dead,'currently_tradable_count':tradable,'currently_blocked_but_marked_count':blocked,'survivorship_bias_policy':'VALID IMMUTABLE ENTRY NEVER DISAPPEARS; DEAD/UNAVAILABLE LOCKED PAIR = CURRENT VALUE $0; UNKNOWN ENTRY EVIDENCE IS EXCLUDED AND DISCLOSED','current_return_portfolio':{'count':n,'investment_usd':round(invested,6),'marked_value_usd':round(value,6),'pnl_usd':round(pnl,6),'roi_pct':round(roi,4),'status':'PERFORMANCE_SINCE_DISCOVERY_CURRENT_RETURN_NOT_EXECUTED_PNL'},'current_realizability_reference':{'count':n,'investment_usd':round(invested,6),'marked_value_usd':round(value,6),'pnl_usd':round(pnl,6),'roi_pct':round(roi,4),'status':'SURVIVORSHIP_CORRECTED_CURRENT_RETURN_REFERENCE'},'historical_backtest_verified':False,'historical_backtest_status':'NOT_BACKTEST_VERIFIED','tracked_discoveries':int(src.get('all_discoveries_hypothetical_investment_usd') or 0),'eligible_now':n,'blocked_now':dead+blocked,'invested_usd':0.0,'current_value_usd':0.0,'roi_pct':0.0,'truth_note':'Current-return cohort includes every leaderboard row with valid immutable entry evidence. Dead/unavailable locked pairs are retained at $0 (-100%), preventing survivorship bias. Unknown entry evidence remains excluded and disclosed.','important_limit':'Research hold-to-now reference, not proof of executable historical buys/sells.','rows':sorted(cohort,key=lambda x:x['current_return_pct'],reverse=True),'plausible_rows':sorted(cohort,key=lambda x:x['current_return_pct'],reverse=True)}
     _write(DATA/'realizable-performance.json',payload)
-    keys=('updated_at','position_size_usd','all_discoveries_count','all_discoveries_hypothetical_investment_usd','verified_rows_seen','paper_verified_investment_usd','paper_verified_value_usd','market_execution_plausible_count','not_realizable_now_count','eligible_investment_usd','eligible_current_value_usd','eligible_profit_usd','eligible_roi_pct','current_realizability_reference','historical_backtest_verified','historical_backtest_status','historical_backtest_block_reasons','tracked_discoveries','eligible_now','blocked_now','invested_usd','current_value_usd','roi_pct','truth_note','important_limit')
-    _write(DATA/'realizable-performance-summary.json',{k:payload[k] for k in keys})
-    print(json.dumps(_load(DATA/'realizable-performance-summary.json',{}),indent=2)); return payload
-
-if __name__=='__main__': run()
+    summary={k:v for k,v in payload.items() if k not in ('rows','plausible_rows')};_write(DATA/'realizable-performance-summary.json',summary)
+    print(json.dumps(summary,indent=2));return payload
+if __name__=='__main__':run()
