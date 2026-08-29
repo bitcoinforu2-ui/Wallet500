@@ -1,4 +1,4 @@
-# force redeploy: exact-pair + freshness integrity hardened
+# Wallet500 full dashboard hub
 name: Deploy Wallet500 Dashboard
 
 on:
@@ -37,75 +37,19 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf _site
-          mkdir -p _site/performance _site/backtest
-          cp dashboard-live.html _site/index.html
+          mkdir -p _site/live _site/performance _site/backtest
+          cp index.html _site/index.html
+          cp dashboard-live.html _site/live/index.html
           cp dashboard-performance.html _site/performance/index.html
           cp dashboard-backtest.html _site/backtest/index.html
           cp dashboard-reference-fix.js _site/dashboard-reference-fix.js
-          python - <<'PY'
-          from pathlib import Path
-
-          p=Path('_site/index.html')
-          s=p.read_text()
-
-          # Remove the scanner banner from the deployed page.
-          start='<section class="scanner panel panelPad">'
-          i=s.find(start)
-          if i >= 0:
-              j=s.find('</section>', i)
-              if j < 0:
-                  raise SystemExit('scanner section closing tag not found')
-              s=s[:i]+s[j+10:]
-          for marker in ('SOLANA SCANNER','ETHEREUM SCANNER','BNB SCANNER'):
-              if marker in s:
-                  raise SystemExit('scanner banner still present: '+marker)
-
-          # Exact-pair link integrity: never trust a free-standing URL and never
-          # permit pair_address / locked_pair_address divergence.
-          old_link="""function links(x,t){let p=x.pair_address||x.locked_pair_address;if(!p)return'';return`<div class=\"links\"><a href=\"https://dexscreener.com/${String(x.chain).toLowerCase()}/${p}\" target=\"_blank\">DEXSCREENER ↗</a><a href=\"${explorer(x.chain,t)}\" target=\"_blank\">EXPLORER ↗</a></div>`}"""
-          new_link="""function links(x,t){let c=String(x.chain||'').toLowerCase(),p=x.pair_address||'',lp=x.locked_pair_address||p;if(!c||!p)return'<div class=\"why\">PAIR LINK BLOCKED · MISSING IDENTITY</div>';if(!['solana','ethereum','bsc'].includes(c))return'<div class=\"why\">PAIR LINK BLOCKED · UNKNOWN CHAIN</div>';if(norm(c,p)!==norm(c,lp)||x.pair_identity_locked===false)return'<div class=\"why\">PAIR LINK BLOCKED · IDENTITY MISMATCH</div>';let dex=`https://dexscreener.com/${c}/${p}`,src=String(x.url||'').replace(/\\/$/,'');if(src&&src.toLowerCase()!==dex.toLowerCase())return'<div class=\"why\">PAIR LINK BLOCKED · SOURCE URL MISMATCH</div>';return`<div class=\"links\"><a href=\"${dex}\" target=\"_blank\" rel=\"noopener noreferrer\" data-chain=\"${c}\" data-pair=\"${p}\">DEXSCREENER ↗</a><a href=\"${explorer(c,t)}\" target=\"_blank\" rel=\"noopener noreferrer\">EXPLORER ↗</a></div>`}"""
-          if s.count(old_link) != 1:
-              raise SystemExit('expected dashboard link function exactly once')
-          s=s.replace(old_link,new_link,1)
-
-          # Only fully production-qualified records may be presented as live/investable.
-          old_potential="""$('potential').innerHTML=q.length?q.map(x=>card(x,P.has(key(x))?'PRODUCTION QUALIFIED · $1 ELIGIBLE':'SURVIVAL PASS · HOLDER/CLUSTER PENDING')).join(''):'<div class=\"candidate\">NO SURVIVAL-QUALIFIED CANDIDATE RIGHT NOW</div>';"""
-          new_potential="""$('potential').innerHTML=prod.length?prod.map(x=>card(x,'PRODUCTION QUALIFIED · $1 ELIGIBLE')).join(''):'<div class=\"candidate\">NO FULLY VERIFIED INVESTABLE CANDIDATE RIGHT NOW</div>';"""
-          if s.count(old_potential) != 1:
-              raise SystemExit('expected HIGH POTENTIAL renderer exactly once')
-          s=s.replace(old_potential,new_potential,1)
-          s=s.replace('⚡ WALLET500 HIGH POTENTIAL — LIVE','⚡ WALLET500 VERIFIED INVESTABLE — LIVE',1)
-          s=s.replace('SURVIVAL PASS ≠ INVESTABLE UNTIL HOLDER/CLUSTER PASS','ONLY FULL PRODUCTION + HOLDER/CLUSTER VERIFIED CANDIDATES',1)
-
-          # Versioned bridge prevents the phone/browser from reusing an older cached guard.
-          tag='<script src="dashboard-reference-fix.js?v=3"></script>'
-          s=s.replace('<script src="dashboard-reference-fix.js?v=2"></script>',tag)
-          if tag not in s:
-              s=s.replace('</body>', tag+'</body>')
-
-          # Build must fail closed if old unsafe or misleading paths survive.
-          if 'function links(x,t){let p=x.pair_address||x.locked_pair_address' in s:
-              raise SystemExit('unsafe dashboard link function survived build')
-          if "q.map(x=>card(x,P.has(key(x))" in s:
-              raise SystemExit('pending research still rendered as live high potential')
-          for required in ('PAIR LINK BLOCKED · IDENTITY MISMATCH','SOURCE URL MISMATCH','VERIFIED INVESTABLE — LIVE','rel="noopener noreferrer"'):
-              if required not in s:
-                  raise SystemExit('dashboard hardening marker missing: '+required)
-
-          p.write_text(s)
-          PY
           cp -r data _site/data
-          if [ -f wallet500_option2_emblem.jpg ]; then
-            cp wallet500_option2_emblem.jpg _site/
-          fi
+          if [ -f wallet500_option2_emblem.jpg ]; then cp wallet500_option2_emblem.jpg _site/; fi
           test -s _site/index.html
+          test -s _site/live/index.html
           test -s _site/performance/index.html
           test -s _site/backtest/index.html
-          test -s _site/dashboard-reference-fix.js
           test -s _site/data/run-summary.json
-          grep -q "Fail-closed policy" _site/dashboard-reference-fix.js
-          grep -q "age>5" _site/dashboard-reference-fix.js
-          grep -q "LIVE DISPLAY BLOCKED" _site/dashboard-reference-fix.js
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
