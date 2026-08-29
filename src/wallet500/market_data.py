@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import time
 from urllib.request import Request, urlopen
 from urllib.parse import quote
 
@@ -11,9 +12,37 @@ def _get(path:str,timeout:int=20):
         return json.loads(r.read().decode())
 
 def token_pairs(chain:str,token:str)->list[dict]:
-    try: data=_get(f"/token-pairs/v1/{quote(chain,safe='')}/{quote(token,safe='')}")
-    except Exception: return []
-    return data if isinstance(data,list) else []
+    # Token lookup is the broad discovery path. Retry transient misses so a
+    # momentary API failure does not unnecessarily quarantine a good pair.
+    for attempt in range(3):
+        try:
+            data=_get(f"/token-pairs/v1/{quote(chain,safe='')}/{quote(token,safe='')}")
+            if isinstance(data,list) and data:
+                return data
+        except Exception:
+            pass
+        if attempt < 2:
+            time.sleep(0.6 * (attempt + 1))
+    return []
+
+def pair_lookup(chain:str,pair_address:str)->dict|None:
+    """Direct exact-pair fallback used only for immutable pair revalidation."""
+    if not chain or not pair_address:
+        return None
+    for attempt in range(3):
+        try:
+            data=_get(f"/latest/dex/pairs/{quote(chain,safe='')}/{quote(pair_address,safe='')}")
+            pairs=(data or {}).get("pairs") if isinstance(data,dict) else None
+            if isinstance(pairs,list):
+                wanted=str(pair_address).lower()
+                for p in pairs:
+                    if str((p or {}).get("pairAddress") or "").lower()==wanted:
+                        return p
+        except Exception:
+            pass
+        if attempt < 2:
+            time.sleep(0.6 * (attempt + 1))
+    return None
 
 def _pair_to_snapshot(chain:str,token:str,p:dict)->dict:
     tx=p.get("txns") or {}; vol=p.get("volume") or {}; ch=p.get("priceChange") or {}; liq=p.get("liquidity") or {}
@@ -27,13 +56,16 @@ def _compact_pool(chain:str,token:str,p:dict)->dict:
 
 def snapshot(chain:str,token:str,pair_address:str|None=None)->dict|None:
     pairs=token_pairs(chain,token)
-    if not pairs: return None
     if pair_address:
         wanted=pair_address.lower()
         for p in pairs:
             if str(p.get("pairAddress") or "").lower()==wanted:
                 return _pair_to_snapshot(chain,token,p)
-        return None
+        # Critical bottleneck fix: token-pairs can transiently omit a known
+        # immutable pair. Verify that exact address directly before PENDING.
+        direct=pair_lookup(chain,pair_address)
+        return _pair_to_snapshot(chain,token,direct) if direct else None
+    if not pairs: return None
     p=max(pairs,key=lambda x: float((x.get("liquidity") or {}).get("usd") or 0))
     out=_pair_to_snapshot(chain,token,p)
     ranked=sorted(pairs,key=lambda x: float((x.get("liquidity") or {}).get("usd") or 0),reverse=True)[:8]
