@@ -9,6 +9,7 @@ on:
       - '.github/workflows/historical-replay.yml'
       - 'src/wallet500/historical_backfill.py'
       - 'src/wallet500/historical_replay.py'
+      - 'src/wallet500/onchain_historical_reconstruction.py'
       - 'src/wallet500/historical_truth_backtest.py'
       - 'data/discovery-evidence-ledger.json'
       - 'data/cash-verified-performance.json'
@@ -33,10 +34,15 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Incrementally backfill exact-pair history
+      - name: Incrementally backfill exact-pair market history
         run: |
           export PYTHONPATH="$PWD/src"
           python -m wallet500.historical_backfill
+
+      - name: Reconstruct point-in-time exact-pair state on-chain
+        run: |
+          export PYTHONPATH="$PWD/src"
+          python -m wallet500.onchain_historical_reconstruction
 
       - name: Build isolated historical research report
         run: |
@@ -52,10 +58,12 @@ jobs:
           from pathlib import Path
           bp=Path('data/historical-backfill-report.json')
           rp=Path('data/historical-replay-report.json')
+          op=Path('data/onchain-historical-reconstruction.json')
           tp=Path('data/historical-truth-backtest.json')
-          assert bp.exists() and rp.exists() and tp.exists()
+          assert bp.exists() and rp.exists() and op.exists() and tp.exists()
           b=json.loads(bp.read_text())
           r=json.loads(rp.read_text())
+          o=json.loads(op.read_text())
           t=json.loads(tp.read_text())
           assert b['mode']=='RESEARCH_ONLY_INCREMENTAL_BACKFILL'
           assert b['production_portfolio_impact']=='NONE'
@@ -63,6 +71,10 @@ jobs:
           assert r['mode']=='RESEARCH_ONLY_NO_PRODUCTION_WRITES'
           assert r['production_portfolio_impact']=='NONE'
           assert r['lookahead_policy']=='FORBIDDEN'
+          assert o['mode']=='ONCHAIN_POINT_IN_TIME_RECONSTRUCTION'
+          assert o['production_portfolio_impact']=='NONE'
+          assert o['lookahead_policy']=='FORBIDDEN'
+          assert o['pair_identity_policy']=='EXACT_LOCKED_PAIR_ONLY'
           assert t['mode']=='STRICT_NO_HINDSIGHT_BACKTEST_VERIFIER'
           assert t['lookahead_policy']=='FORBIDDEN'
           assert t['pair_identity_policy']=='EXACT_LOCKED_PAIR_ONLY'
@@ -72,7 +84,7 @@ jobs:
               if w['status'] != 'BACKTEST_VERIFIED':
                   assert w['verified_roi_pct'] is None
                   assert w['verified_pnl_usd'] is None
-          print('Strict historical truth verifier validated: no hindsight, no fake ROI')
+          print('Historical truth lane validated: exact pair, on-chain reconstruction, no hindsight, no fake ROI')
           PY
 
       - name: Commit research outputs only
@@ -80,12 +92,12 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-research-bot'
           git config user.email 'wallet500-research-bot@users.noreply.github.com'
-          git add data/historical-backfill-state.json data/historical-backfill-report.json data/historical-replay-report.json data/historical-truth-backtest.json
+          git add data/historical-backfill-state.json data/historical-backfill-report.json data/onchain-historical-reconstruction-state.json data/onchain-historical-reconstruction.json data/historical-replay-report.json data/historical-truth-backtest.json
           if git diff --cached --quiet; then
             echo 'No research output change'
             exit 0
           fi
-          git commit -m 'research: advance historical truth checkpoint'
+          git commit -m 'research: advance onchain historical truth checkpoint'
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git merge --no-edit -X ours origin/main
