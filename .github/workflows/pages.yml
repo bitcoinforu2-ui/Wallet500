@@ -1,4 +1,4 @@
-# force redeploy: backtest route
+# force redeploy: scanner banner removed
 name: Deploy Wallet500 Dashboard
 
 on:
@@ -6,6 +6,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'index.html'
       - 'dashboard-live.html'
       - 'dashboard-performance.html'
       - 'dashboard-backtest.html'
@@ -45,6 +46,16 @@ jobs:
           from pathlib import Path
           p=Path('_site/index.html')
           s=p.read_text()
+          start='<section class="scanner panel panelPad">'
+          i=s.find(start)
+          if i >= 0:
+              j=s.find('</section>', i)
+              if j < 0:
+                  raise SystemExit('scanner section closing tag not found')
+              s=s[:i]+s[j+10:]
+          for marker in ('SOLANA SCANNER','ETHEREUM SCANNER','BNB SCANNER'):
+              if marker in s:
+                  raise SystemExit('scanner banner still present: '+marker)
           tag='<script src="dashboard-reference-fix.js?v=2"></script>'
           if tag not in s:
               s=s.replace('</body>', tag+'</body>')
@@ -71,5 +82,3 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
-
-# redeploy marker: 2026-08-29T14:04:00+03:00
