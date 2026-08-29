@@ -2,17 +2,25 @@ name: Wallet500 Historical Replay Research
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '11 * * * *'
   push:
     paths:
       - '.github/workflows/historical-replay.yml'
+      - 'src/wallet500/historical_backfill.py'
+      - 'src/wallet500/historical_replay.py'
 
 permissions:
   contents: write
 
+concurrency:
+  group: wallet500-historical-replay-research
+  cancel-in-progress: false
+
 jobs:
   replay:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,6 +30,11 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Incrementally backfill exact-pair history
+        run: |
+          export PYTHONPATH="$PWD/src"
+          python -m wallet500.historical_backfill
+
       - name: Build isolated historical research report
         run: |
           export PYTHONPATH="$PWD/src"
@@ -29,25 +42,36 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          p=Path('data/historical-replay-report.json')
-          assert p.exists()
-          d=json.loads(p.read_text())
-          assert d['mode']=='RESEARCH_ONLY_NO_PRODUCTION_WRITES'
-          assert d['production_portfolio_impact']=='NONE'
-          assert d['lookahead_policy']=='FORBIDDEN'
-          assert set(d['windows'])=={'7','30','90'}
-          print('Historical replay research report validated')
+          bp=Path('data/historical-backfill-report.json')
+          rp=Path('data/historical-replay-report.json')
+          assert bp.exists() and rp.exists()
+          b=json.loads(bp.read_text())
+          r=json.loads(rp.read_text())
+          assert b['mode']=='RESEARCH_ONLY_INCREMENTAL_BACKFILL'
+          assert b['production_portfolio_impact']=='NONE'
+          assert b['lookahead_policy']=='FORBIDDEN'
+          assert r['mode']=='RESEARCH_ONLY_NO_PRODUCTION_WRITES'
+          assert r['production_portfolio_impact']=='NONE'
+          assert r['lookahead_policy']=='FORBIDDEN'
+          assert set(r['windows'])=={'7','30','90'}
+          print('Historical research lane validated: no production impact, no look-ahead')
           PY
 
-      - name: Commit research report only
+      - name: Commit research outputs only
         run: |
-          if git diff --quiet -- data/historical-replay-report.json; then
-            echo 'No research report change'
+          set -euo pipefail
+          git config user.name 'wallet500-research-bot'
+          git config user.email 'wallet500-research-bot@users.noreply.github.com'
+          git add data/historical-backfill-state.json data/historical-backfill-report.json data/historical-replay-report.json
+          if git diff --cached --quiet; then
+            echo 'No research output change'
             exit 0
           fi
-          git config user.name 'wallet500-bot'
-          git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/historical-replay-report.json
-          git commit -m 'research: update historical replay report'
-          git pull --rebase origin main
-          git push origin HEAD:main
+          git commit -m 'research: advance historical backfill checkpoint'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git merge --no-edit -X ours origin/main
+            if git push origin HEAD:main; then break; fi
+            sleep 3
+            if [ "$attempt" = 5 ]; then exit 1; fi
+          done
