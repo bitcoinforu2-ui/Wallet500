@@ -5,6 +5,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from .cash_verified import (
+    evm_entry_quote,
+    evm_quote,
+    evm_token_decimals,
+    solana_entry_quote,
+    solana_quote,
+    solana_token_decimals,
+)
+
 DATA_DIR = Path("data")
 STARTING_CASH_USD = 100.0
 POSITION_SIZE_USD = 1.0
@@ -12,7 +21,7 @@ MIN_LIQUIDITY_USD = 50_000.0
 LEDGER_PATH = DATA_DIR / "paper-portfolio-ledger.json"
 SUMMARY_PATH = DATA_DIR / "paper-portfolio-summary.json"
 
-QUOTE_SOURCES = (
+MARK_SOURCES = (
     "holder-cluster-production-qualified.json",
     "holder-cluster-production-blocked.json",
     "holder-cluster-quarantine.json",
@@ -76,18 +85,15 @@ def _flatten(value: Any) -> Iterable[dict[str, Any]]:
                 yield from _flatten(value[candidate])
 
 
-def _quote_index(data_dir: Path) -> dict[str, dict[str, Any]]:
+def _mark_index(data_dir: Path) -> dict[str, dict[str, Any]]:
     index: dict[str, dict[str, Any]] = {}
-    for name in QUOTE_SOURCES:
+    for name in MARK_SOURCES:
         for row in _flatten(_read(data_dir / name, [])):
             key = _key(row)
             if key.count("|") != 2 or key.endswith("|"):
                 continue
             price = _num(row, "live_price_usd", "price_usd", "current_price_usd")
-            if price <= 0:
-                continue
-            # Earlier sources in QUOTE_SOURCES have higher authority.
-            if key not in index:
+            if price > 0 and key not in index:
                 index[key] = row
     return index
 
@@ -108,8 +114,8 @@ def _entry_is_safe(row: dict[str, Any]) -> bool:
 def initial_ledger(now: str | None = None) -> dict[str, Any]:
     ts = now or _now()
     return {
-        "version": 1,
-        "mode": "PAPER_ONLY_NO_REAL_MONEY",
+        "version": 2,
+        "mode": "PAPER_QUOTE_VERIFIED_NO_REAL_MONEY",
         "created_at": ts,
         "updated_at": ts,
         "starting_cash_usd": STARTING_CASH_USD,
@@ -118,63 +124,136 @@ def initial_ledger(now: str | None = None) -> dict[str, Any]:
         "cash_usd": STARTING_CASH_USD,
         "positions": [],
         "events": [],
+        "truth_policy": "NO ENTRY OR EXIT IS BOOKED WITHOUT A SAME-CYCLE FIRM ROUTER QUOTE. ROUTER QUOTE IS NOT A TRADE EXECUTION AND IS NOT CLAIMED TO BE CONSTRAINED TO THE DISCOVERY PAIR.",
+    }
+
+
+def _entry_quote_for(row: dict[str, Any]) -> dict[str, Any]:
+    chain = str(row.get("chain") or "").upper()
+    token = row.get("token") or row.get("mint")
+    if not token:
+        return {"status": "UNAVAILABLE", "reason": "TOKEN_MISSING"}
+    result, err = (solana_entry_quote(token) if chain in {"SOL", "SOLANA"} else evm_entry_quote(chain, token))
+    if err or not result:
+        return {"status": "UNAVAILABLE", "reason": err or "ENTRY_QUOTE_EMPTY"}
+    quote = result.get("quote") or {}
+    raw = int(quote.get("amount_out") or 0) if chain in {"SOL", "SOLANA"} else int(quote.get("buyAmount") or 0)
+    if raw <= 0:
+        return {"status": "UNAVAILABLE", "reason": "ENTRY_QUOTE_ZERO_OUTPUT"}
+    dec, dec_err = (solana_token_decimals(token) if chain in {"SOL", "SOLANA"} else evm_token_decimals(chain, token))
+    if dec is None:
+        return {"status": "UNAVAILABLE", "reason": dec_err or "TOKEN_DECIMALS_UNVERIFIED"}
+    quantity = raw / (10 ** int(dec))
+    if quantity <= 0:
+        return {"status": "UNAVAILABLE", "reason": "ENTRY_QUANTITY_INVALID"}
+    return {
+        "status": "VERIFIED",
+        "token_amount_base_units": raw,
+        "token_decimals": int(dec),
+        "quantity": quantity,
+        "quoted_entry_cost_usd": POSITION_SIZE_USD,
+        "effective_entry_price_usd": POSITION_SIZE_USD / quantity,
+        "stable_symbol": result.get("stable_symbol"),
+        "proof_level": "FIRM_ROUTER_ENTRY_QUOTE_NOT_EXECUTED_NOT_EXACT_PAIR_CONSTRAINED",
+    }
+
+
+def _exit_quote_for(position: dict[str, Any]) -> dict[str, Any]:
+    chain = str(position.get("chain") or "").upper()
+    token = position.get("token")
+    amount = position.get("token_amount_base_units")
+    try:
+        amount = int(amount)
+    except Exception:
+        amount = 0
+    if not token or amount <= 0:
+        return {"status": "UNAVAILABLE", "reason": "TOKEN_OR_VERIFIED_ENTRY_AMOUNT_MISSING"}
+    result, err = (solana_quote(token, amount) if chain in {"SOL", "SOLANA"} else evm_quote(chain, token, amount))
+    if err or not result:
+        return {"status": "UNAVAILABLE", "reason": err or "EXIT_QUOTE_EMPTY"}
+    quote = result.get("quote") or {}
+    raw = int(quote.get("amount_out") or 0) if chain in {"SOL", "SOLANA"} else int(quote.get("buyAmount") or 0)
+    stable_decimals = int(result.get("stable_decimals") or 0)
+    if raw <= 0 or stable_decimals < 0:
+        return {"status": "UNAVAILABLE", "reason": "EXIT_QUOTE_ZERO_OUTPUT"}
+    value = raw / (10 ** stable_decimals)
+    return {
+        "status": "VERIFIED",
+        "quoted_exit_value_usd": value,
+        "stable_symbol": result.get("stable_symbol"),
+        "proof_level": "FIRM_ROUTER_EXIT_QUOTE_NOT_EXECUTED_NOT_EXACT_PAIR_CONSTRAINED",
     }
 
 
 def reconcile_portfolio(
     ledger: dict[str, Any],
     production_rows: list[dict[str, Any]],
-    quotes: dict[str, dict[str, Any]],
+    marks: dict[str, dict[str, Any]],
     now: str | None = None,
+    entry_quotes: dict[str, dict[str, Any]] | None = None,
+    exit_quotes: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     ts = now or _now()
     ledger = dict(ledger or initial_ledger(ts))
+    ledger["version"] = 2
+    ledger["mode"] = "PAPER_QUOTE_VERIFIED_NO_REAL_MONEY"
     positions = list(ledger.get("positions") or [])
     events = list(ledger.get("events") or [])
     cash = float(ledger.get("cash_usd", STARTING_CASH_USD))
     active = {_key(r): r for r in production_rows if _entry_is_safe(r)}
     existing = {_key(p): p for p in positions}
+    entry_quotes = entry_quotes or {}
+    exit_quotes = exit_quotes or {}
 
-    # Mark or close every existing open position. A production-gate removal is
-    # treated as a sell signal, but the exit is not fabricated without an exact-pair quote.
     for p in positions:
         if p.get("status") != "OPEN":
             continue
         key = _key(p)
-        quote = active.get(key) or quotes.get(key)
-        if quote:
-            px = _num(quote, "live_price_usd", "price_usd", "current_price_usd")
+        mark = active.get(key) or marks.get(key)
+        if mark:
+            px = _num(mark, "live_price_usd", "price_usd", "current_price_usd")
             if px > 0:
                 p["current_price_usd"] = px
-                p["current_value_usd"] = p["quantity"] * px
+                p["current_value_usd"] = float(p.get("quantity") or 0) * px
                 p["last_mark_at"] = ts
-                p["last_liquidity_usd"] = _num(quote, "live_liquidity_usd", "liquidity_usd")
+                p["last_liquidity_usd"] = _num(mark, "live_liquidity_usd", "liquidity_usd")
+                p["mark_proof_level"] = "EXACT_PAIR_MARKET_DATA_PROXY_NOT_EXECUTION_QUOTE"
         if key not in active:
-            if quote and _num(quote, "live_price_usd", "price_usd", "current_price_usd") > 0:
-                exit_px = _num(quote, "live_price_usd", "price_usd", "current_price_usd")
-                proceeds = p["quantity"] * exit_px
+            xq = exit_quotes.get(key) or {}
+            if xq.get("status") == "VERIFIED" and _num(xq, "quoted_exit_value_usd") >= 0:
+                proceeds = _num(xq, "quoted_exit_value_usd")
                 p.update({
                     "status": "CLOSED",
                     "exit_time": ts,
-                    "exit_price_usd": exit_px,
                     "exit_value_usd": proceeds,
-                    "realized_pnl_usd": proceeds - p["cost_usd"],
+                    "realized_pnl_usd": proceeds - float(p.get("cost_usd") or POSITION_SIZE_USD),
                     "exit_reason": "NO_LONGER_PRODUCTION_QUALIFIED",
-                    "current_price_usd": exit_px,
-                    "current_value_usd": proceeds,
+                    "exit_pending": False,
+                    "exit_quote_proof_level": xq.get("proof_level"),
+                    "exit_quote_stable_symbol": xq.get("stable_symbol"),
+                    "realized_accounting_basis": "SAME_CYCLE_FIRM_ROUTER_EXIT_QUOTE_NOT_EXECUTED",
                 })
                 cash += proceeds
-                events.append({"at": ts, "type": "SELL", "key": key, "value_usd": proceeds, "reason": p["exit_reason"]})
+                events.append({"at": ts, "type": "SELL_QUOTE_VERIFIED", "key": key, "value_usd": proceeds, "reason": p["exit_reason"], "proof_level": xq.get("proof_level")})
             else:
                 p["exit_pending"] = True
-                p["exit_reason"] = "EXIT_UNVERIFIED_NO_EXACT_PAIR_QUOTE"
+                p["exit_reason"] = "EXIT_PENDING_FIRM_ROUTER_QUOTE_UNAVAILABLE"
+                p["exit_quote_last_reason"] = xq.get("reason") or "NO_EXIT_QUOTE"
 
-    # One immutable $1 paper entry per exact pair. Closed pairs are never silently re-opened.
     for key, row in active.items():
         if key in existing or cash + 1e-12 < POSITION_SIZE_USD:
             continue
-        entry_px = _num(row, "live_price_usd", "price_usd", "current_price_usd")
-        quantity = POSITION_SIZE_USD / entry_px
+        eq = entry_quotes.get(key) or {}
+        if eq.get("status") != "VERIFIED":
+            events.append({"at": ts, "type": "ENTRY_SKIPPED", "key": key, "value_usd": 0.0, "reason": eq.get("reason") or "FIRM_ENTRY_QUOTE_UNAVAILABLE"})
+            continue
+        quantity = _num(eq, "quantity")
+        amount_base = int(eq.get("token_amount_base_units") or 0)
+        if quantity <= 0 or amount_base <= 0:
+            events.append({"at": ts, "type": "ENTRY_SKIPPED", "key": key, "value_usd": 0.0, "reason": "VERIFIED_ENTRY_QUOTE_INVALID_AMOUNT"})
+            continue
+        market_px = _num(row, "live_price_usd", "price_usd", "current_price_usd")
+        effective_px = _num(eq, "effective_entry_price_usd")
         pos = {
             "chain": str(row.get("chain") or "").lower(),
             "token": row.get("token") or row.get("mint"),
@@ -182,22 +261,27 @@ def reconcile_portfolio(
             "dex": row.get("dex"),
             "status": "OPEN",
             "entry_time": ts,
-            "entry_price_usd": entry_px,
+            "entry_market_price_usd": market_px,
+            "entry_price_usd": effective_px,
             "cost_usd": POSITION_SIZE_USD,
             "quantity": quantity,
-            "current_price_usd": entry_px,
-            "current_value_usd": POSITION_SIZE_USD,
+            "token_amount_base_units": amount_base,
+            "token_decimals_verified": int(eq.get("token_decimals")),
+            "current_price_usd": market_px,
+            "current_value_usd": quantity * market_px,
             "last_mark_at": ts,
             "entry_liquidity_usd": _num(row, "live_liquidity_usd", "liquidity_usd"),
             "last_liquidity_usd": _num(row, "live_liquidity_usd", "liquidity_usd"),
             "entry_anomaly_score": _num(row, "anomaly_score"),
             "entry_gate": "HOLDER_CLUSTER_PRODUCTION_PASS",
+            "entry_quote_proof_level": eq.get("proof_level"),
+            "entry_quote_stable_symbol": eq.get("stable_symbol"),
             "paper_only": True,
         }
         positions.append(pos)
         existing[key] = pos
         cash -= POSITION_SIZE_USD
-        events.append({"at": ts, "type": "BUY", "key": key, "value_usd": POSITION_SIZE_USD, "reason": "PRODUCTION_QUALIFIED"})
+        events.append({"at": ts, "type": "BUY_QUOTE_VERIFIED", "key": key, "value_usd": POSITION_SIZE_USD, "reason": "PRODUCTION_QUALIFIED_AND_FIRM_ROUTER_ENTRY_QUOTE", "proof_level": eq.get("proof_level")})
 
     open_positions = [p for p in positions if p.get("status") == "OPEN"]
     closed_positions = [p for p in positions if p.get("status") == "CLOSED"]
@@ -211,10 +295,16 @@ def reconcile_portfolio(
     losses = sum(1 for p in closed_positions if float(p.get("realized_pnl_usd") or 0) < 0)
     exit_pending = sum(1 for p in open_positions if p.get("exit_pending"))
 
-    ledger.update({"updated_at": ts, "cash_usd": cash, "positions": positions, "events": events[-5000:]})
+    ledger.update({
+        "updated_at": ts,
+        "cash_usd": cash,
+        "positions": positions,
+        "events": events[-5000:],
+        "truth_policy": "NO ENTRY OR EXIT IS BOOKED WITHOUT A SAME-CYCLE FIRM ROUTER QUOTE. ROUTER QUOTE IS NOT A TRADE EXECUTION AND IS NOT CLAIMED TO BE CONSTRAINED TO THE DISCOVERY PAIR.",
+    })
     summary = {
         "updated_at": ts,
-        "mode": "PAPER_ONLY_NO_REAL_MONEY",
+        "mode": "PAPER_QUOTE_VERIFIED_NO_REAL_MONEY",
         "starting_cash_usd": float(ledger.get("starting_cash_usd", STARTING_CASH_USD)),
         "position_size_usd": POSITION_SIZE_USD,
         "cash_usd": round(cash, 8),
@@ -231,11 +321,15 @@ def reconcile_portfolio(
         "closed_wins": wins,
         "closed_losses": losses,
         "trades_total": len(positions),
+        "entry_quote_verified_positions": sum(1 for p in positions if p.get("entry_quote_proof_level")),
+        "exit_quote_verified_closures": sum(1 for p in closed_positions if p.get("exit_quote_proof_level")),
+        "realized_accounting_basis": "FIRM_ROUTER_QUOTES_AT_DECISION_TIME_NOT_EXECUTED_TRADES",
+        "historical_backfill_policy": "NO RETROACTIVE ENTRY/EXIT EXECUTION CLAIMS WITHOUT POINT_IN_TIME_QUOTES",
         "policy": {
-            "entry": "exact pair + production PASS + holder/cluster verified + liquidity >= $50K",
-            "exit": "sell when exact pair is no longer production-qualified; no fabricated exit without exact-pair quote",
+            "entry": "exact-pair production PASS + holder/cluster verified + liquidity >= $50K + same-cycle firm router entry quote",
+            "exit": "exit signal when exact pair is no longer production-qualified; close accounting only with same-cycle firm router exit quote",
             "reentry": "disabled for an already-seen exact pair",
-            "fees_slippage": "not yet deducted; paper mark-to-market only",
+            "truth_limit": "router quote is real market evidence but is not a broadcast/executed trade and is not claimed to be constrained to the discovery pair",
         },
     }
     return ledger, summary
@@ -249,18 +343,24 @@ def summary_start(ledger: dict[str, Any]) -> float:
 def main() -> None:
     production = list(_flatten(_read(DATA_DIR / "holder-cluster-production-qualified.json", [])))
     ledger = _read(LEDGER_PATH, initial_ledger())
-    quotes = _quote_index(DATA_DIR)
-    ledger, summary = reconcile_portfolio(ledger, production, quotes)
+    marks = _mark_index(DATA_DIR)
+    existing = {_key(p): p for p in (ledger.get("positions") or [])}
+    active = {_key(r): r for r in production if _entry_is_safe(r)}
+
+    entry_quotes: dict[str, dict[str, Any]] = {}
+    for key, row in active.items():
+        if key not in existing:
+            entry_quotes[key] = _entry_quote_for(row)
+
+    exit_quotes: dict[str, dict[str, Any]] = {}
+    for p in (ledger.get("positions") or []):
+        if p.get("status") == "OPEN" and _key(p) not in active:
+            exit_quotes[_key(p)] = _exit_quote_for(p)
+
+    ledger, summary = reconcile_portfolio(ledger, production, marks, entry_quotes=entry_quotes, exit_quotes=exit_quotes)
     _write(LEDGER_PATH, ledger)
     _write(SUMMARY_PATH, summary)
-    print(
-        "PAPER PORTFOLIO:",
-        f"equity=${summary['total_equity_usd']:.4f}",
-        f"cash=${summary['cash_usd']:.4f}",
-        "open", summary["open_positions"],
-        "closed", summary["closed_positions"],
-        f"pnl=${summary['total_pnl_usd']:.4f}",
-    )
+    print(json.dumps(summary, indent=2))
 
 
 if __name__ == "__main__":
