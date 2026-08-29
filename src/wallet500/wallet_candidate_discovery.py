@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -83,9 +84,10 @@ def run(output_dir: str = "data", max_tokens: int | None = None, signatures_limi
     status={"version":2,"updated_at":now,"method":"VERIFIED_POOL_TRANSACTION_SIGNERS","source":source,"active_candidates_seen":len(active),"solana_candidates_scanned":len(rows),"verified_wallet_candidates":len(unique_wallets),"raw_wallet_appearances":sum(len(x.get("wallets") or []) for x in rows),"evm_candidates_deferred":len(skipped),"limits":{"max_tokens":max_tokens,"signatures_per_pool":signatures_limit},"solana":rows,"deferred":skipped}
     _write(out/"wallet-candidates.json",status)
     _write(out/"wallet-forensics-summary.json",{k:status[k] for k in ("version","updated_at","method","source","active_candidates_seen","solana_candidates_scanned","verified_wallet_candidates","raw_wallet_appearances","evm_candidates_deferred","limits")})
-    summary=_load(out/"run-summary.json",{})
-    if isinstance(summary,dict):
-        summary["wallet_forensics"]={k:status[k] for k in ("method","source","solana_candidates_scanned","verified_wallet_candidates","raw_wallet_appearances","evm_candidates_deferred","limits")}; _write(out/"run-summary.json",summary)
+    if os.getenv("WALLET500_FORENSICS_UPDATE_RUN_SUMMARY","1") != "0":
+        summary=_load(out/"run-summary.json",{})
+        if isinstance(summary,dict):
+            summary["wallet_forensics"]={k:status[k] for k in ("method","source","solana_candidates_scanned","verified_wallet_candidates","raw_wallet_appearances","evm_candidates_deferred","limits")}; _write(out/"run-summary.json",summary)
     print(json.dumps({"solana_candidates_scanned":len(rows),"verified_wallet_candidates":len(unique_wallets),"evm_candidates_deferred":len(skipped)},indent=2)); return status
 
 
