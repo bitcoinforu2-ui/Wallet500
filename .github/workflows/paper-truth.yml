@@ -48,19 +48,50 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          lp=Path('data/paper-truth-ledger.json')
-          sp=Path('data/paper-truth-summary.json')
-          if not lp.exists() or not sp.exists(): raise SystemExit('FATAL: paper truth outputs missing')
-          l=json.loads(lp.read_text()); s=json.loads(sp.read_text())
-          if s.get('mode')!='PAPER_TRUTH_QUOTE_VERIFIED_NO_REAL_MONEY': raise SystemExit('FATAL: wrong truth mode')
-          if float(s.get('position_size_usd',0))!=1.0: raise SystemExit('FATAL: position size changed')
-          for p in l.get('positions') or []:
-              if not p.get('entry_quote_proof_level'): raise SystemExit('FATAL: booked position without entry quote proof')
-              if p.get('status')=='CLOSED_QUOTE_VERIFIED' and not p.get('exit_quote_proof_level'):
+
+          lp = Path('data/paper-truth-ledger.json')
+          sp = Path('data/paper-truth-summary.json')
+          if not lp.exists() or not sp.exists():
+              raise SystemExit('FATAL: paper truth outputs missing')
+
+          l = json.loads(lp.read_text())
+          s = json.loads(sp.read_text())
+          expected_mode = 'PAPER_TRUTH_EXACT_PAIR_EXECUTION_VERIFIED_NO_REAL_MONEY'
+          if s.get('mode') != expected_mode or l.get('mode') != expected_mode:
+              raise SystemExit('FATAL: wrong exact-pair truth mode')
+          if float(s.get('position_size_usd', 0)) != 1.0:
+              raise SystemExit('FATAL: position size changed')
+
+          closed_status = 'CLOSED_EXACT_PAIR_QUOTE_VERIFIED'
+          positions = l.get('positions') or []
+          for p in positions:
+              if not p.get('entry_quote_proof_level'):
+                  raise SystemExit('FATAL: booked position without entry quote proof')
+              if p.get('entry_exact_pair_constrained') is not True:
+                  raise SystemExit('FATAL: booked position without exact-pair entry proof')
+              pair = str(p.get('pair_address') or '').lower()
+              quoted_pair = str(p.get('entry_quoted_pair_address') or '').lower()
+              if not pair or quoted_pair != pair:
+                  raise SystemExit('FATAL: booked position entry pair mismatch')
+              if p.get('status') == closed_status and not p.get('exit_quote_proof_level'):
                   raise SystemExit('FATAL: closed position without exit quote proof')
-          calc=sum(float(p.get('realized_quote_pnl_usd') or 0) for p in (l.get('positions') or []) if p.get('status')=='CLOSED_QUOTE_VERIFIED')
-          if abs(calc-float(s.get('realized_quote_pnl_usd') or 0))>1e-7: raise SystemExit('FATAL: realized PnL mismatch')
-          print('PAPER TRUTH: entries',s.get('entry_quote_verified_positions'),'closed',s.get('closed_quote_verified_positions'),'realized_quote_pnl',s.get('realized_quote_pnl_usd'),'pending',s.get('exit_pending'))
+
+          calc = sum(
+              float(p.get('realized_quote_pnl_usd') or 0)
+              for p in positions
+              if p.get('status') == closed_status
+          )
+          if abs(calc - float(s.get('realized_quote_pnl_usd') or 0)) > 1e-7:
+              raise SystemExit('FATAL: realized PnL mismatch')
+          if int(s.get('closed_exact_pair_quote_verified_positions') or 0) != sum(1 for p in positions if p.get('status') == closed_status):
+              raise SystemExit('FATAL: closed exact-pair count mismatch')
+
+          print(
+              'PAPER TRUTH EXACT-PAIR: entries', s.get('entry_quote_verified_positions'),
+              'closed', s.get('closed_exact_pair_quote_verified_positions'),
+              'realized_quote_pnl', s.get('realized_quote_pnl_usd'),
+              'pending', s.get('exit_pending')
+          )
           PY
       - name: Publish truth ledger only
         run: |
