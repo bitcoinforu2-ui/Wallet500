@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/mature_pool_research.py'
+      - 'src/wallet500/historical_price_replay_summary.py'
       - '.github/workflows/mature-pool-research.yml'
 
 permissions:
@@ -32,6 +33,8 @@ jobs:
         run: pip install -e .
       - name: Run mature exact-pool 7/30/90 infrastructure replay
         run: python -m wallet500.mature_pool_research
+      - name: Build separate historical price replay summary
+        run: python -m wallet500.historical_price_replay_summary
       - name: Validate research isolation
         run: |
           python - <<'PY'
@@ -43,16 +46,18 @@ jobs:
           if d.get('mode')!='RESEARCH_ONLY_MATURE_POOL_INFRASTRUCTURE_REPLAY': raise SystemExit('unsafe research mode')
           if d.get('production_portfolio_impact')!='NONE': raise SystemExit('research may not affect production')
           if not d.get('survivorship_bias_warning'): raise SystemExit('survivorship warning missing')
-          print('MATURE POOLS', d.get('counts'))
+          s=json.loads(Path('data/historical-price-replay-summary.json').read_text())
+          if s.get('mode')!='HISTORICAL_PRICE_REPLAY_REFERENCE_ONLY' or s.get('verified_wallet500_backtest') is not False: raise SystemExit('price replay mislabeled')
+          print('MATURE POOLS', d.get('counts')); print('PRICE REPLAY',s.get('windows'))
           PY
       - name: Publish research result
         run: |
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/mature-pool-research.json
+          git add data/mature-pool-research.json data/historical-price-replay-summary.json
           if ! git diff --cached --quiet; then
-            git commit -m 'data: refresh mature pool research'
+            git commit -m 'data: refresh mature pool research and price replay'
             for attempt in 1 2 3 4 5; do
               git fetch origin main
               git merge --no-edit -X ours origin/main
