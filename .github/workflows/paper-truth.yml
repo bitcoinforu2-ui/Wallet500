@@ -1,0 +1,82 @@
+name: Wallet500 Paper Truth Portfolio
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Wallet500 Multi-Chain Live Scan"]
+    types: [completed]
+  schedule:
+    - cron: '12,27,42,57 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/paper_truth_portfolio.py'
+      - 'src/wallet500/cash_verified.py'
+      - '.github/workflows/paper-truth.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-paper-truth
+  cancel-in-progress: false
+
+jobs:
+  truth:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e .
+      - name: Reconcile quote-verified paper truth ledger
+        env:
+          ZEROX_API_KEY: ${{ secrets.ZEROX_API_KEY }}
+          ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
+          BSC_RPC_URL: ${{ secrets.BSC_RPC_URL }}
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+        run: python -m wallet500.paper_truth_portfolio
+      - name: Validate truth accounting
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          lp=Path('data/paper-truth-ledger.json')
+          sp=Path('data/paper-truth-summary.json')
+          if not lp.exists() or not sp.exists(): raise SystemExit('FATAL: paper truth outputs missing')
+          l=json.loads(lp.read_text()); s=json.loads(sp.read_text())
+          if s.get('mode')!='PAPER_TRUTH_QUOTE_VERIFIED_NO_REAL_MONEY': raise SystemExit('FATAL: wrong truth mode')
+          if float(s.get('position_size_usd',0))!=1.0: raise SystemExit('FATAL: position size changed')
+          for p in l.get('positions') or []:
+              if not p.get('entry_quote_proof_level'): raise SystemExit('FATAL: booked position without entry quote proof')
+              if p.get('status')=='CLOSED_QUOTE_VERIFIED' and not p.get('exit_quote_proof_level'):
+                  raise SystemExit('FATAL: closed position without exit quote proof')
+          calc=sum(float(p.get('realized_quote_pnl_usd') or 0) for p in (l.get('positions') or []) if p.get('status')=='CLOSED_QUOTE_VERIFIED')
+          if abs(calc-float(s.get('realized_quote_pnl_usd') or 0))>1e-7: raise SystemExit('FATAL: realized PnL mismatch')
+          print('PAPER TRUTH: entries',s.get('entry_quote_verified_positions'),'closed',s.get('closed_quote_verified_positions'),'realized_quote_pnl',s.get('realized_quote_pnl_usd'),'pending',s.get('exit_pending'))
+          PY
+      - name: Publish truth ledger only
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          git add data/paper-truth-ledger.json data/paper-truth-summary.json
+          if git diff --cached --quiet; then
+            echo 'No paper truth change'
+            exit 0
+          fi
+          git commit -m 'truth: advance quote-verified paper portfolio'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git merge --no-edit -X ours origin/main
+            if git push origin HEAD:main; then break; fi
+            sleep 3
+            if [ "$attempt" = 5 ]; then exit 1; fi
+          done
