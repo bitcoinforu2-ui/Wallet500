@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from wallet500.entry_quality import evaluate_entry_quality
 
-DATA=Path('data'); LEDGER=DATA/'external-only-paper-ledger.json'; SUMMARY=DATA/'external-only-paper-summary.json'; CAP=44; POS=1.0
+DATA=Path('data'); LEDGER=DATA/'external-only-paper-ledger.json'; SUMMARY=DATA/'external-only-paper-summary.json'; POS=1.0
 
 def load(p,d):
     try:return json.loads(p.read_text()) if p.exists() and p.stat().st_size else d
@@ -17,7 +17,9 @@ def key(chain,token,pair): return f'{str(chain).lower()}:{norm(chain,token)}:{no
 def run():
     t=datetime.now(timezone.utc); now=t.isoformat(); ext=load(DATA/'external-signal-cohort.json',{}); tracker=load(DATA/'outcome-tracker.json',{}); records=(tracker.get('tokens') or {}) if isinstance(tracker,dict) else {}
     state=load(LEDGER,{})
-    if not state: state={'version':'EXTERNAL_ONLY_PAPER_V1','created_at':now,'position_size_usd':POS,'max_positions':CAP,'production_change':False,'entries':[]}
+    if not state: state={'version':'EXTERNAL_ONLY_PAPER_V2','created_at':now,'position_size_usd':POS,'max_positions':None,'production_change':False,'entries':[]}
+    else:
+        state['version']='EXTERNAL_ONLY_PAPER_V2'; state['max_positions']=None
     entries=state.setdefault('entries',[]); existing={e.get('key') for e in entries if isinstance(e,dict)}
     sources={}
     for r in (ext.get('records') or {}).values():
@@ -42,7 +44,6 @@ def run():
         k=key(chain,token,pair)
         candidates.append((k,r,snap,q,sources[sk]))
     for k,r,s,q,srcs in candidates:
-        if len(entries)>=CAP:break
         if k in existing:continue
         px=s['price_usd']; names=sorted(set(x.get('source') for x in srcs if x.get('source')))
         entries.append({'key':k,'chain':r.get('chain'),'token':r.get('token'),'pair_address':r.get('entry_pair_address'),'entry_at':now,'entry_price_usd':px,'entry_liquidity_usd':s['liquidity_usd'],'entry_volume_h1':s['volume_h1'],'entry_txns_h1':s['buys_h1']+s['sells_h1'],'quantity':POS/px,'cost_usd':POS,'current_price_usd':px,'current_value_usd':POS,'return_pct':0.0,'status':'LIVE','external_sources':names,'source_consensus_count':len(names),'source_first_seen_at':min((x.get('first_seen_at') for x in srcs if x.get('first_seen_at')),default=None),'entry_quality_policy':'ANTI_CHASE_V1'})
@@ -60,5 +61,5 @@ def run():
     invested=sum(float(e.get('cost_usd') or 0) for e in entries); value=sum(float(e.get('current_value_usd') or 0) for e in entries); by={}
     for e in entries:
         for s in e.get('external_sources') or []: by[s]=by.get(s,0)+1
-    summary={'updated_at':now,'method':'EXTERNAL_ONLY_6H_PAPER_V1','max_positions':CAP,'positions':len(entries),'paper_invested_usd':round(invested,6),'paper_current_value_usd':round(value,6),'paper_pnl_usd':round(value-invested,6),'paper_roi_pct':round(((value/invested)-1)*100,4) if invested else 0,'live':sum(e.get('status')=='LIVE' for e in entries),'failed':sum(e.get('status')=='FAILED_SURVIVAL' for e in entries),'unresolved':sum(e.get('status')=='UNRESOLVED' for e in entries),'source_attribution':by,'production_change':False,'truth_note':'Isolated external-source-only paper cohort. Does not alter native Wallet500 ledger or production gates.'}; write(SUMMARY,summary); print(json.dumps(summary,indent=2)); return summary
+    summary={'updated_at':now,'method':'EXTERNAL_ONLY_6H_PAPER_V2_UNCAPPED','max_positions':None,'positions':len(entries),'paper_invested_usd':round(invested,6),'paper_current_value_usd':round(value,6),'paper_pnl_usd':round(value-invested,6),'paper_roi_pct':round(((value/invested)-1)*100,4) if invested else 0,'live':sum(e.get('status')=='LIVE' for e in entries),'failed':sum(e.get('status')=='FAILED_SURVIVAL' for e in entries),'unresolved':sum(e.get('status')=='UNRESOLVED' for e in entries),'source_attribution':by,'production_change':False,'truth_note':'Isolated uncapped external-source-only paper cohort. Does not alter native Wallet500 ledger or production gates.'}; write(SUMMARY,summary); print(json.dumps(summary,indent=2)); return summary
 if __name__=='__main__':run()
