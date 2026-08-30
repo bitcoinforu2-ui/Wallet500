@@ -14,6 +14,7 @@ on:
       - 'src/wallet500/lifecycle_strategy.py'
       - 'src/wallet500/cohort_research.py'
       - 'src/wallet500/quality_shadow.py'
+      - 'src/wallet500/hot_healthy_radar.py'
       - 'tests/test_lifecycle_strategy.py'
       - '.github/workflows/performance-tracker.yml'
 
@@ -43,6 +44,8 @@ jobs:
         run: python -m wallet500.lifecycle_strategy
       - name: Update first-eligible forward paper ledger
         run: python -m wallet500.realizable_performance
+      - name: Rank hot healthy exact-pair candidates
+        run: python -m wallet500.hot_healthy_radar
       - name: Track delayed-entry shadow cohort
         run: python -m wallet500.quality_shadow
       - name: Run cohort counterfactual and missed-star research
@@ -56,10 +59,10 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          paths=[Path('data/outcome-tracker.json'),Path('data/signal-outcomes.json'),Path('data/performance-measurement-report.json'),Path('data/performance-leaderboard.json'),Path('data/lifecycle-strategy-ledger.json'),Path('data/lifecycle-strategy-summary.json'),Path('data/realizable-performance.json'),Path('data/realizable-performance-summary.json'),Path('data/cash-verified-performance.json'),Path('data/cash-verified-summary.json'),Path('data/first-eligible-paper-ledger.json'),Path('data/cohort-research.json'),Path('data/quality-shadow-ledger.json'),Path('data/quality-shadow-summary.json')]
+          paths=[Path('data/outcome-tracker.json'),Path('data/signal-outcomes.json'),Path('data/performance-measurement-report.json'),Path('data/performance-leaderboard.json'),Path('data/lifecycle-strategy-ledger.json'),Path('data/lifecycle-strategy-summary.json'),Path('data/realizable-performance.json'),Path('data/realizable-performance-summary.json'),Path('data/cash-verified-performance.json'),Path('data/cash-verified-summary.json'),Path('data/first-eligible-paper-ledger.json'),Path('data/cohort-research.json'),Path('data/quality-shadow-ledger.json'),Path('data/quality-shadow-summary.json'),Path('data/hot-healthy-radar.json')]
           for x in paths:
               if not x.exists() or x.stat().st_size == 0: raise SystemExit('FATAL: empty measurement output: '+str(x))
-          d=json.loads(paths[0].read_text()); lb=json.loads(paths[3].read_text()); ls=json.loads(paths[5].read_text()); rp=json.loads(paths[6].read_text()); cv=json.loads(paths[8].read_text()); pl=json.loads(paths[10].read_text()); cr=json.loads(paths[11].read_text()); qs=json.loads(paths[13].read_text())
+          d=json.loads(paths[0].read_text()); lb=json.loads(paths[3].read_text()); ls=json.loads(paths[5].read_text()); rp=json.loads(paths[6].read_text()); cv=json.loads(paths[8].read_text()); pl=json.loads(paths[10].read_text()); cr=json.loads(paths[11].read_text()); qs=json.loads(paths[13].read_text()); hh=json.loads(paths[14].read_text())
           total=int(d.get('tracked_tokens') or 0); measured=int(rp.get('tracked_cohort_count') or 0); unknown=int(rp.get('unknown_not_scored_count') or 0)
           if total<=0: raise SystemExit('FATAL: tracker attempted to publish zero tracked tokens')
           if lb.get('verified_count',0)!=len(lb.get('rows') or []): raise SystemExit('FATAL: leaderboard count mismatch')
@@ -84,19 +87,24 @@ jobs:
           if int((cr.get('baseline') or {}).get('n') or 0)!=len(entries): raise SystemExit('FATAL: cohort research baseline differs from persistent ledger')
           if int(qs.get('currently_delayed') or 0)>int(qs.get('total_shadow_records') or 0): raise SystemExit('FATAL: shadow current count exceeds immutable shadow history')
           if qs.get('production_change') is not False: raise SystemExit('FATAL: shadow research must not mutate production policy')
+          if hh.get('production_change') is not False: raise SystemExit('FATAL: hot healthy radar must not bypass production policy')
+          for row in hh.get('hot_healthy') or []:
+              if float(row.get('liquidity_usd') or 0)<50000: raise SystemExit('FATAL: HOT_HEALTHY below hard liquidity floor')
+              if float(row.get('liquidity_retention') or 0)<0.90: raise SystemExit('FATAL: HOT_HEALTHY lacks liquidity retention')
           print('FORWARD PAPER ACCOUNTING PASS')
           print('TOTAL',total,'MEASURED NOW',measured,'PAPER ENTRIES',len(entries),'INVESTED',invested,'VALUE',value,'PNL',pnl,'ROI',roi)
           print('COHORT RESEARCH PASS', (cr.get('best_counterfactuals_min5') or [])[:3])
           print('QUALITY SHADOW PASS', qs)
+          print('HOT HEALTHY RADAR PASS', {'hot_healthy':hh.get('hot_healthy_count'), 'healthy_watch':hh.get('healthy_watch_count'), 'scored':hh.get('scored_exact_pair_candidates')})
           PY
       - name: Publish measurement data
         run: |
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json data/first-eligible-paper-ledger.json data/cohort-research.json data/cohort-research.md data/quality-shadow-ledger.json data/quality-shadow-summary.json
+          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json data/first-eligible-paper-ledger.json data/cohort-research.json data/cohort-research.md data/quality-shadow-ledger.json data/quality-shadow-summary.json data/hot-healthy-radar.json
           if ! git diff --cached --quiet; then
-            git commit -m 'data: refresh immutable performance, cohort research and quality shadow'
+            git commit -m 'data: refresh immutable performance, cohort research, quality shadow and hot healthy radar'
             for attempt in 1 2 3 4 5; do
               git fetch origin main
               git merge --no-edit -X ours origin/main
