@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, urllib.request
+import gzip, json, urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -90,9 +90,23 @@ def binance():
 SOURCES=[('gate',gate),('bybit',bybit),('okx',okx),('bitget',bitget),('mexc',mexc),('kucoin',kucoin),('htx',htx),('bingx',bingx),('coinex',coinex),('binance',binance)]
 
 def _load(path,default):
-    if not path.exists():return default
-    try:return json.loads(path.read_text(encoding='utf-8'))
-    except:return default
+    gz=Path(str(path)+'.gz')
+    try:
+        if gz.exists():
+            with gzip.open(gz,'rt',encoding='utf-8') as f:return json.load(f)
+        if path.exists():return json.loads(path.read_text(encoding='utf-8'))
+    except Exception:return default
+    return default
+
+def _write_state_lossless(path,state):
+    gz=Path(str(path)+'.gz')
+    tmp=Path(str(gz)+'.tmp')
+    with gzip.open(tmp,'wt',encoding='utf-8',compresslevel=6) as f:json.dump(state,f,separators=(',',':'))
+    tmp.replace(gz)
+    # cex-state is a rolling observation state, not a call ledger. Migration is
+    # lossless: preserve every retained observation and remove only the redundant
+    # uncompressed working-tree copy after the gzip file has been atomically written.
+    if path.exists():path.unlink()
 
 def _enrich_with_history(rows,state,now):
     histories=state.get('markets') if isinstance(state.get('markets'),dict) else {}
@@ -135,7 +149,7 @@ def run_cex_revival(out:Path,now:str):
                 errors.append({'exchange':name,'error':str(e)[:300]});health[name]={'ok':False,'contracts':0}
     state_path=out/'cex-state.json';prev_state=_load(state_path,{})
     rows,state=_enrich_with_history(rows,prev_state,now)
-    state_path.write_text(json.dumps(state,separators=(',',':')),encoding='utf-8')
+    _write_state_lossless(state_path,state)
     groups={}
     for x in rows:
         if x['symbol'].endswith('USDT'):groups.setdefault(x['symbol'],[]).append(x)
