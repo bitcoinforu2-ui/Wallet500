@@ -16,6 +16,14 @@ def _write(path,payload):
     text=json.dumps(payload,indent=2)
     tmp=path.with_name(path.name+'.tmp'); tmp.write_text(text); json.loads(tmp.read_text()); tmp.replace(path)
 
+def _live_return(current_price_usd,entry_price_usd):
+    try:
+        current=float(current_price_usd); entry=float(entry_price_usd)
+    except (TypeError,ValueError):
+        return None
+    if entry<=0:return None
+    return ((current/entry)-1.0)*100.0
+
 def _k(chain,token,pair):
     chain=str(chain or '').lower(); token=str(token or ''); pair=str(pair or '')
     if chain in {'ethereum','eth','bsc','bnb'}: token=token.lower(); pair=pair.lower()
