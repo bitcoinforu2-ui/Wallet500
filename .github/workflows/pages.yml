@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '*/5 * * * *'
+  workflow_run:
+    workflows: ['Wallet500 Revival 1000']
+    types: [completed]
   push:
     branches: [main]
     paths:
@@ -43,6 +46,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   deploy:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -73,7 +77,7 @@ jobs:
           if [ -f wallet500_option2_emblem.jpg ]; then cp wallet500_option2_emblem.jpg _site/; fi
           touch _site/.nojekyll
           printf '%s\n' "$GITHUB_SHA" > _site/build.txt
-          for f in _site/index.html _site/live/index.html _site/terminal/index.html _site/performance/index.html _site/control/index.html _site/revival/index.html _site/dashboard-live-price.js _site/data/run-summary.json _site/data/realizable-performance-summary.json _site/data/external-signal-cohort-summary.json; do check_file "$f"; done
+          for f in _site/index.html _site/live/index.html _site/terminal/index.html _site/performance/index.html _site/control/index.html _site/revival/index.html _site/dashboard-live-price.js _site/data/run-summary.json _site/data/realizable-performance-summary.json _site/data/external-signal-cohort-summary.json _site/data/revival-1000-latest.json; do check_file "$f"; done
           check_text _site/index.html 'WALLET500 · מצב הפרויקט'
           check_text _site/index.html 'EXTERNAL-ONLY EXPERIMENT'
           check_text _site/live/index.html '<title>Wallet500 Live</title>'
@@ -87,7 +91,8 @@ jobs:
           python -m json.tool _site/data/run-summary.json >/dev/null || fail 'invalid run-summary.json'
           python -m json.tool _site/data/realizable-performance-summary.json >/dev/null || fail 'invalid realizable-performance-summary.json'
           python -m json.tool _site/data/external-signal-cohort-summary.json >/dev/null || fail 'invalid external-signal-cohort-summary.json'
-          if [ -f _site/data/revival-1000-latest.json ]; then python -m json.tool _site/data/revival-1000-latest.json >/dev/null || fail 'invalid revival-1000-latest.json'; fi
+          python -m json.tool _site/data/revival-1000-latest.json >/dev/null || fail 'invalid revival-1000-latest.json'
+          grep -Fq '"mode": "REVIVAL_1000_RESEARCH_ONLY"' _site/data/revival-1000-latest.json || fail 'revival data truth mode missing'
           echo 'BUILD_VERIFY_OK'
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -109,8 +114,9 @@ jobs:
             root="$(curl -fsSL --max-time 20 "${BASE}?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             perf="$(curl -fsSL --max-time 20 "${BASE}performance/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             revival="$(curl -fsSL --max-time 20 "${BASE}revival/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
+            revival_data="$(curl -fsSL --max-time 20 "${BASE}data/revival-1000-latest.json?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             adapter="$(curl -fsSL --max-time 20 "${BASE}dashboard-live-price.js?sha=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'EXTERNAL-ONLY EXPERIMENT' <<<"$root" && ! grep -Fq 'ניסוי TOP 10' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'RESEARCH LAB — VISUAL' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter" && grep -Fq 'WALLET500 · REVIVAL 1000' <<<"$revival"; then ok=1; break; fi
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'EXTERNAL-ONLY EXPERIMENT' <<<"$root" && ! grep -Fq 'ניסוי TOP 10' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'RESEARCH LAB — VISUAL' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter" && grep -Fq 'WALLET500 · REVIVAL 1000' <<<"$revival" && grep -Fq '"mode": "REVIVAL_1000_RESEARCH_ONLY"' <<<"$revival_data"; then ok=1; break; fi
             echo "verify attempt $attempt/30 not ready yet"
             sleep 10
           done
