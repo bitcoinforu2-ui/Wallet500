@@ -1,6 +1,6 @@
 # Wallet500 full dashboard hub
-# Root and direct dashboard-hub.html must always serve the Intelligence Hub, while /live/ remains the TOP 10 experiment.
-# Live scanner no longer owns GitHub Pages; this workflow is the single deploy owner.
+# Root and stable hub routes must always serve the Intelligence Hub, while /live/ remains the TOP 10 experiment.
+# This workflow is the single GitHub Pages deploy owner.
 name: Deploy Wallet500 Dashboard
 
 on:
@@ -24,7 +24,7 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -39,9 +39,11 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf _site
-          mkdir -p _site/live _site/performance _site/backtest
+          mkdir -p _site/live _site/performance _site/backtest _site/hub
           cp index.html _site/index.html
           cp index.html _site/dashboard-hub.html
+          cp index.html _site/hub.html
+          cp index.html _site/hub/index.html
           cp dashboard-live.html _site/live/index.html
           cp dashboard-performance.html _site/performance/index.html
           cp dashboard-backtest.html _site/backtest/index.html
@@ -51,17 +53,13 @@ jobs:
           touch _site/.nojekyll
           printf '%s\n' "$GITHUB_SHA" > _site/build.txt
 
-          test -s _site/index.html
-          test -s _site/dashboard-hub.html
-          test -s _site/live/index.html
-          test -s _site/performance/index.html
-          test -s _site/backtest/index.html
-          test -s _site/data/run-summary.json
-          grep -Fq 'WALLET500 · INTELLIGENCE HUB' _site/index.html
-          grep -Fq 'WALLET500 · INTELLIGENCE HUB' _site/dashboard-hub.html
-          grep -Fq 'EXPERIMENT CENTER' _site/dashboard-hub.html
-          grep -Fq '$1 ON EVERY DISCOVERY' _site/dashboard-hub.html
-          grep -Fq 'HISTORICAL REPLAY 7/30/90' _site/dashboard-hub.html
+          for f in _site/index.html _site/dashboard-hub.html _site/hub.html _site/hub/index.html _site/live/index.html _site/performance/index.html _site/backtest/index.html _site/data/run-summary.json; do test -s "$f"; done
+          for f in _site/index.html _site/dashboard-hub.html _site/hub.html _site/hub/index.html; do
+            grep -Fq 'WALLET500 · INTELLIGENCE HUB' "$f"
+            grep -Fq 'EXPERIMENT CENTER' "$f"
+            grep -Fq '$1 ON EVERY DISCOVERY' "$f"
+            grep -Fq 'HISTORICAL REPLAY 7/30/90' "$f"
+          done
           grep -Eq 'LIVE EXACT PAIRS|10 VERIFIED ENTRIES' _site/live/index.html
 
       - name: Configure GitHub Pages
@@ -84,13 +82,17 @@ jobs:
           case "$BASE" in */) ;; *) BASE="$BASE/" ;; esac
 
           ok=0
-          for attempt in $(seq 1 24); do
+          for attempt in $(seq 1 30); do
             build="$(curl -fsSL --max-time 20 "${BASE}build.txt?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             root="$(curl -fsSL --max-time 20 "${BASE}?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             direct="$(curl -fsSL --max-time 20 "${BASE}dashboard-hub.html?sha=${GITHUB_SHA}" 2>/dev/null || true)"
+            hubdir="$(curl -fsSL --max-time 20 "${BASE}hub/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
+            hubfile="$(curl -fsSL --max-time 20 "${BASE}hub.html?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             if [ "$build" = "$GITHUB_SHA" ] \
               && grep -Fq 'WALLET500 · INTELLIGENCE HUB' <<<"$root" \
               && grep -Fq 'WALLET500 · INTELLIGENCE HUB' <<<"$direct" \
+              && grep -Fq 'WALLET500 · INTELLIGENCE HUB' <<<"$hubdir" \
+              && grep -Fq 'WALLET500 · INTELLIGENCE HUB' <<<"$hubfile" \
               && grep -Fq 'EXPERIMENT CENTER' <<<"$direct" \
               && grep -Fq '$1 ON EVERY DISCOVERY' <<<"$direct" \
               && grep -Fq 'HISTORICAL REPLAY 7/30/90' <<<"$direct"; then
@@ -99,7 +101,7 @@ jobs:
             fi
             sleep 10
           done
-          [ "$ok" -eq 1 ] || { echo 'Public root/direct hub verification failed'; exit 1; }
+          [ "$ok" -eq 1 ] || { echo 'Public Wallet500 Hub verification failed'; exit 1; }
 
           live="$(curl -fsSL --max-time 20 "${BASE}live/?sha=${GITHUB_SHA}")"
           perf="$(curl -fsSL --max-time 20 "${BASE}performance/?sha=${GITHUB_SHA}")"
@@ -108,4 +110,4 @@ jobs:
           test -n "$perf"
           test -n "$back"
           curl -fsSL --max-time 20 "${BASE}data/run-summary.json?sha=${GITHUB_SHA}" | python -m json.tool >/dev/null
-          echo "PUBLIC_VERIFY_OK ${BASE}dashboard-hub.html build=${GITHUB_SHA}"
+          echo "PUBLIC_VERIFY_OK root=${BASE} hub=${BASE}hub/ direct=${BASE}dashboard-hub.html build=${GITHUB_SHA}"
