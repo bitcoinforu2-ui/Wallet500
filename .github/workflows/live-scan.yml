@@ -15,8 +15,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 concurrency:
   group: wallet500-live-scan
@@ -177,28 +175,3 @@ jobs:
               if [ "$attempt" = 5 ]; then exit 1; fi
             done
           fi
-
-  deploy:
-    needs: scan
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-      - name: Build fresh Wallet500 site
-        run: |
-          set -euo pipefail
-          rm -rf _site
-          mkdir -p _site
-          cp dashboard-live.html _site/index.html
-          cp -r data _site/data
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
