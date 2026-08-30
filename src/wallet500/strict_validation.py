@@ -60,8 +60,20 @@ def run(output_dir: str = "data"):
     hchecks = health.get("checks") or {} if isinstance(health, dict) else {}
     liq_health = (hchecks.get("liquidity_policy") or {}).get("status") if isinstance(hchecks, dict) else None
     holder_health = (hchecks.get("holder_cluster_fail_closed") or {}).get("status") if isinstance(hchecks, dict) else None
+    failure_summary = health.get("failure_summary") or {} if isinstance(health, dict) else {}
+    system_blockers = int(failure_summary.get("system_production_blockers", failure_summary.get("production_blockers", 1)) or 0) if isinstance(failure_summary, dict) else 1
     _check(checks, "system_health_liquidity_policy", liq_health == "HEALTHY", liq_health)
     _check(checks, "system_health_holder_cluster_fail_closed", holder_health == "HEALTHY", holder_health)
+    _check(
+        checks,
+        "system_health_no_production_blockers",
+        system_blockers == 0,
+        {
+            "system_production_blockers": system_blockers,
+            "overall": health.get("overall") if isinstance(health, dict) else None,
+            "codes": failure_summary.get("codes") if isinstance(failure_summary, dict) else None,
+        },
+    )
 
     paper_mode = str(paper.get("mode") or "") if isinstance(paper, dict) else ""
     paper_ok = "PAPER" in paper_mode and ("NO_REAL_MONEY" in paper_mode or "NO REAL MONEY" in paper_mode)
