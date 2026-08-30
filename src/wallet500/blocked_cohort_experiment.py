@@ -55,13 +55,10 @@ def _f(row: dict[str, Any], *names: str) -> float:
 
 def _activity(row: dict[str, Any]) -> float:
     v = _f(row, "live_activity_h1", "txns_h1")
-    if v > 0:
-        return v
-    return _f(row, "buys_h1") + _f(row, "sells_h1")
+    return v if v > 0 else _f(row, "buys_h1") + _f(row, "sells_h1")
 
 
 def _rank_score(row: dict[str, Any]) -> float:
-    # Forward-only score: current quality only. Never uses return/peak hindsight.
     anomaly = min(max(_f(row, "anomaly_score"), 0.0), 100.0) / 100.0
     liq = min(_f(row, "live_liquidity_usd", "liquidity_usd") / 100_000.0, 1.0)
     vol = min(_f(row, "live_volume_h1", "volume_h1") / 100_000.0, 1.0)
@@ -77,14 +74,14 @@ def _revalidate(row: dict[str, Any]) -> tuple[bool, list[str]]:
     activity = _activity(row)
     pair = row.get("pair_address")
     locked = row.get("locked_pair_address")
+    chain = str(row.get("chain") or "")
 
     if price <= 0: reasons.append("NO_LIVE_PRICE")
     if liq < MIN_LIQUIDITY_USD: reasons.append("LIQUIDITY_BELOW_50K")
     if vol <= 0: reasons.append("NO_LIVE_H1_VOLUME")
     if activity <= 0: reasons.append("NO_LIVE_H1_ACTIVITY")
     if not pair or not (row.get("token") or row.get("mint")): reasons.append("MISSING_EXACT_PAIR_IDENTITY")
-    if locked and _norm(str(row.get("chain") or ""), locked) != _norm(str(row.get("chain") or ""), pair):
-        reasons.append("PAIR_IDENTITY_MISMATCH")
+    if locked and _norm(chain, locked) != _norm(chain, pair): reasons.append("PAIR_IDENTITY_MISMATCH")
     if row.get("pair_identity_locked") is False: reasons.append("PAIR_NOT_LOCKED")
     if row.get("qualification") not in {None, "QUALIFIED"}: reasons.append("NOT_QUALIFIED")
     if row.get("live_survival_gate") not in {None, "ACTIVE"}: reasons.append("SURVIVAL_NOT_ACTIVE")
@@ -111,21 +108,22 @@ def _candidates(source: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]
     return accepted, rejected
 
 
+def _position(r: dict[str, Any], rank: int, now: str) -> dict[str, Any]:
+    px = _f(r, "price_usd", "current_price_usd")
+    return {
+        "rank": rank, "chain": str(r.get("chain") or "").lower(), "token": r.get("token") or r.get("mint"),
+        "pair_address": r.get("pair_address"), "dex": r.get("dex"), "entry_time": now, "entry_verified_at": now,
+        "entry_price_usd": px, "quantity": POSITION_USD / px, "cost_usd": POSITION_USD,
+        "entry_liquidity_usd": _f(r, "live_liquidity_usd", "liquidity_usd"),
+        "entry_volume_h1": _f(r, "live_volume_h1", "volume_h1"), "entry_txns_h1": int(_activity(r)),
+        "experiment_rank_score": r.get("experiment_rank_score"), "current_price_usd": px,
+        "current_value_usd": POSITION_USD, "return_pct": 0.0, "last_mark_at": now, "mark_status": "ENTRY_VERIFIED_MARK",
+    }
+
+
 def _initial(source: Any, now: str) -> dict[str, Any]:
     pool, rejected = _candidates(source)
-    selected = pool[:COHORT_SIZE]
-    positions = []
-    for rank, r in enumerate(selected, 1):
-        px = _f(r, "price_usd", "current_price_usd")
-        positions.append({
-            "rank": rank, "chain": str(r.get("chain") or "").lower(), "token": r.get("token") or r.get("mint"),
-            "pair_address": r.get("pair_address"), "dex": r.get("dex"), "entry_time": now, "entry_verified_at": now,
-            "entry_price_usd": px, "quantity": POSITION_USD / px, "cost_usd": POSITION_USD,
-            "entry_liquidity_usd": _f(r, "live_liquidity_usd", "liquidity_usd"),
-            "entry_volume_h1": _f(r, "live_volume_h1", "volume_h1"), "entry_txns_h1": int(_activity(r)),
-            "experiment_rank_score": r.get("experiment_rank_score"), "current_price_usd": px,
-            "current_value_usd": POSITION_USD, "return_pct": 0.0, "last_mark_at": now, "mark_status": "ENTRY_VERIFIED_MARK",
-        })
+    positions = [_position(r, rank, now) for rank, r in enumerate(pool[:COHORT_SIZE], 1)]
     return {
         "version": 2, "mode": MODE, "paper_only": True, "production_bypass": False,
         "selection_policy": "TOP10_ONLY_AFTER_FRESH_EXACT_PAIR_REVALIDATION_LIQ50K_SURVIVAL_ACTIVE_NO_HINDSIGHT",
@@ -140,39 +138,65 @@ def update(now: str | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
     ts = now or _now()
     source = _load(SOURCE, [])
     ledger = _load(LEDGER, {})
-    # Mode change intentionally retires the old blocked cohort and creates one fresh verified cohort.
     if not isinstance(ledger, dict) or ledger.get("mode") != MODE or not isinstance(ledger.get("positions"), list) or not ledger.get("positions"):
         ledger = _initial(source, ts)
 
+    pool, rejected = _candidates(source)
+    positions = ledger.get("positions", [])
+    existing = {_key(p) for p in positions if isinstance(p, dict)}
+
+    # Fill the cohort forward-only on every run. Existing entries never change or disappear.
+    # A new $1 paper entry is booked only if the candidate passes fresh revalidation now.
+    for r in pool:
+        if len(positions) >= COHORT_SIZE:
+            break
+        key = _key(r)
+        if key in existing:
+            continue
+        positions.append(_position(r, len(positions) + 1, ts))
+        existing.add(key)
+
     rows = source if isinstance(source, list) else (source.get("rows") or source.get("candidates") or []) if isinstance(source, dict) else []
     current = {_key(r): r for r in rows if isinstance(r, dict)}
-    for p in ledger.get("positions", []):
+    for p in positions:
         r = current.get(_key(p))
         if not r or _f(r, "price_usd", "current_price_usd") <= 0:
             p["mark_status"] = "UNRESOLVED_NO_CURRENT_EXACT_PAIR_MARK"
             continue
         px = _f(r, "price_usd", "current_price_usd")
         value = float(p["quantity"]) * px
-        p["current_price_usd"] = px; p["current_value_usd"] = round(value, 8)
+        p["current_price_usd"] = px
+        p["current_value_usd"] = round(value, 8)
         p["return_pct"] = round((value / float(p["cost_usd"]) - 1.0) * 100.0, 6)
         p["current_liquidity_usd"] = _f(r, "live_liquidity_usd", "liquidity_usd")
-        p["last_mark_at"] = ts; p["mark_status"] = "EXACT_PAIR_MARK"
+        p["last_mark_at"] = ts
+        p["mark_status"] = "EXACT_PAIR_MARK"
 
-    positions = ledger.get("positions", [])
+    ledger["positions"] = positions
+    ledger["eligible_revalidated_pool"] = len(pool)
+    ledger["rejected_at_entry_count"] = len(rejected)
+    ledger["rejected_at_entry"] = rejected
+    ledger["starting_value_usd"] = round(len(positions) * POSITION_USD, 8)
+    ledger["updated_at"] = ts
+
     marked = [p for p in positions if p.get("mark_status") in {"ENTRY_VERIFIED_MARK", "EXACT_PAIR_MARK"}]
     value = sum(float(p.get("current_value_usd") or 0) for p in marked)
     cost = sum(float(p.get("cost_usd") or 0) for p in marked)
-    pnl = value - cost; roi = pnl / cost * 100.0 if cost else 0.0
-    ledger["updated_at"] = ts
-    summary = {"version": 2, "mode": MODE, "paper_only": True, "production_bypass": False,
+    pnl = value - cost
+    roi = pnl / cost * 100.0 if cost else 0.0
+    summary = {
+        "version": 2, "mode": MODE, "paper_only": True, "production_bypass": False,
         "selected_at": ledger.get("selected_at"), "updated_at": ts, "positions": len(positions), "position_size_usd": POSITION_USD,
         "starting_value_usd": ledger.get("starting_value_usd", 0), "marked_positions": len(marked), "unresolved_positions": len(positions)-len(marked),
         "comparable_cost_usd": round(cost,8), "current_value_usd": round(value,8), "pnl_usd": round(pnl,8), "roi_pct": round(roi,6),
-        "selection_policy": ledger.get("selection_policy"), "eligible_revalidated_pool": ledger.get("eligible_revalidated_pool"),
-        "rejected_at_entry_count": ledger.get("rejected_at_entry_count"),
-        "note": "Fresh Top-10 entry cohort: exact-pair revalidation before $1 paper entry; >=$50K liquidity and active survival required. After entry, positions remain immutable."}
-    _write(LEDGER, ledger); _write(SUMMARY, summary)
-    print(json.dumps(summary, indent=2)); return ledger, summary
+        "selection_policy": ledger.get("selection_policy"), "eligible_revalidated_pool": len(pool),
+        "rejected_at_entry_count": len(rejected), "slots_remaining": max(0, COHORT_SIZE-len(positions)),
+        "note": "Top-10 fills incrementally: every run may add newly revalidated exact-pair candidates until 10; existing entries remain immutable."
+    }
+    _write(LEDGER, ledger)
+    _write(SUMMARY, summary)
+    print(json.dumps(summary, indent=2))
+    return ledger, summary
 
 
 if __name__ == "__main__":
