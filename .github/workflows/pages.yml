@@ -33,6 +33,9 @@ jobs:
       - name: Build Wallet500 site
         run: |
           set -euo pipefail
+          fail(){ echo "::error::$1"; exit 1; }
+          check_file(){ test -s "$1" || fail "missing or empty: $1"; echo "OK file $1"; }
+          check_text(){ grep -Fq "$2" "$1" || fail "missing marker [$2] in $1"; echo "OK marker $1 :: $2"; }
           rm -rf _site
           mkdir -p _site/live _site/terminal _site/performance _site/backtest _site/control _site/hub
           cp index.html _site/index.html
@@ -49,11 +52,15 @@ jobs:
           if [ -f wallet500_option2_emblem.jpg ]; then cp wallet500_option2_emblem.jpg _site/; fi
           touch _site/.nojekyll
           printf '%s\n' "$GITHUB_SHA" > _site/build.txt
-          for f in _site/index.html _site/live/index.html _site/terminal/index.html _site/control/index.html _site/data/run-summary.json _site/data/blocked-cohort-paper-summary.json _site/data/blocked-cohort-paper-ledger.json; do test -s "$f"; done
-          grep -Fq 'INTELLIGENCE HUB' _site/index.html
-          grep -Fq '<title>Wallet500 Live</title>' _site/live/index.html
-          grep -Fq '<title>Wallet500 Terminal</title>' _site/terminal/index.html
-          grep -Fq '<title>Wallet500 Control Center V2</title>' _site/control/index.html
+          for f in _site/index.html _site/live/index.html _site/terminal/index.html _site/control/index.html _site/data/run-summary.json _site/data/blocked-cohort-paper-summary.json _site/data/blocked-cohort-paper-ledger.json; do check_file "$f"; done
+          check_text _site/index.html 'WALLET500 · מצב הפרויקט'
+          check_text _site/live/index.html '<title>Wallet500 Live</title>'
+          check_text _site/terminal/index.html '<title>Wallet500 Terminal</title>'
+          check_text _site/control/index.html '<title>Wallet500 Control Center V2</title>'
+          python -m json.tool _site/data/run-summary.json >/dev/null || fail 'invalid run-summary.json'
+          python -m json.tool _site/data/blocked-cohort-paper-summary.json >/dev/null || fail 'invalid blocked-cohort-paper-summary.json'
+          python -m json.tool _site/data/blocked-cohort-paper-ledger.json >/dev/null || fail 'invalid blocked-cohort-paper-ledger.json'
+          echo 'BUILD_VERIFY_OK'
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload site artifact
@@ -77,7 +84,8 @@ jobs:
             control="$(curl -fsSL --max-time 20 "${BASE}control/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             summary="$(curl -fsSL --max-time 20 "${BASE}data/blocked-cohort-paper-summary.json?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             ledger="$(curl -fsSL --max-time 20 "${BASE}data/blocked-cohort-paper-ledger.json?sha=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'INTELLIGENCE HUB' <<<"$root" && grep -Fq '<title>Wallet500 Live</title>' <<<"$live" && grep -Fq '<title>Wallet500 Terminal</title>' <<<"$terminal" && grep -Fq '<title>Wallet500 Control Center V2</title>' <<<"$control" && python -m json.tool >/dev/null <<<"$summary" && python -m json.tool >/dev/null <<<"$ledger"; then ok=1; break; fi
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'WALLET500 · מצב הפרויקט' <<<"$root" && grep -Fq '<title>Wallet500 Live</title>' <<<"$live" && grep -Fq '<title>Wallet500 Terminal</title>' <<<"$terminal" && grep -Fq '<title>Wallet500 Control Center V2</title>' <<<"$control" && python -m json.tool >/dev/null <<<"$summary" && python -m json.tool >/dev/null <<<"$ledger"; then ok=1; break; fi
+            echo "verify attempt $attempt/30 not ready yet"
             sleep 10
           done
           [ "$ok" -eq 1 ] || { echo 'Public Wallet500 verification failed'; exit 1; }
