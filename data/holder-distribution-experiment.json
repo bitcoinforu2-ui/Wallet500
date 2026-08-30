@@ -1,0 +1,18 @@
+{
+  "generated_at": null,
+  "method": "HOLDER_DISTRIBUTION_CLUSTER_SAFETY_V1",
+  "production_change": false,
+  "status": "COLLECTING_DATA_SOURCE_REQUIRED",
+  "purpose": "Test whether lower effective holder concentration improves survival and tradable performance without using hindsight.",
+  "buckets": [
+    {"bucket": "TOP100_LE_10", "range": "<=10%", "n": 0},
+    {"bucket": "TOP100_10_20", "range": "10-20%", "n": 0},
+    {"bucket": "TOP100_20_40", "range": "20-40%", "n": 0},
+    {"bucket": "TOP100_GT_40", "range": ">40%", "n": 0}
+  ],
+  "required_metrics": ["effective_top100_pct","effective_top20_pct","effective_top10_pct","largest_real_holder_pct","largest_independent_cluster_pct","concentration_trend"],
+  "exclusions": ["LP","burn","locked_contract","bridge","system_address"],
+  "evaluation": ["survival_1h_pct","survival_6h_pct","survival_24h_pct","rug_pct","median_roi_pct","max_drawdown_pct","verified_tradable_pct"],
+  "truth_guard": "Do not treat raw Top100 concentration as alpha. Exclude non-economic/system holders and adjust linked wallets into clusters before any production gate decision.",
+  "next_step": "Wire chain-specific holder snapshots and cluster labels, then fill buckets prospectively."
+}
