@@ -25,6 +25,11 @@ on:
       - 'data/external-signal-cohort-summary.json'
       - 'data/external-only-paper-summary.json'
       - 'data/external-only-paper-ledger.json'
+      - 'data/experiment-v1-scoreboard.json'
+      - 'data/cohort-research.json'
+      - 'data/winner-dna-study.json'
+      - 'data/measurable-vs-rest-experiment.json'
+      - 'data/quality-shadow-summary.json'
       - '.github/workflows/pages.yml'
 permissions:
   contents: read
@@ -70,6 +75,7 @@ jobs:
           check_text _site/live/index.html '<title>Wallet500 Live</title>'
           check_text _site/live/index.html 'Liquidity ≥ $50K'
           check_text _site/performance/index.html 'LIVE PRICE 5s'
+          check_text _site/performance/index.html 'RESEARCH LAB — VISUAL'
           check_text _site/performance/index.html 'dashboard-live-price.js'
           check_text _site/terminal/index.html '<title>Wallet500 Terminal</title>'
           check_text _site/control/index.html '<title>Wallet500 Control Center V2</title>'
@@ -97,7 +103,7 @@ jobs:
             root="$(curl -fsSL --max-time 20 "${BASE}?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             perf="$(curl -fsSL --max-time 20 "${BASE}performance/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             adapter="$(curl -fsSL --max-time 20 "${BASE}dashboard-live-price.js?sha=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'EXTERNAL-ONLY EXPERIMENT' <<<"$root" && ! grep -Fq 'ניסוי TOP 10' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter"; then ok=1; break; fi
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'EXTERNAL-ONLY EXPERIMENT' <<<"$root" && ! grep -Fq 'ניסוי TOP 10' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'RESEARCH LAB — VISUAL' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter"; then ok=1; break; fi
             echo "verify attempt $attempt/30 not ready yet"
             sleep 10
           done
