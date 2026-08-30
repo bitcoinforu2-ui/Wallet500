@@ -33,6 +33,9 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e .
+      - name: Ingest 6h external signal cohort
+        continue-on-error: true
+        run: python -m wallet500.external_signal_cohort
       - name: Capture Moonshot launchpad discovery feed
         continue-on-error: true
         run: python -m wallet500.moonshot_radar
