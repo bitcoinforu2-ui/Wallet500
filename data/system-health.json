@@ -1,64 +1,61 @@
 {
   "version": 4,
   "diagnostic_contract": "FAIL_LOUD_FAIL_SPECIFIC_FAIL_TRACEABLE",
-  "updated_at": "2026-08-30T21:38:29.573281+00:00",
+  "updated_at": "2026-08-30T22:11:27.330213+00:00",
   "overall": "DEGRADED",
   "failure_summary": {
     "count": 1,
-    "production_blockers": 0,
-    "system_production_blockers": 0,
-    "candidate_gate_blocks": 1,
+    "production_blockers": 1,
+    "system_production_blockers": 1,
+    "candidate_gate_blocks": 5,
     "codes": [
-      "ALL_ACTIVE_CANDIDATES_QUARANTINED_FOR_INCOMPLETE_EVIDENCE"
+      "SCAN_STALE_OR_TIMESTAMP_MISSING"
     ]
   },
   "gate_summary": {
-    "holder_cluster_input": 1,
+    "holder_cluster_input": 5,
     "verified_promoted": 0,
-    "quarantined": 1,
-    "blocked": 0,
-    "candidate_gate_blocks": 1,
+    "quarantined": 3,
+    "blocked": 2,
+    "candidate_gate_blocks": 5,
     "production_authorized_candidates": 0,
     "interpretation": "Candidate gate blocks are correct fail-closed decisions and are separate from system health failures."
   },
   "failures": [
     {
-      "component": "holder_cluster_evidence_coverage",
+      "component": "primary_scan",
       "status": "DEGRADED",
-      "input_count": 1,
-      "promoted_count": 0,
-      "quarantine_count": 1,
-      "blocked_count": 0,
-      "reason": "ALL_ACTIVE_CANDIDATES_QUARANTINED_FOR_INCOMPLETE_EVIDENCE",
-      "failure_code": "ALL_ACTIVE_CANDIDATES_QUARANTINED_FOR_INCOMPLETE_EVIDENCE",
+      "age_seconds": 627.3,
+      "max_age_seconds": 600,
+      "failure_code": "SCAN_STALE_OR_TIMESTAMP_MISSING",
       "severity": "HIGH",
-      "blocks_production": false,
+      "blocks_production": true,
       "expected": {
-        "promoted_count_min": 1,
-        "verification_complete": true
+        "max_age_seconds": 600
       },
       "actual": {
-        "input_count": 1,
-        "promoted_count": 0,
-        "quarantine_count": 1,
-        "blocked_count": 0
+        "age_seconds": 627.3
       },
-      "recommended_action": "INSPECT_QUARANTINE_REASONS_AND_MISSING_HOLDER_CLUSTER_EVIDENCE",
-      "diagnosed_at": "2026-08-30T21:38:29.573281+00:00"
+      "recommended_action": "CHECK_LIVE_SCAN_WORKFLOW_AND_RUN_SUMMARY_TIMESTAMP",
+      "diagnosed_at": "2026-08-30T22:11:27.330213+00:00"
     }
   ],
   "checks": {
     "primary_scan": {
-      "status": "HEALTHY",
-      "age_seconds": 530.5,
+      "status": "DEGRADED",
+      "age_seconds": 627.3,
       "max_age_seconds": 600,
-      "failure_code": "OK",
-      "severity": "INFO",
-      "blocks_production": false,
-      "expected": null,
-      "actual": null,
-      "recommended_action": "NONE",
-      "diagnosed_at": "2026-08-30T21:38:29.573281+00:00"
+      "failure_code": "SCAN_STALE_OR_TIMESTAMP_MISSING",
+      "severity": "HIGH",
+      "blocks_production": true,
+      "expected": {
+        "max_age_seconds": 600
+      },
+      "actual": {
+        "age_seconds": 627.3
+      },
+      "recommended_action": "CHECK_LIVE_SCAN_WORKFLOW_AND_RUN_SUMMARY_TIMESTAMP",
+      "diagnosed_at": "2026-08-30T22:11:27.330213+00:00"
     },
     "old_coin_revival": {
       "status": "HEALTHY",
@@ -68,7 +65,7 @@
       "expected": null,
       "actual": null,
       "recommended_action": "NONE",
-      "diagnosed_at": "2026-08-30T21:38:29.573281+00:00"
+      "diagnosed_at": "2026-08-30T22:11:27.330213+00:00"
     },
     "new_token_lab": {
       "status": "HEALTHY",
@@ -78,7 +75,7 @@
       "expected": null,
       "actual": null,
       "recommended_action": "NONE",
-      "diagnosed_at": "2026-08-30T21:38:29.573281+00:00"
+      "diagnosed_at": "2026-08-30T22:11:27.330213+00:00"
     },
     "holder_cluster_fail_closed": {
       "status": "HEALTHY",
@@ -89,7 +86,7 @@
       "expected": null,
       "actual": null,
       "recommended_action": "NONE",
-      "diagnosed_at": "2026-08-30T21:38:29.573281+00:00"
+      "diagnosed_at": "2026-08-30T22:11:27.330213+00:00"
     },
     "liquidity_policy": {
       "status": "HEALTHY",
@@ -102,47 +99,39 @@
       "expected": null,
       "actual": null,
       "recommended_action": "NONE",
-      "diagnosed_at": "2026-08-30T21:38:29.573281+00:00"
+      "diagnosed_at": "2026-08-30T22:11:27.330213+00:00"
     },
     "holder_cluster_evidence_coverage": {
-      "status": "DEGRADED",
-      "input_count": 1,
-      "promoted_count": 0,
-      "quarantine_count": 1,
-      "blocked_count": 0,
-      "reason": "ALL_ACTIVE_CANDIDATES_QUARANTINED_FOR_INCOMPLETE_EVIDENCE",
-      "failure_code": "ALL_ACTIVE_CANDIDATES_QUARANTINED_FOR_INCOMPLETE_EVIDENCE",
-      "severity": "HIGH",
-      "blocks_production": false,
-      "expected": {
-        "promoted_count_min": 1,
-        "verification_complete": true
-      },
-      "actual": {
-        "input_count": 1,
-        "promoted_count": 0,
-        "quarantine_count": 1,
-        "blocked_count": 0
-      },
-      "recommended_action": "INSPECT_QUARANTINE_REASONS_AND_MISSING_HOLDER_CLUSTER_EVIDENCE",
-      "diagnosed_at": "2026-08-30T21:38:29.573281+00:00"
-    },
-    "wallet_forensics": {
       "status": "HEALTHY",
-      "age_seconds": 9.4,
-      "source": "active-qualified-candidates.json",
-      "active_candidates_expected": 1,
-      "active_candidates_seen": 1,
-      "verified_wallet_candidates": 0,
-      "solana_candidates_scanned": 0,
-      "evm_candidates_deferred": 1,
+      "input_count": 5,
+      "promoted_count": 0,
+      "quarantine_count": 3,
+      "blocked_count": 2,
+      "reason": null,
       "failure_code": "OK",
       "severity": "INFO",
       "blocks_production": false,
       "expected": null,
       "actual": null,
       "recommended_action": "NONE",
-      "diagnosed_at": "2026-08-30T21:38:29.573281+00:00"
+      "diagnosed_at": "2026-08-30T22:11:27.330213+00:00"
+    },
+    "wallet_forensics": {
+      "status": "HEALTHY",
+      "age_seconds": 54.0,
+      "source": "active-qualified-candidates.json",
+      "active_candidates_expected": 5,
+      "active_candidates_seen": 5,
+      "verified_wallet_candidates": 6,
+      "solana_candidates_scanned": 1,
+      "evm_candidates_deferred": 4,
+      "failure_code": "OK",
+      "severity": "INFO",
+      "blocks_production": false,
+      "expected": null,
+      "actual": null,
+      "recommended_action": "NONE",
+      "diagnosed_at": "2026-08-30T22:11:27.330213+00:00"
     }
   },
   "lane_metrics": {
@@ -151,13 +140,13 @@
       "new_token_research": 20
     },
     "new_token": {
-      "market_scan": 418,
-      "qualified": 3,
-      "qualification_rate": 0.007177
+      "market_scan": 414,
+      "qualified": 7,
+      "qualification_rate": 0.016908
     },
     "revival": {
       "qualified": 0,
-      "cex_revival_alerts": 63
+      "cex_revival_alerts": 83
     },
     "allocation_decision": "HOLD_CURRENT_POLICY_UNTIL_FORWARD_OUTCOME_SAMPLE_IS_LARGE_ENOUGH"
   }
