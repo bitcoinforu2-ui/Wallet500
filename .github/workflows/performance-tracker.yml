@@ -13,10 +13,12 @@ on:
       - 'src/wallet500/cash_verified.py'
       - 'src/wallet500/lifecycle_strategy.py'
       - 'src/wallet500/cohort_research.py'
+      - 'src/wallet500/experiment_v1.py'
       - 'src/wallet500/quality_shadow.py'
       - 'src/wallet500/hot_healthy_radar.py'
       - 'src/wallet500/address_quality_audit.py'
       - 'tests/test_lifecycle_strategy.py'
+      - 'tests/test_experiment_v1.py'
       - '.github/workflows/performance-tracker.yml'
 
 permissions:
@@ -38,7 +40,7 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Run lifecycle strategy tests
-        run: python -m pytest -q tests/test_lifecycle_strategy.py
+        run: python -m pytest -q tests/test_lifecycle_strategy.py tests/test_experiment_v1.py
       - name: Rebuild immutable Performance Since Discovery
         run: python -m wallet500.performance_tracker
       - name: Update forward lifecycle strategy ledger
@@ -53,6 +55,8 @@ jobs:
         run: python -m wallet500.quality_shadow
       - name: Run cohort counterfactual and missed-star research
         run: python -m wallet500.cohort_research
+      - name: Run prospective Experiment V1
+        run: python -m wallet500.experiment_v1
       - name: Verify executable cash quotes
         env:
           ZEROX_API_KEY: ${{ secrets.ZEROX_API_KEY }}
@@ -62,10 +66,10 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          paths=[Path('data/outcome-tracker.json'),Path('data/realizable-performance.json'),Path('data/first-eligible-paper-ledger.json'),Path('data/cohort-research.json'),Path('data/quality-shadow-summary.json'),Path('data/hot-healthy-radar.json'),Path('data/address-quality-audit.json')]
+          paths=[Path('data/outcome-tracker.json'),Path('data/realizable-performance.json'),Path('data/first-eligible-paper-ledger.json'),Path('data/cohort-research.json'),Path('data/experiment-v1-ledger.json'),Path('data/experiment-v1-scoreboard.json'),Path('data/quality-shadow-summary.json'),Path('data/hot-healthy-radar.json'),Path('data/address-quality-audit.json')]
           for x in paths:
               if not x.exists() or x.stat().st_size == 0: raise SystemExit('FATAL: empty measurement output: '+str(x))
-          d=json.loads(paths[0].read_text()); rp=json.loads(paths[1].read_text()); pl=json.loads(paths[2].read_text()); cr=json.loads(paths[3].read_text()); qs=json.loads(paths[4].read_text()); hh=json.loads(paths[5].read_text()); aq=json.loads(paths[6].read_text())
+          d=json.loads(paths[0].read_text()); rp=json.loads(paths[1].read_text()); pl=json.loads(paths[2].read_text()); cr=json.loads(paths[3].read_text()); ev=json.loads(paths[4].read_text()); es=json.loads(paths[5].read_text()); qs=json.loads(paths[6].read_text()); hh=json.loads(paths[7].read_text()); aq=json.loads(paths[8].read_text())
           total=int(d.get('tracked_tokens') or len((d.get('tokens') or {}))); entries=pl.get('entries') if isinstance(pl.get('entries'),list) else []
           if total<=0: raise SystemExit('FATAL: tracker attempted to publish zero tracked tokens')
           if int(rp.get('paper_entries_count') or 0)!=len(entries): raise SystemExit('FATAL: paper entry count differs from persistent ledger')
@@ -73,6 +77,14 @@ jobs:
               if not p.get('entry_at') or not p.get('pair_address') or float(p.get('entry_price_usd') or 0)<=0: raise SystemExit('FATAL: paper entry lacks immutable time/pair/price')
               if float(p.get('entry_liquidity_usd') or 0)<50000: raise SystemExit('FATAL: paper entry below $50K liquidity')
           if int((cr.get('baseline') or {}).get('n') or 0)!=len(entries): raise SystemExit('FATAL: cohort research baseline differs from ledger')
+          if ev.get('production_change') is not False or es.get('production_change') is not False: raise SystemExit('FATAL: experiment v1 mutated production policy')
+          if es.get('method')!='PROSPECTIVE_EXPERIMENT_V1': raise SystemExit('FATAL: experiment v1 method mismatch')
+          exp_names={x.get('experiment') for x in es.get('experiments') or []}
+          required={'FIVE_MINUTE_FINGERPRINT','SURVIVOR_FIRST','SOURCE_TOURNAMENT'}
+          if exp_names!=required: raise SystemExit('FATAL: experiment v1 scoreboard incomplete')
+          for r in ev.get('records') or []:
+              if r.get('entry_liquidity_usd') is not None and float(r.get('entry_liquidity_usd') or 0)<50000 and r.get('verified_tradable') is True: raise SystemExit('FATAL: experiment counted sub-50k row as verified tradable')
+              if not r.get('pair_address'): raise SystemExit('FATAL: experiment record lacks exact pair identity')
           if qs.get('production_change') is not False or hh.get('production_change') is not False or aq.get('production_change') is not False: raise SystemExit('FATAL: research/audit mutated production policy')
           if int(aq.get('total_records_audited') or 0)<=0: raise SystemExit('FATAL: address audit has no records')
           for row in hh.get('hot_healthy') or []:
@@ -82,6 +94,7 @@ jobs:
               runup=row.get('runup_since_discovery_pct')
               if runup is None or float(runup)>25: raise SystemExit('FATAL: HOT_HEALTHY violates anti-chase gate')
           print('INTEGRITY PASS')
+          print('EXPERIMENT V1', {'records':len(ev.get('records') or []),'experiments':es.get('experiments'),'sources':es.get('source_tournament')})
           print('ADDRESS QUALITY', {'total':aq.get('total_records_audited'),'verified':aq.get('verified_exact_pair_count'),'coverage_pct':aq.get('verified_exact_pair_coverage_pct'),'counts':aq.get('quality_counts')})
           print('HOT HEALTHY', {'hot':hh.get('hot_healthy_count'),'watch':hh.get('healthy_watch_count'),'scored':hh.get('scored_exact_pair_candidates')})
           PY
@@ -90,9 +103,9 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json data/first-eligible-paper-ledger.json data/cohort-research.json data/cohort-research.md data/quality-shadow-ledger.json data/quality-shadow-summary.json data/hot-healthy-radar.json data/address-quality-audit.json
+          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json data/first-eligible-paper-ledger.json data/cohort-research.json data/cohort-research.md data/experiment-v1-ledger.json data/experiment-v1-scoreboard.json data/experiment-v1-report.md data/quality-shadow-ledger.json data/quality-shadow-summary.json data/hot-healthy-radar.json data/address-quality-audit.json
           if ! git diff --cached --quiet; then
-            git commit -m 'data: refresh performance, radar and address quality audit'
+            git commit -m 'data: refresh performance, experiments, radar and address quality audit'
             for attempt in 1 2 3 4 5; do
               git fetch origin main
               git merge --no-edit -X ours origin/main
