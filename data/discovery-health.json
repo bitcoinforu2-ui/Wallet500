@@ -1,18 +1,21 @@
 {
+  "version": 2,
+  "mode": "DISCOVERY_V2_MULTI_SOURCE",
   "counts": {
-    "ethereum": 26,
-    "solana": 114,
-    "bsc": 97
-  },
-  "effective_limits": {
-    "ethereum": 120,
     "solana": 120,
-    "bsc": 300
+    "bsc": 120,
+    "ethereum": 120
+  },
+  "total_unique_tokens": 360,
+  "effective_limits": {
+    "solana": 120,
+    "bsc": 300,
+    "ethereum": 120
   },
   "cap_saturated": {
     "bsc": false,
-    "ethereum": false,
-    "solana": false
+    "ethereum": true,
+    "solana": true
   },
   "health": {
     "bsc": "HEALTHY",
@@ -20,9 +23,9 @@
     "solana": "HEALTHY"
   },
   "filtered_base_assets": {
-    "ethereum": 10,
-    "solana": 0,
-    "bsc": 5
+    "solana": 3,
+    "bsc": 7,
+    "ethereum": 13
   },
   "cursor_in": {},
   "cursor_out": {
@@ -72,56 +75,44 @@
   },
   "fresh_overlap_enabled": true,
   "fresh_overlap_page_count": 5,
-  "dex_boosted_seen": 34,
-  "dex_boost_top_seen": 23,
-  "errors_count": 21,
+  "gecko_min_interval_seconds": 2.15,
+  "birdeye_configured": false,
+  "dex_boosted_seen": 31,
+  "dex_boost_top_seen": 19,
+  "unique_tokens_by_source": {
+    "geckoterminal:new_pools:fresh": 165,
+    "geckoterminal:new_pools:deep": 128,
+    "geckoterminal:trending_pools": 41,
+    "dexscreener:/token-profiles/latest/v1": 14,
+    "geckoterminal:top_pools": 25,
+    "dexscreener:/token-boosts/latest/v1": 14,
+    "dexscreener:/token-boosts/top/v1": 19,
+    "dexscreener:/community-takeovers/latest/v1": 19
+  },
+  "cross_source_confirmation_histogram": {
+    "3": 4,
+    "1": 301,
+    "2": 54,
+    "4": 1
+  },
+  "multi_source_tokens": 59,
+  "errors_count": 8,
   "recent_errors": [
     {
-      "source": "geckoterminal:new_pools:fresh",
-      "chain": "ethereum",
-      "page": 2,
-      "error": "<HTTPError 429: 'Too Many Requests'>"
+      "source": "birdeye:new_listing",
+      "status": "UNCONFIGURED",
+      "error": "BIRDEYE_API_KEY_MISSING"
     },
     {
       "source": "geckoterminal:new_pools:fresh",
       "chain": "ethereum",
-      "page": 3,
-      "error": "<HTTPError 429: 'Too Many Requests'>"
-    },
-    {
-      "source": "geckoterminal:new_pools:fresh",
-      "chain": "ethereum",
-      "page": 4,
-      "error": "<HTTPError 429: 'Too Many Requests'>"
-    },
-    {
-      "source": "geckoterminal:new_pools:fresh",
-      "chain": "ethereum",
-      "page": 5,
-      "error": "<HTTPError 429: 'Too Many Requests'>"
-    },
-    {
-      "source": "geckoterminal:new_pools:fresh",
-      "chain": "solana",
       "page": 1,
       "error": "<HTTPError 429: 'Too Many Requests'>"
     },
     {
       "source": "geckoterminal:new_pools:fresh",
-      "chain": "solana",
+      "chain": "ethereum",
       "page": 2,
-      "error": "<HTTPError 429: 'Too Many Requests'>"
-    },
-    {
-      "source": "geckoterminal:new_pools:fresh",
-      "chain": "solana",
-      "page": 3,
-      "error": "<HTTPError 429: 'Too Many Requests'>"
-    },
-    {
-      "source": "geckoterminal:new_pools:fresh",
-      "chain": "solana",
-      "page": 5,
       "error": "<HTTPError 429: 'Too Many Requests'>"
     },
     {
@@ -148,45 +139,6 @@
       "source": "moonshot",
       "view": "new",
       "error": "URLError(gaierror(-2, 'Name or service not known'))"
-    },
-    {
-      "source": "geckoterminal:trending_pools",
-      "chain": "bsc",
-      "error": "<HTTPError 429: 'Too Many Requests'>"
-    },
-    {
-      "source": "geckoterminal:new_pools:deep",
-      "chain": "ethereum",
-      "page": 6,
-      "error": "<HTTPError 429: 'Too Many Requests'>"
-    },
-    {
-      "source": "geckoterminal:new_pools:deep",
-      "chain": "ethereum",
-      "page": 8,
-      "error": "<HTTPError 429: 'Too Many Requests'>"
-    },
-    {
-      "source": "geckoterminal:trending_pools",
-      "chain": "ethereum",
-      "error": "<HTTPError 429: 'Too Many Requests'>"
-    },
-    {
-      "source": "geckoterminal:new_pools:deep",
-      "chain": "solana",
-      "page": 6,
-      "error": "<HTTPError 429: 'Too Many Requests'>"
-    },
-    {
-      "source": "geckoterminal:new_pools:deep",
-      "chain": "solana",
-      "page": 8,
-      "error": "<HTTPError 429: 'Too Many Requests'>"
-    },
-    {
-      "source": "geckoterminal:top_pools",
-      "chain": "solana",
-      "error": "<HTTPError 429: 'Too Many Requests'>"
     }
   ]
 }
