@@ -53,7 +53,7 @@ jobs:
           grep -Fq 'INTELLIGENCE HUB' _site/index.html
           grep -Fq '<title>Wallet500 Live</title>' _site/live/index.html
           grep -Fq '<title>Wallet500 Terminal</title>' _site/terminal/index.html
-          grep -Eq '<title>Wallet500 (Engine Control|Control Center V2)</title>' _site/control/index.html
+          grep -Fq '<title>Wallet500 Control Center V2</title>' _site/control/index.html
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload site artifact
@@ -77,7 +77,7 @@ jobs:
             control="$(curl -fsSL --max-time 20 "${BASE}control/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             summary="$(curl -fsSL --max-time 20 "${BASE}data/blocked-cohort-paper-summary.json?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             ledger="$(curl -fsSL --max-time 20 "${BASE}data/blocked-cohort-paper-ledger.json?sha=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'INTELLIGENCE HUB' <<<"$root" && grep -Fq '<title>Wallet500 Live</title>' <<<"$live" && grep -Fq '<title>Wallet500 Terminal</title>' <<<"$terminal" && grep -Eq '<title>Wallet500 (Engine Control|Control Center V2)</title>' <<<"$control" && python -m json.tool >/dev/null <<<"$summary" && python -m json.tool >/dev/null <<<"$ledger"; then ok=1; break; fi
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'INTELLIGENCE HUB' <<<"$root" && grep -Fq '<title>Wallet500 Live</title>' <<<"$live" && grep -Fq '<title>Wallet500 Terminal</title>' <<<"$terminal" && grep -Fq '<title>Wallet500 Control Center V2</title>' <<<"$control" && python -m json.tool >/dev/null <<<"$summary" && python -m json.tool >/dev/null <<<"$ledger"; then ok=1; break; fi
             sleep 10
           done
           [ "$ok" -eq 1 ] || { echo 'Public Wallet500 verification failed'; exit 1; }
