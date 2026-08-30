@@ -12,6 +12,7 @@ on:
       - 'src/wallet500/realizable_performance.py'
       - 'src/wallet500/cash_verified.py'
       - 'src/wallet500/lifecycle_strategy.py'
+      - 'src/wallet500/cohort_research.py'
       - 'tests/test_lifecycle_strategy.py'
       - '.github/workflows/performance-tracker.yml'
 
@@ -41,6 +42,8 @@ jobs:
         run: python -m wallet500.lifecycle_strategy
       - name: Update first-eligible forward paper ledger
         run: python -m wallet500.realizable_performance
+      - name: Run cohort counterfactual and missed-star research
+        run: python -m wallet500.cohort_research
       - name: Verify executable cash quotes
         env:
           ZEROX_API_KEY: ${{ secrets.ZEROX_API_KEY }}
@@ -50,10 +53,10 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          paths=[Path('data/outcome-tracker.json'),Path('data/signal-outcomes.json'),Path('data/performance-measurement-report.json'),Path('data/performance-leaderboard.json'),Path('data/lifecycle-strategy-ledger.json'),Path('data/lifecycle-strategy-summary.json'),Path('data/realizable-performance.json'),Path('data/realizable-performance-summary.json'),Path('data/cash-verified-performance.json'),Path('data/cash-verified-summary.json'),Path('data/first-eligible-paper-ledger.json')]
+          paths=[Path('data/outcome-tracker.json'),Path('data/signal-outcomes.json'),Path('data/performance-measurement-report.json'),Path('data/performance-leaderboard.json'),Path('data/lifecycle-strategy-ledger.json'),Path('data/lifecycle-strategy-summary.json'),Path('data/realizable-performance.json'),Path('data/realizable-performance-summary.json'),Path('data/cash-verified-performance.json'),Path('data/cash-verified-summary.json'),Path('data/first-eligible-paper-ledger.json'),Path('data/cohort-research.json')]
           for x in paths:
               if not x.exists() or x.stat().st_size == 0: raise SystemExit('FATAL: empty measurement output: '+str(x))
-          d=json.loads(paths[0].read_text()); lb=json.loads(paths[3].read_text()); ls=json.loads(paths[5].read_text()); rp=json.loads(paths[6].read_text()); cv=json.loads(paths[8].read_text()); pl=json.loads(paths[10].read_text())
+          d=json.loads(paths[0].read_text()); lb=json.loads(paths[3].read_text()); ls=json.loads(paths[5].read_text()); rp=json.loads(paths[6].read_text()); cv=json.loads(paths[8].read_text()); pl=json.loads(paths[10].read_text()); cr=json.loads(paths[11].read_text())
           total=int(d.get('tracked_tokens') or 0); measured=int(rp.get('tracked_cohort_count') or 0); unknown=int(rp.get('unknown_not_scored_count') or 0)
           if total<=0: raise SystemExit('FATAL: tracker attempted to publish zero tracked tokens')
           if lb.get('verified_count',0)!=len(lb.get('rows') or []): raise SystemExit('FATAL: leaderboard count mismatch')
@@ -75,17 +78,19 @@ jobs:
           if abs(expected-roi)>0.02: raise SystemExit('FATAL: paper ROI math mismatch')
           if cv.get('source_market_eligible_count',0)!=rp.get('market_execution_plausible_count',0): raise SystemExit('FATAL: cash quote cohort mismatch')
           if ls.get('retroactive_policy')!='NO_RETROACTIVE_SELLS_BEFORE_POLICY_ACTIVATION': raise SystemExit('FATAL: lifecycle retroactive policy changed')
+          if int((cr.get('baseline') or {}).get('n') or 0)!=len(entries): raise SystemExit('FATAL: cohort research baseline differs from persistent ledger')
           print('FORWARD PAPER ACCOUNTING PASS')
           print('TOTAL',total,'MEASURED NOW',measured,'PAPER ENTRIES',len(entries),'INVESTED',invested,'VALUE',value,'PNL',pnl,'ROI',roi)
+          print('COHORT RESEARCH PASS', (cr.get('best_counterfactuals_min5') or [])[:3])
           PY
       - name: Publish measurement data
         run: |
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json data/first-eligible-paper-ledger.json
+          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json data/first-eligible-paper-ledger.json data/cohort-research.json data/cohort-research.md
           if ! git diff --cached --quiet; then
-            git commit -m 'data: refresh immutable performance and forward paper ledger'
+            git commit -m 'data: refresh immutable performance and cohort research'
             for attempt in 1 2 3 4 5; do
               git fetch origin main
               git merge --no-edit -X ours origin/main
