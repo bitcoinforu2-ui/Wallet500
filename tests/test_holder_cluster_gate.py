@@ -2,15 +2,8 @@ from wallet500 import holder_cluster_gate as h
 
 
 def test_components_group_directly_linked_top_holders():
-    holders=[
-        {'owner':'0xaaa','pct':6.0},
-        {'owner':'0xbbb','pct':5.0},
-        {'owner':'0xccc','pct':2.0},
-    ]
-    graph=[
-        {'from':'0xaaa','to':'0xbbb','transfer_count':3},
-        {'from':'0xbbb','to':'0xccc','transfer_count':1},
-    ]
+    holders=[{'owner':'0xaaa','pct':6.0},{'owner':'0xbbb','pct':5.0},{'owner':'0xccc','pct':2.0}]
+    graph=[{'from':'0xaaa','to':'0xbbb','transfer_count':3},{'from':'0xbbb','to':'0xccc','transfer_count':1}]
     comps=h._components(holders,graph,set())
     assert len(comps)==1
     assert comps[0]['wallet_count']==3
@@ -21,10 +14,7 @@ def test_components_group_directly_linked_top_holders():
 
 def test_components_exclude_pair_or_known_infrastructure():
     holders=[{'owner':'0xaaa','pct':8.0},{'owner':'0xpair','pct':20.0},{'owner':'0xbbb','pct':7.0}]
-    graph=[
-        {'from':'0xaaa','to':'0xpair','transfer_count':5},
-        {'from':'0xpair','to':'0xbbb','transfer_count':5},
-    ]
+    graph=[{'from':'0xaaa','to':'0xpair','transfer_count':5},{'from':'0xpair','to':'0xbbb','transfer_count':5}]
     assert h._components(holders,graph,{'0xpair'})==[]
 
 
@@ -35,10 +25,28 @@ def test_evm_start_block_is_fail_closed_when_unverified():
     assert start==max(0,100000-h.EVM_LOOKBACK)
 
 
+def test_adaptive_log_range_splits_failed_large_query(monkeypatch):
+    def fake_rpc(urls,method,params):
+        flt=params[0];a=int(flt['fromBlock'],16);b=int(flt['toBlock'],16)
+        if b-a+1>h.EVM_MIN_LOG_SPAN:return None,None
+        return [{'blockNumber':hex(a),'topics':[]}], 'rpc'
+    monkeypatch.setattr(h,'_rpc_any',fake_rpc)
+    logs,meta=h._evm_logs_resilient(['rpc'],'0xtoken',0,h.EVM_MIN_LOG_SPAN*2-1)
+    assert logs is not None
+    assert len(logs)==2
+    assert meta['splits']>=1
+    assert meta['failed_range'] is None
+
+
+def test_adaptive_log_range_remains_fail_closed_at_minimum(monkeypatch):
+    monkeypatch.setattr(h,'_rpc_any',lambda urls,method,params:(None,None))
+    logs,meta=h._evm_logs_resilient(['rpc'],'0xtoken',0,h.EVM_MIN_LOG_SPAN-1)
+    assert logs is None
+    assert meta['failed_range']==[0,h.EVM_MIN_LOG_SPAN-1]
+
+
 def test_incomplete_evm_concentration_cannot_hard_block(monkeypatch):
-    def fake_evm(chain,token,row):
-        holders=[{'owner':'0xaaa','pct':80.0},{'owner':'0xbbb','pct':10.0}]
-        return holders,[],[],{'complete':False,'reason':'BOUNDED_LOOKBACK_RECONSTRUCTION'}
+    def fake_evm(chain,token,row):return [{'owner':'0xaaa','pct':80.0},{'owner':'0xbbb','pct':10.0}],[],[],{'complete':False,'reason':'BOUNDED_LOOKBACK_RECONSTRUCTION'}
     monkeypatch.setattr(h,'_evm_holders',fake_evm)
     out=h.analyze({'chain':'bsc','token':'0x123','pair_address':'0xpair'})
     assert out['status']=='REVIEW'
@@ -47,9 +55,7 @@ def test_incomplete_evm_concentration_cannot_hard_block(monkeypatch):
 
 
 def test_complete_evm_concentration_can_hard_block(monkeypatch):
-    def fake_evm(chain,token,row):
-        holders=[{'owner':'0xaaa','pct':25.0},{'owner':'0xbbb','pct':10.0}]
-        return holders,[],[],{'complete':True,'reason':'FULL_TRANSFER_LEDGER_FROM_VERIFIED_START_BLOCK'}
+    def fake_evm(chain,token,row):return [{'owner':'0xaaa','pct':25.0},{'owner':'0xbbb','pct':10.0}],[],[],{'complete':True,'reason':'FULL_TRANSFER_LEDGER_FROM_VERIFIED_START_BLOCK'}
     monkeypatch.setattr(h,'_evm_holders',fake_evm)
     out=h.analyze({'chain':'ethereum','token':'0x123','deployment_block':1})
     assert out['status']=='BLOCK'
@@ -58,10 +64,8 @@ def test_complete_evm_concentration_can_hard_block(monkeypatch):
 
 def test_linked_component_is_review_not_ownership_proof(monkeypatch):
     def fake_evm(chain,token,row):
-        holders=[{'owner':'0xaaa','pct':6.0},{'owner':'0xbbb','pct':5.0}]
-        graph=[{'from':'0xaaa','to':'0xbbb','transfer_count':2}]
-        clusters=h._components(holders,graph,set())
-        return holders,graph,clusters,{'complete':True,'reason':'FULL_TRANSFER_LEDGER_FROM_VERIFIED_START_BLOCK'}
+        holders=[{'owner':'0xaaa','pct':6.0},{'owner':'0xbbb','pct':5.0}];graph=[{'from':'0xaaa','to':'0xbbb','transfer_count':2}]
+        return holders,graph,h._components(holders,graph,set()),{'complete':True,'reason':'FULL_TRANSFER_LEDGER_FROM_VERIFIED_START_BLOCK'}
     monkeypatch.setattr(h,'_evm_holders',fake_evm)
     out=h.analyze({'chain':'ethereum','token':'0x123','deployment_block':1})
     assert out['status']=='REVIEW'
