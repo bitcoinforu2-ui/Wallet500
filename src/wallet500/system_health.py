@@ -57,10 +57,16 @@ def _diagnose(name, check, now):
                     expected={'min_usd': check.get('configured_min_usd')}, actual={'qualification_min_usd': check.get('qualification_min_usd'), 'production_min_usd': check.get('production_min_usd')},
                     recommended_action='RESTORE_MINIMUM_LIQUIDITY_POLICY')
     elif name == 'holder_cluster_evidence_coverage':
-        diag.update(failure_code='HOLDER_CLUSTER_ACCOUNTING_MISMATCH' if status == 'FAILED' else (check.get('reason') or 'HOLDER_CLUSTER_EVIDENCE_INCOMPLETE'),
-                    severity='HIGH', blocks_production=True, expected={'input_count': check.get('input_count')},
-                    actual={'accounted_count': check.get('promoted_count', 0) + check.get('quarantine_count', 0) + check.get('blocked_count', 0)},
-                    recommended_action='INSPECT_HOLDER_CLUSTER_EVIDENCE_PIPELINE')
+        if status == 'FAILED':
+            diag.update(failure_code='HOLDER_CLUSTER_ACCOUNTING_MISMATCH', severity='CRITICAL', blocks_production=True,
+                        expected={'accounted_count': check.get('input_count')},
+                        actual={'accounted_count': check.get('promoted_count', 0) + check.get('quarantine_count', 0) + check.get('blocked_count', 0)},
+                        recommended_action='INSPECT_HOLDER_CLUSTER_ACCOUNTING_INVARIANT')
+        else:
+            diag.update(failure_code=check.get('reason') or 'HOLDER_CLUSTER_EVIDENCE_INCOMPLETE', severity='HIGH', blocks_production=True,
+                        expected={'promoted_count_min': 1, 'verification_complete': True},
+                        actual={'input_count': check.get('input_count', 0), 'promoted_count': check.get('promoted_count', 0), 'quarantine_count': check.get('quarantine_count', 0), 'blocked_count': check.get('blocked_count', 0)},
+                        recommended_action='INSPECT_QUARANTINE_REASONS_AND_MISSING_HOLDER_CLUSTER_EVIDENCE')
     elif name == 'wallet_forensics':
         diag.update(failure_code='WALLET_FORENSICS_STALE_OR_COVERAGE_GAP', severity='MEDIUM',
                     expected={'source': 'active-qualified-candidates.json', 'max_age_seconds': 3600, 'coverage': 'active=0 OR seen>0'},
