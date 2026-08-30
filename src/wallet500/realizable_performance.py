@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 DATA=Path('data'); MIN_LIQ=50000.0; MIN_VOL_H1=15000.0; MIN_TXNS_H1=50; POSITION_USD=1.0
+PAPER_LEDGER=DATA/'first-eligible-paper-ledger.json'
 
 def _load(path,default):
     try:
@@ -13,33 +14,12 @@ def _load(path,default):
 
 def _write(path,payload):
     text=json.dumps(payload,indent=2)
-    tmp=path.with_name(path.name+'.tmp')
-    tmp.write_text(text)
-    json.loads(tmp.read_text())
-    tmp.replace(path)
-
-def _ret(cur,entry):
-    try:
-        cur=float(cur);entry=float(entry);return ((cur/entry)-1)*100 if cur>=0 and entry>0 else None
-    except:return None
+    tmp=path.with_name(path.name+'.tmp'); tmp.write_text(text); json.loads(tmp.read_text()); tmp.replace(path)
 
 def _k(chain,token,pair):
-    if chain in {'ethereum','bsc'}: token=str(token).lower();pair=str(pair).lower()
+    chain=str(chain or '').lower(); token=str(token or ''); pair=str(pair or '')
+    if chain in {'ethereum','eth','bsc','bnb'}: token=token.lower(); pair=pair.lower()
     return f'{chain}:{token}:{pair}'
-
-def _confirmed_failed():
-    out=set()
-    for name in ('live-survival-failed.json','production-risk-blocked.json'):
-        d=_load(DATA/name,[])
-        if not isinstance(d,list):continue
-        for x in d:
-            if not isinstance(x,dict):continue
-            c=x.get('chain');t=x.get('token') or x.get('mint');p=x.get('pair_address')
-            liq=x.get('liquidity_usd');price=x.get('price_usd')
-            try: terminal=(price is not None and float(price)<=0) or (liq is not None and float(liq)<1)
-            except: terminal=False
-            if c and t and p and terminal:out.add(_k(c,t,p))
-    return out
 
 def _snapshot(h):
     if not isinstance(h,dict):return None
@@ -50,20 +30,6 @@ def _snapshot(h):
         buys=int(h.get('buys_h1') or 0); sells=int(h.get('sells_h1') or 0)
     except:return None
     return {'price_usd':price,'liquidity_usd':liq,'volume_h1':vol,'buys_h1':buys,'sells_h1':sells,'pair_address':h.get('pair_address'),'dex':h.get('dex'),'observed_at':h.get('observed_at') or h.get('timestamp') or h.get('checked_at')}
-
-def _gate(s):
-    if not s:return False
-    return s['price_usd']>0 and s['liquidity_usd']>=MIN_LIQ and s['volume_h1']>=MIN_VOL_H1 and (s['buys_h1']+s['sells_h1'])>=MIN_TXNS_H1
-
-def _first_eligible_mark(r,pair):
-    hist=r.get('history') if isinstance(r.get('history'),list) else []
-    for h in hist:
-        s=_snapshot(h)
-        if not s:continue
-        hp=s.get('pair_address')
-        if hp and str(hp).lower()!=str(pair).lower():continue
-        if _gate(s):return s
-    return None
 
 def _latest_exact_pair_mark(r,pair):
     if r.get('measurement_status')!='VERIFIED_EXACT_PAIR':return None
@@ -80,49 +46,72 @@ def _latest_exact_pair_mark(r,pair):
     last['price_usd']=price
     return last
 
-def _market_status(live):
-    reasons=[]
-    if not live:return 'UNAVAILABLE_NOW',['NO_CURRENT_EXACT_PAIR_MARK_IN_IMMUTABLE_TRACKER']
-    if live['price_usd']<=0:reasons.append('PRICE_ZERO')
-    if live['liquidity_usd']<MIN_LIQ:reasons.append('LIQUIDITY_LT_50K')
-    if live['volume_h1']<MIN_VOL_H1:reasons.append('VOLUME_H1_LT_15K')
-    if live['buys_h1']+live['sells_h1']<MIN_TXNS_H1:reasons.append('TXNS_H1_LT_50')
-    return ('CURRENTLY_BLOCKED',reasons) if reasons else ('CURRENTLY_TRADABLE',[])
+def _gate(s):
+    return bool(s) and s['price_usd']>0 and s['liquidity_usd']>=MIN_LIQ and s['volume_h1']>=MIN_VOL_H1 and (s['buys_h1']+s['sells_h1'])>=MIN_TXNS_H1
+
+def _confirmed_failed():
+    out=set()
+    for name in ('live-survival-failed.json','production-risk-blocked.json'):
+        d=_load(DATA/name,[])
+        if not isinstance(d,list):continue
+        for x in d:
+            if not isinstance(x,dict):continue
+            c=x.get('chain');t=x.get('token') or x.get('mint');p=x.get('pair_address')
+            try: terminal=(x.get('price_usd') is not None and float(x.get('price_usd'))<=0) or (x.get('liquidity_usd') is not None and float(x.get('liquidity_usd'))<1)
+            except: terminal=False
+            if c and t and p and terminal:out.add(_k(c,t,p))
+    return out
 
 def run():
-    ledger=_load(DATA/'outcome-tracker.json',{}); records=ledger.get('tokens') if isinstance(ledger,dict) else {}
+    tracker=_load(DATA/'outcome-tracker.json',{}); records=tracker.get('tokens') if isinstance(tracker,dict) else {}
     if not isinstance(records,dict):records={}
-    failed=_confirmed_failed(); research=[]; executed=[]; unknown=[]; now=datetime.now(timezone.utc).isoformat(); missing_entry=0
-    for key,r in records.items():
+    now=datetime.now(timezone.utc).isoformat(); failed=_confirmed_failed(); current={}; unknown=[]; valid_records=0
+    for raw_key,r in records.items():
         if not isinstance(r,dict):continue
         chain=r.get('chain'); token=r.get('token'); pair=r.get('entry_pair_address')
-        discovery_entry=r.get('entry_price_usd')
-        try: discovery_entry=float(discovery_entry or 0)
-        except: discovery_entry=0
-        if not chain or not token or not pair or discovery_entry<=0:
-            missing_entry+=1; unknown.append({'key':key,'reason':'MISSING_IMMUTABLE_ENTRY_OR_PAIR'}); continue
-        terminal=_k(chain,token,pair) in failed
-        live=_latest_exact_pair_mark(r,pair)
-        first=_first_eligible_mark(r,pair)
-        if terminal:
-            current_price=0.0; current_value_discovery=0.0; discovery_ret=-100.0; current_status='CONFIRMED_DEAD_CURRENT_VALUE_ZERO'; reasons=['CONFIRMED_TERMINAL_PAIR_EVIDENCE']
-        elif live:
-            current_price=live['price_usd']; discovery_ret=_ret(current_price,discovery_entry); current_value_discovery=max(0.0,1+discovery_ret/100); current_status,reasons=_market_status(live)
+        try: discovery=float(r.get('entry_price_usd') or 0)
+        except: discovery=0
+        if not chain or not token or not pair or discovery<=0:
+            unknown.append({'key':raw_key,'reason':'MISSING_IMMUTABLE_ENTRY_OR_PAIR'}); continue
+        valid_records+=1; k=_k(chain,token,pair); live=_latest_exact_pair_mark(r,pair); current[k]=(r,live)
+        if live is None and k not in failed: unknown.append({'key':k,'reason':'NO_CURRENT_EXACT_PAIR_MARK_AND_NO_TERMINAL_PROOF'})
+
+    ledger=_load(PAPER_LEDGER,{})
+    if not isinstance(ledger,dict) or ledger.get('version')!='FIRST_ELIGIBLE_FORWARD_V1':
+        ledger={'version':'FIRST_ELIGIBLE_FORWARD_V1','created_at':now,'policy_activated_at':now,'position_size_usd':POSITION_USD,'entries':[]}
+    entries=ledger.get('entries') if isinstance(ledger.get('entries'),list) else []; ledger['entries']=entries
+    existing={str(x.get('key')) for x in entries if isinstance(x,dict)}
+
+    # PROSPECTIVE ONLY: a new paper position is opened at this run's latest verified exact-pair mark.
+    # Historical snapshots before policy activation are never used to backfill an entry.
+    for k,(r,live) in current.items():
+        if k in existing or not _gate(live):continue
+        chain=r.get('chain'); token=r.get('token'); pair=r.get('entry_pair_address'); px=float(live['price_usd'])
+        entries.append({'key':k,'chain':chain,'token':token,'pair_address':pair,'dex':live.get('dex') or r.get('entry_dex'),'entry_at':now,'source_observed_at_entry':live.get('observed_at'),'entry_price_usd':px,'entry_liquidity_usd':float(live['liquidity_usd']),'entry_volume_h1':float(live['volume_h1']),'entry_txns_h1':int(live['buys_h1']+live['sells_h1']),'quantity':POSITION_USD/px,'cost_usd':POSITION_USD,'current_price_usd':px,'current_liquidity_usd':float(live['liquidity_usd']),'current_value_usd':POSITION_USD,'return_pct':0.0,'status':'LIVE','valuation_status':'FRESH_EXACT_PAIR','last_mark_at':now})
+        existing.add(k)
+
+    for p in entries:
+        if not isinstance(p,dict):continue
+        k=str(p.get('key') or ''); pair=p.get('pair_address'); cur=current.get(k); live=cur[1] if cur else None
+        if k in failed:
+            p['current_price_usd']=0.0; p['current_liquidity_usd']=0.0; p['current_value_usd']=0.0; p['return_pct']=-100.0; p['status']='FAILED_SURVIVAL'; p['valuation_status']='CONFIRMED_TERMINAL_ZERO'; p['last_mark_at']=now
+            if not p.get('failed_at'):p['failed_at']=now
+            continue
+        if not live:
+            p['valuation_status']='STALE_LAST_MARK_NO_CURRENT_PROOF'; p['status']='UNRESOLVED'; continue
+        try: qty=float(p.get('quantity') or 0); cost=float(p.get('cost_usd') or POSITION_USD); px=float(live['price_usd'])
+        except: continue
+        value=max(0.0,qty*px); p['current_price_usd']=px; p['current_liquidity_usd']=float(live['liquidity_usd']); p['current_value_usd']=round(value,10); p['return_pct']=round(((value/cost)-1)*100,6) if cost>0 else None; p['last_mark_at']=now; p['valuation_status']='FRESH_EXACT_PAIR'
+        if _gate(live): p['status']='LIVE'
         else:
-            unknown.append({'key':key,'chain':chain,'token':token,'pair_address':pair,'reason':'NO_CURRENT_EXACT_PAIR_MARK_AND_NO_TERMINAL_PROOF'}); continue
-        research.append({'chain':chain,'token':token,'pair_address':pair,'entry_price_usd':discovery_entry,'current_price_usd':current_price,'current_return_pct':round(discovery_ret,4),'marked_value_usd':round(current_value_discovery,6),'current_status':current_status,'reasons':reasons})
-        if not first:continue
-        entry_price=first['price_usd']
-        if terminal:
-            ret=-100.0; marked=0.0
-        else:
-            ret=_ret(current_price,entry_price); marked=max(0.0,1+ret/100)
-        executed.append({'chain':chain,'token':token,'pair_address':pair,'dex':first.get('dex') or (live or {}).get('dex') or r.get('entry_dex'),'entry_at':first.get('observed_at'),'entry_price_usd':entry_price,'entry_liquidity_usd':first['liquidity_usd'],'entry_volume_h1':first['volume_h1'],'entry_txns_h1':first['buys_h1']+first['sells_h1'],'current_price_usd':current_price,'current_return_pct':round(ret,4),'liquidity_usd':float((live or {}).get('liquidity_usd') or 0),'volume_h1':float((live or {}).get('volume_h1') or 0),'txns_h1':int((live or {}).get('buys_h1') or 0)+int((live or {}).get('sells_h1') or 0),'position_usd':1.0,'marked_value_usd':round(marked,6),'current_status':current_status,'reasons':reasons,'checked_at':now,'source_observed_at':(live or {}).get('observed_at'),'proof_level':'FIRST_RECORDED_EXACT_PAIR_SNAPSHOT_PASSING_LIQ_VOLUME_TX_GATE_TO_CURRENT_EXACT_PAIR_MARK'})
-    n=len(research); invested=n*POSITION_USD; value=sum(x['marked_value_usd'] for x in research); pnl=value-invested; roi=((value/invested)-1)*100 if invested else 0
-    en=len(executed); einv=en*POSITION_USD; eval_=sum(x['marked_value_usd'] for x in executed); epnl=eval_-einv; eroi=((eval_/einv)-1)*100 if einv else 0
-    live_exec=[x for x in executed if x['current_status']=='CURRENTLY_TRADABLE']; blocked_exec=[x for x in executed if x['current_status']!='CURRENTLY_TRADABLE']
+            p['status']='FAILED_SURVIVAL'
+            if not p.get('failed_at'):p['failed_at']=now
+
+    ledger['updated_at']=now; _write(PAPER_LEDGER,ledger)
+    paper=[p for p in entries if isinstance(p,dict)]; fresh=[p for p in paper if p.get('valuation_status') in {'FRESH_EXACT_PAIR','CONFIRMED_TERMINAL_ZERO'}]; unresolved=[p for p in paper if p.get('valuation_status')=='STALE_LAST_MARK_NO_CURRENT_PROOF']; live_rows=[p for p in paper if p.get('status')=='LIVE']; failed_rows=[p for p in paper if p.get('status')=='FAILED_SURVIVAL']
+    invested=sum(float(p.get('cost_usd') or 0) for p in paper); marked=sum(float(p.get('current_value_usd') or 0) for p in paper); pnl=marked-invested; roi=((marked/invested)-1)*100 if invested else 0.0
     all_n=len(records)
-    payload={'updated_at':now,'method':'FIRST_ELIGIBLE_EXACT_PAIR_ENTRY_V1','position_size_usd':POSITION_USD,'all_discoveries_count':all_n,'all_discoveries_hypothetical_investment_usd':float(all_n),'immutable_entry_pair_records':all_n-missing_entry,'verified_rows_seen':n,'tracked_cohort_count':n,'unknown_not_scored_count':len(unknown),'market_execution_plausible_count':en,'not_realizable_now_count':len(blocked_exec),'eligible_investment_usd':round(einv,6),'eligible_current_value_usd':round(eval_,6),'eligible_profit_usd':round(epnl,6),'eligible_roi_pct':round(eroi,4),'entry_policy':'Paper entry occurs at the FIRST RECORDED exact-pair snapshot where liquidity >= $50K, H1 volume >= $15K, and H1 transactions >= 50. Current eligibility is NOT backdated to discovery.','current_return_portfolio':{'count':n,'investment_usd':round(invested,6),'marked_value_usd':round(value,6),'pnl_usd':round(pnl,6),'roi_pct':round(roi,4),'status':'DISCOVERY_TO_NOW_RESEARCH_REFERENCE_ONLY'},'paper_execution_portfolio':{'count':en,'investment_usd':round(einv,6),'marked_value_usd':round(eval_,6),'pnl_usd':round(epnl,6),'roi_pct':round(eroi,4),'status':'FIRST_ELIGIBLE_SNAPSHOT_PAPER_EXECUTION'},'historical_backtest_verified':False,'historical_backtest_status':'FORWARD_TRACKED_SNAPSHOT_SIMULATION_NOT_TICK_LEVEL_BACKTEST','truth_note':'ROI uses the first recorded snapshot that actually satisfied the entry gate, then marks the same locked pair to the latest verified exact-pair price. Missing marks remain UNKNOWN; confirmed dead pairs remain $0/-100%.','important_limit':'More realistic than discovery-to-now and current-eligibility backfill, but still paper execution from recorded snapshots; it does not prove fill price, slippage, gas, MEV or sell execution.','unknown_rows':unknown,'rows':sorted(research,key=lambda x:x['current_return_pct'],reverse=True),'plausible_rows':sorted(live_exec,key=lambda x:x['current_return_pct'],reverse=True),'blocked_rows':sorted(blocked_exec,key=lambda x:x['current_return_pct'],reverse=True),'executed_rows':sorted(executed,key=lambda x:x['current_return_pct'],reverse=True)}
-    _write(DATA/'realizable-performance.json',payload); summary={k:v for k,v in payload.items() if k not in ('rows','plausible_rows','blocked_rows','executed_rows','unknown_rows')}; _write(DATA/'realizable-performance-summary.json',summary); print(json.dumps(summary,indent=2)); return payload
+    payload={'updated_at':now,'method':'FIRST_ELIGIBLE_FORWARD_PERSISTENT_LEDGER_V1','position_size_usd':POSITION_USD,'all_discoveries_count':all_n,'all_discoveries_hypothetical_investment_usd':float(all_n)*POSITION_USD,'immutable_entry_pair_records':valid_records,'verified_rows_seen':sum(1 for _,live in current.values() if live is not None),'tracked_cohort_count':sum(1 for _,live in current.values() if live is not None),'unknown_not_scored_count':len(unknown),'paper_entries_count':len(paper),'paper_invested_usd':round(invested,6),'paper_current_value_usd':round(marked,6),'paper_profit_usd':round(pnl,6),'paper_roi_pct':round(roi,4),'paper_live_count':len(live_rows),'failed_after_entry_count':len(failed_rows),'paper_unresolved_count':len(unresolved),'market_execution_plausible_count':len(live_rows),'not_realizable_now_count':len(failed_rows)+len(unresolved),'eligible_investment_usd':round(invested,6),'eligible_current_value_usd':round(marked,6),'eligible_profit_usd':round(pnl,6),'eligible_roi_pct':round(roi,4),'entry_policy':'PROSPECTIVE ONLY. $1 paper entry is locked on the first workflow run AFTER policy activation whose latest VERIFIED EXACT PAIR mark has liquidity >= $50K, H1 volume >= $15K and H1 transactions >= 50. No historical pre-activation gain is credited.','paper_execution_portfolio':{'count':len(paper),'investment_usd':round(invested,6),'marked_value_usd':round(marked,6),'pnl_usd':round(pnl,6),'roi_pct':round(roi,4),'fresh_marks':len(fresh),'unresolved_marks':len(unresolved),'status':'FORWARD_FIRST_ELIGIBLE_PAPER_EXECUTION'},'historical_backtest_verified':False,'historical_backtest_status':'FORWARD_SNAPSHOT_SIMULATION_NOT_TICK_LEVEL_EXECUTION','truth_note':'Persistent forward ledger. Entry price/time never change after creation. Same exact pair is marked on later runs; confirmed terminal pairs are $0/-100%; missing current proof stays unresolved and retains its last known mark instead of being fabricated as a loss.','important_limit':'Paper execution only; fill price, slippage, gas, MEV and sell execution are not proven.','paper_live_rows':sorted(live_rows,key=lambda x:float(x.get('return_pct') or 0),reverse=True),'paper_failed_rows':sorted(failed_rows,key=lambda x:float(x.get('return_pct') or 0),reverse=True),'paper_unresolved_rows':unresolved,'plausible_rows':sorted(live_rows,key=lambda x:float(x.get('return_pct') or 0),reverse=True),'blocked_rows':sorted(failed_rows,key=lambda x:float(x.get('return_pct') or 0),reverse=True),'unknown_rows':unknown}
+    _write(DATA/'realizable-performance.json',payload); summary={k:v for k,v in payload.items() if k not in ('paper_live_rows','paper_failed_rows','paper_unresolved_rows','plausible_rows','blocked_rows','unknown_rows')}; _write(DATA/'realizable-performance-summary.json',summary); print(json.dumps(summary,indent=2)); return payload
 
 if __name__=='__main__':run()
