@@ -11,7 +11,12 @@ def _load(path,default):
         return json.loads(path.read_text())
     except Exception:return default
 
-def _write(path,payload):path.write_text(json.dumps(payload,indent=2))
+def _write(path,payload):
+    text=json.dumps(payload,indent=2)
+    tmp=path.with_name(path.name+'.tmp')
+    tmp.write_text(text)
+    json.loads(tmp.read_text())
+    tmp.replace(path)
 def _ret(cur,entry):
     try:
         cur=float(cur);entry=float(entry);return ((cur/entry)-1)*100 if cur>=0 and entry>0 else None
