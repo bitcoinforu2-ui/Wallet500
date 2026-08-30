@@ -27,11 +27,12 @@ jobs:
         run: pip install -e .
       - name: Run deeper verified Solana wallet forensics
         env:
+          WALLET500_FORENSICS_INPUT: active-qualified-candidates.json
           WALLET500_FORENSICS_MAX_TOKENS: '5'
           WALLET500_FORENSICS_SIGNATURES: '12'
           WALLET500_FORENSICS_UPDATE_RUN_SUMMARY: '0'
         run: python -m wallet500.wallet_candidate_discovery
-      - name: Validate isolated output
+      - name: Validate isolated research output
         run: |
           python - <<'PY'
           import json
@@ -39,9 +40,10 @@ jobs:
           p=Path('data/wallet-forensics-summary.json')
           if not p.exists(): raise SystemExit('FATAL: wallet-forensics-summary.json missing')
           d=json.loads(p.read_text())
-          if d.get('source')!='holder-cluster-production-qualified.json': raise SystemExit('FATAL: forensics source bypassed production holder gate')
+          if d.get('source')!='active-qualified-candidates.json': raise SystemExit('FATAL: forensics did not inspect the active pre-production lane')
+          if d.get('lane')!='PRE_PRODUCTION_EVIDENCE_GATHERING' or d.get('production_authorization') is not False: raise SystemExit('FATAL: forensics lane could authorize production')
           if d.get('method')!='VERIFIED_POOL_TRANSACTION_SIGNERS': raise SystemExit('FATAL: unverified wallet method')
-          print('WALLET FORENSICS:',d.get('solana_candidates_scanned',0),'pools',d.get('verified_wallet_candidates',0),'verified wallets')
+          print('WALLET FORENSICS:',d.get('active_candidates_seen',0),'active candidates',d.get('solana_candidates_scanned',0),'Solana pools',d.get('verified_wallet_candidates',0),'verified wallets')
           PY
       - name: Publish wallet-forensics data only
         run: |
