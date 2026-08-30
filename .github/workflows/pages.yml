@@ -91,8 +91,15 @@ jobs:
           python -m json.tool _site/data/run-summary.json >/dev/null || fail 'invalid run-summary.json'
           python -m json.tool _site/data/realizable-performance-summary.json >/dev/null || fail 'invalid realizable-performance-summary.json'
           python -m json.tool _site/data/external-signal-cohort-summary.json >/dev/null || fail 'invalid external-signal-cohort-summary.json'
-          python -m json.tool _site/data/revival-1000-latest.json >/dev/null || fail 'invalid revival-1000-latest.json'
-          grep -Fq '"mode": "REVIVAL_1000_RESEARCH_ONLY"' _site/data/revival-1000-latest.json || fail 'revival data truth mode missing'
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('_site/data/revival-1000-latest.json')
+          d=json.loads(p.read_text())
+          if d.get('mode') != 'REVIVAL_1000_RESEARCH_ONLY':
+              raise SystemExit('revival data truth mode missing')
+          print('REVIVAL_DATA_OK', d.get('counts', {}))
+          PY
           echo 'BUILD_VERIFY_OK'
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -116,7 +123,7 @@ jobs:
             revival="$(curl -fsSL --max-time 20 "${BASE}revival/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             revival_data="$(curl -fsSL --max-time 20 "${BASE}data/revival-1000-latest.json?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             adapter="$(curl -fsSL --max-time 20 "${BASE}dashboard-live-price.js?sha=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'EXTERNAL-ONLY EXPERIMENT' <<<"$root" && ! grep -Fq 'ניסוי TOP 10' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'RESEARCH LAB — VISUAL' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter" && grep -Fq 'WALLET500 · REVIVAL 1000' <<<"$revival" && grep -Fq '"mode": "REVIVAL_1000_RESEARCH_ONLY"' <<<"$revival_data"; then ok=1; break; fi
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'EXTERNAL-ONLY EXPERIMENT' <<<"$root" && ! grep -Fq 'ניסוי TOP 10' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'RESEARCH LAB — VISUAL' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter" && grep -Fq 'WALLET500 · REVIVAL 1000' <<<"$revival" && python -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("mode")=="REVIVAL_1000_RESEARCH_ONLY" else 1)' <<<"$revival_data" >/dev/null 2>&1; then ok=1; break; fi
             echo "verify attempt $attempt/30 not ready yet"
             sleep 10
           done
