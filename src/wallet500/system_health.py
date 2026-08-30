@@ -103,18 +103,35 @@ def build_health(output_dir='data', now=None):
     checks = {name: _diagnose(name, check, now) for name, check in checks.items()}
     statuses = [x.get('status') for x in checks.values()]; overall = 'FAILED' if 'FAILED' in statuses else 'DEGRADED' if 'DEGRADED' in statuses else 'HEALTHY'
     failures = [{'component': name, **check} for name, check in checks.items() if check.get('status') != 'HEALTHY']
-    failure_summary = {'count': len(failures), 'production_blockers': sum(1 for x in failures if x.get('blocks_production')), 'codes': [x.get('failure_code') for x in failures]}
+    system_blockers = sum(1 for x in failures if x.get('blocks_production'))
+    candidate_gate_blocks = hblock + hqua
+    failure_summary = {
+        'count': len(failures),
+        'production_blockers': system_blockers,
+        'system_production_blockers': system_blockers,
+        'candidate_gate_blocks': candidate_gate_blocks,
+        'codes': [x.get('failure_code') for x in failures],
+    }
+    gate_summary = {
+        'holder_cluster_input': hinput,
+        'verified_promoted': hprom,
+        'quarantined': hqua,
+        'blocked': hblock,
+        'candidate_gate_blocks': candidate_gate_blocks,
+        'production_authorized_candidates': hprom,
+        'interpretation': 'Candidate gate blocks are correct fail-closed decisions and are separate from system health failures.',
+    }
     market_scan = int(summary.get('market_scan', 0) or 0) if isinstance(summary, dict) else 0; qualified = int(summary.get('qualified', 0) or 0) if isinstance(summary, dict) else 0
     revival_qualified = int(summary.get('revival_qualified', 0) or 0) if isinstance(summary, dict) else 0; cex_alerts = int(summary.get('cex_revival_alerts', 0) or 0) if isinstance(summary, dict) else 0
     lane_metrics = {'policy_target_attention_pct': ((summary.get('intelligence_policy') or {}).get('target_attention_pct') or {'old_coin_revival': 90, 'new_token_research': 10}) if isinstance(summary, dict) else {'old_coin_revival': 90, 'new_token_research': 10}, 'new_token': {'market_scan': market_scan, 'qualified': qualified, 'qualification_rate': round(qualified/market_scan, 6) if market_scan else None}, 'revival': {'qualified': revival_qualified, 'cex_revival_alerts': cex_alerts}, 'allocation_decision': 'HOLD_CURRENT_POLICY_UNTIL_FORWARD_OUTCOME_SAMPLE_IS_LARGE_ENOUGH'}
-    return {'version': 3, 'diagnostic_contract': 'FAIL_LOUD_FAIL_SPECIFIC_FAIL_TRACEABLE', 'updated_at': now.isoformat(), 'overall': overall, 'failure_summary': failure_summary, 'failures': failures, 'checks': checks, 'lane_metrics': lane_metrics}
+    return {'version': 4, 'diagnostic_contract': 'FAIL_LOUD_FAIL_SPECIFIC_FAIL_TRACEABLE', 'updated_at': now.isoformat(), 'overall': overall, 'failure_summary': failure_summary, 'gate_summary': gate_summary, 'failures': failures, 'checks': checks, 'lane_metrics': lane_metrics}
 
 
 def run(output_dir='data'):
     out = Path(output_dir); health = build_health(output_dir); _write(out/'system-health.json', health); summary = _load(out/'run-summary.json', {})
     if isinstance(summary, dict):
-        summary['system_health'] = {'overall': health['overall'], 'failure_summary': health['failure_summary'], 'failures': health['failures'], 'checks': health['checks'], 'lane_metrics': health['lane_metrics']}; _write(out/'run-summary.json', summary)
-    print(json.dumps({'overall': health['overall'], 'failure_summary': health['failure_summary'], 'failures': [{'component': x['component'], 'failure_code': x['failure_code'], 'severity': x['severity'], 'blocks_production': x['blocks_production'], 'recommended_action': x['recommended_action']} for x in health['failures']]}, indent=2)); return health
+        summary['system_health'] = {'overall': health['overall'], 'failure_summary': health['failure_summary'], 'gate_summary': health['gate_summary'], 'failures': health['failures'], 'checks': health['checks'], 'lane_metrics': health['lane_metrics']}; _write(out/'run-summary.json', summary)
+    print(json.dumps({'overall': health['overall'], 'failure_summary': health['failure_summary'], 'gate_summary': health['gate_summary'], 'failures': [{'component': x['component'], 'failure_code': x['failure_code'], 'severity': x['severity'], 'blocks_production': x['blocks_production'], 'recommended_action': x['recommended_action']} for x in health['failures']]}, indent=2)); return health
 
 
 if __name__ == '__main__':
