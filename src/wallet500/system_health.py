@@ -57,16 +57,10 @@ def _diagnose(name, check, now):
                     expected={'min_usd': check.get('configured_min_usd')}, actual={'qualification_min_usd': check.get('qualification_min_usd'), 'production_min_usd': check.get('production_min_usd')},
                     recommended_action='RESTORE_MINIMUM_LIQUIDITY_POLICY')
     elif name == 'holder_cluster_evidence_coverage':
-        if status == 'FAILED':
-            diag.update(failure_code='HOLDER_CLUSTER_ACCOUNTING_MISMATCH', severity='CRITICAL', blocks_production=True,
-                        expected={'accounted_count': check.get('input_count')},
-                        actual={'accounted_count': check.get('promoted_count', 0) + check.get('quarantine_count', 0) + check.get('blocked_count', 0)},
-                        recommended_action='INSPECT_HOLDER_CLUSTER_ACCOUNTING_INVARIANT')
-        else:
-            diag.update(failure_code=check.get('reason') or 'HOLDER_CLUSTER_EVIDENCE_INCOMPLETE', severity='HIGH', blocks_production=True,
-                        expected={'promoted_count_min': 1, 'verification_complete': True},
-                        actual={'input_count': check.get('input_count', 0), 'promoted_count': check.get('promoted_count', 0), 'quarantine_count': check.get('quarantine_count', 0), 'blocked_count': check.get('blocked_count', 0)},
-                        recommended_action='INSPECT_QUARANTINE_REASONS_AND_MISSING_HOLDER_CLUSTER_EVIDENCE')
+        diag.update(failure_code='HOLDER_CLUSTER_ACCOUNTING_MISMATCH', severity='CRITICAL', blocks_production=True,
+                    expected={'accounted_count': check.get('input_count')},
+                    actual={'accounted_count': check.get('promoted_count', 0) + check.get('quarantine_count', 0) + check.get('blocked_count', 0)},
+                    recommended_action='INSPECT_HOLDER_CLUSTER_ACCOUNTING_INVARIANT')
     elif name == 'wallet_forensics':
         diag.update(failure_code='WALLET_FORENSICS_STALE_OR_COVERAGE_GAP', severity='MEDIUM',
                     expected={'source': 'active-qualified-candidates.json', 'max_age_seconds': 3600, 'coverage': 'active=0 OR seen>0'},
@@ -95,8 +89,22 @@ def build_health(output_dir='data', now=None):
     floor_ok = qualification_floor >= cfg.verified_min_liquidity_usd and production_floor >= cfg.verified_min_liquidity_usd
     checks['liquidity_policy'] = {'status': 'HEALTHY' if floor_ok else 'FAILED', 'configured_min_usd': cfg.verified_min_liquidity_usd, 'qualification_min_usd': qualification_floor or None, 'production_min_usd': production_floor or None}
     hinput = int(holder.get('input_count', 0) or 0); hprom = int(holder.get('promoted_count', 0) or 0); hqua = int(holder.get('quarantine_count', 0) or 0); hblock = int(holder.get('blocked_count', 0) or 0)
-    accounted = hprom + hqua + hblock; evidence_status = 'FAILED' if hinput != accounted else ('DEGRADED' if hinput > 0 and hqua == hinput else 'HEALTHY')
-    checks['holder_cluster_evidence_coverage'] = {'status': evidence_status, 'input_count': hinput, 'promoted_count': hprom, 'quarantine_count': hqua, 'blocked_count': hblock, 'reason': 'ALL_ACTIVE_CANDIDATES_QUARANTINED_FOR_INCOMPLETE_EVIDENCE' if hinput > 0 and hqua == hinput else None}
+    accounted = hprom + hqua + hblock
+    evidence_status = 'FAILED' if hinput != accounted else 'HEALTHY'
+    gate_status = 'NO_INPUT' if hinput == 0 else ('ALL_QUARANTINED' if hqua == hinput else ('ALL_BLOCKED' if hblock == hinput else ('PARTIALLY_AUTHORIZED' if hprom > 0 and (hqua + hblock) > 0 else ('AUTHORIZED' if hprom == hinput else 'MIXED'))))
+    gate_reason = 'ALL_ACTIVE_CANDIDATES_QUARANTINED_FOR_INCOMPLETE_EVIDENCE' if hinput > 0 and hqua == hinput else ('ALL_ACTIVE_CANDIDATES_BLOCKED_BY_HOLDER_CLUSTER_GATE' if hinput > 0 and hblock == hinput else None)
+    checks['holder_cluster_evidence_coverage'] = {
+        'status': evidence_status,
+        'gate_status': gate_status,
+        'input_count': hinput,
+        'promoted_count': hprom,
+        'quarantine_count': hqua,
+        'blocked_count': hblock,
+        'candidate_gate_blocks': hqua + hblock,
+        'production_authorized_candidates': hprom,
+        'gate_reason': gate_reason,
+        'interpretation': 'Candidate quarantine/block decisions are fail-closed gate outcomes, not system-health failures, unless accounting is inconsistent.'
+    }
     source = wallet.get('source') if isinstance(wallet, dict) else None; seen = int(wallet.get('active_candidates_seen', 0) or 0) if isinstance(wallet, dict) else 0
     wallet_ok = wallet_age is not None and wallet_age <= 3600 and source == 'active-qualified-candidates.json' and wallet.get('lane') == 'PRE_PRODUCTION_EVIDENCE_GATHERING' and wallet.get('production_authorization') is False and (active == 0 or seen > 0)
     checks['wallet_forensics'] = {'status': 'HEALTHY' if wallet_ok else 'DEGRADED', 'age_seconds': round(wallet_age, 1) if wallet_age is not None else None, 'source': source, 'active_candidates_expected': active, 'active_candidates_seen': seen, 'verified_wallet_candidates': wallet.get('verified_wallet_candidates', 0) if isinstance(wallet, dict) else 0, 'solana_candidates_scanned': wallet.get('solana_candidates_scanned', 0) if isinstance(wallet, dict) else 0, 'evm_candidates_deferred': wallet.get('evm_candidates_deferred', 0) if isinstance(wallet, dict) else 0}
@@ -119,12 +127,14 @@ def build_health(output_dir='data', now=None):
         'blocked': hblock,
         'candidate_gate_blocks': candidate_gate_blocks,
         'production_authorized_candidates': hprom,
+        'gate_status': gate_status,
+        'gate_reason': gate_reason,
         'interpretation': 'Candidate gate blocks are correct fail-closed decisions and are separate from system health failures.',
     }
     market_scan = int(summary.get('market_scan', 0) or 0) if isinstance(summary, dict) else 0; qualified = int(summary.get('qualified', 0) or 0) if isinstance(summary, dict) else 0
     revival_qualified = int(summary.get('revival_qualified', 0) or 0) if isinstance(summary, dict) else 0; cex_alerts = int(summary.get('cex_revival_alerts', 0) or 0) if isinstance(summary, dict) else 0
     lane_metrics = {'policy_target_attention_pct': ((summary.get('intelligence_policy') or {}).get('target_attention_pct') or {'old_coin_revival': 90, 'new_token_research': 10}) if isinstance(summary, dict) else {'old_coin_revival': 90, 'new_token_research': 10}, 'new_token': {'market_scan': market_scan, 'qualified': qualified, 'qualification_rate': round(qualified/market_scan, 6) if market_scan else None}, 'revival': {'qualified': revival_qualified, 'cex_revival_alerts': cex_alerts}, 'allocation_decision': 'HOLD_CURRENT_POLICY_UNTIL_FORWARD_OUTCOME_SAMPLE_IS_LARGE_ENOUGH'}
-    return {'version': 4, 'diagnostic_contract': 'FAIL_LOUD_FAIL_SPECIFIC_FAIL_TRACEABLE', 'updated_at': now.isoformat(), 'overall': overall, 'failure_summary': failure_summary, 'gate_summary': gate_summary, 'failures': failures, 'checks': checks, 'lane_metrics': lane_metrics}
+    return {'version': 5, 'diagnostic_contract': 'FAIL_LOUD_FAIL_SPECIFIC_FAIL_TRACEABLE', 'updated_at': now.isoformat(), 'overall': overall, 'failure_summary': failure_summary, 'gate_summary': gate_summary, 'failures': failures, 'checks': checks, 'lane_metrics': lane_metrics}
 
 
 def run(output_dir='data'):
