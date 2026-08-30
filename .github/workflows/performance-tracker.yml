@@ -39,7 +39,7 @@ jobs:
         run: python -m wallet500.performance_tracker
       - name: Update forward lifecycle strategy ledger
         run: python -m wallet500.lifecycle_strategy
-      - name: Recheck survivorship-corrected current return
+      - name: Update first-eligible forward paper ledger
         run: python -m wallet500.realizable_performance
       - name: Verify executable cash quotes
         env:
@@ -50,33 +50,42 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          paths=[Path('data/outcome-tracker.json'),Path('data/signal-outcomes.json'),Path('data/performance-measurement-report.json'),Path('data/performance-leaderboard.json'),Path('data/lifecycle-strategy-ledger.json'),Path('data/lifecycle-strategy-summary.json'),Path('data/realizable-performance.json'),Path('data/realizable-performance-summary.json'),Path('data/cash-verified-performance.json'),Path('data/cash-verified-summary.json')]
+          paths=[Path('data/outcome-tracker.json'),Path('data/signal-outcomes.json'),Path('data/performance-measurement-report.json'),Path('data/performance-leaderboard.json'),Path('data/lifecycle-strategy-ledger.json'),Path('data/lifecycle-strategy-summary.json'),Path('data/realizable-performance.json'),Path('data/realizable-performance-summary.json'),Path('data/cash-verified-performance.json'),Path('data/cash-verified-summary.json'),Path('data/first-eligible-paper-ledger.json')]
           for x in paths:
               if not x.exists() or x.stat().st_size == 0: raise SystemExit('FATAL: empty measurement output: '+str(x))
-          d=json.loads(paths[0].read_text()); lb=json.loads(paths[3].read_text()); ls=json.loads(paths[5].read_text()); rp=json.loads(paths[6].read_text()); cv=json.loads(paths[8].read_text())
-          total=int(d.get('tracked_tokens') or 0); measured=int(rp.get('tracked_cohort_count') or 0); unknown=int(rp.get('unknown_not_scored_count') or 0); dead=int(rp.get('dead_zero_value_count') or 0)
+          d=json.loads(paths[0].read_text()); lb=json.loads(paths[3].read_text()); ls=json.loads(paths[5].read_text()); rp=json.loads(paths[6].read_text()); cv=json.loads(paths[8].read_text()); pl=json.loads(paths[10].read_text())
+          total=int(d.get('tracked_tokens') or 0); measured=int(rp.get('tracked_cohort_count') or 0); unknown=int(rp.get('unknown_not_scored_count') or 0)
           if total<=0: raise SystemExit('FATAL: tracker attempted to publish zero tracked tokens')
           if lb.get('verified_count',0)!=len(lb.get('rows') or []): raise SystemExit('FATAL: leaderboard count mismatch')
-          if int(rp.get('all_discoveries_count') or 0)!=total: raise SystemExit('FATAL: current-return source is not full immutable ledger')
-          if measured+unknown!=total: raise SystemExit(f'FATAL: full immutable cohort accounting mismatch measured={measured} unknown={unknown} total={total}')
-          p=rp.get('current_return_portfolio') or {}
-          if int(p.get('count') or 0)!=measured: raise SystemExit('FATAL: portfolio denominator differs from measured cohort')
-          if abs(float(p.get('investment_usd') or 0)-float(measured))>1e-6: raise SystemExit('FATAL: $1 model investment does not equal measured cohort')
-          if dead>measured: raise SystemExit('FATAL: dead count exceeds measured cohort')
+          if int(rp.get('all_discoveries_count') or 0)!=total: raise SystemExit('FATAL: paper source is not full immutable ledger')
+          if measured+unknown>total: raise SystemExit(f'FATAL: accounting exceeds total measured={measured} unknown={unknown} total={total}')
+          entries=pl.get('entries') if isinstance(pl.get('entries'),list) else []
+          if int(rp.get('paper_entries_count') or 0)!=len(entries): raise SystemExit('FATAL: paper entry count differs from persistent ledger')
+          invested=float(rp.get('paper_invested_usd') or 0)
+          if abs(invested-len(entries)*1.0)>1e-6: raise SystemExit('FATAL: $1 paper investment does not equal persistent entry count')
+          for p in entries:
+              if not p.get('entry_at') or not p.get('pair_address') or float(p.get('entry_price_usd') or 0)<=0: raise SystemExit('FATAL: paper entry lacks immutable time/pair/price')
+              if float(p.get('entry_liquidity_usd') or 0)<50000: raise SystemExit('FATAL: paper entry opened below $50K liquidity')
+              if float(p.get('entry_volume_h1') or 0)<15000: raise SystemExit('FATAL: paper entry opened below $15K H1 volume')
+              if int(p.get('entry_txns_h1') or 0)<50: raise SystemExit('FATAL: paper entry opened below 50 H1 txns')
+              if p.get('status')=='LIVE' and float(p.get('current_liquidity_usd') or 0)<50000: raise SystemExit('FATAL: LIVE paper position below $50K current liquidity')
+          value=float(rp.get('paper_current_value_usd') or 0); pnl=float(rp.get('paper_profit_usd') or 0); roi=float(rp.get('paper_roi_pct') or 0)
+          if abs((value-invested)-pnl)>1e-4: raise SystemExit('FATAL: paper P/L math mismatch')
+          expected=((value/invested)-1)*100 if invested else 0
+          if abs(expected-roi)>0.02: raise SystemExit('FATAL: paper ROI math mismatch')
           if cv.get('source_market_eligible_count',0)!=rp.get('market_execution_plausible_count',0): raise SystemExit('FATAL: cash quote cohort mismatch')
           if ls.get('retroactive_policy')!='NO_RETROACTIVE_SELLS_BEFORE_POLICY_ACTIVATION': raise SystemExit('FATAL: lifecycle retroactive policy changed')
-          print('TRUTH ACCOUNTING PASS')
-          print('TOTAL',total,'MEASURED',measured,'DEAD',dead,'UNKNOWN',unknown)
-          print('CURRENT RETURN',p.get('investment_usd'),'->',p.get('marked_value_usd'),'PNL',p.get('pnl_usd'),'ROI',p.get('roi_pct'))
+          print('FORWARD PAPER ACCOUNTING PASS')
+          print('TOTAL',total,'MEASURED NOW',measured,'PAPER ENTRIES',len(entries),'INVESTED',invested,'VALUE',value,'PNL',pnl,'ROI',roi)
           PY
       - name: Publish measurement data
         run: |
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json
+          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json data/first-eligible-paper-ledger.json
           if ! git diff --cached --quiet; then
-            git commit -m 'data: refresh immutable performance and lifecycle strategy'
+            git commit -m 'data: refresh immutable performance and forward paper ledger'
             for attempt in 1 2 3 4 5; do
               git fetch origin main
               git merge --no-edit -X ours origin/main
