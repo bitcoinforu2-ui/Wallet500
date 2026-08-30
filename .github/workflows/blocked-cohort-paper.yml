@@ -2,6 +2,9 @@ name: Wallet500 Revalidated Top 10 Paper Experiment
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Wallet500 Multi-Chain Live Scan"]
+    types: [completed]
   push:
     branches: [main]
     paths:
@@ -19,11 +22,13 @@ concurrency:
 
 jobs:
   paper-experiment:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 20
       - uses: actions/setup-python@v5
         with:
@@ -46,6 +51,7 @@ jobs:
           if len(l.get('positions',[]))>10: raise SystemExit('cohort exceeds 10')
           if any(float(p.get('entry_liquidity_usd') or 0)<50000 for p in l.get('positions',[])): raise SystemExit('entry below $50K liquidity')
           if any(not p.get('entry_verified_at') for p in l.get('positions',[])): raise SystemExit('missing entry revalidation stamp')
+          if int(s.get('positions') or 0)!=len(l.get('positions',[])): raise SystemExit('summary position mismatch')
           print('REVALIDATED TOP10 PAPER:',s)
           PY
       - name: Publish experiment marks
