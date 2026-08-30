@@ -66,29 +66,40 @@ def discover_solana_candidate_wallets(adapter, candidate: dict, signatures_limit
     return {**base,"signatures_seen":len(signatures),"transactions_loaded":loaded,"wallets":wallets}
 
 
+def _candidate_source(out: Path) -> tuple[list[dict], str]:
+    """Forensics is evidence gathering, so it must run before the production holder gate.
+
+    Production authorization still remains fail-closed elsewhere. This function only
+    decides which already-active exact-pair candidates receive wallet investigation.
+    """
+    requested=os.getenv("WALLET500_FORENSICS_INPUT","active-qualified-candidates.json").strip() or "active-qualified-candidates.json"
+    data=_load(out/requested,[])
+    if isinstance(data,list):
+        return [x for x in data if isinstance(x,dict)], requested
+    return [], requested
+
+
 def run(output_dir: str = "data", max_tokens: int | None = None, signatures_limit: int | None = None) -> dict:
-    out=Path(output_dir); active=_load(out/"holder-cluster-production-qualified.json",None)
-    source="holder-cluster-production-qualified.json"
-    if not isinstance(active,list):
-        active=_load(out/"active-qualified-candidates.json",[]); source="active-qualified-candidates.json"
+    out=Path(output_dir); active,source=_candidate_source(out)
     now=datetime.now(timezone.utc).isoformat(); cfg=Settings()
     max_tokens=cfg.wallet_forensics_max_tokens if max_tokens is None else max_tokens
     signatures_limit=cfg.wallet_forensics_signatures if signatures_limit is None else signatures_limit
     adapter=SolanaAdapter(cfg.solana_rpc_url); rows=[]; skipped=[]
-    solana=[x for x in active if x.get("chain")=="solana"][:max_tokens]
+    solana=[x for x in active if str(x.get("chain") or "").lower()=="solana"][:max_tokens]
     for candidate in solana: rows.append(discover_solana_candidate_wallets(adapter,candidate,signatures_limit))
     for candidate in active:
-        if candidate.get("chain") in {"ethereum","bsc"}:
+        if str(candidate.get("chain") or "").lower() in {"ethereum","bsc"}:
             skipped.append({"chain":candidate.get("chain"),"token":candidate.get("token") or candidate.get("mint"),"status":"ADAPTER_NOT_YET_AVAILABLE","reason":"No verified EVM transaction adapter is deployed yet; no wallet data fabricated."})
     unique_wallets={w.get("address") for row in rows for w in (row.get("wallets") or []) if w.get("address")}
-    status={"version":2,"updated_at":now,"method":"VERIFIED_POOL_TRANSACTION_SIGNERS","source":source,"active_candidates_seen":len(active),"solana_candidates_scanned":len(rows),"verified_wallet_candidates":len(unique_wallets),"raw_wallet_appearances":sum(len(x.get("wallets") or []) for x in rows),"evm_candidates_deferred":len(skipped),"limits":{"max_tokens":max_tokens,"signatures_per_pool":signatures_limit},"solana":rows,"deferred":skipped}
+    status={"version":3,"updated_at":now,"method":"VERIFIED_POOL_TRANSACTION_SIGNERS","source":source,"lane":"PRE_PRODUCTION_EVIDENCE_GATHERING","production_authorization":False,"active_candidates_seen":len(active),"solana_candidates_scanned":len(rows),"verified_wallet_candidates":len(unique_wallets),"raw_wallet_appearances":sum(len(x.get("wallets") or []) for x in rows),"evm_candidates_deferred":len(skipped),"limits":{"max_tokens":max_tokens,"signatures_per_pool":signatures_limit},"solana":rows,"deferred":skipped}
     _write(out/"wallet-candidates.json",status)
-    _write(out/"wallet-forensics-summary.json",{k:status[k] for k in ("version","updated_at","method","source","active_candidates_seen","solana_candidates_scanned","verified_wallet_candidates","raw_wallet_appearances","evm_candidates_deferred","limits")})
+    summary_keys=("version","updated_at","method","source","lane","production_authorization","active_candidates_seen","solana_candidates_scanned","verified_wallet_candidates","raw_wallet_appearances","evm_candidates_deferred","limits")
+    _write(out/"wallet-forensics-summary.json",{k:status[k] for k in summary_keys})
     if os.getenv("WALLET500_FORENSICS_UPDATE_RUN_SUMMARY","1") != "0":
         summary=_load(out/"run-summary.json",{})
         if isinstance(summary,dict):
-            summary["wallet_forensics"]={k:status[k] for k in ("method","source","solana_candidates_scanned","verified_wallet_candidates","raw_wallet_appearances","evm_candidates_deferred","limits")}; _write(out/"run-summary.json",summary)
-    print(json.dumps({"solana_candidates_scanned":len(rows),"verified_wallet_candidates":len(unique_wallets),"evm_candidates_deferred":len(skipped)},indent=2)); return status
+            summary["wallet_forensics"]={k:status[k] for k in summary_keys if k not in {"version","updated_at"}}; _write(out/"run-summary.json",summary)
+    print(json.dumps({"source":source,"active_candidates_seen":len(active),"solana_candidates_scanned":len(rows),"verified_wallet_candidates":len(unique_wallets),"evm_candidates_deferred":len(skipped)},indent=2)); return status
 
 
 if __name__ == "__main__":
