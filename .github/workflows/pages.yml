@@ -2,6 +2,8 @@
 name: Deploy Wallet500 Dashboard
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
   push:
     branches: [main]
     paths:
@@ -12,7 +14,6 @@ on:
       - 'dashboard-backtest.html'
       - 'dashboard-engine-control.html'
       - 'dashboard-reference-fix.js'
-      - 'data/**'
       - 'wallet500_option2_emblem.jpg'
       - '.github/workflows/pages.yml'
 permissions:
@@ -21,7 +22,7 @@ permissions:
   id-token: write
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   deploy:
     environment:
@@ -55,6 +56,7 @@ jobs:
           for f in _site/index.html _site/live/index.html _site/terminal/index.html _site/control/index.html _site/data/run-summary.json _site/data/blocked-cohort-paper-summary.json _site/data/blocked-cohort-paper-ledger.json; do check_file "$f"; done
           check_text _site/index.html 'WALLET500 · מצב הפרויקט'
           check_text _site/live/index.html '<title>Wallet500 Live</title>'
+          check_text _site/live/index.html 'Liquidity ≥ $50K'
           check_text _site/terminal/index.html '<title>Wallet500 Terminal</title>'
           check_text _site/control/index.html '<title>Wallet500 Control Center V2</title>'
           python -m json.tool _site/data/run-summary.json >/dev/null || fail 'invalid run-summary.json'
@@ -84,7 +86,7 @@ jobs:
             control="$(curl -fsSL --max-time 20 "${BASE}control/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             summary="$(curl -fsSL --max-time 20 "${BASE}data/blocked-cohort-paper-summary.json?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             ledger="$(curl -fsSL --max-time 20 "${BASE}data/blocked-cohort-paper-ledger.json?sha=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'WALLET500 · מצב הפרויקט' <<<"$root" && grep -Fq '<title>Wallet500 Live</title>' <<<"$live" && grep -Fq '<title>Wallet500 Terminal</title>' <<<"$terminal" && grep -Fq '<title>Wallet500 Control Center V2</title>' <<<"$control" && python -m json.tool >/dev/null <<<"$summary" && python -m json.tool >/dev/null <<<"$ledger"; then ok=1; break; fi
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'WALLET500 · מצב הפרויקט' <<<"$root" && grep -Fq '<title>Wallet500 Live</title>' <<<"$live" && grep -Fq 'Liquidity ≥ $50K' <<<"$live" && grep -Fq '<title>Wallet500 Terminal</title>' <<<"$terminal" && grep -Fq '<title>Wallet500 Control Center V2</title>' <<<"$control" && python -m json.tool >/dev/null <<<"$summary" && python -m json.tool >/dev/null <<<"$ledger"; then ok=1; break; fi
             echo "verify attempt $attempt/30 not ready yet"
             sleep 10
           done
