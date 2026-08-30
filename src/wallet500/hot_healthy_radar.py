@@ -152,8 +152,15 @@ def _score(r):
         else:
             score -= 8; reasons.append('CHASE_RISK')
 
+    # One mark cannot prove survival/retention. Keep it visible, but never call it HOT_HEALTHY.
+    has_survival_proof = len(recent) >= 2
+    if not has_survival_proof:
+        reasons.append('INSUFFICIENT_SURVIVAL_HISTORY')
+        score = min(score, 77.0)
+
     score = max(0.0, min(100.0, score))
-    if score >= 78 and liq_retention >= 0.90 and buy_share >= 0.50 and turnover <= 2.0:
+    anti_chase_ok = runup is not None and runup <= 25.0
+    if score >= 78 and has_survival_proof and anti_chase_ok and liq_retention >= 0.90 and buy_share >= 0.50 and turnover <= 2.0:
         label = 'HOT_HEALTHY'
     elif score >= 65 and liq_retention >= 0.85:
         label = 'HEALTHY_WATCH'
@@ -179,6 +186,8 @@ def _score(r):
         'turnover_h1': round(turnover, 4),
         'short_momentum_pct': round(short_momentum, 4),
         'runup_since_discovery_pct': round(runup, 4) if runup is not None else None,
+        'survival_marks': len(recent),
+        'anti_chase_ok': anti_chase_ok,
         'reasons': reasons,
         'history_marks_used': len(recent),
     }
@@ -200,16 +209,17 @@ def run():
     watch = [x for x in rows if x['label'] == 'HEALTHY_WATCH']
     payload = {
         'updated_at': datetime.now(timezone.utc).isoformat(),
-        'method': 'HOT_HEALTHY_EARLY_RADAR_V1',
+        'method': 'HOT_HEALTHY_EARLY_RADAR_V2',
         'production_change': False,
         'hard_rules_preserved': {'liquidity_min_usd': MIN_LIQ, 'volume_h1_min_usd': MIN_VOL, 'txns_h1_min': MIN_TX, 'exact_pair_required': True},
+        'hot_healthy_rules': {'min_score': 78, 'min_exact_pair_marks': 2, 'max_runup_since_discovery_pct': 25.0, 'min_liquidity_retention': 0.90, 'min_buy_share': 0.50, 'max_turnover_h1': 2.0},
         'scored_exact_pair_candidates': len(rows),
         'hot_healthy_count': len(hot),
         'healthy_watch_count': len(watch),
         'hot_healthy': hot[:50],
         'healthy_watch': watch[:100],
         'top_ranked': rows[:100],
-        'note': 'Research/radar ranking only. HOT_HEALTHY requires exact pair, base market gate, liquidity retention, balanced-positive buy pressure and non-overheated turnover. It does not bypass LP/ownership/cluster verification or create a production tradability claim.'
+        'note': 'Research/radar ranking only. HOT_HEALTHY requires exact pair, base market gate, >=2 exact-pair marks, <=25% same-pair run-up since discovery, liquidity retention, balanced-positive buy pressure and non-overheated turnover. It does not bypass LP/ownership/cluster verification or create a production tradability claim.'
     }
     OUT.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + '\n')
     print(json.dumps({k: payload[k] for k in ('scored_exact_pair_candidates','hot_healthy_count','healthy_watch_count')}, indent=2))
