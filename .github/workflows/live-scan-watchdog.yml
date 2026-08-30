@@ -118,10 +118,17 @@ jobs:
           git commit -m 'data: watchdog scheduler telemetry'
           for attempt in 1 2 3 4 5; do
             git fetch origin main
-            git merge --no-edit -X ours origin/main
-            if git push origin HEAD:main; then exit 0; fi
-            echo "Push raced with main; retrying watchdog publish (attempt $attempt)"
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo '::error::WATCHDOG_PUBLISH_CONFLICT: concurrent main changes conflict with watchdog data; refusing to overwrite or auto-resolve truth data.'
+              exit 1
+            fi
+            if git push origin HEAD:main; then
+              echo 'WATCHDOG_PUBLISH_OK'
+              exit 0
+            fi
+            echo "WATCHDOG_PUBLISH_RACE: push raced with main; retrying safely (attempt $attempt/5)"
             sleep 3
           done
-          echo 'FATAL: watchdog failed to publish after retries'
+          echo '::error::WATCHDOG_PUBLISH_RETRY_EXHAUSTED: failed to publish after 5 safe retries; no force push performed.'
           exit 1
