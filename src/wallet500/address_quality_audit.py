@@ -28,7 +28,8 @@ def classify(r):
     current_pair = r.get('current_pair_address')
     status = str(r.get('measurement_status') or 'UNKNOWN')
     history = r.get('history') if isinstance(r.get('history'), list) else []
-    exact_marks = [h for h in history if isinstance(h, dict) and (not h.get('pair_address') or same(h.get('pair_address'), entry_pair))]
+    exact_marks = [h for h in history if isinstance(h, dict) and same(h.get('pair_address'), entry_pair)]
+    unscoped_marks = [h for h in history if isinstance(h, dict) and not h.get('pair_address')]
 
     reasons = []
     if not token: reasons.append('MISSING_TOKEN_ID')
@@ -45,11 +46,13 @@ def classify(r):
 
     if not exact_marks: reasons.append('NO_EXACT_PAIR_HISTORY_MARK')
     elif len(exact_marks) == 1: reasons.append('SINGLE_EXACT_PAIR_MARK')
+    if unscoped_marks: reasons.append('UNSCOPED_HISTORY_MARKS_EXCLUDED')
 
     return {
         'chain': chain, 'dex': dex, 'token': token, 'entry_pair_address': entry_pair,
         'current_pair_address': current_pair, 'measurement_status': status,
-        'quality': quality, 'exact_history_marks': len(exact_marks), 'reasons': reasons,
+        'quality': quality, 'exact_history_marks': len(exact_marks),
+        'unscoped_history_marks': len(unscoped_marks), 'reasons': reasons,
     }
 
 
@@ -65,22 +68,21 @@ def run():
     total = len(rows); verified = qc['VERIFIED_EXACT_PAIR']
     payload = {
         'updated_at': datetime.now(timezone.utc).isoformat(),
-        'method': 'ADDRESS_QUALITY_AUDIT_V1',
+        'method': 'ADDRESS_QUALITY_AUDIT_V2',
         'production_change': False,
         'total_records_audited': total,
         'verified_exact_pair_count': verified,
         'verified_exact_pair_coverage_pct': round(100*verified/total, 4) if total else 0,
         'quality_counts': dict(qc),
+        'unscoped_history_marks_excluded': sum(r['unscoped_history_marks'] for r in rows),
         'by_chain': {k: dict(v) for k,v in sorted(by_chain.items())},
         'by_chain_dex': {k: dict(v) for k,v in sorted(by_dex.items())},
-        'bottleneck_priority': [
-            {'quality': k, 'count': v} for k,v in qc.most_common() if k != 'VERIFIED_EXACT_PAIR'
-        ],
+        'bottleneck_priority': [{'quality': k, 'count': v} for k,v in qc.most_common() if k != 'VERIFIED_EXACT_PAIR'],
         'problem_samples': [r for r in rows if r['quality'] != 'VERIFIED_EXACT_PAIR'][:100],
-        'rule': 'Never substitute best pool for immutable exact pair. Availability failures remain unresolved rather than fabricated.',
+        'rule': 'Only history marks carrying the immutable exact pair identity count as exact-pair evidence. Never substitute best pool.',
     }
     OUT.write_text(json.dumps(payload, indent=2, ensure_ascii=False)+'\n')
-    print(json.dumps({k: payload[k] for k in ('total_records_audited','verified_exact_pair_count','verified_exact_pair_coverage_pct','quality_counts')}, indent=2))
+    print(json.dumps({k: payload[k] for k in ('total_records_audited','verified_exact_pair_count','verified_exact_pair_coverage_pct','quality_counts','unscoped_history_marks_excluded')}, indent=2))
     return payload
 
 if __name__ == '__main__': run()

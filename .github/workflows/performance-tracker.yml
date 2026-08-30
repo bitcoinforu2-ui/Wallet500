@@ -21,6 +21,7 @@ on:
       - 'src/wallet500/address_quality_audit.py'
       - 'tests/test_lifecycle_strategy.py'
       - 'tests/test_experiment_v1.py'
+      - 'tests/test_research_integrity_v2.py'
       - '.github/workflows/performance-tracker.yml'
 
 permissions:
@@ -41,8 +42,8 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e . pytest
-      - name: Run lifecycle strategy tests
-        run: python -m pytest -q tests/test_lifecycle_strategy.py tests/test_experiment_v1.py
+      - name: Run lifecycle strategy and research integrity tests
+        run: python -m pytest -q tests/test_lifecycle_strategy.py tests/test_experiment_v1.py tests/test_research_integrity_v2.py
       - name: Rebuild immutable Performance Since Discovery
         run: python -m wallet500.performance_tracker
       - name: Update forward lifecycle strategy ledger
@@ -85,7 +86,7 @@ jobs:
           if int((cr.get('baseline') or {}).get('n') or 0)!=len(entries): raise SystemExit('FATAL: cohort research baseline differs from ledger')
           if any(x.get('production_change') is not False for x in (ev,es,wd,mv,qs,hh,aq)): raise SystemExit('FATAL: research mutated production policy')
           if es.get('method')!='PROSPECTIVE_EXPERIMENT_V1': raise SystemExit('FATAL: experiment v1 method mismatch')
-          if wd.get('method')!='WINNER_DNA_SHADOW_V1': raise SystemExit('FATAL: winner DNA method mismatch')
+          if wd.get('method')!='WINNER_DNA_SHADOW_V2': raise SystemExit('FATAL: winner DNA method mismatch')
           if mv.get('method')!='MEASURABLE_VS_REST_BIAS_EXPERIMENT_V1': raise SystemExit('FATAL: measurable-vs-rest method mismatch')
           exp_names={x.get('experiment') for x in es.get('experiments') or []}
           if exp_names!={'FIVE_MINUTE_FINGERPRINT','SURVIVOR_FIRST','SOURCE_TOURNAMENT'}: raise SystemExit('FATAL: experiment v1 scoreboard incomplete')
@@ -93,6 +94,8 @@ jobs:
               if r.get('entry_liquidity_usd') is not None and float(r.get('entry_liquidity_usd') or 0)<50000 and r.get('verified_tradable') is True: raise SystemExit('FATAL: experiment counted sub-50k row as verified tradable')
               if not r.get('pair_address'): raise SystemExit('FATAL: experiment record lacks exact pair identity')
           if int(aq.get('total_records_audited') or 0)<=0: raise SystemExit('FATAL: address audit has no records')
+          if aq.get('method')!='ADDRESS_QUALITY_AUDIT_V2': raise SystemExit('FATAL: address audit method mismatch')
+          if d.get('exact_pair_index_mode')!='CHAIN_TOKEN_PAIR': raise SystemExit('FATAL: performance tracker is not using chain+token+pair indexing')
           print('INTEGRITY PASS')
           print('RESEARCH', {'experiment_v1':len(ev.get('records') or []),'winner_dna':wd.get('winner_n'),'winner_controls':wd.get('control_n'),'measured_vs_rest':[mv.get('measured_now_n'),mv.get('rest_n')]})
           PY
