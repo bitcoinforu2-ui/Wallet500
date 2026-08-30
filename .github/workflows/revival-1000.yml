@@ -1,0 +1,82 @@
+name: Wallet500 Revival 1000
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7,37 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/revival_1000.py'
+      - 'tests/test_revival_1000.py'
+      - '.github/workflows/revival-1000.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-revival-1000
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e .
+      - name: Unit tests
+        run: pytest -q tests/test_revival_1000.py
+      - name: Collect ranked Revival 1000 universe
+        env:
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: python -m wallet500.revival_1000
+      - name: Validate research truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/revival-1000-latest.json')
+          if not p.exists(): raise SystemExit('REVIVAL_1000_OUTPUT_MISSING')
+          d=json.loads(p.read_text())
+          if d.get('mode')!='RESEARCH_ONLY_REVIVAL_1000_V1': raise SystemExit('REVIVAL_1000_UNSAFE_MODE')
+          if d.get('production_portfolio_impact')!='NONE': raise SystemExit('REVIVAL_1000_PRODUCTION_IMPACT_NOT_NONE')
+          if d.get('no_hindsight') is not True: raise SystemExit('REVIVAL_1000_NO_HINDSIGHT_VIOLATION')
+          coins=d.get('coins') or []
+          if len(coins)<900: raise SystemExit(f'REVIVAL_1000_INSUFFICIENT_UNIVERSE:{len(coins)}')
+          if any(x.get('pre_alpha_eligible') for x in coins): raise SystemExit('PRE_ALPHA_MUST_WAIT_FOR_VERIFIED_HOLDER_AND_FUNDAMENTAL_EVIDENCE')
+          if any(x.get('dex_link_type')!='SEARCH_ONLY_NOT_EXACT_PAIR' for x in coins): raise SystemExit('DEX_LINK_TRUTH_LABEL_MISSING')
+          print('REVIVAL_1000_OK', d.get('counts'), 'source=', d.get('source'))
+          PY
+      - name: Publish immutable T0 state and latest snapshot
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          git add data/revival-1000-latest.json data/revival-1000-state.json
+          if git diff --cached --quiet; then
+            echo 'REVIVAL_1000_NO_DATA_CHANGE'
+            exit 0
+          fi
+          git commit -m 'data: refresh Revival 1000 research universe'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo '::error::REVIVAL_1000_PUBLISH_CONFLICT'
+              exit 1
+            fi
+            if git push origin HEAD:main; then
+              echo 'REVIVAL_1000_PUBLISH_OK'
+              exit 0
+            fi
+            sleep 3
+          done
+          echo '::error::REVIVAL_1000_PUBLISH_RACE_EXHAUSTED'
+          exit 1
