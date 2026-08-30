@@ -1,0 +1,110 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+MIN_LIQUIDITY_USD = 50_000.0
+
+
+def _load(path: Path, default=None):
+    try:
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else default
+    except Exception:
+        return default
+
+
+def _num(value, default=0.0):
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def _check(results: list[dict], name: str, ok: bool, evidence=None):
+    results.append({"name": name, "status": "PASS" if ok else "FAIL", "evidence": evidence})
+
+
+def run(output_dir: str = "data"):
+    out = Path(output_dir)
+    now = datetime.now(timezone.utc)
+    summary = _load(out / "run-summary.json", {})
+    health = _load(out / "system-health.json", {})
+    holder = _load(out / "holder-cluster-production-report.json", {})
+    exact = _load(out / "exact-pair-survival-report.json", {})
+    paper = _load(out / "paper-truth-summary.json", {})
+    active = _load(out / "active-qualified-candidates.json", [])
+
+    checks: list[dict] = []
+
+    q_floor = _num(summary.get("qualification_min_liquidity_usd")) if isinstance(summary, dict) else 0.0
+    prod = summary.get("production_risk_gate") or {} if isinstance(summary, dict) else {}
+    p_floor = _num(prod.get("min_live_liquidity_usd")) if isinstance(prod, dict) else 0.0
+    e_floor = _num(exact.get("min_liquidity_usd")) if isinstance(exact, dict) else 0.0
+    _check(checks, "qualification_liquidity_floor_ge_50k", q_floor >= MIN_LIQUIDITY_USD, q_floor)
+    _check(checks, "production_liquidity_floor_ge_50k", p_floor >= MIN_LIQUIDITY_USD, p_floor)
+    _check(checks, "exact_pair_liquidity_floor_ge_50k", e_floor >= MIN_LIQUIDITY_USD, e_floor)
+
+    exact_method = str(exact.get("method") or "") if isinstance(exact, dict) else ""
+    _check(checks, "immutable_exact_pair_revalidation", "IMMUTABLE_EXACT_PAIR" in exact_method, exact_method)
+
+    holder_mode = holder.get("mode") if isinstance(holder, dict) else None
+    _check(checks, "holder_cluster_fail_closed_mode", holder_mode == "PRODUCTION_FAIL_CLOSED", holder_mode)
+    if isinstance(holder, dict):
+        h_input = int(holder.get("input_count", 0) or 0)
+        h_accounted = sum(int(holder.get(k, 0) or 0) for k in ("promoted_count", "quarantine_count", "blocked_count"))
+        _check(checks, "holder_cluster_all_inputs_accounted", h_input == h_accounted, {"input": h_input, "accounted": h_accounted})
+    else:
+        _check(checks, "holder_cluster_all_inputs_accounted", False, "missing report")
+
+    hchecks = health.get("checks") or {} if isinstance(health, dict) else {}
+    liq_health = (hchecks.get("liquidity_policy") or {}).get("status") if isinstance(hchecks, dict) else None
+    holder_health = (hchecks.get("holder_cluster_fail_closed") or {}).get("status") if isinstance(hchecks, dict) else None
+    _check(checks, "system_health_liquidity_policy", liq_health == "HEALTHY", liq_health)
+    _check(checks, "system_health_holder_cluster_fail_closed", holder_health == "HEALTHY", holder_health)
+
+    paper_mode = str(paper.get("mode") or "") if isinstance(paper, dict) else ""
+    paper_ok = "PAPER" in paper_mode and ("NO_REAL_MONEY" in paper_mode or "NO REAL MONEY" in paper_mode)
+    _check(checks, "paper_only_execution", paper_ok, paper_mode)
+    _check(checks, "generic_router_booking_disabled", paper.get("generic_router_booking_disabled") is True if isinstance(paper, dict) else False, paper.get("generic_router_booking_disabled") if isinstance(paper, dict) else None)
+
+    tm_method = str(((summary.get("time_machine") or {}).get("method")) or "") if isinstance(summary, dict) else ""
+    _check(checks, "no_hindsight_replay", "NO_HINDSIGHT" in tm_method, tm_method)
+
+    active_ok = isinstance(active, list)
+    active_failures = []
+    if active_ok:
+        for i, row in enumerate(active):
+            if not isinstance(row, dict):
+                active_failures.append({"index": i, "reason": "NON_OBJECT"})
+                continue
+            pair = str(row.get("pair_address") or "").lower()
+            locked = str(row.get("locked_pair_address") or "").lower()
+            identity_ok = bool(pair) and bool(locked) and pair == locked and row.get("pair_identity_locked") is True
+            live_liq = _num(row.get("production_live_liquidity_usd") or row.get("live_liquidity_usd") or row.get("liquidity_usd"))
+            if not identity_ok:
+                active_failures.append({"index": i, "pair_address": pair, "locked_pair_address": locked, "reason": "PAIR_IDENTITY_NOT_LOCKED"})
+            if live_liq < MIN_LIQUIDITY_USD:
+                active_failures.append({"index": i, "liquidity_usd": live_liq, "reason": "ACTIVE_SUB_50K_LIQUIDITY"})
+    _check(checks, "active_exact_pair_and_liquidity_integrity", active_ok and not active_failures, {"active_count": len(active) if isinstance(active, list) else None, "failures": active_failures[:20]})
+
+    failures = [c for c in checks if c["status"] != "PASS"]
+    payload = {
+        "version": 1,
+        "updated_at": now.isoformat(),
+        "mode": "FAIL_CLOSED_PRODUCTION_INTEGRITY_VALIDATION",
+        "minimum_liquidity_usd": MIN_LIQUIDITY_USD,
+        "checks": checks,
+        "passed": not failures,
+        "failure_count": len(failures),
+        "policy": "Validation may block publication; it never relaxes thresholds, pair identity, holder/cluster evidence, immutable track record, no-hindsight, or paper-only rules.",
+    }
+    (out / "strict-validation.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    print(json.dumps({"passed": payload["passed"], "failure_count": payload["failure_count"], "failures": failures}, indent=2))
+    if failures:
+        raise SystemExit(1)
+    return payload
+
+
+if __name__ == "__main__":
+    run()
