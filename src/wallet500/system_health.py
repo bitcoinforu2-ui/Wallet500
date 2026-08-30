@@ -54,7 +54,7 @@ def _diagnose(name, check, now):
                     expected='PRODUCTION_FAIL_CLOSED', actual=check.get('mode'), recommended_action='RESTORE_FAIL_CLOSED_BEFORE_PRODUCTION')
     elif name == 'liquidity_policy':
         diag.update(failure_code='LIQUIDITY_POLICY_BELOW_VERIFIED_MIN', severity='CRITICAL', blocks_production=True,
-                    expected={'min_usd': check.get('configured_min_usd')}, actual={'qualification_min_usd': check.get('qualification_min_usd'), 'production_min_usd': check.get('production_min_usd')},
+                    expected={'min_usd': check.get('configured_min_usd')}, actual={'qualification_min_liquidity_usd': check.get('qualification_min_usd'), 'production_min_usd': check.get('production_min_usd')},
                     recommended_action='RESTORE_MINIMUM_LIQUIDITY_POLICY')
     elif name == 'holder_cluster_evidence_coverage':
         if status == 'FAILED':
@@ -63,7 +63,10 @@ def _diagnose(name, check, now):
                         actual={'accounted_count': check.get('promoted_count', 0) + check.get('quarantine_count', 0) + check.get('blocked_count', 0)},
                         recommended_action='INSPECT_HOLDER_CLUSTER_ACCOUNTING_INVARIANT')
         else:
-            diag.update(failure_code=check.get('reason') or 'HOLDER_CLUSTER_EVIDENCE_INCOMPLETE', severity='HIGH', blocks_production=True,
+            # A fully quarantined candidate set is a correct fail-closed gate outcome, not a
+            # system-wide production failure. The candidates remain unauthorized (hprom=0)
+            # and are surfaced separately through candidate_gate_blocks.
+            diag.update(failure_code=check.get('reason') or 'HOLDER_CLUSTER_EVIDENCE_INCOMPLETE', severity='HIGH', blocks_production=False,
                         expected={'promoted_count_min': 1, 'verification_complete': True},
                         actual={'input_count': check.get('input_count', 0), 'promoted_count': check.get('promoted_count', 0), 'quarantine_count': check.get('quarantine_count', 0), 'blocked_count': check.get('blocked_count', 0)},
                         recommended_action='INSPECT_QUARANTINE_REASONS_AND_MISSING_HOLDER_CLUSTER_EVIDENCE')
