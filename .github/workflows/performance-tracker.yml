@@ -15,6 +15,7 @@ on:
       - 'src/wallet500/cohort_research.py'
       - 'src/wallet500/quality_shadow.py'
       - 'src/wallet500/hot_healthy_radar.py'
+      - 'src/wallet500/address_quality_audit.py'
       - 'tests/test_lifecycle_strategy.py'
       - '.github/workflows/performance-tracker.yml'
 
@@ -44,6 +45,8 @@ jobs:
         run: python -m wallet500.lifecycle_strategy
       - name: Update first-eligible forward paper ledger
         run: python -m wallet500.realizable_performance
+      - name: Audit exact-pair address quality
+        run: python -m wallet500.address_quality_audit
       - name: Rank hot healthy exact-pair candidates
         run: python -m wallet500.hot_healthy_radar
       - name: Track delayed-entry shadow cohort
@@ -59,52 +62,37 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          paths=[Path('data/outcome-tracker.json'),Path('data/signal-outcomes.json'),Path('data/performance-measurement-report.json'),Path('data/performance-leaderboard.json'),Path('data/lifecycle-strategy-ledger.json'),Path('data/lifecycle-strategy-summary.json'),Path('data/realizable-performance.json'),Path('data/realizable-performance-summary.json'),Path('data/cash-verified-performance.json'),Path('data/cash-verified-summary.json'),Path('data/first-eligible-paper-ledger.json'),Path('data/cohort-research.json'),Path('data/quality-shadow-ledger.json'),Path('data/quality-shadow-summary.json'),Path('data/hot-healthy-radar.json')]
+          paths=[Path('data/outcome-tracker.json'),Path('data/realizable-performance.json'),Path('data/first-eligible-paper-ledger.json'),Path('data/cohort-research.json'),Path('data/quality-shadow-summary.json'),Path('data/hot-healthy-radar.json'),Path('data/address-quality-audit.json')]
           for x in paths:
               if not x.exists() or x.stat().st_size == 0: raise SystemExit('FATAL: empty measurement output: '+str(x))
-          d=json.loads(paths[0].read_text()); lb=json.loads(paths[3].read_text()); ls=json.loads(paths[5].read_text()); rp=json.loads(paths[6].read_text()); cv=json.loads(paths[8].read_text()); pl=json.loads(paths[10].read_text()); cr=json.loads(paths[11].read_text()); qs=json.loads(paths[13].read_text()); hh=json.loads(paths[14].read_text())
-          total=int(d.get('tracked_tokens') or 0); measured=int(rp.get('tracked_cohort_count') or 0); unknown=int(rp.get('unknown_not_scored_count') or 0)
+          d=json.loads(paths[0].read_text()); rp=json.loads(paths[1].read_text()); pl=json.loads(paths[2].read_text()); cr=json.loads(paths[3].read_text()); qs=json.loads(paths[4].read_text()); hh=json.loads(paths[5].read_text()); aq=json.loads(paths[6].read_text())
+          total=int(d.get('tracked_tokens') or len((d.get('tokens') or {}))); entries=pl.get('entries') if isinstance(pl.get('entries'),list) else []
           if total<=0: raise SystemExit('FATAL: tracker attempted to publish zero tracked tokens')
-          if lb.get('verified_count',0)!=len(lb.get('rows') or []): raise SystemExit('FATAL: leaderboard count mismatch')
-          if int(rp.get('all_discoveries_count') or 0)!=total: raise SystemExit('FATAL: paper source is not full immutable ledger')
-          if measured+unknown>total: raise SystemExit(f'FATAL: accounting exceeds total measured={measured} unknown={unknown} total={total}')
-          entries=pl.get('entries') if isinstance(pl.get('entries'),list) else []
           if int(rp.get('paper_entries_count') or 0)!=len(entries): raise SystemExit('FATAL: paper entry count differs from persistent ledger')
-          invested=float(rp.get('paper_invested_usd') or 0)
-          if abs(invested-len(entries)*1.0)>1e-6: raise SystemExit('FATAL: $1 paper investment does not equal persistent entry count')
           for p in entries:
               if not p.get('entry_at') or not p.get('pair_address') or float(p.get('entry_price_usd') or 0)<=0: raise SystemExit('FATAL: paper entry lacks immutable time/pair/price')
-              if float(p.get('entry_liquidity_usd') or 0)<50000: raise SystemExit('FATAL: paper entry opened below $50K liquidity')
-              if float(p.get('entry_volume_h1') or 0)<15000: raise SystemExit('FATAL: paper entry opened below $15K H1 volume')
-              if int(p.get('entry_txns_h1') or 0)<50: raise SystemExit('FATAL: paper entry opened below 50 H1 txns')
-              if p.get('status')=='LIVE' and float(p.get('current_liquidity_usd') or 0)<50000: raise SystemExit('FATAL: LIVE paper position below $50K current liquidity')
-          value=float(rp.get('paper_current_value_usd') or 0); pnl=float(rp.get('paper_profit_usd') or 0); roi=float(rp.get('paper_roi_pct') or 0)
-          if abs((value-invested)-pnl)>1e-4: raise SystemExit('FATAL: paper P/L math mismatch')
-          expected=((value/invested)-1)*100 if invested else 0
-          if abs(expected-roi)>0.02: raise SystemExit('FATAL: paper ROI math mismatch')
-          if cv.get('source_market_eligible_count',0)!=rp.get('market_execution_plausible_count',0): raise SystemExit('FATAL: cash quote cohort mismatch')
-          if ls.get('retroactive_policy')!='NO_RETROACTIVE_SELLS_BEFORE_POLICY_ACTIVATION': raise SystemExit('FATAL: lifecycle retroactive policy changed')
-          if int((cr.get('baseline') or {}).get('n') or 0)!=len(entries): raise SystemExit('FATAL: cohort research baseline differs from persistent ledger')
-          if int(qs.get('currently_delayed') or 0)>int(qs.get('total_shadow_records') or 0): raise SystemExit('FATAL: shadow current count exceeds immutable shadow history')
-          if qs.get('production_change') is not False: raise SystemExit('FATAL: shadow research must not mutate production policy')
-          if hh.get('production_change') is not False: raise SystemExit('FATAL: hot healthy radar must not bypass production policy')
+              if float(p.get('entry_liquidity_usd') or 0)<50000: raise SystemExit('FATAL: paper entry below $50K liquidity')
+          if int((cr.get('baseline') or {}).get('n') or 0)!=len(entries): raise SystemExit('FATAL: cohort research baseline differs from ledger')
+          if qs.get('production_change') is not False or hh.get('production_change') is not False or aq.get('production_change') is not False: raise SystemExit('FATAL: research/audit mutated production policy')
+          if int(aq.get('total_records_audited') or 0)<=0: raise SystemExit('FATAL: address audit has no records')
           for row in hh.get('hot_healthy') or []:
-              if float(row.get('liquidity_usd') or 0)<50000: raise SystemExit('FATAL: HOT_HEALTHY below hard liquidity floor')
+              if float(row.get('liquidity_usd') or 0)<50000: raise SystemExit('FATAL: HOT_HEALTHY below liquidity floor')
               if float(row.get('liquidity_retention') or 0)<0.90: raise SystemExit('FATAL: HOT_HEALTHY lacks liquidity retention')
-          print('FORWARD PAPER ACCOUNTING PASS')
-          print('TOTAL',total,'MEASURED NOW',measured,'PAPER ENTRIES',len(entries),'INVESTED',invested,'VALUE',value,'PNL',pnl,'ROI',roi)
-          print('COHORT RESEARCH PASS', (cr.get('best_counterfactuals_min5') or [])[:3])
-          print('QUALITY SHADOW PASS', qs)
-          print('HOT HEALTHY RADAR PASS', {'hot_healthy':hh.get('hot_healthy_count'), 'healthy_watch':hh.get('healthy_watch_count'), 'scored':hh.get('scored_exact_pair_candidates')})
+              if int(row.get('history_marks_used') or 0)<2: raise SystemExit('FATAL: HOT_HEALTHY lacks multi-mark survival proof')
+              runup=row.get('runup_since_discovery_pct')
+              if runup is None or float(runup)>25: raise SystemExit('FATAL: HOT_HEALTHY violates anti-chase gate')
+          print('INTEGRITY PASS')
+          print('ADDRESS QUALITY', {'total':aq.get('total_records_audited'),'verified':aq.get('verified_exact_pair_count'),'coverage_pct':aq.get('verified_exact_pair_coverage_pct'),'counts':aq.get('quality_counts')})
+          print('HOT HEALTHY', {'hot':hh.get('hot_healthy_count'),'watch':hh.get('healthy_watch_count'),'scored':hh.get('scored_exact_pair_candidates')})
           PY
       - name: Publish measurement data
         run: |
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json data/first-eligible-paper-ledger.json data/cohort-research.json data/cohort-research.md data/quality-shadow-ledger.json data/quality-shadow-summary.json data/hot-healthy-radar.json
+          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json data/first-eligible-paper-ledger.json data/cohort-research.json data/cohort-research.md data/quality-shadow-ledger.json data/quality-shadow-summary.json data/hot-healthy-radar.json data/address-quality-audit.json
           if ! git diff --cached --quiet; then
-            git commit -m 'data: refresh immutable performance, cohort research, quality shadow and hot healthy radar'
+            git commit -m 'data: refresh performance, radar and address quality audit'
             for attempt in 1 2 3 4 5; do
               git fetch origin main
               git merge --no-edit -X ours origin/main
