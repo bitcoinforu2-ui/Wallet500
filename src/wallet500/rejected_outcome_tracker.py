@@ -50,13 +50,21 @@ def _gain(first_price,observations:list[dict],tradable_only:bool=False)->tuple[f
  if not prices:return None,None
  peak=max(prices);current=prices[-1];return (peak/entry-1)*100,(current/entry-1)*100
 
+def _first_reasons(rec:dict)->list[str]:
+ snap=rec.get('first_reject_snapshot') if isinstance(rec.get('first_reject_snapshot'),dict) else {}
+ reasons=[]
+ for field in ('live_survival_reasons','qualification_reasons','production_risk_reasons','holder_cluster_reasons'):
+  vals=snap.get(field)
+  if isinstance(vals,list):reasons.extend(str(x) for x in vals if x)
+ return list(dict.fromkeys(reasons)) or ['UNATTRIBUTED_FIRST_REJECT']
+
 def update()->dict:
  now=datetime.now(timezone.utc).isoformat();ledger=_load(LEDGER,{});records=ledger.get('records') if isinstance(ledger,dict) and isinstance(ledger.get('records'),dict) else {};market={}
  for path in MARKET_SOURCES:
   for row in _rows(_load(path,[])):
    key=_key(row)
    if key!='||':market[key]=_market_snapshot(row,path.name,now)
- appended=0;false_negatives=[];raw_surprises=[];by_filter={}
+ appended=0;false_negatives=[];raw_surprises=[];by_filter={};reason_stats={}
  for key,rec in records.items():
   if not isinstance(rec,dict):continue
   obs=rec.get('observations') if isinstance(rec.get('observations'),list) else [];snap=market.get(key)
@@ -70,16 +78,26 @@ def update()->dict:
   elif raw_peak is not None and raw_peak>=100:classification='RAW_PRICE_SURPRISE_NOT_VERIFIED_TRADABLE'
   else:classification='UNRESOLVED_REJECT'
   rec['classification']=classification;source=str(rec.get('first_reject_source') or 'UNKNOWN');stats=by_filter.setdefault(source,{'records':0,'false_negative_winners':0,'false_negative_major_winners':0,'raw_price_surprises':0,'max_tradable_peak_gain_pct':None});stats['records']+=1
+  reasons=_first_reasons(rec)
+  for reason in reasons:
+   rs=reason_stats.setdefault(source,{}).setdefault(reason,{'records':0,'false_negative_winners':0,'false_negative_major_winners':0,'raw_price_surprises':0,'max_tradable_peak_gain_pct':None})
+   rs['records']+=1
+   if classification.startswith('FALSE_NEGATIVE'):rs['false_negative_winners']+=1
+   if classification=='FALSE_NEGATIVE_MAJOR_WINNER':rs['false_negative_major_winners']+=1
+   if classification=='RAW_PRICE_SURPRISE_NOT_VERIFIED_TRADABLE':rs['raw_price_surprises']+=1
+   if trad_peak is not None:rs['max_tradable_peak_gain_pct']=round(max(float(rs['max_tradable_peak_gain_pct'] or trad_peak),trad_peak),4)
   if classification.startswith('FALSE_NEGATIVE'):
    stats['false_negative_winners']+=1
    if classification=='FALSE_NEGATIVE_MAJOR_WINNER':stats['false_negative_major_winners']+=1
-   false_negatives.append({'identity':rec.get('identity'),'first_reject_source':source,'classification':classification,'tradable_peak_gain_since_reject_pct':rec.get('tradable_peak_gain_since_reject_pct'),'tradable_current_gain_since_reject_pct':rec.get('tradable_current_gain_since_reject_pct'),'raw_peak_gain_since_reject_pct':rec.get('peak_gain_since_reject_pct')})
+   false_negatives.append({'identity':rec.get('identity'),'first_reject_source':source,'first_reject_reasons':reasons,'classification':classification,'tradable_peak_gain_since_reject_pct':rec.get('tradable_peak_gain_since_reject_pct'),'tradable_current_gain_since_reject_pct':rec.get('tradable_current_gain_since_reject_pct'),'raw_peak_gain_since_reject_pct':rec.get('peak_gain_since_reject_pct')})
   elif classification=='RAW_PRICE_SURPRISE_NOT_VERIFIED_TRADABLE':
-   stats['raw_price_surprises']+=1;raw_surprises.append({'identity':rec.get('identity'),'first_reject_source':source,'raw_peak_gain_since_reject_pct':rec.get('peak_gain_since_reject_pct')})
+   stats['raw_price_surprises']+=1;raw_surprises.append({'identity':rec.get('identity'),'first_reject_source':source,'first_reject_reasons':reasons,'raw_peak_gain_since_reject_pct':rec.get('peak_gain_since_reject_pct')})
   if trad_peak is not None:stats['max_tradable_peak_gain_pct']=round(max(float(stats['max_tradable_peak_gain_pct'] or trad_peak),trad_peak),4)
   records[key]=rec
  ledger['records']=records;ledger['records_count']=len(records);ledger['updated_at']=now;LEDGER.write_text(json.dumps(ledger,indent=2))
  for stats in by_filter.values():stats['false_negative_rate_pct']=round(stats['false_negative_winners']/stats['records']*100,4) if stats['records'] else 0
- report={'updated_at':now,'records':len(records),'market_observations_appended':appended,'false_negative_winners':len(false_negatives),'major_false_negatives':sum(x['classification']=='FALSE_NEGATIVE_MAJOR_WINNER' for x in false_negatives),'raw_price_surprises_not_verified_tradable':len(raw_surprises),'thresholds':{'min_tradable_liquidity_usd':int(MIN_TRADABLE_LIQUIDITY),'winner_tradable_peak_gain_pct':100,'major_winner_tradable_peak_gain_pct':400},'false_negatives':sorted(false_negatives,key=lambda x:x.get('tradable_peak_gain_since_reject_pct') or 0,reverse=True),'raw_price_surprises':sorted(raw_surprises,key=lambda x:x.get('raw_peak_gain_since_reject_pct') or 0,reverse=True)};REPORT.write_text(json.dumps(report,indent=2));FILTER_REPORT.write_text(json.dumps({'updated_at':now,'filters':by_filter},indent=2));print(json.dumps({'records':len(records),'false_negative_winners':len(false_negatives),'raw_price_surprises':len(raw_surprises),'observations_added':appended},indent=2));return report
+ for source,reasons in reason_stats.items():
+  for reason,stats in reasons.items():stats['false_negative_rate_pct']=round(stats['false_negative_winners']/stats['records']*100,4) if stats['records'] else 0
+ report={'updated_at':now,'records':len(records),'market_observations_appended':appended,'false_negative_winners':len(false_negatives),'major_false_negatives':sum(x['classification']=='FALSE_NEGATIVE_MAJOR_WINNER' for x in false_negatives),'raw_price_surprises_not_verified_tradable':len(raw_surprises),'thresholds':{'min_tradable_liquidity_usd':int(MIN_TRADABLE_LIQUIDITY),'winner_tradable_peak_gain_pct':100,'major_winner_tradable_peak_gain_pct':400},'false_negatives':sorted(false_negatives,key=lambda x:x.get('tradable_peak_gain_since_reject_pct') or 0,reverse=True),'raw_price_surprises':sorted(raw_surprises,key=lambda x:x.get('raw_peak_gain_since_reject_pct') or 0,reverse=True)};REPORT.write_text(json.dumps(report,indent=2));FILTER_REPORT.write_text(json.dumps({'updated_at':now,'filters':by_filter,'reason_attribution':reason_stats},indent=2));print(json.dumps({'records':len(records),'false_negative_winners':len(false_negatives),'raw_price_surprises':len(raw_surprises),'observations_added':appended,'reason_attribution_sources':len(reason_stats)},indent=2));return report
 
 if __name__=='__main__':update()
