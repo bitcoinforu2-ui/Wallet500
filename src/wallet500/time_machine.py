@@ -1,12 +1,17 @@
 from __future__ import annotations
-import json
+import gzip, json
 from pathlib import Path
 from datetime import datetime, timezone
 
 
 def _load(p,default):
-    try:return json.loads(p.read_text(encoding='utf-8')) if p.exists() else default
+    gz=Path(str(p)+'.gz')
+    try:
+        if gz.exists():
+            with gzip.open(gz,'rt',encoding='utf-8') as f:return json.load(f)
+        if p.exists():return json.loads(p.read_text(encoding='utf-8'))
     except:return default
+    return default
 
 def _pct(a,b):
     try:
