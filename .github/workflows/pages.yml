@@ -18,11 +18,13 @@ on:
       - 'wallet500_option2_emblem.jpg'
       - 'data/run-summary.json'
       - 'data/realizable-performance.json'
+      - 'data/realizable-performance-summary.json'
       - 'data/paper-truth-summary.json'
       - 'data/paper-portfolio-summary.json'
       - 'data/active-qualified-candidates.json'
-      - 'data/blocked-cohort-paper-summary.json'
-      - 'data/blocked-cohort-paper-ledger.json'
+      - 'data/external-signal-cohort-summary.json'
+      - 'data/external-only-paper-summary.json'
+      - 'data/external-only-paper-ledger.json'
       - '.github/workflows/pages.yml'
 permissions:
   contents: read
@@ -62,8 +64,9 @@ jobs:
           if [ -f wallet500_option2_emblem.jpg ]; then cp wallet500_option2_emblem.jpg _site/; fi
           touch _site/.nojekyll
           printf '%s\n' "$GITHUB_SHA" > _site/build.txt
-          for f in _site/index.html _site/live/index.html _site/terminal/index.html _site/performance/index.html _site/control/index.html _site/dashboard-live-price.js _site/data/run-summary.json _site/data/blocked-cohort-paper-summary.json _site/data/blocked-cohort-paper-ledger.json; do check_file "$f"; done
+          for f in _site/index.html _site/live/index.html _site/terminal/index.html _site/performance/index.html _site/control/index.html _site/dashboard-live-price.js _site/data/run-summary.json _site/data/realizable-performance-summary.json _site/data/external-signal-cohort-summary.json; do check_file "$f"; done
           check_text _site/index.html 'WALLET500 · מצב הפרויקט'
+          check_text _site/index.html 'EXTERNAL-ONLY EXPERIMENT'
           check_text _site/live/index.html '<title>Wallet500 Live</title>'
           check_text _site/live/index.html 'Liquidity ≥ $50K'
           check_text _site/performance/index.html 'LIVE PRICE 5s'
@@ -71,8 +74,8 @@ jobs:
           check_text _site/terminal/index.html '<title>Wallet500 Terminal</title>'
           check_text _site/control/index.html '<title>Wallet500 Control Center V2</title>'
           python -m json.tool _site/data/run-summary.json >/dev/null || fail 'invalid run-summary.json'
-          python -m json.tool _site/data/blocked-cohort-paper-summary.json >/dev/null || fail 'invalid blocked-cohort-paper-summary.json'
-          python -m json.tool _site/data/blocked-cohort-paper-ledger.json >/dev/null || fail 'invalid blocked-cohort-paper-ledger.json'
+          python -m json.tool _site/data/realizable-performance-summary.json >/dev/null || fail 'invalid realizable-performance-summary.json'
+          python -m json.tool _site/data/external-signal-cohort-summary.json >/dev/null || fail 'invalid external-signal-cohort-summary.json'
           echo 'BUILD_VERIFY_OK'
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -94,9 +97,9 @@ jobs:
             root="$(curl -fsSL --max-time 20 "${BASE}?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             perf="$(curl -fsSL --max-time 20 "${BASE}performance/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             adapter="$(curl -fsSL --max-time 20 "${BASE}dashboard-live-price.js?sha=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'WALLET500 · מצב הפרויקט' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter"; then ok=1; break; fi
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'EXTERNAL-ONLY EXPERIMENT' <<<"$root" && ! grep -Fq 'ניסוי TOP 10' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter"; then ok=1; break; fi
             echo "verify attempt $attempt/30 not ready yet"
             sleep 10
           done
           [ "$ok" -eq 1 ] || { echo 'Public Wallet500 verification failed'; exit 1; }
-          echo "PUBLIC_VERIFY_OK performance=${BASE}performance/ build=${GITHUB_SHA}"
+          echo "PUBLIC_VERIFY_OK root=${BASE} performance=${BASE}performance/ build=${GITHUB_SHA}"
