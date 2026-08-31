@@ -37,7 +37,7 @@ jobs:
         run: pip install -e . pytest
       - name: Unit tests
         run: python -m pytest -q tests/test_revival_1000.py
-      - name: Collect verified non-stable Solana Revival universe
+      - name: Collect strict Solana-only non-pegged Revival universe
         env:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: python -m wallet500.revival_1000
@@ -46,14 +46,14 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          from wallet500.revival_1000 import is_stable_like
+          from wallet500.revival_1000 import is_pegged_or_derivative_like, is_stable_like
           p=Path('data/revival-1000-latest.json')
           if not p.exists(): raise SystemExit('REVIVAL_SOLANA_OUTPUT_MISSING')
           d=json.loads(p.read_text())
-          if d.get('mode')!='RESEARCH_ONLY_REVIVAL_SOLANA_500_V3': raise SystemExit('REVIVAL_SOLANA_UNSAFE_MODE')
+          if d.get('mode')!='RESEARCH_ONLY_REVIVAL_SOLANA_500_V4': raise SystemExit('REVIVAL_SOLANA_UNSAFE_MODE')
           if d.get('network')!='solana': raise SystemExit('REVIVAL_SOLANA_NETWORK_LABEL_MISSING')
-          if d.get('network_filter')!='STRICT_EXACT_PLATFORM_VERIFICATION': raise SystemExit('REVIVAL_SOLANA_FILTER_NOT_STRICT')
-          if d.get('asset_filter')!='SOLANA_VERIFIED_NON_STABLE_ONLY': raise SystemExit('REVIVAL_SOLANA_ASSET_FILTER_MISSING')
+          if d.get('network_filter')!='STRICT_SOLANA_ONLY_PLATFORM_FOOTPRINT': raise SystemExit('REVIVAL_SOLANA_FILTER_NOT_STRICT')
+          if d.get('asset_filter')!='SOLANA_ONLY_PLATFORM_NON_STABLE_NON_PEGGED_ONLY': raise SystemExit('REVIVAL_SOLANA_ASSET_FILTER_MISSING')
           if d.get('production_portfolio_impact')!='NONE': raise SystemExit('REVIVAL_SOLANA_PRODUCTION_IMPACT_NOT_NONE')
           if d.get('no_hindsight') is not True: raise SystemExit('REVIVAL_SOLANA_NO_HINDSIGHT_VIOLATION')
           coins=d.get('coins') or []
@@ -61,10 +61,12 @@ jobs:
           if len(coins)>500: raise SystemExit(f'REVIVAL_SOLANA_UNIVERSE_TOO_LARGE:{len(coins)}')
           if any(x.get('network')!='solana' for x in coins): raise SystemExit('NON_SOLANA_ASSET_PRESENT')
           if any(x.get('network_verified') is not True for x in coins): raise SystemExit('UNVERIFIED_SOLANA_ASSET_PRESENT')
+          if any(x.get('solana_only_platform_verified') is not True for x in coins): raise SystemExit('CROSS_PLATFORM_ASSET_PRESENT')
           if any(is_stable_like(x) for x in coins): raise SystemExit('STABLECOIN_PRESENT_IN_REVIVAL_500')
+          if any(is_pegged_or_derivative_like(x) for x in coins): raise SystemExit('WRAPPED_PEGGED_DERIVATIVE_PRESENT_IN_REVIVAL_500')
           if any(x.get('pre_alpha_eligible') for x in coins): raise SystemExit('PRE_ALPHA_MUST_WAIT_FOR_VERIFIED_HOLDER_AND_FUNDAMENTAL_EVIDENCE')
           if any(x.get('dex_link_type')!='SOLANA_SEARCH_ONLY_NOT_EXACT_PAIR' for x in coins): raise SystemExit('DEX_LINK_TRUTH_LABEL_MISSING')
-          print('REVIVAL_SOLANA_500_OK', d.get('counts'), 'source=', d.get('source'))
+          print('REVIVAL_SOLANA_500_V4_OK', d.get('counts'), 'source=', d.get('source'))
           PY
       - name: Publish immutable T0 state and latest snapshot
         run: |
@@ -88,7 +90,7 @@ jobs:
               exit 0
             fi
 
-            git commit -m 'data: refresh Solana Revival 500 research universe'
+            git commit -m 'data: refresh strict Solana-only Revival 500 universe'
             if git push origin HEAD:main; then
               echo 'REVIVAL_SOLANA_500_PUBLISH_OK'
               exit 0
