@@ -15,11 +15,12 @@ on:
 permissions:
   contents: write
 
-# Revival and the primary Live Scan both publish generated truth data to main.
-# A shared non-cancelling group serializes those writers and prevents rebase/push
-# races without dropping either run.
+# Revival publishes only its two owned snapshot/state files. Its publisher resets to
+# the latest main and reapplies those files on every retry, so it can race safely
+# without joining the shared Live/Performance queue. Keep only Revival-vs-Revival
+# serialization; this avoids GitHub concurrency replacing an older pending publisher.
 concurrency:
-  group: wallet500-main-data-publisher
+  group: wallet500-revival-solana-500
   cancel-in-progress: false
 
 jobs:
