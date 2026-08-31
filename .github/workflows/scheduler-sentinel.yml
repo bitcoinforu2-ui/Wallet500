@@ -22,10 +22,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Dispatch primary Wallet500 live scan
+      - name: Dispatch primary Wallet500 live scan only when idle
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+
+          active_runs="$(
+            gh run list \
+              --repo "${{ github.repository }}" \
+              --workflow live-scan.yml \
+              --limit 20 \
+              --json status \
+              --jq '[.[] | select(.status == "in_progress" or .status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length'
+          )"
+
+          if [ "${active_runs}" -gt 0 ]; then
+            echo "Primary live scan already active or queued (${active_runs}); sentinel dispatch skipped."
+            exit 0
+          fi
+
           gh workflow run live-scan.yml --repo "${{ github.repository }}" --ref main
           echo "Primary live scan dispatched by scheduler sentinel."
