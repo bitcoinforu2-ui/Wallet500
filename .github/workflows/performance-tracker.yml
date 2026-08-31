@@ -15,6 +15,7 @@ on:
       - 'src/wallet500/cohort_research.py'
       - 'src/wallet500/experiment_v1.py'
       - 'src/wallet500/winner_dna.py'
+      - 'src/wallet500/revival_historical_dna.py'
       - 'src/wallet500/measurable_bias_experiment.py'
       - 'src/wallet500/quality_shadow.py'
       - 'src/wallet500/hot_healthy_radar.py'
@@ -22,6 +23,7 @@ on:
       - 'tests/test_lifecycle_strategy.py'
       - 'tests/test_experiment_v1.py'
       - 'tests/test_research_integrity_v2.py'
+      - 'tests/test_revival_historical_dna.py'
       - '.github/workflows/performance-tracker.yml'
 
 permissions:
@@ -49,7 +51,7 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Run lifecycle strategy and research integrity tests
-        run: python -m pytest -q tests/test_lifecycle_strategy.py tests/test_experiment_v1.py tests/test_research_integrity_v2.py
+        run: python -m pytest -q tests/test_lifecycle_strategy.py tests/test_experiment_v1.py tests/test_research_integrity_v2.py tests/test_revival_historical_dna.py
       - name: Rebuild immutable Performance Since Discovery
         run: python -m wallet500.performance_tracker
       - name: Update forward lifecycle strategy ledger
@@ -66,8 +68,10 @@ jobs:
         run: python -m wallet500.cohort_research
       - name: Run prospective Experiment V1
         run: python -m wallet500.experiment_v1
-      - name: Run Winner DNA shadow study
+      - name: Run balanced Winner DNA shadow study
         run: python -m wallet500.winner_dna
+      - name: Run exact-pair Revival historical DNA study
+        run: python -m wallet500.revival_historical_dna
       - name: Run measurable-vs-rest bias study
         run: python -m wallet500.measurable_bias_experiment
       - name: Verify executable cash quotes
@@ -79,10 +83,10 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          paths=[Path('data/outcome-tracker.json'),Path('data/realizable-performance.json'),Path('data/first-eligible-paper-ledger.json'),Path('data/cohort-research.json'),Path('data/experiment-v1-ledger.json'),Path('data/experiment-v1-scoreboard.json'),Path('data/winner-dna-study.json'),Path('data/measurable-vs-rest-experiment.json'),Path('data/quality-shadow-summary.json'),Path('data/hot-healthy-radar.json'),Path('data/address-quality-audit.json')]
+          paths=[Path('data/outcome-tracker.json'),Path('data/realizable-performance.json'),Path('data/first-eligible-paper-ledger.json'),Path('data/cohort-research.json'),Path('data/experiment-v1-ledger.json'),Path('data/experiment-v1-scoreboard.json'),Path('data/winner-dna-study.json'),Path('data/revival-historical-dna.json'),Path('data/measurable-vs-rest-experiment.json'),Path('data/quality-shadow-summary.json'),Path('data/hot-healthy-radar.json'),Path('data/address-quality-audit.json')]
           for x in paths:
               if not x.exists() or x.stat().st_size == 0: raise SystemExit('FATAL: empty measurement output: '+str(x))
-          d,rp,pl,cr,ev,es,wd,mv,qs,hh,aq=[json.loads(x.read_text()) for x in paths]
+          d,rp,pl,cr,ev,es,wd,rh,mv,qs,hh,aq=[json.loads(x.read_text()) for x in paths]
           total=int(d.get('tracked_tokens') or len((d.get('tokens') or {}))); entries=pl.get('entries') if isinstance(pl.get('entries'),list) else []
           if total<=0: raise SystemExit('FATAL: tracker attempted to publish zero tracked tokens')
           if int(rp.get('paper_entries_count') or 0)!=len(entries): raise SystemExit('FATAL: paper entry count differs from persistent ledger')
@@ -93,6 +97,7 @@ jobs:
           if any(x.get('production_change') is not False for x in (ev,es,wd,mv,qs,hh,aq)): raise SystemExit('FATAL: research mutated production policy')
           if es.get('method')!='PROSPECTIVE_EXPERIMENT_V1': raise SystemExit('FATAL: experiment v1 method mismatch')
           if wd.get('method')!='WINNER_DNA_SHADOW_V2': raise SystemExit('FATAL: winner DNA method mismatch')
+          if rh.get('mode')!='RESEARCH_ONLY_REVIVAL_HISTORICAL_DNA_V1' or rh.get('network')!='solana' or rh.get('production_impact')!='NONE' or rh.get('no_hindsight') is not True: raise SystemExit('FATAL: revival historical DNA truth contract mismatch')
           if mv.get('method')!='MEASURABLE_VS_REST_BIAS_EXPERIMENT_V1': raise SystemExit('FATAL: measurable-vs-rest method mismatch')
           exp_names={x.get('experiment') for x in es.get('experiments') or []}
           if exp_names!={'FIVE_MINUTE_FINGERPRINT','SURVIVOR_FIRST','SOURCE_TOURNAMENT'}: raise SystemExit('FATAL: experiment v1 scoreboard incomplete')
@@ -103,14 +108,14 @@ jobs:
           if aq.get('method')!='ADDRESS_QUALITY_AUDIT_V2': raise SystemExit('FATAL: address audit method mismatch')
           if d.get('exact_pair_index_mode')!='CHAIN_TOKEN_PAIR': raise SystemExit('FATAL: performance tracker is not using chain+token+pair indexing')
           print('INTEGRITY PASS')
-          print('RESEARCH', {'experiment_v1':len(ev.get('records') or []),'winner_dna':wd.get('winner_n'),'winner_controls':wd.get('control_n'),'measured_vs_rest':[mv.get('measured_now_n'),mv.get('rest_n')]})
+          print('RESEARCH', {'experiment_v1':len(ev.get('records') or []),'winner_dna_status':wd.get('status'),'winner_dna':wd.get('winner_n'),'winner_controls':wd.get('control_n'),'solana_winner_dna':(wd.get('solana_study') or {}).get('status'),'revival_historical_dna':rh.get('counts'),'measured_vs_rest':[mv.get('measured_now_n'),mv.get('rest_n')]})
           PY
       - name: Publish measurement data
         run: |
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json data/first-eligible-paper-ledger.json data/cohort-research.json data/cohort-research.md data/experiment-v1-ledger.json data/experiment-v1-scoreboard.json data/experiment-v1-report.md data/winner-dna-study.json data/measurable-vs-rest-experiment.json data/measurable-vs-rest-experiment.md data/quality-shadow-ledger.json data/quality-shadow-summary.json data/hot-healthy-radar.json data/address-quality-audit.json
+          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json data/first-eligible-paper-ledger.json data/cohort-research.json data/cohort-research.md data/experiment-v1-ledger.json data/experiment-v1-scoreboard.json data/experiment-v1-report.md data/winner-dna-study.json data/revival-historical-dna.json data/measurable-vs-rest-experiment.json data/measurable-vs-rest-experiment.md data/quality-shadow-ledger.json data/quality-shadow-summary.json data/hot-healthy-radar.json data/address-quality-audit.json
           if ! git diff --cached --quiet; then
             git commit -m 'data: refresh performance and research lab outputs'
             for attempt in 1 2 3 4 5; do
