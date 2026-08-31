@@ -2,7 +2,9 @@ from wallet500.revival_1000 import (
     has_solana_only_platform,
     is_pegged_or_derivative_like,
     is_stable_like,
+    looks_like_solana_address,
     score_market_signals,
+    select_best_dex_pair,
 )
 
 
@@ -77,3 +79,48 @@ def test_solana_only_platform_footprint_rejects_cross_chain_representation():
     assert has_solana_only_platform({"solana": "So111", "ethereum": ""})
     assert not has_solana_only_platform({"solana": "So111", "ethereum": "0xabc"})
     assert not has_solana_only_platform({"ethereum": "0xabc"})
+
+
+def test_solana_address_shape_validation():
+    assert looks_like_solana_address("So11111111111111111111111111111111111111112")
+    assert looks_like_solana_address("JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN")
+    assert not looks_like_solana_address("PUMP")
+    assert not looks_like_solana_address("0xabc")
+    assert not looks_like_solana_address("O0Il-not-base58")
+
+
+def test_dex_pair_selector_uses_exact_token_and_best_liquidity():
+    token = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"
+    low_pair = "A55XjvzRU4KtR3Lrys8PpLZQvPojPqvnv5bJVHMYy3Jv"
+    high_pair = "BLJ2yug7QjQCxsx922uEu19n5fjHCPbmqMx4XuWB8AXy"
+    pairs = [
+        {
+            "chainId": "solana",
+            "pairAddress": low_pair,
+            "url": f"https://dexscreener.com/solana/{low_pair}",
+            "baseToken": {"address": token},
+            "quoteToken": {"address": "So11111111111111111111111111111111111111112"},
+            "liquidity": {"usd": 10_000},
+            "volume": {"h24": 50_000},
+        },
+        {
+            "chainId": "solana",
+            "pairAddress": high_pair,
+            "url": f"https://dexscreener.com/solana/{high_pair}",
+            "baseToken": {"address": token},
+            "quoteToken": {"address": "So11111111111111111111111111111111111111112"},
+            "liquidity": {"usd": 2_000_000},
+            "volume": {"h24": 5_000_000},
+        },
+        {
+            "chainId": "ethereum",
+            "pairAddress": high_pair,
+            "url": f"https://dexscreener.com/ethereum/{high_pair}",
+            "baseToken": {"address": token},
+            "quoteToken": {"address": "fake"},
+            "liquidity": {"usd": 99_000_000},
+        },
+    ]
+    best = select_best_dex_pair(token, pairs)
+    assert best is not None
+    assert best["pairAddress"] == high_pair
