@@ -46,7 +46,11 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          from wallet500.revival_1000 import is_pegged_or_derivative_like, is_stable_like
+          from wallet500.revival_1000 import (
+              is_pegged_or_derivative_like,
+              is_stable_like,
+              looks_like_solana_address,
+          )
           p=Path('data/revival-1000-latest.json')
           if not p.exists(): raise SystemExit('REVIVAL_SOLANA_OUTPUT_MISSING')
           d=json.loads(p.read_text())
@@ -62,10 +66,27 @@ jobs:
           if any(x.get('network')!='solana' for x in coins): raise SystemExit('NON_SOLANA_ASSET_PRESENT')
           if any(x.get('network_verified') is not True for x in coins): raise SystemExit('UNVERIFIED_SOLANA_ASSET_PRESENT')
           if any(x.get('solana_only_platform_verified') is not True for x in coins): raise SystemExit('CROSS_PLATFORM_ASSET_PRESENT')
+          if any(not looks_like_solana_address(x.get('token_address')) for x in coins): raise SystemExit('SOLANA_TOKEN_ADDRESS_MISSING_OR_INVALID')
           if any(is_stable_like(x) for x in coins): raise SystemExit('STABLECOIN_PRESENT_IN_REVIVAL_500')
           if any(is_pegged_or_derivative_like(x) for x in coins): raise SystemExit('WRAPPED_PEGGED_DERIVATIVE_PRESENT_IN_REVIVAL_500')
           if any(x.get('pre_alpha_eligible') for x in coins): raise SystemExit('PRE_ALPHA_MUST_WAIT_FOR_VERIFIED_HOLDER_AND_FUNDAMENTAL_EVIDENCE')
-          if any(x.get('dex_link_type')!='SOLANA_SEARCH_ONLY_NOT_EXACT_PAIR' for x in coins): raise SystemExit('DEX_LINK_TRUTH_LABEL_MISSING')
+          verified=0
+          for x in coins:
+              link_type=x.get('dex_link_type')
+              if link_type=='DEXSCREENER_VERIFIED_PAIR':
+                  verified += 1
+                  if not looks_like_solana_address(x.get('dex_pair_address')):
+                      raise SystemExit('DEX_VERIFIED_PAIR_ADDRESS_INVALID')
+                  if not str(x.get('dex_link') or '').startswith('https://dexscreener.com/solana/'):
+                      raise SystemExit('DEX_VERIFIED_PAIR_URL_INVALID')
+              elif link_type=='NO_VERIFIED_DEX_PAIR':
+                  if x.get('dex_link') is not None:
+                      raise SystemExit('UNVERIFIED_DEX_LINK_MUST_BE_NULL')
+              else:
+                  raise SystemExit('DEX_LINK_TRUTH_LABEL_MISSING')
+          if verified < 1: raise SystemExit('NO_VERIFIED_DEX_PAIR_LINKS_RESOLVED')
+          if (d.get('counts') or {}).get('dex_verified_pairs') != verified:
+              raise SystemExit('DEX_VERIFIED_PAIR_COUNT_MISMATCH')
           print('REVIVAL_SOLANA_500_V4_OK', d.get('counts'), 'source=', d.get('source'))
           PY
       - name: Publish immutable T0 state and latest snapshot
