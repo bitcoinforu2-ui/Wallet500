@@ -5,7 +5,7 @@ on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_run:
-    workflows: ['Wallet500 Revival Solana 500']
+    workflows: ['Wallet500 Revival Solana 500', 'Wallet500 Hybrid Token Profiles']
     types: [completed]
   push:
     branches: [main]
@@ -17,6 +17,7 @@ on:
       - 'dashboard-backtest.html'
       - 'dashboard-engine-control.html'
       - 'dashboard-revival1000.html'
+      - 'dashboard-hybrid.html'
       - 'dashboard-reference-fix.js'
       - 'dashboard-live-price.js'
       - 'wallet500_option2_emblem.jpg'
@@ -36,6 +37,7 @@ on:
       - 'data/quality-shadow-summary.json'
       - 'data/revival-1000-latest.json'
       - 'data/revival-1000-state.json'
+      - 'data/hybrid-token-profiles.json'
       - '.github/workflows/pages.yml'
 permissions:
   contents: read
@@ -60,7 +62,7 @@ jobs:
           check_file(){ test -s "$1" || fail "missing or empty: $1"; echo "OK file $1"; }
           check_text(){ grep -Fq "$2" "$1" || fail "missing marker [$2] in $1"; echo "OK marker $1 :: $2"; }
           rm -rf _site
-          mkdir -p _site/live _site/terminal _site/performance _site/backtest _site/control _site/hub _site/revival
+          mkdir -p _site/live _site/terminal _site/performance _site/backtest _site/control _site/hub _site/revival _site/hybrid
           cp index.html _site/index.html
           cp index.html _site/dashboard-hub.html
           cp index.html _site/hub.html
@@ -71,13 +73,15 @@ jobs:
           cp dashboard-backtest.html _site/backtest/index.html
           cp dashboard-engine-control.html _site/control/index.html
           cp dashboard-revival1000.html _site/revival/index.html
+          cp dashboard-hybrid.html _site/hybrid/index.html
+          cp dashboard-hybrid.html _site/dashboard-hybrid.html
           cp dashboard-reference-fix.js _site/dashboard-reference-fix.js
           cp dashboard-live-price.js _site/dashboard-live-price.js
           cp -r data _site/data
           if [ -f wallet500_option2_emblem.jpg ]; then cp wallet500_option2_emblem.jpg _site/; fi
           touch _site/.nojekyll
           printf '%s\n' "$GITHUB_SHA" > _site/build.txt
-          for f in _site/index.html _site/live/index.html _site/terminal/index.html _site/performance/index.html _site/control/index.html _site/revival/index.html _site/dashboard-live-price.js _site/data/run-summary.json _site/data/realizable-performance-summary.json _site/data/external-signal-cohort-summary.json _site/data/revival-1000-latest.json; do check_file "$f"; done
+          for f in _site/index.html _site/live/index.html _site/terminal/index.html _site/performance/index.html _site/control/index.html _site/revival/index.html _site/hybrid/index.html _site/dashboard-live-price.js _site/data/run-summary.json _site/data/realizable-performance-summary.json _site/data/external-signal-cohort-summary.json _site/data/revival-1000-latest.json; do check_file "$f"; done
           check_text _site/index.html 'WALLET500 · מצב הפרויקט'
           check_text _site/index.html 'EXTERNAL-ONLY EXPERIMENT'
           check_text _site/live/index.html '<title>Wallet500 Live</title>'
@@ -89,6 +93,8 @@ jobs:
           check_text _site/control/index.html '<title>Wallet500 Control Center V2</title>'
           check_text _site/revival/index.html '<title>Wallet500 Revival Solana 500</title>'
           check_text _site/revival/index.html 'SOLANA-ONLY PLATFORM'
+          check_text _site/hybrid/index.html '<title>Wallet500 Hybrid Token Radar</title>'
+          check_text _site/hybrid/index.html 'TRUTH CONTRACT'
           python -m json.tool _site/data/run-summary.json >/dev/null || fail 'invalid run-summary.json'
           python -m json.tool _site/data/realizable-performance-summary.json >/dev/null || fail 'invalid realizable-performance-summary.json'
           python -m json.tool _site/data/external-signal-cohort-summary.json >/dev/null || fail 'invalid external-signal-cohort-summary.json'
@@ -119,6 +125,17 @@ jobs:
           if bad:
               raise SystemExit(f'forbidden stable/wrapped/pegged asset present: {bad[:10]}')
           print('REVIVAL_SOLANA_500_V4_DATA_OK', d.get('counts', {}))
+          hp=Path('_site/data/hybrid-token-profiles.json')
+          if hp.exists():
+              h=json.loads(hp.read_text())
+              if h.get('mode')!='RESEARCH_ONLY_HYBRID_TOKEN_PROFILE_V1' or h.get('contract')!='HYBRID_TOKEN_PROFILE_V1' or h.get('network')!='solana':
+                  raise SystemExit('hybrid truth contract invalid')
+              rows=h.get('profiles') or []
+              if not (100 <= len(rows) <= 500):
+                  raise SystemExit(f'hybrid profile count invalid: {len(rows)}')
+              print('HYBRID_TOKEN_RADAR_DATA_OK', h.get('counts', {}))
+          else:
+              print('HYBRID_TOKEN_RADAR_WAITING_FOR_FIRST_SNAPSHOT')
           PY
           echo 'BUILD_VERIFY_OK'
       - name: Configure GitHub Pages
@@ -141,11 +158,12 @@ jobs:
             root="$(curl -fsSL --max-time 20 "${BASE}?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             perf="$(curl -fsSL --max-time 20 "${BASE}performance/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             revival="$(curl -fsSL --max-time 20 "${BASE}revival/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
+            hybrid="$(curl -fsSL --max-time 20 "${BASE}hybrid/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             revival_data="$(curl -fsSL --max-time 20 "${BASE}data/revival-1000-latest.json?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             adapter="$(curl -fsSL --max-time 20 "${BASE}dashboard-live-price.js?sha=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'EXTERNAL-ONLY EXPERIMENT' <<<"$root" && ! grep -Fq 'ניסוי TOP 10' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'RESEARCH LAB — VISUAL' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter" && grep -Fq 'WALLET500 · REVIVAL SOLANA 500' <<<"$revival" && grep -Fq 'SOLANA-ONLY PLATFORM' <<<"$revival" && python -c 'import json,sys; d=json.load(sys.stdin); c=d.get("coins") or []; banned={"WBTC","CBBTC","TBTC","LBTC","SOLVBTC","WSOL","BNSOL","JITOSOL","JUPSOL","MSOL","STSOL","VSOL","JLP","SUSDE","SYRUPUSDC","USYC","USTB","BUILD","USDC","USDT","DAI","USDS","USD1","USDE","PYUSD","FDUSD"}; ok=d.get("mode")=="RESEARCH_ONLY_REVIVAL_SOLANA_500_V4" and d.get("network")=="solana" and d.get("network_filter")=="STRICT_SOLANA_ONLY_PLATFORM_FOOTPRINT" and d.get("asset_filter")=="SOLANA_ONLY_PLATFORM_NON_STABLE_NON_PEGGED_ONLY" and 100<=len(c)<=500 and all(x.get("solana_only_platform_verified") is True and x.get("stablecoin_excluded") is True and x.get("pegged_derivative_excluded") is True and str(x.get("symbol") or "").upper() not in banned for x in c); raise SystemExit(0 if ok else 1)' <<<"$revival_data" >/dev/null 2>&1; then ok=1; break; fi
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'EXTERNAL-ONLY EXPERIMENT' <<<"$root" && ! grep -Fq 'ניסוי TOP 10' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'RESEARCH LAB — VISUAL' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter" && grep -Fq 'WALLET500 · REVIVAL SOLANA 500' <<<"$revival" && grep -Fq 'SOLANA-ONLY PLATFORM' <<<"$revival" && grep -Fq 'WALLET500 · HYBRID TOKEN RADAR' <<<"$hybrid" && grep -Fq 'TRUTH CONTRACT' <<<"$hybrid" && python -c 'import json,sys; d=json.load(sys.stdin); c=d.get("coins") or []; banned={"WBTC","CBBTC","TBTC","LBTC","SOLVBTC","WSOL","BNSOL","JITOSOL","JUPSOL","MSOL","STSOL","VSOL","JLP","SUSDE","SYRUPUSDC","USYC","USTB","BUILD","USDC","USDT","DAI","USDS","USD1","USDE","PYUSD","FDUSD"}; ok=d.get("mode")=="RESEARCH_ONLY_REVIVAL_SOLANA_500_V4" and d.get("network")=="solana" and d.get("network_filter")=="STRICT_SOLANA_ONLY_PLATFORM_FOOTPRINT" and d.get("asset_filter")=="SOLANA_ONLY_PLATFORM_NON_STABLE_NON_PEGGED_ONLY" and 100<=len(c)<=500 and all(x.get("solana_only_platform_verified") is True and x.get("stablecoin_excluded") is True and x.get("pegged_derivative_excluded") is True and str(x.get("symbol") or "").upper() not in banned for x in c); raise SystemExit(0 if ok else 1)' <<<"$revival_data" >/dev/null 2>&1; then ok=1; break; fi
             echo "verify attempt $attempt/30 not ready yet"
             sleep 10
           done
           [ "$ok" -eq 1 ] || { echo 'Public Wallet500 verification failed'; exit 1; }
-          echo "PUBLIC_VERIFY_OK root=${BASE} performance=${BASE}performance/ revival=${BASE}revival/ build=${GITHUB_SHA}"
+          echo "PUBLIC_VERIFY_OK root=${BASE} performance=${BASE}performance/ revival=${BASE}revival/ hybrid=${BASE}hybrid/ build=${GITHUB_SHA}"
