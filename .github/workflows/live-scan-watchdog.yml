@@ -6,23 +6,22 @@ on:
     - cron: '13,28,43,58 * * * *'
 
 permissions:
-  contents: write
+  contents: read
+  actions: write
 
 concurrency:
-  group: wallet500-live-scan
-  cancel-in-progress: false
+  group: wallet500-live-scan-watchdog
+  cancel-in-progress: true
 
 jobs:
   watchdog:
     runs-on: ubuntu-latest
-    timeout-minutes: 14
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+          fetch-depth: 1
+
       - name: Check scan freshness
         id: freshness
         shell: bash
@@ -31,104 +30,47 @@ jobs:
           import json
           from datetime import datetime, timezone
           from pathlib import Path
-          p=Path('data/run-summary.json')
-          stale=True; age=999999
+
+          p = Path('data/run-summary.json')
+          stale = True
+          age = 999999.0
           if p.exists():
               try:
-                  d=json.loads(p.read_text())
-                  ts=datetime.fromisoformat(d['updated_at'])
-                  age=(datetime.now(timezone.utc)-ts).total_seconds()/60
-                  stale=age>12
+                  d = json.loads(p.read_text())
+                  ts = datetime.fromisoformat(d['updated_at'])
+                  age = (datetime.now(timezone.utc) - ts).total_seconds() / 60
+                  stale = age > 12
               except Exception:
-                  stale=True
+                  stale = True
           print('stale=' + ('true' if stale else 'false'))
           print(f'age_minutes={age:.1f}')
           PY
+
       - name: Fresh scan already exists
         if: steps.freshness.outputs.stale != 'true'
         run: echo "Primary scan is fresh (${{ steps.freshness.outputs.age_minutes }} minutes); watchdog exits cleanly."
-      - name: Install
-        if: steps.freshness.outputs.stale == 'true'
-        run: pip install -e .
-      - name: Run recovery intelligence scan
+
+      - name: Dispatch full primary scan only when idle
         if: steps.freshness.outputs.stale == 'true'
         env:
-          PYTHONUNBUFFERED: '1'
-        run: python -m wallet500.orchestrator
-      - name: Apply fresh Solana survival gate
-        if: steps.freshness.outputs.stale == 'true'
-        run: python -m wallet500.fresh_solana_gate
-      - name: Capture immutable qualified evidence
-        if: steps.freshness.outputs.stale == 'true'
-        run: python -m wallet500.evidence_capture
-      - name: Send gated Telegram alerts
-        if: steps.freshness.outputs.stale == 'true'
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python -m wallet500.telegram_alerts
-      - name: Record watchdog telemetry
-        env:
-          W500_EVENT: ${{ github.event_name }}
-          W500_RUN_ID: ${{ github.run_id }}
-          W500_WORKFLOW: WATCHDOG
-          W500_SCHEDULE: ${{ github.event.schedule }}
-          W500_STALE: ${{ steps.freshness.outputs.stale }}
-          W500_AGE: ${{ steps.freshness.outputs.age_minutes }}
-        run: |
-          python3 - <<'PY'
-          import json, os
-          from datetime import datetime, timezone
-          from pathlib import Path
-          p=Path('data/scheduler-health.json')
-          try: d=json.loads(p.read_text()) if p.exists() else {}
-          except Exception: d={}
-          h=d.get('history') if isinstance(d.get('history'),list) else []
-          now=datetime.now(timezone.utc).isoformat()
-          row={'at':now,'workflow':os.getenv('W500_WORKFLOW'),'event':os.getenv('W500_EVENT'),'run_id':os.getenv('W500_RUN_ID'),'schedule':os.getenv('W500_SCHEDULE') or None,'stale':os.getenv('W500_STALE')=='true','age_minutes':float(os.getenv('W500_AGE') or 0)}
-          h.append(row); h=h[-100:]
-          d={'updated_at':now,'last':row,'history':h}
-          p.write_text(json.dumps(d,indent=2))
-          PY
-      - name: Validate recovery output
-        if: steps.freshness.outputs.stale == 'true'
-        run: |
-          python3 - <<'PY'
-          import json
-          from datetime import datetime, timezone
-          from pathlib import Path
-          p=Path('data/run-summary.json')
-          if not p.exists(): raise SystemExit('FATAL: run-summary.json missing')
-          d=json.loads(p.read_text())
-          ts=datetime.fromisoformat(d['updated_at'])
-          age=(datetime.now(timezone.utc)-ts).total_seconds()
-          if age>300: raise SystemExit(f'FATAL: recovery output stale ({age:.0f}s)')
-          if not d.get('verified_only'): raise SystemExit('FATAL: recovery output not verified-only')
-          for required in ('data/fresh-solana-survival.json','data/active-qualified-candidates.json','data/scheduler-health.json','data/telegram-alert-report.json'):
-              if not Path(required).exists(): raise SystemExit('FATAL: missing '+required)
-          print('WATCHDOG RECOVERY HEALTHY', d['updated_at'], 'active', d.get('active_qualified',0), 'pending', d.get('fresh_solana_pending',0), 'failed', d.get('fresh_solana_failed',0))
-          PY
-      - name: Publish watchdog telemetry or recovered scan data
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-watchdog'
-          git config user.email 'wallet500-watchdog@users.noreply.github.com'
-          git add data/
-          git diff --cached --quiet && exit 0
-          git commit -m 'data: watchdog scheduler telemetry'
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            if ! git rebase origin/main; then
-              git rebase --abort || true
-              echo '::error::WATCHDOG_PUBLISH_CONFLICT: concurrent main changes conflict with watchdog data; refusing to overwrite or auto-resolve truth data.'
-              exit 1
-            fi
-            if git push origin HEAD:main; then
-              echo 'WATCHDOG_PUBLISH_OK'
-              exit 0
-            fi
-            echo "WATCHDOG_PUBLISH_RACE: push raced with main; retrying safely (attempt $attempt/5)"
-            sleep 3
-          done
-          echo '::error::WATCHDOG_PUBLISH_RETRY_EXHAUSTED: failed to publish after 5 safe retries; no force push performed.'
-          exit 1
+
+          # The watchdog must never generate or publish partial truth data itself.
+          # Recovery is delegated only to the full Live Scan workflow, which owns
+          # Exact Pair revalidation, $50K liquidity hardening, fail-closed
+          # Holder/Cluster gates, system health and strict validation before publish.
+          runs_json="$(gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/live-scan.yml/runs?per_page=30")"
+
+          active_count="$(printf '%s' "$runs_json" | jq '[.workflow_runs[] | select(.status == "in_progress" or .status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length')"
+
+          if [ "$active_count" -gt 0 ]; then
+            echo "WATCHDOG_STALE_BUT_PRIMARY_ACTIVE age=${{ steps.freshness.outputs.age_minutes }}m active=${active_count}; no duplicate dispatch."
+            exit 0
+          fi
+
+          echo "WATCHDOG_STALE_DISPATCH_FULL_PRIMARY age=${{ steps.freshness.outputs.age_minutes }}m"
+          gh workflow run live-scan.yml --repo "$GITHUB_REPOSITORY" --ref main
