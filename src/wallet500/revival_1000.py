@@ -17,10 +17,7 @@ MAX_CANDIDATES = 500
 DEX_BATCH_SIZE = 30
 BASE58 = set("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
 
-# Stable-value assets do not belong in Revival research: their intended price
-# behavior is fundamentally different from the drawdown/revival behavior we
-# are trying to learn. Keep both exact known identifiers and conservative
-# symbol/name heuristics so wrapped/bridged stable variants are also removed.
+# Stable-value assets do not belong in Revival research.
 STABLE_IDS = {
     "tether", "usd-coin", "dai", "usds", "usd1-wlfi", "ethena-usde",
     "paypal-usd", "first-digital-usd", "true-usd", "pax-dollar",
@@ -30,12 +27,10 @@ STABLE_IDS = {
 STABLE_SYMBOLS = {
     "USDT", "USDC", "DAI", "USDS", "USD1", "USDE", "PYUSD", "FDUSD",
     "TUSD", "USDP", "GUSD", "FRAX", "LUSD", "CRVUSD", "USDD", "USDB",
-    "USDX", "USD0", "USDY", "EURC", "EURS", "EURCV",
+    "USDX", "USX", "USD0", "USDY", "EURC", "EURS", "EURCV",
 }
 
-# Wrapped, pegged, liquid-staking, LP and tokenized receipt assets are not part
-# of the native Solana Revival universe. Exact symbols cover common cases and
-# the name rules provide a conservative second line of defence.
+# Wrapped, pegged, liquid-staking, LP and tokenized receipt assets are excluded.
 PEGGED_DERIVATIVE_SYMBOLS = {
     "WBTC", "CBBTC", "TBTC", "LBTC", "SOLVBTC", "WSOL",
     "BNSOL", "JITOSOL", "JUPSOL", "MSOL", "STSOL", "VSOL",
@@ -58,6 +53,7 @@ PEGGED_DERIVATIVE_NAME_TERMS = (
     "lp token",
     "yield bearing",
     "yield-bearing",
+    "tokenized ",
     "tokenized treasury",
     "tokenized fund",
     "government securities fund",
@@ -196,9 +192,6 @@ def fetch_dex_pair_map(token_addresses: list[str]) -> dict[str, dict]:
                 timeout=20,
             )
         except Exception:
-            # DEX links are convenience metadata, not a market-source truth gate.
-            # If DexScreener is temporarily unavailable we keep the asset and show
-            # no DEX button instead of manufacturing a broken link.
             continue
         if not isinstance(pairs, list):
             continue
@@ -225,9 +218,6 @@ def fetch_coingecko() -> list[dict]:
     solana_contracts = fetch_solana_only_contracts(headers)
     out: list[dict] = []
 
-    # Pull a wider source universe so strict identity filtering still leaves up
-    # to 500 valid candidates. An asset is rejected if CoinGecko exposes any
-    # other active platform address.
     for page in range(1, 5):
         url = (
             "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd"
@@ -308,7 +298,7 @@ def n(v, default=0.0) -> float:
 
 
 def score_market_signals(x: dict) -> tuple[float, list[str]]:
-    """Market-only watch score. Holder/fundamental evidence is intentionally excluded until verified."""
+    """Legacy market-only watch score kept for transparency and comparison."""
     s = 0.0
     reasons = []
     dd = n(x.get("drawdown_from_ath_pct"), -1)
@@ -343,6 +333,127 @@ def score_market_signals(x: dict) -> tuple[float, list[str]]:
     return max(0.0, min(100.0, s)), reasons
 
 
+def load_previous_snapshot() -> tuple[str | None, dict[str, dict]]:
+    """Read the immediately previous published snapshot for no-hindsight trend comparisons."""
+    if not LATEST.exists():
+        return None, {}
+    try:
+        payload = json.loads(LATEST.read_text())
+    except Exception:
+        return None, {}
+    coins = payload.get("coins") or []
+    by_token = {
+        str(x.get("token_address")): x
+        for x in coins
+        if looks_like_solana_address(x.get("token_address"))
+    }
+    return payload.get("generated_at"), by_token
+
+
+def score_revival_verified(x: dict, previous: dict | None = None) -> tuple[float, dict, list[str], int]:
+    """Verified-only 100-point composite Revival score; missing evidence always scores zero."""
+    previous = previous or {}
+    reasons: list[str] = []
+
+    raw_market, market_reasons = score_market_signals(x)
+    market = min(40.0, round(raw_market * (40.0 / 90.0), 2))
+    reasons.extend(market_reasons)
+
+    liquidity = 0.0
+    exact_pair = x.get("dex_link_type") == "DEXSCREENER_VERIFIED_PAIR"
+    liq = max(n(x.get("dex_pair_liquidity_usd")), 0)
+    if exact_pair:
+        liquidity += 4
+        reasons.append("EXACT_PAIR_VERIFIED")
+        if liq >= 10_000:
+            liquidity += 4; reasons.append("PAIR_LIQUIDITY_GE_10K")
+        if liq >= 50_000:
+            liquidity += 4; reasons.append("PAIR_LIQUIDITY_GE_50K")
+        if liq >= 250_000:
+            liquidity += 4; reasons.append("PAIR_LIQUIDITY_GE_250K")
+        if liq >= 1_000_000:
+            liquidity += 4; reasons.append("PAIR_LIQUIDITY_GE_1M")
+    else:
+        reasons.append("NO_VERIFIED_PAIR")
+
+    pair_survival = 0.0
+    volume_trend = 0.0
+    liquidity_change_pct = None
+    pair_volume_change_pct = None
+    previous_pair = str(previous.get("dex_pair_address") or "")
+    current_pair = str(x.get("dex_pair_address") or "")
+    same_pair = bool(exact_pair and previous_pair and current_pair and previous_pair == current_pair)
+
+    coverage = 60
+    if same_pair:
+        coverage = 90
+        pair_survival += 8
+        reasons.append("EXACT_PAIR_SURVIVED_PREVIOUS_SNAPSHOT")
+
+        prev_liq = max(n(previous.get("dex_pair_liquidity_usd")), 0)
+        if prev_liq > 0:
+            liquidity_change_pct = ((liq / prev_liq) - 1.0) * 100.0
+            retention = liq / prev_liq
+            if retention >= 1.0:
+                pair_survival += 7; reasons.append("LIQUIDITY_SURVIVAL_GE_100PCT")
+            elif retention >= 0.75:
+                pair_survival += 5; reasons.append("LIQUIDITY_SURVIVAL_GE_75PCT")
+            elif retention >= 0.50:
+                pair_survival += 2; reasons.append("LIQUIDITY_SURVIVAL_GE_50PCT")
+            elif retention < 0.25:
+                reasons.append("LIQUIDITY_SURVIVAL_COLLAPSE_LT_25PCT")
+
+        current_pair_vol = max(n(x.get("dex_pair_volume_24h_usd")), 0)
+        prev_pair_vol = max(n(previous.get("dex_pair_volume_24h_usd")), 0)
+        if prev_pair_vol > 0:
+            pair_volume_change_pct = ((current_pair_vol / prev_pair_vol) - 1.0) * 100.0
+            vr = current_pair_vol / prev_pair_vol
+            if vr >= 1.50:
+                volume_trend = 15; reasons.append("PAIR_VOLUME_TREND_GE_150PCT")
+            elif vr >= 1.25:
+                volume_trend = 10; reasons.append("PAIR_VOLUME_TREND_GE_125PCT")
+            elif vr >= 1.10:
+                volume_trend = 5; reasons.append("PAIR_VOLUME_TREND_GE_110PCT")
+            elif vr >= 0.75:
+                volume_trend = 2; reasons.append("PAIR_VOLUME_TREND_STABLE_GE_75PCT")
+            else:
+                reasons.append("PAIR_VOLUME_TREND_WEAK_LT_75PCT")
+    elif previous_pair:
+        reasons.append("PAIR_IDENTITY_CHANGED_OR_NOT_RESOLVED")
+    else:
+        reasons.append("PAIR_SURVIVAL_PENDING_PRIOR_SNAPSHOT")
+
+    holder_cluster = 0.0
+    smart_money = 0.0
+    reasons.append("HOLDER_CLUSTER_PENDING_VERIFIED_SOURCE")
+    reasons.append("SMART_MONEY_PENDING_VERIFIED_SOURCE")
+
+    risk_penalty = 0.0
+    if liquidity_change_pct is not None and liquidity_change_pct <= -75:
+        risk_penalty += 10
+        reasons.append("LIQUIDITY_COLLAPSE_PENALTY")
+    if exact_pair and liq < 10_000:
+        risk_penalty += 5
+        reasons.append("THIN_PAIR_LIQUIDITY_PENALTY")
+
+    total = market + liquidity + pair_survival + volume_trend + holder_cluster + smart_money - risk_penalty
+    total = max(0.0, min(100.0, total))
+
+    components = {
+        "market": round(market, 2),
+        "liquidity_quality": round(liquidity, 2),
+        "pair_survival": round(pair_survival, 2),
+        "pair_volume_trend": round(volume_trend, 2),
+        "holder_cluster": 0.0,
+        "smart_money": 0.0,
+        "risk_penalty": round(risk_penalty, 2),
+        "liquidity_change_pct": None if liquidity_change_pct is None else round(liquidity_change_pct, 2),
+        "pair_volume_change_pct": None if pair_volume_change_pct is None else round(pair_volume_change_pct, 2),
+        "same_pair_as_previous": same_pair,
+    }
+    return round(total, 2), components, reasons, coverage
+
+
 def load_state() -> dict:
     if not STATE.exists():
         return {"version": 4, "network": NETWORK, "first_t0": now_iso(), "coins": {}}
@@ -357,9 +468,11 @@ def load_state() -> dict:
 
 def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
     ts = now_iso()
+    previous_generated_at, previous_by_token = load_previous_snapshot()
     state = load_state()
     coins_state = state.setdefault("coins", {})
     normalized = []
+
     for i, x in enumerate(rows[:MAX_CANDIDATES], 1):
         if (
             x.get("network") != NETWORK
@@ -370,30 +483,46 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
             or is_pegged_or_derivative_like(x)
         ):
             continue
+
         x["universe_rank"] = len(normalized) + 1
         x["market_cap_rank"] = x.get("market_cap_rank") or x["universe_rank"]
+
         if x.get("dex_link_type") != "DEXSCREENER_VERIFIED_PAIR":
             x["dex_link"] = None
             x["dex_pair_address"] = None
             x["dex_link_type"] = "NO_VERIFIED_DEX_PAIR"
+
         x["coingecko_link"] = "https://www.coingecko.com/en/coins/" + str(x.get("id") or "")
-        score, reasons = score_market_signals(x)
-        x["watch_score_market_only"] = round(score, 2)
-        x["watch_reasons"] = reasons
+
+        market_score, market_reasons = score_market_signals(x)
+        x["watch_score_market_only"] = round(market_score, 2)
+        x["watch_reasons_market_only"] = market_reasons
+
+        previous = previous_by_token.get(str(x.get("token_address") or ""))
+        revival_score, components, reasons, coverage = score_revival_verified(x, previous)
+        x["revival_score_verified"] = revival_score
+        x["revival_score_components"] = components
+        x["revival_score_reasons"] = reasons
+        x["revival_evidence_coverage_pct"] = coverage
+        x["previous_snapshot_at"] = previous_generated_at if previous else None
+
         dd = n(x.get("drawdown_from_ath_pct"), -1)
         core = 70 <= dd <= 95
-        if core and score >= 65:
+        if core and revival_score >= 65:
             status = "WAKING_MARKET_ONLY"
         elif core:
             status = "DEEP_WATCH"
         else:
             status = "OUTSIDE_CORE_DRAWDOWN_BAND"
         x["watch_status"] = status
+
         x["holder_growth_verified"] = None
         x["concentration_change_verified"] = None
+        x["smart_money_verified"] = None
         x["fundamental_evidence_verified"] = None
         x["pre_alpha_eligible"] = False
-        x["pre_alpha_blocker"] = "HOLDER_AND_FUNDAMENTAL_EVIDENCE_NOT_YET_VERIFIED"
+        x["pre_alpha_blocker"] = "HOLDER_CLUSTER_SMART_MONEY_AND_FUNDAMENTAL_EVIDENCE_NOT_YET_VERIFIED"
+
         key = str(x.get("id") or x.get("symbol") or i)
         st = coins_state.setdefault(
             key,
@@ -407,6 +536,11 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
         )
         if not st.get("token_address"):
             st["token_address"] = x.get("token_address")
+        st["last_seen_at"] = ts
+        st["last_dex_pair_address"] = x.get("dex_pair_address")
+        st["last_dex_pair_liquidity_usd"] = x.get("dex_pair_liquidity_usd")
+        st["last_dex_pair_volume_24h_usd"] = x.get("dex_pair_volume_24h_usd")
+        st["last_revival_score_verified"] = revival_score
         x["t0"] = st
         normalized.append(x)
 
@@ -414,9 +548,15 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
     state["coins"] = coins_state
     DATA.mkdir(exist_ok=True)
     STATE.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+
     core_count = sum(1 for x in normalized if x["watch_status"] != "OUTSIDE_CORE_DRAWDOWN_BAND")
     waking = sum(1 for x in normalized if x["watch_status"] == "WAKING_MARKET_ONLY")
     dex_verified = sum(1 for x in normalized if x.get("dex_link_type") == "DEXSCREENER_VERIFIED_PAIR")
+    pair_survival_observed = sum(
+        1 for x in normalized
+        if (x.get("revival_score_components") or {}).get("same_pair_as_previous") is True
+    )
+
     return {
         "version": 4,
         "mode": MODE,
@@ -424,6 +564,7 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
         "network_filter": "STRICT_SOLANA_ONLY_PLATFORM_FOOTPRINT",
         "asset_filter": "SOLANA_ONLY_PLATFORM_NON_STABLE_NON_PEGGED_ONLY",
         "generated_at": ts,
+        "previous_snapshot_at": previous_generated_at,
         "production_portfolio_impact": "NONE",
         "no_hindsight": True,
         "universe_definition": "UP_TO_500_SOLANA_ONLY_PLATFORM_ASSETS_BY_MARKET_CAP_FROM_SOLANA_ECOSYSTEM_FEED; ANY OTHER ACTIVE PLATFORM ADDRESS, STABLE, WRAPPED, PEGGED, STAKED, LP OR TOKENIZED_RECEIPT IS EXCLUDED",
@@ -434,15 +575,28 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
             "waking_market_only": waking,
             "pre_alpha": 0,
             "dex_verified_pairs": dex_verified,
+            "pair_survival_observed": pair_survival_observed,
         },
         "scoring_contract": {
-            "market_score_max": 100,
+            "version": "VERIFIED_COMPOSITE_REVIVAL_V1",
+            "revival_score_max": 100,
+            "component_max": {
+                "market": 40,
+                "liquidity_quality": 20,
+                "pair_survival": 15,
+                "pair_volume_trend": 15,
+                "holder_cluster": 5,
+                "smart_money": 5,
+            },
+            "currently_verifiable_max_without_holder_cluster_smart_money": 90,
+            "previous_snapshot_rule": "ONLY_IMMEDIATELY_PREVIOUS_PUBLISHED_SNAPSHOT",
             "stablecoins": "EXCLUDED",
             "wrapped_pegged_derivatives": "EXCLUDED",
             "cross_platform_assets": "EXCLUDED",
             "dex_links": "EXACT_VERIFIED_PAIR_URL_OR_NONE",
             "holder_growth": "PENDING_VERIFIED_SOURCE",
             "concentration_decline": "PENDING_VERIFIED_SOURCE",
+            "smart_money": "PENDING_VERIFIED_SOURCE",
             "fundamentals_product_community": "PENDING_VERIFIED_SOURCE",
             "rule": "MISSING_EVIDENCE_NEVER_IMPUTED_AS_TRUE",
         },
@@ -468,7 +622,8 @@ def main() -> None:
 
     if len(rows) < 100:
         raise SystemExit(f"REVIVAL_SOLANA_INSUFFICIENT_VERIFIED_UNIVERSE:{len(rows)}")
-    payload = build(rows, "coingecko+dexscreener_pair_resolution", failures)
+
+    payload = build(rows, "coingecko+dexscreener_pair_resolution+previous_snapshot_survival", failures)
     LATEST.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
     print(json.dumps({"mode": MODE, "network": NETWORK, "source": payload["source"], **payload["counts"], "failures": len(failures)}))
 
