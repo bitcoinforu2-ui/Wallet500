@@ -4,6 +4,7 @@ from wallet500.revival_1000 import (
     is_stable_like,
     looks_like_solana_address,
     score_market_signals,
+    score_revival_verified,
     select_best_dex_pair,
 )
 
@@ -45,11 +46,92 @@ def test_parabolic_move_gets_chase_penalty():
     assert "LATE_PARABOLIC_24H_GE_100" in reasons
 
 
+def test_verified_composite_rewards_liquidity_pair_survival_and_volume_trend():
+    pair = "BLJ2yug7QjQCxsx922uEu19n5fjHCPbmqMx4XuWB8AXy"
+    current = {
+        "drawdown_from_ath_pct": 85,
+        "market_cap_usd": 100_000_000,
+        "volume_24h_usd": 15_000_000,
+        "change_24h_pct": 6,
+        "change_7d_pct": 12,
+        "change_30d_pct": 18,
+        "dex_link_type": "DEXSCREENER_VERIFIED_PAIR",
+        "dex_pair_address": pair,
+        "dex_pair_liquidity_usd": 500_000,
+        "dex_pair_volume_24h_usd": 2_000_000,
+    }
+    previous = {
+        "dex_pair_address": pair,
+        "dex_pair_liquidity_usd": 450_000,
+        "dex_pair_volume_24h_usd": 1_500_000,
+    }
+    score, components, reasons, coverage = score_revival_verified(current, previous)
+    assert score >= 70
+    assert components["pair_survival"] == 15
+    assert components["pair_volume_trend"] >= 10
+    assert components["holder_cluster"] == 0
+    assert components["smart_money"] == 0
+    assert coverage == 90
+    assert "EXACT_PAIR_SURVIVED_PREVIOUS_SNAPSHOT" in reasons
+
+
+def test_verified_composite_does_not_invent_missing_pair_or_onchain_evidence():
+    current = {
+        "drawdown_from_ath_pct": 85,
+        "market_cap_usd": 100_000_000,
+        "volume_24h_usd": 15_000_000,
+        "change_24h_pct": 6,
+        "change_7d_pct": 12,
+        "change_30d_pct": 18,
+        "dex_link_type": "NO_VERIFIED_DEX_PAIR",
+        "dex_pair_address": None,
+        "dex_pair_liquidity_usd": None,
+        "dex_pair_volume_24h_usd": None,
+    }
+    score, components, reasons, coverage = score_revival_verified(current, None)
+    assert score < 50
+    assert components["liquidity_quality"] == 0
+    assert components["pair_survival"] == 0
+    assert components["pair_volume_trend"] == 0
+    assert components["holder_cluster"] == 0
+    assert components["smart_money"] == 0
+    assert coverage == 60
+    assert "NO_VERIFIED_PAIR" in reasons
+    assert "HOLDER_CLUSTER_PENDING_VERIFIED_SOURCE" in reasons
+
+
+def test_liquidity_collapse_is_penalized():
+    pair = "BLJ2yug7QjQCxsx922uEu19n5fjHCPbmqMx4XuWB8AXy"
+    current = {
+        "drawdown_from_ath_pct": 85,
+        "market_cap_usd": 100_000_000,
+        "volume_24h_usd": 15_000_000,
+        "change_24h_pct": 6,
+        "change_7d_pct": 12,
+        "change_30d_pct": 18,
+        "dex_link_type": "DEXSCREENER_VERIFIED_PAIR",
+        "dex_pair_address": pair,
+        "dex_pair_liquidity_usd": 20_000,
+        "dex_pair_volume_24h_usd": 100_000,
+    }
+    previous = {
+        "dex_pair_address": pair,
+        "dex_pair_liquidity_usd": 200_000,
+        "dex_pair_volume_24h_usd": 500_000,
+    }
+    score, components, reasons, coverage = score_revival_verified(current, previous)
+    assert components["risk_penalty"] >= 10
+    assert components["liquidity_change_pct"] <= -75
+    assert "LIQUIDITY_COLLAPSE_PENALTY" in reasons
+    assert coverage == 90
+
+
 def test_stablecoins_are_excluded_from_revival_universe():
     assert is_stable_like({"id": "usd-coin", "symbol": "USDC", "name": "USDC"})
     assert is_stable_like({"id": "tether", "symbol": "USDT", "name": "Tether"})
     assert is_stable_like({"id": "dai", "symbol": "DAI", "name": "Dai"})
     assert is_stable_like({"id": "paypal-usd", "symbol": "PYUSD", "name": "PayPal USD"})
+    assert is_stable_like({"id": "usx", "symbol": "USX", "name": "USX"})
     assert not is_stable_like({"id": "chainlink", "symbol": "LINK", "name": "Chainlink"})
     assert not is_stable_like({"id": "render-token", "symbol": "RENDER", "name": "Render"})
 
@@ -68,6 +150,7 @@ def test_wrapped_pegged_and_receipt_assets_are_excluded():
         {"symbol": "USYC", "name": "Circle USYC"},
         {"symbol": "USTB", "name": "Invesco Short Duration US Government Securities Fund"},
         {"symbol": "BUILD", "name": "BlackRock USD Institutional Digital Liquidity Fund"},
+        {"symbol": "ONYC", "name": "OnRe Tokenized Reinsurance"},
     ]
     assert all(is_pegged_or_derivative_like(x) for x in bad)
     assert not is_pegged_or_derivative_like({"symbol": "PUMP", "name": "Pump.fun"})
