@@ -1,0 +1,89 @@
+name: Wallet500 Revival Liquidity Learning
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/revival_liquidity_learning.py'
+      - 'tests/test_revival_liquidity_learning.py'
+      - '.github/workflows/revival-liquidity-learning.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-revival-liquidity-learning
+  cancel-in-progress: false
+
+jobs:
+  learn:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Unit tests
+        run: python -m pytest -q tests/test_revival_liquidity_learning.py
+      - name: Run liquidity-price learning sensor
+        run: python -m wallet500.revival_liquidity_learning
+      - name: Validate research truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/revival-liquidity-learning.json')
+          s=Path('data/revival-liquidity-learning-state.json')
+          if not p.exists() or not s.exists(): raise SystemExit('LIQUIDITY_LEARNING_OUTPUT_MISSING')
+          d=json.loads(p.read_text())
+          if d.get('mode')!='RESEARCH_ONLY_REVIVAL_LIQUIDITY_LEARNING_V1': raise SystemExit('LIQUIDITY_LEARNING_MODE_INVALID')
+          if d.get('network')!='solana': raise SystemExit('LIQUIDITY_LEARNING_NETWORK_INVALID')
+          if d.get('production_impact')!='NONE': raise SystemExit('LIQUIDITY_LEARNING_PRODUCTION_IMPACT_NOT_NONE')
+          if d.get('no_hindsight') is not True: raise SystemExit('LIQUIDITY_LEARNING_NO_HINDSIGHT_VIOLATION')
+          tc=d.get('truth_contract') or {}
+          if tc.get('pair_identity')!='EXACT_REVIVAL_VERIFIED_PAIR_ONLY': raise SystemExit('LIQUIDITY_LEARNING_PAIR_IDENTITY_INVALID')
+          if tc.get('price_market_cap_identity')!='TOKEN_MUST_BE_DEX_PAIR_BASE_TOKEN': raise SystemExit('LIQUIDITY_LEARNING_BASE_TOKEN_GUARD_MISSING')
+          print('REVIVAL_LIQUIDITY_LEARNING_OK', d.get('counts'), d.get('learning_summary'))
+          PY
+      - name: Publish learning state and latest research
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+
+          tmp="$(mktemp -d)"
+          cp data/revival-liquidity-learning.json "$tmp/revival-liquidity-learning.json"
+          cp data/revival-liquidity-learning-state.json "$tmp/revival-liquidity-learning-state.json"
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/revival-liquidity-learning.json" data/revival-liquidity-learning.json
+            cp "$tmp/revival-liquidity-learning-state.json" data/revival-liquidity-learning-state.json
+            git add data/revival-liquidity-learning.json data/revival-liquidity-learning-state.json
+
+            if git diff --cached --quiet; then
+              echo 'REVIVAL_LIQUIDITY_LEARNING_NO_DATA_CHANGE'
+              exit 0
+            fi
+
+            git commit -m 'data: refresh Revival liquidity learning'
+            if git push origin HEAD:main; then
+              echo 'REVIVAL_LIQUIDITY_LEARNING_PUBLISH_OK'
+              exit 0
+            fi
+
+            echo "REVIVAL_LIQUIDITY_LEARNING_PUBLISH_RETRY attempt=$attempt"
+            sleep 3
+          done
+
+          echo '::error::REVIVAL_LIQUIDITY_LEARNING_PUBLISH_RACE_EXHAUSTED'
+          exit 1
