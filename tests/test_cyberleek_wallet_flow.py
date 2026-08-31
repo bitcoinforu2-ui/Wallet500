@@ -58,4 +58,4 @@ def test_window_separates_first_seen_and_repeat_buyers():
     assert s["repeat_buyers"] == 1
     assert s["buy_token_flow"] == 170.0
     assert s["sell_token_flow"] == 60.0
-    assert s["tx_per_unique_trader"] == 4 / 3
+    assert s["tx_per_unique_trader"] == 1.3333
