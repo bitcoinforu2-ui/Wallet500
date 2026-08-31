@@ -11,8 +11,25 @@ from urllib.request import Request, urlopen
 DATA = Path("data")
 LATEST = DATA / "revival-1000-latest.json"
 STATE = DATA / "revival-1000-state.json"
-MODE = "RESEARCH_ONLY_REVIVAL_SOLANA_1000_V2"
+MODE = "RESEARCH_ONLY_REVIVAL_SOLANA_500_V3"
 NETWORK = "solana"
+MAX_CANDIDATES = 500
+
+# Stable-value assets do not belong in Revival research: their intended price
+# behavior is fundamentally different from the drawdown/revival behavior we
+# are trying to learn. Keep both exact known identifiers and conservative
+# symbol/name heuristics so wrapped/bridged stable variants are also removed.
+STABLE_IDS = {
+    "tether", "usd-coin", "dai", "usds", "usd1-wlfi", "ethena-usde",
+    "paypal-usd", "first-digital-usd", "true-usd", "pax-dollar",
+    "gemini-dollar", "frax", "liquity-usd", "crvusd", "usdd", "usdb",
+    "usual-usd", "usual-usd0", "usd0-liquid-bond", "eurc", "stasis-eurs",
+}
+STABLE_SYMBOLS = {
+    "USDT", "USDC", "DAI", "USDS", "USD1", "USDE", "PYUSD", "FDUSD",
+    "TUSD", "USDP", "GUSD", "FRAX", "LUSD", "CRVUSD", "USDD", "USDB",
+    "USDX", "USD0", "USDY", "EURC", "EURS", "EURCV",
+}
 
 
 def now_iso() -> str:
@@ -28,6 +45,22 @@ def fetch_json(url: str, headers: dict | None = None, timeout: int = 25):
 def coingecko_headers() -> dict:
     key = os.getenv("COINGECKO_DEMO_API_KEY", "").strip()
     return {"x-cg-demo-api-key": key} if key else {}
+
+
+def is_stable_like(x: dict) -> bool:
+    coin_id = str(x.get("id") or "").strip().lower()
+    symbol = str(x.get("symbol") or "").strip().upper()
+    name = str(x.get("name") or "").strip().lower()
+    compact = "".join(ch for ch in symbol if ch.isalnum())
+    if coin_id in STABLE_IDS or symbol in STABLE_SYMBOLS:
+        return True
+    if compact in STABLE_SYMBOLS:
+        return True
+    if len(compact) <= 10 and (compact.startswith("USD") or compact.endswith("USD")):
+        return True
+    if "stablecoin" in name or "stable coin" in name:
+        return True
+    return False
 
 
 def fetch_verified_solana_ids(headers: dict) -> set[str]:
@@ -51,14 +84,14 @@ def fetch_verified_solana_ids(headers: dict) -> set[str]:
 
 
 def fetch_coingecko() -> list[dict]:
-    """Fetch up to 1000 market-cap-ranked assets and keep only exact Solana-platform matches."""
+    """Fetch market-cap-ranked assets, verify Solana, remove stables, return up to 500."""
     headers = coingecko_headers()
     solana_ids = fetch_verified_solana_ids(headers)
     out: list[dict] = []
 
-    # The ecosystem feed gives us a market-cap-ranked candidate universe cheaply.
-    # We then intersect it with the exact platform registry above, so category
-    # membership alone can never qualify an asset as Solana.
+    # Pull a wider source universe so that removing stables still leaves up to
+    # 500 valid non-stable Solana candidates. Exact platform verification is
+    # mandatory; ecosystem-category membership alone never qualifies an asset.
     for page in range(1, 5):
         url = (
             "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd"
@@ -78,7 +111,7 @@ def fetch_coingecko() -> list[dict]:
     seen: set[str] = set()
     for x in out:
         coin_id = str(x.get("id") or "")
-        if not coin_id or coin_id in seen:
+        if not coin_id or coin_id in seen or is_stable_like(x):
             continue
         seen.add(coin_id)
         ath = x.get("ath")
@@ -91,6 +124,7 @@ def fetch_coingecko() -> list[dict]:
             "network": NETWORK,
             "network_verified": True,
             "network_verification": "COINGECKO_PLATFORMS_SOLANA_ADDRESS_PRESENT",
+            "stablecoin_excluded": True,
             "id": coin_id,
             "symbol": str(x.get("symbol") or "").upper(),
             "name": x.get("name"),
@@ -107,7 +141,7 @@ def fetch_coingecko() -> list[dict]:
         })
 
     rows.sort(key=lambda x: (x.get("market_cap_usd") is None, -n(x.get("market_cap_usd"))))
-    return rows[:1000]
+    return rows[:MAX_CANDIDATES]
 
 
 def n(v, default=0.0) -> float:
@@ -155,12 +189,12 @@ def score_market_signals(x: dict) -> tuple[float, list[str]]:
 
 def load_state() -> dict:
     if not STATE.exists():
-        return {"version": 2, "network": NETWORK, "first_t0": now_iso(), "coins": {}}
+        return {"version": 3, "network": NETWORK, "first_t0": now_iso(), "coins": {}}
     try:
         state = json.loads(STATE.read_text())
     except Exception:
-        state = {"version": 2, "network": NETWORK, "first_t0": now_iso(), "coins": {}}
-    state["version"] = 2
+        state = {"version": 3, "network": NETWORK, "first_t0": now_iso(), "coins": {}}
+    state["version"] = 3
     state["network"] = NETWORK
     return state
 
@@ -170,8 +204,8 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
     state = load_state()
     coins_state = state.setdefault("coins", {})
     normalized = []
-    for i, x in enumerate(rows[:1000], 1):
-        if x.get("network") != NETWORK or x.get("network_verified") is not True:
+    for i, x in enumerate(rows[:MAX_CANDIDATES], 1):
+        if x.get("network") != NETWORK or x.get("network_verified") is not True or is_stable_like(x):
             continue
         x["universe_rank"] = len(normalized) + 1
         x["market_cap_rank"] = x.get("market_cap_rank") or x["universe_rank"]
@@ -215,14 +249,15 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
     core_count = sum(1 for x in normalized if x["watch_status"] != "OUTSIDE_CORE_DRAWDOWN_BAND")
     waking = sum(1 for x in normalized if x["watch_status"] == "WAKING_MARKET_ONLY")
     return {
-        "version": 2,
+        "version": 3,
         "mode": MODE,
         "network": NETWORK,
         "network_filter": "STRICT_EXACT_PLATFORM_VERIFICATION",
+        "asset_filter": "SOLANA_VERIFIED_NON_STABLE_ONLY",
         "generated_at": ts,
         "production_portfolio_impact": "NONE",
         "no_hindsight": True,
-        "universe_definition": "UP_TO_1000_SOLANA_ASSETS_BY_MARKET_CAP_FROM_SOLANA_ECOSYSTEM_FEED; EXACT_COINGECKO_PLATFORM_SOLANA_VERIFICATION_REQUIRED",
+        "universe_definition": "UP_TO_500_NON_STABLE_SOLANA_ASSETS_BY_MARKET_CAP_FROM_SOLANA_ECOSYSTEM_FEED; EXACT_COINGECKO_PLATFORM_SOLANA_VERIFICATION_REQUIRED",
         "source": source,
         "counts": {
             "universe": len(normalized),
@@ -232,6 +267,7 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
         },
         "scoring_contract": {
             "market_score_max": 100,
+            "stablecoins": "EXCLUDED",
             "holder_growth": "PENDING_VERIFIED_SOURCE",
             "concentration_decline": "PENDING_VERIFIED_SOURCE",
             "fundamentals_product_community": "PENDING_VERIFIED_SOURCE",
