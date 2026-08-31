@@ -10,7 +10,7 @@ on:
       - 'src/wallet500/revival_1000.py'
       - 'src/wallet500/revival_absorption_signal.py'
       - 'src/wallet500/revival_discovery_expansion.py'
-      - 'src/wallet500/revival_discovery_expansion_v2.py'
+      - 'src/wallet500/revival_discovery_expansion_v3.py'
       - 'tests/test_revival_1000.py'
       - 'tests/test_revival_absorption_signal.py'
       - '.github/workflows/revival-1000.yml'
@@ -46,8 +46,7 @@ jobs:
           from wallet500.revival_1000 import looks_like_solana_address
           p=Path('data/revival-1000-state.json')
           if not p.exists(): raise SystemExit(0)
-          state=json.loads(p.read_text())
-          coins=state.get('coins') or {}
+          state=json.loads(p.read_text()); coins=state.get('coins') or {}
           clean={k:v for k,v in coins.items() if isinstance(v,dict) and v.get('network')=='solana' and looks_like_solana_address(v.get('token_address'))}
           state['version']=4; state['network']='solana'; state['coins']=clean
           p.write_text(json.dumps(state,ensure_ascii=False,indent=2))
@@ -57,52 +56,57 @@ jobs:
         env:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: python -m wallet500.revival_1000
-      - name: Enrich base sell-count absorption signals
+      - name: Enrich base strict absorption signals
         run: python -m wallet500.revival_absorption_signal
-      - name: Expand absorption watch across persisted Solana discovery universe
-        run: python -m wallet500.revival_discovery_expansion_v2
+      - name: Expand strict and pre-move absorption candidates across known Solana universe
+        run: python -m wallet500.revival_discovery_expansion_v3
       - name: Validate expanded truth contract
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
           from wallet500.revival_1000 import looks_like_solana_address
-          p=Path('data/revival-1000-latest.json')
-          if not p.exists(): raise SystemExit('REVIVAL_OUTPUT_MISSING')
-          d=json.loads(p.read_text())
-          if d.get('mode')!='RESEARCH_ONLY_REVIVAL_SOLANA_EXPANDED_V5': raise SystemExit('REVIVAL_EXPANDED_MODE_MISSING')
-          if d.get('network')!='solana': raise SystemExit('REVIVAL_NETWORK_NOT_SOLANA')
-          if d.get('production_portfolio_impact')!='NONE': raise SystemExit('REVIVAL_PRODUCTION_IMPACT_NOT_NONE')
-          if d.get('no_hindsight') is not True: raise SystemExit('REVIVAL_NO_HINDSIGHT_VIOLATION')
-          if d.get('candidate_cap') is not None: raise SystemExit('REVIVAL_FIXED_CANDIDATE_CAP_PRESENT')
+          d=json.loads(Path('data/revival-1000-latest.json').read_text())
+          if d.get('mode')!='RESEARCH_ONLY_REVIVAL_SOLANA_EXPANDED_V6': raise SystemExit('REVIVAL_EXPANDED_V6_MODE_MISSING')
+          if d.get('network')!='solana' or d.get('production_portfolio_impact')!='NONE': raise SystemExit('REVIVAL_SAFETY_LABEL_INVALID')
+          if d.get('no_hindsight') is not True or d.get('candidate_cap') is not None: raise SystemExit('REVIVAL_TRUTH_OR_CAP_VIOLATION')
           contract=d.get('discovery_expansion_contract') or {}
-          if contract.get('version')!='REVIVAL_DISCOVERY_ABSORPTION_EXPANSION_V1': raise SystemExit('DISCOVERY_EXPANSION_CONTRACT_MISSING')
-          if contract.get('fixed_candidate_cap') is not None: raise SystemExit('DISCOVERY_EXPANSION_CAP_PRESENT')
-          if contract.get('production_portfolio_impact')!='NONE': raise SystemExit('DISCOVERY_EXPANSION_PRODUCTION_IMPACT')
+          if contract.get('version')!='REVIVAL_DISCOVERY_ABSORPTION_EXPANSION_V2': raise SystemExit('DISCOVERY_EXPANSION_V2_CONTRACT_MISSING')
+          if contract.get('fixed_candidate_cap') is not None or contract.get('production_portfolio_impact')!='NONE': raise SystemExit('DISCOVERY_EXPANSION_SAFETY_INVALID')
           coins=d.get('coins') or []
-          if len(coins)<100: raise SystemExit(f'REVIVAL_INSUFFICIENT_UNIVERSE:{len(coins)}')
-          if any(x.get('network')!='solana' for x in coins): raise SystemExit('NON_SOLANA_ASSET_PRESENT')
-          if any(x.get('network_verified') is not True for x in coins): raise SystemExit('UNVERIFIED_SOLANA_ASSET_PRESENT')
-          if any(not looks_like_solana_address(x.get('token_address')) for x in coins): raise SystemExit('INVALID_SOLANA_TOKEN_ADDRESS')
-          if any(x.get('pre_alpha_eligible') for x in coins): raise SystemExit('EXPANSION_MUST_NOT_PROMOTE_PRE_ALPHA')
+          if len(coins)<100: raise SystemExit('REVIVAL_UNIVERSE_TOO_SMALL')
+          if any(x.get('network')!='solana' or x.get('network_verified') is not True for x in coins): raise SystemExit('NON_VERIFIED_SOLANA_PRESENT')
+          if any(not looks_like_solana_address(x.get('token_address')) for x in coins): raise SystemExit('INVALID_SOLANA_ADDRESS')
+          if any(x.get('pre_alpha_eligible') for x in coins): raise SystemExit('RESEARCH_LAYER_PROMOTED_PRE_ALPHA')
+          expansion=0
+          strict_expansion=0
+          candidate_expansion=0
           for x in coins:
               if x.get('source')=='revival_discovery_state+dexscreener_absorption_expansion':
-                  if x.get('solana_only_platform_verified') is not False: raise SystemExit('DISCOVERY_EXPANSION_MUST_NOT_CLAIM_SOLANA_ONLY_PLATFORM')
-                  if x.get('cross_platform_status')!='UNKNOWN_RESEARCH_ONLY': raise SystemExit('DISCOVERY_CROSS_PLATFORM_TRUTH_LABEL_MISSING')
-                  if x.get('watch_status')!='ABSORPTION_WATCH_DISCOVERY_EXPANSION': raise SystemExit('DISCOVERY_EXPANSION_WATCH_STATUS_INVALID')
-                  if (x.get('order_flow_absorption') or {}).get('signal') is not True: raise SystemExit('DISCOVERY_EXPANSION_WITHOUT_SIGNAL')
-              else:
-                  if x.get('solana_only_platform_verified') is not True: raise SystemExit('BASE_CROSS_PLATFORM_ASSET_PRESENT')
-          verified=sum(1 for x in coins if x.get('dex_link_type')=='DEXSCREENER_VERIFIED_PAIR')
-          absorption=sum(1 for x in coins if (x.get('order_flow_absorption') or {}).get('signal') is True)
+                  expansion += 1
+                  if x.get('solana_only_platform_verified') is not False or x.get('cross_platform_status')!='UNKNOWN_RESEARCH_ONLY': raise SystemExit('DISCOVERY_IDENTITY_OVERCLAIM')
+                  if x.get('absorption_candidate_proxy') is not True: raise SystemExit('EXPANSION_WITHOUT_CANDIDATE_PROXY')
+                  status=x.get('watch_status')
+                  flow=x.get('order_flow_absorption') or {}
+                  if status=='ABSORPTION_WATCH_DISCOVERY_EXPANSION':
+                      strict_expansion += 1
+                      if flow.get('signal') is not True: raise SystemExit('STRICT_EXPANSION_WITHOUT_SIGNAL')
+                  elif status=='ABSORPTION_CANDIDATE_DISCOVERY_EXPANSION':
+                      candidate_expansion += 1
+                      if flow.get('signal') is True: raise SystemExit('CANDIDATE_MISLABELED_STRICT')
+                  else: raise SystemExit('EXPANSION_STATUS_INVALID')
+              elif x.get('solana_only_platform_verified') is not True:
+                  raise SystemExit('BASE_CROSS_PLATFORM_ASSET_PRESENT')
           counts=d.get('counts') or {}
-          if counts.get('universe')!=len(coins): raise SystemExit('UNIVERSE_COUNT_MISMATCH')
-          if counts.get('dex_verified_pairs')!=verified: raise SystemExit('DEX_PAIR_COUNT_MISMATCH')
-          if counts.get('absorption_proxy_watch')!=absorption: raise SystemExit('ABSORPTION_COUNT_MISMATCH')
-          base=int(counts.get('base_sol_only_universe') or 0)
-          added=int(counts.get('absorption_discovery_expansion_added') or 0)
-          if base+added!=len(coins): raise SystemExit('EXPANSION_COUNT_ARITHMETIC_MISMATCH')
-          print('REVIVAL_SOLANA_EXPANDED_V5_OK',counts)
+          verified=sum(1 for x in coins if x.get('dex_link_type')=='DEXSCREENER_VERIFIED_PAIR')
+          strict=sum(1 for x in coins if (x.get('order_flow_absorption') or {}).get('signal') is True)
+          candidates=sum(1 for x in coins if x.get('absorption_candidate_proxy') is True)
+          if counts.get('universe')!=len(coins) or counts.get('dex_verified_pairs')!=verified: raise SystemExit('AGGREGATE_COUNT_MISMATCH')
+          if counts.get('absorption_proxy_watch')!=strict or counts.get('absorption_candidate_proxy_watch')!=candidates: raise SystemExit('ABSORPTION_COUNT_MISMATCH')
+          if counts.get('absorption_discovery_expansion_added')!=expansion: raise SystemExit('EXPANSION_COUNT_MISMATCH')
+          if counts.get('absorption_discovery_strict_added')!=strict_expansion: raise SystemExit('STRICT_EXPANSION_COUNT_MISMATCH')
+          if counts.get('absorption_discovery_candidate_added')!=candidate_expansion: raise SystemExit('CANDIDATE_EXPANSION_COUNT_MISMATCH')
+          print('REVIVAL_SOLANA_EXPANDED_V6_OK',counts)
           PY
       - name: Publish expanded Revival snapshot and immutable base T0 state
         run: |
@@ -119,10 +123,8 @@ jobs:
             cp "$tmp/revival-1000-state.json" data/revival-1000-state.json
             git add data/revival-1000-latest.json data/revival-1000-state.json
             if git diff --cached --quiet; then echo 'REVIVAL_EXPANDED_NO_DATA_CHANGE'; exit 0; fi
-            git commit -m 'data: refresh expanded Solana Revival absorption universe'
+            git commit -m 'data: refresh expanded Solana Revival absorption candidates'
             if git push origin HEAD:main; then echo 'REVIVAL_EXPANDED_PUBLISH_OK'; exit 0; fi
-            echo "REVIVAL_EXPANDED_PUBLISH_RETRY attempt=$attempt"
-            sleep 3
+            echo "REVIVAL_EXPANDED_PUBLISH_RETRY attempt=$attempt"; sleep 3
           done
-          echo '::error::REVIVAL_EXPANDED_PUBLISH_RACE_EXHAUSTED'
-          exit 1
+          echo '::error::REVIVAL_EXPANDED_PUBLISH_RACE_EXHAUSTED'; exit 1
