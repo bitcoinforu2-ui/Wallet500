@@ -115,7 +115,11 @@ jobs:
             git commit -m 'data: refresh performance and research lab outputs'
             for attempt in 1 2 3 4 5; do
               git fetch origin main
-              git merge --no-edit -X ours origin/main
+              if ! git rebase origin/main; then
+                git rebase --abort || true
+                echo 'FATAL: performance publisher rebase conflict; refusing automatic conflict resolution'
+                exit 1
+              fi
               if git push origin HEAD:main; then break; fi
               sleep 3
               if [ "$attempt" = 5 ]; then exit 1; fi
