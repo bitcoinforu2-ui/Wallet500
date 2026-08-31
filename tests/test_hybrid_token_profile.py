@@ -1,3 +1,7 @@
+import json
+from datetime import datetime, timezone
+
+from wallet500 import hybrid_runner
 from wallet500.hybrid_token_profile import (
     CHANNEL_WEIGHTS,
     _external_channel,
@@ -117,3 +121,81 @@ def test_first_observation_is_explicitly_baseline_learning():
     assert p["baseline_ready"] is False
     assert p["status"] == "BASELINE_LEARNING"
     assert state["observations"] == 1
+
+
+def test_runner_accepts_same_run_holder_evidence_after_market_snapshot(tmp_path, monkeypatch):
+    external_path = tmp_path / "external.json"
+    source_time = "2026-08-31T07:00:00+00:00"
+    accepted_time = "2026-08-31T07:09:00+00:00"
+    too_late_time = "2026-08-31T10:01:00+00:00"
+    external_path.write_text(
+        json.dumps(
+            {
+                "observations": [
+                    {
+                        "network": "solana",
+                        "token_address": TOKEN,
+                        "observed_at": accepted_time,
+                        "holders": {
+                            "verified": True,
+                            "contract_match": True,
+                            "source": "test-rpc",
+                            "anomaly_score": 91,
+                        },
+                    },
+                    {
+                        "network": "solana",
+                        "token_address": PAIR_A,
+                        "observed_at": too_late_time,
+                        "holders": {
+                            "verified": True,
+                            "contract_match": True,
+                            "source": "future-test",
+                            "anomaly_score": 99,
+                        },
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(hybrid_runner.engine, "EXTERNAL", external_path)
+    run_time = datetime(2026, 8, 31, 7, 10, tzinfo=timezone.utc)
+    evidence = hybrid_runner._load_external_truth(source_time, run_time)
+    assert TOKEN in evidence
+    assert PAIR_A not in evidence
+
+
+def test_runner_refreshes_external_channel_without_replaying_market_baseline():
+    profile, state = build_profile(coin(), mature_state(), None, "2026-08-31T07:00:00+00:00")
+    before_observations = profile["baseline_observations_before"]
+    holder = {
+        "network": "solana",
+        "token_address": TOKEN,
+        "observed_at": "2026-08-31T07:09:00+00:00",
+        "holders": {
+            "verified": True,
+            "contract_match": True,
+            "source": "test-rpc",
+            "anomaly_score": 90,
+            "signals": ["EXACT_MINT_OWNER_RESOLUTION_COMPLETE"],
+        },
+    }
+    refreshed = hybrid_runner._recompute_profile_with_external(
+        profile,
+        holder,
+        "2026-08-31T07:10:00+00:00",
+    )
+    assert refreshed["channels"]["holders"]["available"] is True
+    assert refreshed["channels"]["holders"]["score"] == 90
+    assert refreshed["baseline_observations_before"] == before_observations
+    assert state["observations"] == mature_state()["observations"] + 1
+    assert refreshed["observed_at"] == "2026-08-31T07:10:00+00:00"
+
+
+def test_external_fingerprint_is_order_stable_and_changes_with_evidence():
+    a = {TOKEN: {"holders": {"anomaly_score": 90}}, PAIR_A: {"holders": {"anomaly_score": 80}}}
+    b = {PAIR_A: {"holders": {"anomaly_score": 80}}, TOKEN: {"holders": {"anomaly_score": 90}}}
+    c = {TOKEN: {"holders": {"anomaly_score": 91}}, PAIR_A: {"holders": {"anomaly_score": 80}}}
+    assert hybrid_runner._external_fingerprint(a) == hybrid_runner._external_fingerprint(b)
+    assert hybrid_runner._external_fingerprint(a) != hybrid_runner._external_fingerprint(c)
