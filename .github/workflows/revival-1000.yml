@@ -15,11 +15,11 @@ on:
 permissions:
   contents: write
 
-# Revival publishes only its isolated research snapshot/state files and has a
-# reset/restore + retry publisher below. Keep its queue independent from the
-# much longer primary live scan so fresh Revival data is never blocked by it.
+# Revival and the primary Live Scan both publish generated truth data to main.
+# A shared non-cancelling group serializes those writers and prevents rebase/push
+# races without dropping either run.
 concurrency:
-  group: wallet500-revival-data-publisher
+  group: wallet500-main-data-publisher
   cancel-in-progress: false
 
 jobs:
