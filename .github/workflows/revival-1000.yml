@@ -8,7 +8,9 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/revival_1000.py'
+      - 'src/wallet500/revival_absorption_signal.py'
       - 'tests/test_revival_1000.py'
+      - 'tests/test_revival_absorption_signal.py'
       - '.github/workflows/revival-1000.yml'
       - 'dashboard-revival1000.html'
 
@@ -37,7 +39,7 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Unit tests
-        run: python -m pytest -q tests/test_revival_1000.py
+        run: python -m pytest -q tests/test_revival_1000.py tests/test_revival_absorption_signal.py
       - name: Migrate Revival state to strict Solana-only identity
         run: |
           python - <<'PY'
@@ -69,6 +71,8 @@ jobs:
         env:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: python -m wallet500.revival_1000
+      - name: Enrich research-only sell-count absorption signals
+        run: python -m wallet500.revival_absorption_signal
       - name: Validate Solana Revival 500 truth contract
         run: |
           python - <<'PY'
@@ -99,6 +103,7 @@ jobs:
           if any(is_pegged_or_derivative_like(x) for x in coins): raise SystemExit('WRAPPED_PEGGED_DERIVATIVE_PRESENT_IN_REVIVAL_500')
           if any(x.get('pre_alpha_eligible') for x in coins): raise SystemExit('PRE_ALPHA_MUST_WAIT_FOR_VERIFIED_HOLDER_AND_FUNDAMENTAL_EVIDENCE')
           verified=0
+          absorption=0
           for x in coins:
               link_type=x.get('dex_link_type')
               if link_type=='DEXSCREENER_VERIFIED_PAIR':
@@ -112,9 +117,32 @@ jobs:
                       raise SystemExit('UNVERIFIED_DEX_LINK_MUST_BE_NULL')
               else:
                   raise SystemExit('DEX_LINK_TRUTH_LABEL_MISSING')
+
+              flow=x.get('order_flow_absorption') or {}
+              if flow.get('signal') is True:
+                  absorption += 1
+                  if flow.get('signal_type')!='SELL_COUNT_ABSORPTION_PROXY':
+                      raise SystemExit('ABSORPTION_SIGNAL_TYPE_INVALID')
+                  if flow.get('research_only') is not True:
+                      raise SystemExit('ABSORPTION_SIGNAL_MUST_BE_RESEARCH_ONLY')
+                  if flow.get('exact_buy_sell_notional_verified') is not False:
+                      raise SystemExit('ABSORPTION_PROXY_MUST_NOT_CLAIM_DIRECTIONAL_NOTIONAL')
+                  if x.get('pre_alpha_eligible') is not False:
+                      raise SystemExit('ABSORPTION_PROXY_MUST_NOT_PROMOTE_PRE_ALPHA')
+                  if x.get('watch_status') not in {'ABSORPTION_WATCH','WAKING_MARKET_ONLY'}:
+                      raise SystemExit('ABSORPTION_SIGNAL_WATCH_STATUS_MISSING')
           if verified < 1: raise SystemExit('NO_VERIFIED_DEX_PAIR_LINKS_RESOLVED')
           if (d.get('counts') or {}).get('dex_verified_pairs') != verified:
               raise SystemExit('DEX_VERIFIED_PAIR_COUNT_MISMATCH')
+          if (d.get('counts') or {}).get('absorption_proxy_watch') != absorption:
+              raise SystemExit('ABSORPTION_PROXY_COUNT_MISMATCH')
+          contract=d.get('order_flow_absorption_contract') or {}
+          if contract.get('version')!='SELL_COUNT_ABSORPTION_PROXY_V1':
+              raise SystemExit('ABSORPTION_PROXY_CONTRACT_MISSING')
+          if contract.get('pre_alpha_promotion')!='FORBIDDEN':
+              raise SystemExit('ABSORPTION_PROXY_PROMOTION_GUARD_MISSING')
+          if contract.get('revival_score_mutation')!='NONE':
+              raise SystemExit('ABSORPTION_PROXY_SCORE_MUTATION_FORBIDDEN')
 
           sp=Path('data/revival-1000-state.json')
           if not sp.exists(): raise SystemExit('REVIVAL_SOLANA_STATE_MISSING')
