@@ -68,17 +68,19 @@
         .table th,.table td{padding:5px 2px;line-height:1.18;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .table th{top:0;font-size:clamp(12px,.92vw,15px)}
         .table th:nth-child(1),.table td:nth-child(1){width:2.3%}
-        .table th:nth-child(2),.table td:nth-child(2){width:7.8%}
-        .table th:nth-child(3),.table td:nth-child(3){width:5.8%}
-        .table th:nth-child(4),.table td:nth-child(4){width:6.5%}
-        .table th:nth-child(7),.table td:nth-child(7){width:6.2%}
-        .table th:nth-child(13),.table td:nth-child(13){width:6.2%}
-        .table th:nth-child(19),.table td:nth-child(19){width:6.5%}
-        .table th:nth-child(20),.table td:nth-child(20){width:7.8%}
-        .table th:nth-child(21),.table td:nth-child(21){width:3.5%}
+        .table th:nth-child(2),.table td:nth-child(2){width:7.2%}
+        .table th:nth-child(3),.table td:nth-child(3){width:5.5%}
+        .table th:nth-child(4),.table td:nth-child(4){width:6.1%}
+        .table th:nth-child(7),.table td:nth-child(7){width:5.8%}
+        .table th:nth-child(13),.table td:nth-child(13){width:5.8%}
+        .table th:nth-child(19),.table td:nth-child(19){width:6.0%}
+        .table th:nth-child(20),.table td:nth-child(20){width:7.0%}
+        .table th:nth-child(21),.table td:nth-child(21){width:4.5%}
+        .table th:nth-child(22),.table td:nth-child(22){width:3.5%}
         .score{font-size:18px}
         .bar{width:34px;height:3px;margin-left:2px}
-        .cov,.status,.sig{font-size:12px}
+        .cov,.status,.sig,.conf{font-size:12px}
+        .conf{font-weight:900;text-align:center!important}
         .foot{padding:2px;font-size:7px;line-height:1;flex:0 0 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       }
       @media (min-width:901px) and (max-height:820px){
