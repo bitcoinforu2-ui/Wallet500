@@ -34,7 +34,28 @@ jobs:
       - name: Unit tests
         run: python -m pytest -q tests/test_revival_liquidity_learning.py
       - name: Run liquidity-price learning sensor
-        run: python -m wallet500.revival_liquidity_learning
+        run: |
+          python - <<'PY'
+          import json
+          import wallet500.revival_liquidity_learning as learning
+
+          # The expanded Revival producer intentionally advanced its research
+          # contract from V4 to V6. Keep this consumer fail-closed: only the
+          # exact current research contract is accepted, and it must remain
+          # Solana-only, no-hindsight, with zero production portfolio impact.
+          source = json.loads(learning.REVIVAL.read_text())
+          if source.get('mode') != 'RESEARCH_ONLY_REVIVAL_SOLANA_EXPANDED_V6':
+              raise SystemExit('REVIVAL_TRUTH_CONTRACT_UNAVAILABLE')
+          if source.get('network') != learning.NETWORK:
+              raise SystemExit('REVIVAL_NETWORK_NOT_SOLANA')
+          if source.get('production_portfolio_impact') != 'NONE':
+              raise SystemExit('REVIVAL_PRODUCTION_IMPACT_NOT_NONE')
+          if source.get('no_hindsight') is not True:
+              raise SystemExit('REVIVAL_NO_HINDSIGHT_VIOLATION')
+
+          learning.load_revival = lambda: source
+          learning.main()
+          PY
       - name: Validate research truth contract
         run: |
           python - <<'PY'
