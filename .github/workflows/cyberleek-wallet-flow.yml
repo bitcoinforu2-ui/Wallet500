@@ -1,0 +1,73 @@
+name: Wallet500 CYBERLEEK Wallet Flow
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-cyberleek-wallet-flow
+  cancel-in-progress: false
+
+jobs:
+  wallet-flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install package
+        run: pip install -e .
+      - name: Measure real exact-pair wallet flow
+        env:
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+        run: |
+          if [ -z "${SOLANA_RPC_URL:-}" ]; then unset SOLANA_RPC_URL; fi
+          python -m wallet500.cyberleek_wallet_flow
+      - name: Validate truth output
+        run: |
+          python -m json.tool data/cyberleek-wallet-flow.json >/dev/null
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/cyberleek-wallet-flow.json')
+          d=json.loads(p.read_text())
+          assert d.get('version') == 'CYBERLEEK_WALLET_FLOW_V1'
+          assert d.get('exact_pair') == 'G8kgi7aUpeX8EVR8VMkrth9SKEv5BietWC33UjAiiMGh'
+          t=d.get('truth_contract') or {}
+          assert t.get('dex_txn_counts_are_not_wallet_counts') is True
+          assert t.get('unresolved_transactions_are_not_guessed') is True
+          assert t.get('first_seen_buyers_are_since_monitor_t0_not_lifetime_new_holders') is True
+          print('CYBERLEEK_WALLET_FLOW_TRUTH_OK')
+          PY
+      - name: Commit forward wallet-flow state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "wallet500-research-bot"
+          git config user.email "wallet500-research-bot@users.noreply.github.com"
+          git add data/cyberleek-wallet-flow.json
+          if [ -f data/cyberleek-wallet-flow-state.json ]; then git add data/cyberleek-wallet-flow-state.json; fi
+          if git diff --cached --quiet; then
+            echo 'No wallet-flow data change'
+            exit 0
+          fi
+          git commit -m 'data: refresh CYBERLEEK real wallet flow'
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo 'Wallet-flow commit stopped fail-closed on rebase conflict'
+              exit 1
+            fi
+            if git push origin HEAD:main; then exit 0; fi
+            [ "$attempt" -eq 3 ] && exit 1
+            sleep $((attempt * 2))
+          done
