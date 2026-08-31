@@ -64,9 +64,9 @@
         .controls input,.controls select{padding:4px 6px;font-size:9px;min-height:26px}
         .sectionTitle{font-size:10px;margin:3px 0 2px;line-height:1;flex:0 0 auto}
         .tablebox{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}
-        .table{width:100%;min-width:0!important;table-layout:fixed;font-size:clamp(7px,.58vw,8.7px)}
-        .table th,.table td{padding:3px 1px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .table th{top:0;font-size:clamp(6.5px,.54vw,8px)}
+        .table{width:100%;min-width:0!important;table-layout:fixed;font-size:clamp(13px,1vw,16px)}
+        .table th,.table td{padding:5px 2px;line-height:1.18;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .table th{top:0;font-size:clamp(12px,.92vw,15px)}
         .table th:nth-child(1),.table td:nth-child(1){width:2.3%}
         .table th:nth-child(2),.table td:nth-child(2){width:7.8%}
         .table th:nth-child(3),.table td:nth-child(3){width:5.8%}
@@ -76,9 +76,9 @@
         .table th:nth-child(19),.table td:nth-child(19){width:6.5%}
         .table th:nth-child(20),.table td:nth-child(20){width:7.8%}
         .table th:nth-child(21),.table td:nth-child(21){width:3.5%}
-        .score{font-size:10px}
+        .score{font-size:18px}
         .bar{width:34px;height:3px;margin-left:2px}
-        .cov,.status,.sig{font-size:7px}
+        .cov,.status,.sig{font-size:12px}
         .foot{padding:2px;font-size:7px;line-height:1;flex:0 0 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       }
       @media (min-width:901px) and (max-height:820px){
