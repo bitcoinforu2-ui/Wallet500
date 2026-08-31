@@ -14,6 +14,8 @@ STATE = DATA / "revival-1000-state.json"
 MODE = "RESEARCH_ONLY_REVIVAL_SOLANA_500_V4"
 NETWORK = "solana"
 MAX_CANDIDATES = 500
+DEX_BATCH_SIZE = 30
+BASE58 = set("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
 
 # Stable-value assets do not belong in Revival research: their intended price
 # behavior is fundamentally different from the drawdown/revival behavior we
@@ -31,10 +33,9 @@ STABLE_SYMBOLS = {
     "USDX", "USD0", "USDY", "EURC", "EURS", "EURCV",
 }
 
-# The user explicitly does not want wrapped, pegged or receipt-style assets in
-# this Solana universe. These exact symbols cover common wrappers, liquid-
-# staking receipts, LP receipts and tokenized/yield-bearing representations.
-# The generic name rules below provide a second line of defence.
+# Wrapped, pegged, liquid-staking, LP and tokenized receipt assets are not part
+# of the native Solana Revival universe. Exact symbols cover common cases and
+# the name rules provide a conservative second line of defence.
 PEGGED_DERIVATIVE_SYMBOLS = {
     "WBTC", "CBBTC", "TBTC", "LBTC", "SOLVBTC", "WSOL",
     "BNSOL", "JITOSOL", "JUPSOL", "MSOL", "STSOL", "VSOL",
@@ -116,36 +117,117 @@ def has_solana_only_platform(platforms: dict | None) -> bool:
     return active_platforms(platforms) == {"solana"}
 
 
-def fetch_solana_only_ids(headers: dict) -> set[str]:
-    """Return CoinGecko IDs whose active contract footprint is Solana only."""
+def looks_like_solana_address(value: object) -> bool:
+    """Basic structural validation for a base58 Solana mint/account address."""
+    s = str(value or "").strip()
+    return 32 <= len(s) <= 44 and all(ch in BASE58 for ch in s)
+
+
+def fetch_solana_only_contracts(headers: dict) -> dict[str, str]:
+    """Return CoinGecko ID -> exact Solana address for Solana-only assets."""
     raw = fetch_json(
         "https://api.coingecko.com/api/v3/coins/list?include_platform=true",
         headers=headers,
     )
     if not isinstance(raw, list):
         raise RuntimeError("CoinGecko coin list is not a list")
-    ids: set[str] = set()
+    contracts: dict[str, str] = {}
     for x in raw:
         platforms = x.get("platforms") or {}
-        if has_solana_only_platform(platforms):
-            coin_id = str(x.get("id") or "").strip()
-            if coin_id:
-                ids.add(coin_id)
-    if len(ids) < 100:
-        raise RuntimeError(f"insufficient Solana-only ids: {len(ids)}")
-    return ids
+        if not has_solana_only_platform(platforms):
+            continue
+        coin_id = str(x.get("id") or "").strip()
+        address = str(platforms.get("solana") or "").strip()
+        if coin_id and looks_like_solana_address(address):
+            contracts[coin_id] = address
+    if len(contracts) < 100:
+        raise RuntimeError(f"insufficient Solana-only contracts: {len(contracts)}")
+    return contracts
+
+
+def _pair_liquidity_usd(pair: dict) -> float:
+    try:
+        return float((pair.get("liquidity") or {}).get("usd") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _pair_volume_24h_usd(pair: dict) -> float:
+    try:
+        return float((pair.get("volume") or {}).get("h24") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def select_best_dex_pair(token_address: str, pairs: list[dict]) -> dict | None:
+    """Choose a verified DexScreener Solana pair for the exact token mint."""
+    if not looks_like_solana_address(token_address):
+        return None
+    valid: list[dict] = []
+    for pair in pairs or []:
+        if str(pair.get("chainId") or "").lower() != NETWORK:
+            continue
+        base = str((pair.get("baseToken") or {}).get("address") or "")
+        quote_addr = str((pair.get("quoteToken") or {}).get("address") or "")
+        if token_address not in {base, quote_addr}:
+            continue
+        pair_address = str(pair.get("pairAddress") or "").strip()
+        url = str(pair.get("url") or "").strip()
+        if not looks_like_solana_address(pair_address):
+            continue
+        if not url.startswith("https://dexscreener.com/solana/"):
+            continue
+        valid.append(pair)
+    if not valid:
+        return None
+    return max(valid, key=lambda p: (_pair_liquidity_usd(p), _pair_volume_24h_usd(p)))
+
+
+def fetch_dex_pair_map(token_addresses: list[str]) -> dict[str, dict]:
+    """Resolve exact token mints to verified DexScreener pair URLs in batches."""
+    unique = list(dict.fromkeys(a for a in token_addresses if looks_like_solana_address(a)))
+    result: dict[str, dict] = {}
+    for start in range(0, len(unique), DEX_BATCH_SIZE):
+        batch = unique[start:start + DEX_BATCH_SIZE]
+        joined = ",".join(batch)
+        try:
+            pairs = fetch_json(
+                "https://api.dexscreener.com/tokens/v1/solana/" + quote(joined, safe=","),
+                timeout=20,
+            )
+        except Exception:
+            # DEX links are convenience metadata, not a market-source truth gate.
+            # If DexScreener is temporarily unavailable we keep the asset and show
+            # no DEX button instead of manufacturing a broken link.
+            continue
+        if not isinstance(pairs, list):
+            continue
+        for token_address in batch:
+            best = select_best_dex_pair(token_address, pairs)
+            if not best:
+                continue
+            result[token_address] = {
+                "dex_link": str(best.get("url") or "").strip(),
+                "dex_pair_address": str(best.get("pairAddress") or "").strip(),
+                "dex_id": best.get("dexId"),
+                "dex_pair_liquidity_usd": _pair_liquidity_usd(best),
+                "dex_pair_volume_24h_usd": _pair_volume_24h_usd(best),
+                "dex_link_type": "DEXSCREENER_VERIFIED_PAIR",
+            }
+        if start + DEX_BATCH_SIZE < len(unique):
+            time.sleep(0.08)
+    return result
 
 
 def fetch_coingecko() -> list[dict]:
     """Fetch ranked Solana-only assets, excluding stable and pegged/derivative representations."""
     headers = coingecko_headers()
-    solana_only_ids = fetch_solana_only_ids(headers)
+    solana_contracts = fetch_solana_only_contracts(headers)
     out: list[dict] = []
 
-    # Pull a wider source universe so that strict identity filtering still
-    # leaves up to 500 valid candidates. An asset is rejected if CoinGecko
-    # exposes any other active platform address; this prevents ordinary
-    # Ethereum/BTC assets merely represented on Solana from entering the list.
+    # Pull a wider source universe so strict identity filtering still leaves up
+    # to 500 valid candidates. An asset is rejected if CoinGecko exposes any
+    # other active platform address.
     for page in range(1, 5):
         url = (
             "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd"
@@ -156,7 +238,7 @@ def fetch_coingecko() -> list[dict]:
         batch = fetch_json(url, headers=headers)
         if not isinstance(batch, list):
             raise RuntimeError("CoinGecko response is not a list")
-        out.extend(x for x in batch if str(x.get("id") or "") in solana_only_ids)
+        out.extend(x for x in batch if str(x.get("id") or "") in solana_contracts)
         if len(batch) < 250:
             break
         time.sleep(1.2)
@@ -166,6 +248,9 @@ def fetch_coingecko() -> list[dict]:
     for x in out:
         coin_id = str(x.get("id") or "")
         if not coin_id or coin_id in seen or is_stable_like(x) or is_pegged_or_derivative_like(x):
+            continue
+        token_address = solana_contracts.get(coin_id)
+        if not looks_like_solana_address(token_address):
             continue
         seen.add(coin_id)
         ath = x.get("ath")
@@ -182,6 +267,7 @@ def fetch_coingecko() -> list[dict]:
             "stablecoin_excluded": True,
             "pegged_derivative_excluded": True,
             "id": coin_id,
+            "token_address": token_address,
             "symbol": str(x.get("symbol") or "").upper(),
             "name": x.get("name"),
             "market_cap_rank": x.get("market_cap_rank"),
@@ -197,7 +283,21 @@ def fetch_coingecko() -> list[dict]:
         })
 
     rows.sort(key=lambda x: (x.get("market_cap_usd") is None, -n(x.get("market_cap_usd"))))
-    return rows[:MAX_CANDIDATES]
+    rows = rows[:MAX_CANDIDATES]
+
+    dex_pairs = fetch_dex_pair_map([str(x.get("token_address") or "") for x in rows])
+    for x in rows:
+        pair = dex_pairs.get(str(x.get("token_address") or ""))
+        if pair:
+            x.update(pair)
+        else:
+            x["dex_link"] = None
+            x["dex_pair_address"] = None
+            x["dex_id"] = None
+            x["dex_pair_liquidity_usd"] = None
+            x["dex_pair_volume_24h_usd"] = None
+            x["dex_link_type"] = "NO_VERIFIED_DEX_PAIR"
+    return rows
 
 
 def n(v, default=0.0) -> float:
@@ -265,14 +365,17 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
             x.get("network") != NETWORK
             or x.get("network_verified") is not True
             or x.get("solana_only_platform_verified") is not True
+            or not looks_like_solana_address(x.get("token_address"))
             or is_stable_like(x)
             or is_pegged_or_derivative_like(x)
         ):
             continue
         x["universe_rank"] = len(normalized) + 1
         x["market_cap_rank"] = x.get("market_cap_rank") or x["universe_rank"]
-        x["dex_link"] = "https://dexscreener.com/solana/" + quote(str(x.get("symbol") or x.get("id") or ""))
-        x["dex_link_type"] = "SOLANA_SEARCH_ONLY_NOT_EXACT_PAIR"
+        if x.get("dex_link_type") != "DEXSCREENER_VERIFIED_PAIR":
+            x["dex_link"] = None
+            x["dex_pair_address"] = None
+            x["dex_link_type"] = "NO_VERIFIED_DEX_PAIR"
         x["coingecko_link"] = "https://www.coingecko.com/en/coins/" + str(x.get("id") or "")
         score, reasons = score_market_signals(x)
         x["watch_score_market_only"] = round(score, 2)
@@ -299,8 +402,11 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
                 "t0_price_usd": x.get("price_usd"),
                 "t0_rank": x["universe_rank"],
                 "network": NETWORK,
+                "token_address": x.get("token_address"),
             },
         )
+        if not st.get("token_address"):
+            st["token_address"] = x.get("token_address")
         x["t0"] = st
         normalized.append(x)
 
@@ -310,6 +416,7 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
     STATE.write_text(json.dumps(state, ensure_ascii=False, indent=2))
     core_count = sum(1 for x in normalized if x["watch_status"] != "OUTSIDE_CORE_DRAWDOWN_BAND")
     waking = sum(1 for x in normalized if x["watch_status"] == "WAKING_MARKET_ONLY")
+    dex_verified = sum(1 for x in normalized if x.get("dex_link_type") == "DEXSCREENER_VERIFIED_PAIR")
     return {
         "version": 4,
         "mode": MODE,
@@ -326,12 +433,14 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
             "core_drawdown_watch": core_count,
             "waking_market_only": waking,
             "pre_alpha": 0,
+            "dex_verified_pairs": dex_verified,
         },
         "scoring_contract": {
             "market_score_max": 100,
             "stablecoins": "EXCLUDED",
             "wrapped_pegged_derivatives": "EXCLUDED",
             "cross_platform_assets": "EXCLUDED",
+            "dex_links": "EXACT_VERIFIED_PAIR_URL_OR_NONE",
             "holder_growth": "PENDING_VERIFIED_SOURCE",
             "concentration_decline": "PENDING_VERIFIED_SOURCE",
             "fundamentals_product_community": "PENDING_VERIFIED_SOURCE",
@@ -359,9 +468,9 @@ def main() -> None:
 
     if len(rows) < 100:
         raise SystemExit(f"REVIVAL_SOLANA_INSUFFICIENT_VERIFIED_UNIVERSE:{len(rows)}")
-    payload = build(rows, "coingecko", failures)
+    payload = build(rows, "coingecko+dexscreener_pair_resolution", failures)
     LATEST.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
-    print(json.dumps({"mode": MODE, "network": NETWORK, "source": "coingecko", **payload["counts"], "failures": len(failures)}))
+    print(json.dumps({"mode": MODE, "network": NETWORK, "source": payload["source"], **payload["counts"], "failures": len(failures)}))
 
 
 if __name__ == "__main__":
