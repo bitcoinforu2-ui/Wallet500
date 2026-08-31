@@ -96,3 +96,66 @@
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',installRevivalDesktopFit,{once:true});
   else installRevivalDesktopFit();
 })();
+
+(function(){
+  if(document.title!=='Wallet500 Revival Solana Expanded') return;
+  const confByMint=new Map();
+  let summary=null,busy=false;
+  const shortStatus=s=>s==='WAKING_STRONG_RESEARCH'?['STRONG','green']:s==='WAKING_CONFIRMED_RESEARCH'?['CONF','cyan']:s==='WAKING_RISK_RESEARCH'?['RISK','red']:s==='WAKING_UNCONFIRMED_RESEARCH'?['LEARN','yellow']:['—','mut'];
+  const n=v=>{const x=Number(v);return Number.isFinite(x)?x:null};
+  function tooltip(r){
+    if(!r)return 'No Waking confirmation row';
+    const ch=r.channels||{},h=ch.holders||{},w=ch.wallets||{},s=ch.social||{},news=ch.news||{},hm=h.metrics||{},sm=s.metrics||{},nm=news.metrics||{};
+    const parts=[r.confirmation_status||'—','score '+(n(r.confirmation_score)?.toFixed(1)??'—')];
+    if((r.strong_families||[]).length)parts.push('strong '+r.strong_families.join(','));
+    if(h.verified===true)parts.push('holders '+(hm.holder_count??'—')+(hm.holder_change_pct==null?'':' Δ'+Number(hm.holder_change_pct).toFixed(2)+'%'));
+    if(w.verified===true)parts.push('wallets verified');
+    if(s.verified===true)parts.push('social '+(sm.mentions??0));
+    if(news.verified===true)parts.push('news '+(nm.items??0));
+    const d=r.distribution_evidence||{};if(d.risk_score!=null)parts.push('concentration risk '+Number(d.risk_score).toFixed(0));
+    return parts.join(' · ');
+  }
+  function ensureHeader(){
+    const tr=document.querySelector('.table thead tr');if(!tr)return;
+    if(tr.querySelector('th.waking-conf-head'))return;
+    const th=document.createElement('th');th.className='waking-conf-head';th.textContent='CONF';th.title='Waking Confirmation research layer';
+    tr.insertBefore(th,tr.lastElementChild);
+  }
+  function visibleCoins(){
+    try{
+      if(typeof window.filtered!=='function')return [];
+      let arr=window.filtered();const lim=document.getElementById('limit');if(lim)arr=arr.slice(0,Number(lim.value)||500);return arr;
+    }catch(_e){return []}
+  }
+  function paint(){
+    ensureHeader();
+    const tbody=document.getElementById('rows');if(!tbody)return;
+    const trs=[...tbody.querySelectorAll('tr')];const coins=visibleCoins();
+    trs.forEach((tr,i)=>{
+      if(tr.children.length<2)return;
+      let cell=tr.querySelector('td.waking-conf-cell');
+      if(!cell){cell=document.createElement('td');cell.className='conf waking-conf-cell';tr.insertBefore(cell,tr.lastElementChild)}
+      const coin=coins[i];const r=coin?confByMint.get(String(coin.token_address||'')):null;
+      if(!coin||coin.watch_status!=='WAKING_MARKET_ONLY'){cell.textContent='—';cell.className='conf waking-conf-cell mut';cell.title='';return}
+      const [txt,cls]=shortStatus(r?.confirmation_status);cell.textContent=txt;cell.className='conf waking-conf-cell '+cls;cell.title=tooltip(r);
+    });
+    const livebar=document.querySelector('.livebar');
+    if(livebar){let el=document.getElementById('wakingConfMeta');if(!el){el=document.createElement('span');el.id='wakingConfMeta';el.className='mut';livebar.appendChild(el)}
+      const c=summary?.counts||{};el.textContent=summary?`WAKING CONF: ${c.strong||0} strong · ${c.confirmed||0} conf · ${c.risk||0} risk · ${c.unconfirmed||0} learn`:'WAKING CONF: waiting…';
+    }
+  }
+  async function loadConf(){
+    if(busy)return;busy=true;
+    try{
+      const r=await fetch('../data/waking-confirmation-latest.json?v='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);
+      const d=await r.json();if(d.mode!=='RESEARCH_ONLY_WAKING_CONFIRMATION_V1'||d.network!=='solana'||d.production_portfolio_impact!=='NONE')throw Error('CONF_TRUTH_CONTRACT');
+      confByMint.clear();for(const x of d.targets||[]){if(x&&x.token_address)confByMint.set(String(x.token_address),x)}summary=d;paint();
+    }catch(_e){summary=null;paint()}finally{busy=false}
+  }
+  function install(){
+    ensureHeader();
+    const tbody=document.getElementById('rows');if(tbody){new MutationObserver(()=>queueMicrotask(paint)).observe(tbody,{childList:true})}
+    loadConf();setInterval(loadConf,60000);setInterval(paint,2500);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
+})();
