@@ -304,7 +304,12 @@ def _latest_by_address(payload: dict) -> dict[str, dict]:
 
 def run() -> dict:
     source = _load(SOURCE, {})
-    if source.get("mode") != "RESEARCH_ONLY_REVIVAL_SOLANA_500_V4" or source.get("network") != NETWORK:
+    if (
+        source.get("mode") != "RESEARCH_ONLY_REVIVAL_SOLANA_EXPANDED_V6"
+        or source.get("network") != NETWORK
+        or source.get("production_portfolio_impact") != "NONE"
+        or source.get("no_hindsight") is not True
+    ):
         raise RuntimeError("HOLDER_EVIDENCE_SOURCE_TRUTH_CONTRACT_REJECTED")
     coins = [
         x
