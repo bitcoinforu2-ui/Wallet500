@@ -10,6 +10,7 @@ on:
       - 'src/wallet500/hybrid_token_profile.py'
       - 'tests/test_hybrid_token_profile.py'
       - '.github/workflows/hybrid-token-profile.yml'
+      - 'dashboard-hybrid.html'
       - 'data/revival-1000-latest.json'
       - 'data/hybrid-external-evidence.json'
 
@@ -35,6 +36,12 @@ jobs:
         run: pip install -e . pytest
       - name: Unit tests
         run: python -m pytest -q tests/test_hybrid_token_profile.py
+      - name: Validate Hybrid Radar truth shell
+        run: |
+          test -s dashboard-hybrid.html
+          grep -Fq '<title>Wallet500 Hybrid Token Radar</title>' dashboard-hybrid.html
+          grep -Fq 'TRUTH CONTRACT' dashboard-hybrid.html
+          grep -Fq 'NOT_CONNECTED' dashboard-hybrid.html
       - name: Build exact-address hybrid profiles
         run: python -m wallet500.hybrid_token_profile
       - name: Validate hybrid truth contract
