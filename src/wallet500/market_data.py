@@ -4,6 +4,8 @@ import time
 from urllib.request import Request, urlopen
 from urllib.parse import quote
 
+from .liquidity_reality import compute_liquidity_reality
+
 BASE="https://api.dexscreener.com"
 
 def _get(path:str,timeout:int=20):
@@ -68,6 +70,8 @@ def snapshot(chain:str,token:str,pair_address:str|None=None)->dict|None:
     if not pairs: return None
     p=max(pairs,key=lambda x: float((x.get("liquidity") or {}).get("usd") or 0))
     out=_pair_to_snapshot(chain,token,p)
+    all_pools=[_compact_pool(chain,token,x) for x in pairs if x.get("pairAddress")]
+    out.update(compute_liquidity_reality(all_pools,market_cap_usd=out.get("market_cap"),fdv_usd=out.get("fdv")))
     ranked=sorted(pairs,key=lambda x: float((x.get("liquidity") or {}).get("usd") or 0),reverse=True)[:8]
     out["pools"]=[_compact_pool(chain,token,x) for x in ranked if x.get("pairAddress")]
     return out
