@@ -36,7 +36,9 @@ jobs:
             export SOLANA_RPC_URL='https://solana-rpc.publicnode.com'
             echo 'Using verified public Solana RPC fallback'
           fi
-          python -m wallet500.cyberleek_wallet_flow
+          # Public RPC gateways can reject JSON-RPC batch request bodies with HTTP 400.
+          # Use individual getTransaction reads while retaining fail-closed truth behavior.
+          python -m wallet500.cyberleek_wallet_flow_no_batch
       - name: Validate truth output
         run: |
           python -m json.tool data/cyberleek-wallet-flow.json >/dev/null
