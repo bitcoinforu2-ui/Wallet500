@@ -10,11 +10,15 @@ on:
       - 'src/wallet500/hybrid_token_profile.py'
       - 'src/wallet500/hybrid_onchain_evidence.py'
       - 'src/wallet500/hybrid_runner.py'
+      - 'src/wallet500/hybrid_research_context.py'
       - 'tests/test_hybrid_token_profile.py'
       - 'tests/test_hybrid_onchain_evidence.py'
+      - 'tests/test_hybrid_research_context.py'
       - '.github/workflows/hybrid-token-profile.yml'
       - 'dashboard-hybrid.html'
       - 'data/revival-1000-latest.json'
+      - 'data/revival-historical-dna.json'
+      - 'data/winner-dna-study.json'
 
 permissions:
   contents: write
@@ -37,7 +41,7 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Unit tests
-        run: python -m pytest -q tests/test_hybrid_token_profile.py tests/test_hybrid_onchain_evidence.py
+        run: python -m pytest -q tests/test_hybrid_token_profile.py tests/test_hybrid_onchain_evidence.py tests/test_hybrid_research_context.py
       - name: Validate Hybrid Radar truth shell
         run: |
           test -s dashboard-hybrid.html
@@ -128,29 +132,60 @@ jobs:
                       raise SystemExit('HYBRID_IGNITION_CONTRACT_BROKEN')
           print('HYBRID_TOKEN_PROFILE_V1_OK', d.get('counts'), 'holder_evidence', ev.get('scan'))
           PY
-      - name: Publish hybrid profiles, evidence, and compact baseline state
+      - name: Attach past-DNA research context and build Catalyst Scan queue
+        run: python -m wallet500.hybrid_research_context
+      - name: Validate research context truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+          from wallet500.revival_1000 import looks_like_solana_address
+          files=[Path('data/hybrid-token-profiles.json'),Path('data/hybrid-research-context.json'),Path('data/hybrid-catalyst-scan-queue.json'),Path('data/hybrid-catalyst-trigger-ledger.json')]
+          for p in files:
+              if not p.exists() or p.stat().st_size==0: raise SystemExit('HYBRID_RESEARCH_OUTPUT_MISSING:'+str(p))
+          h,ctx,q,l=[json.loads(p.read_text()) for p in files]
+          rc=h.get('research_context_contract') or {}
+          if rc.get('contract')!='HYBRID_RESEARCH_CONTEXT_V1' or rc.get('production_impact')!='NONE' or rc.get('no_hindsight') is not True: raise SystemExit('HYBRID_RESEARCH_CONTRACT_INVALID')
+          if ctx.get('mode')!='RESEARCH_ONLY_HYBRID_RESEARCH_CONTEXT_V1' or ctx.get('production_impact')!='NONE': raise SystemExit('HYBRID_RESEARCH_SUMMARY_INVALID')
+          rows=h.get('profiles') or []
+          if int((ctx.get('counts') or {}).get('profiles_attached') or 0)!=len(rows): raise SystemExit('HYBRID_RESEARCH_PROFILE_COUNT_MISMATCH')
+          for x in rows:
+              r=x.get('research_context') or {}
+              if r.get('contract')!='HYBRID_RESEARCH_CONTEXT_V1' or r.get('production_impact')!='NONE': raise SystemExit('HYBRID_PROFILE_RESEARCH_CONTEXT_INVALID')
+          if q.get('mode')!='RESEARCH_ONLY_CATALYST_SCAN_QUEUE_V1' or q.get('network')!='solana' or q.get('production_impact')!='NONE': raise SystemExit('CATALYST_QUEUE_CONTRACT_INVALID')
+          if int(q.get('queue_count') or 0)!=len(q.get('queue') or []): raise SystemExit('CATALYST_QUEUE_COUNT_INVALID')
+          if l.get('mode')!='IMMUTABLE_CATALYST_TRIGGER_LEDGER_V1' or l.get('production_impact')!='NONE': raise SystemExit('CATALYST_LEDGER_CONTRACT_INVALID')
+          for x in q.get('queue') or []:
+              if not looks_like_solana_address(x.get('token_address')) or not looks_like_solana_address(x.get('pair_address')): raise SystemExit('CATALYST_QUEUE_IDENTITY_INVALID')
+              fam=set(x.get('trigger_families') or [])
+              if len(fam)<2 or not fam.issubset({'MARKET','LIQUIDITY_FLOW','HOLDERS','WALLETS'}): raise SystemExit('CATALYST_QUEUE_INDEPENDENCE_INVALID')
+              try:
+                  t=datetime.fromisoformat(str(x.get('first_requested_at')).replace('Z','+00:00'))
+                  if t.tzinfo is None:t=t.replace(tzinfo=timezone.utc)
+              except Exception: raise SystemExit('CATALYST_QUEUE_TIMESTAMP_INVALID')
+              if t>datetime.now(timezone.utc)+timedelta(minutes=2): raise SystemExit('CATALYST_QUEUE_FUTURE_TRIGGER')
+          print('HYBRID_RESEARCH_CONTEXT_V1_OK',ctx.get('counts'),'queue',q.get('queue_count'))
+          PY
+      - name: Publish hybrid profiles, evidence, research context, and trigger ledger
         run: |
           set -euo pipefail
           git config user.name 'wallet500-hybrid-bot'
           git config user.email 'wallet500-hybrid-bot@users.noreply.github.com'
 
           tmp="$(mktemp -d)"
-          cp data/hybrid-token-profiles.json "$tmp/hybrid-token-profiles.json"
-          cp data/hybrid-token-state.json "$tmp/hybrid-token-state.json"
-          cp data/hybrid-external-evidence.json "$tmp/hybrid-external-evidence.json"
+          for f in hybrid-token-profiles.json hybrid-token-state.json hybrid-external-evidence.json hybrid-research-context.json hybrid-catalyst-scan-queue.json hybrid-catalyst-trigger-ledger.json; do cp "data/$f" "$tmp/$f"; done
 
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
-            cp "$tmp/hybrid-token-profiles.json" data/hybrid-token-profiles.json
-            cp "$tmp/hybrid-token-state.json" data/hybrid-token-state.json
-            cp "$tmp/hybrid-external-evidence.json" data/hybrid-external-evidence.json
-            git add data/hybrid-token-profiles.json data/hybrid-token-state.json data/hybrid-external-evidence.json
+            for f in hybrid-token-profiles.json hybrid-token-state.json hybrid-external-evidence.json hybrid-research-context.json hybrid-catalyst-scan-queue.json hybrid-catalyst-trigger-ledger.json; do cp "$tmp/$f" "data/$f"; done
+            git add data/hybrid-token-profiles.json data/hybrid-token-state.json data/hybrid-external-evidence.json data/hybrid-research-context.json data/hybrid-catalyst-scan-queue.json data/hybrid-catalyst-trigger-ledger.json
             if git diff --cached --quiet; then
               echo 'HYBRID_NO_DATA_CHANGE'
               exit 0
             fi
-            git commit -m 'data: refresh Hybrid profiles and exact-mint holder evidence'
+            git commit -m 'data: refresh Hybrid profiles, past-DNA context and catalyst queue'
             if git push origin HEAD:main; then
               echo 'HYBRID_PUBLISH_OK'
               exit 0
