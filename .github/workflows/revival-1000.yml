@@ -38,6 +38,33 @@ jobs:
         run: pip install -e . pytest
       - name: Unit tests
         run: python -m pytest -q tests/test_revival_1000.py
+      - name: Migrate Revival state to strict Solana-only identity
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from wallet500.revival_1000 import looks_like_solana_address
+
+          p = Path('data/revival-1000-state.json')
+          if not p.exists():
+              print('REVIVAL_STATE_MIGRATION_NO_EXISTING_STATE')
+              raise SystemExit(0)
+
+          state = json.loads(p.read_text())
+          coins = state.get('coins') or {}
+          clean = {
+              key: row for key, row in coins.items()
+              if isinstance(row, dict)
+              and row.get('network') == 'solana'
+              and looks_like_solana_address(row.get('token_address'))
+          }
+          removed = len(coins) - len(clean)
+          state['version'] = 4
+          state['network'] = 'solana'
+          state['coins'] = clean
+          p.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+          print(f'REVIVAL_STATE_SOLANA_MIGRATION kept={len(clean)} removed_legacy={removed}')
+          PY
       - name: Collect strict Solana-only non-pegged Revival universe
         env:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
@@ -88,7 +115,20 @@ jobs:
           if verified < 1: raise SystemExit('NO_VERIFIED_DEX_PAIR_LINKS_RESOLVED')
           if (d.get('counts') or {}).get('dex_verified_pairs') != verified:
               raise SystemExit('DEX_VERIFIED_PAIR_COUNT_MISMATCH')
-          print('REVIVAL_SOLANA_500_V4_OK', d.get('counts'), 'source=', d.get('source'))
+
+          sp=Path('data/revival-1000-state.json')
+          if not sp.exists(): raise SystemExit('REVIVAL_SOLANA_STATE_MISSING')
+          state=json.loads(sp.read_text())
+          if state.get('network')!='solana': raise SystemExit('REVIVAL_STATE_NETWORK_NOT_SOLANA')
+          state_coins=state.get('coins') or {}
+          if any(
+              not isinstance(x, dict)
+              or x.get('network')!='solana'
+              or not looks_like_solana_address(x.get('token_address'))
+              for x in state_coins.values()
+          ):
+              raise SystemExit('REVIVAL_STATE_LEGACY_OR_NON_SOLANA_ASSET_PRESENT')
+          print('REVIVAL_SOLANA_500_V4_OK', d.get('counts'), 'state_coins=', len(state_coins), 'source=', d.get('source'))
           PY
       - name: Publish immutable T0 state and latest snapshot
         run: |
