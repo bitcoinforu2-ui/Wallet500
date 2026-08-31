@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 DATA = Path("data")
 LATEST = DATA / "revival-1000-latest.json"
 STATE = DATA / "revival-1000-state.json"
-MODE = "RESEARCH_ONLY_REVIVAL_SOLANA_500_V3"
+MODE = "RESEARCH_ONLY_REVIVAL_SOLANA_500_V4"
 NETWORK = "solana"
 MAX_CANDIDATES = 500
 
@@ -30,6 +30,38 @@ STABLE_SYMBOLS = {
     "TUSD", "USDP", "GUSD", "FRAX", "LUSD", "CRVUSD", "USDD", "USDB",
     "USDX", "USD0", "USDY", "EURC", "EURS", "EURCV",
 }
+
+# The user explicitly does not want wrapped, pegged or receipt-style assets in
+# this Solana universe. These exact symbols cover common wrappers, liquid-
+# staking receipts, LP receipts and tokenized/yield-bearing representations.
+# The generic name rules below provide a second line of defence.
+PEGGED_DERIVATIVE_SYMBOLS = {
+    "WBTC", "CBBTC", "TBTC", "LBTC", "SOLVBTC", "WSOL",
+    "BNSOL", "JITOSOL", "JUPSOL", "MSOL", "STSOL", "VSOL",
+    "JLP", "SUSDE", "SYRUPUSDC", "USYC", "USTB", "BUILD",
+}
+PEGGED_DERIVATIVE_NAME_TERMS = (
+    "wrapped ",
+    "wrapped bitcoin",
+    "wrapped btc",
+    "bridged ",
+    "wormhole",
+    "portal token",
+    "staked sol",
+    "staked usd",
+    "liquid staked",
+    "liquid staking",
+    "restaked",
+    "liquidity provider token",
+    "liquidity provider",
+    "lp token",
+    "yield bearing",
+    "yield-bearing",
+    "tokenized treasury",
+    "tokenized fund",
+    "government securities fund",
+    "institutional digital liquidity fund",
+)
 
 
 def now_iso() -> str:
@@ -63,8 +95,29 @@ def is_stable_like(x: dict) -> bool:
     return False
 
 
-def fetch_verified_solana_ids(headers: dict) -> set[str]:
-    """Return CoinGecko IDs that explicitly expose a Solana platform address."""
+def is_pegged_or_derivative_like(x: dict) -> bool:
+    """Conservatively reject wrapped/pegged/receipt/tokenized representations."""
+    symbol = str(x.get("symbol") or "").strip().upper()
+    name = str(x.get("name") or "").strip().lower()
+    if symbol in PEGGED_DERIVATIVE_SYMBOLS:
+        return True
+    return any(term in name for term in PEGGED_DERIVATIVE_NAME_TERMS)
+
+
+def active_platforms(platforms: dict | None) -> set[str]:
+    """Return CoinGecko platform keys that actually expose a non-empty address."""
+    if not isinstance(platforms, dict):
+        return set()
+    return {str(k).strip().lower() for k, v in platforms.items() if str(v or "").strip()}
+
+
+def has_solana_only_platform(platforms: dict | None) -> bool:
+    """Strict footprint rule: a listed asset must expose only a Solana contract."""
+    return active_platforms(platforms) == {"solana"}
+
+
+def fetch_solana_only_ids(headers: dict) -> set[str]:
+    """Return CoinGecko IDs whose active contract footprint is Solana only."""
     raw = fetch_json(
         "https://api.coingecko.com/api/v3/coins/list?include_platform=true",
         headers=headers,
@@ -74,24 +127,25 @@ def fetch_verified_solana_ids(headers: dict) -> set[str]:
     ids: set[str] = set()
     for x in raw:
         platforms = x.get("platforms") or {}
-        if platforms.get("solana"):
+        if has_solana_only_platform(platforms):
             coin_id = str(x.get("id") or "").strip()
             if coin_id:
                 ids.add(coin_id)
     if len(ids) < 100:
-        raise RuntimeError(f"insufficient verified Solana ids: {len(ids)}")
+        raise RuntimeError(f"insufficient Solana-only ids: {len(ids)}")
     return ids
 
 
 def fetch_coingecko() -> list[dict]:
-    """Fetch market-cap-ranked assets, verify Solana, remove stables, return up to 500."""
+    """Fetch ranked Solana-only assets, excluding stable and pegged/derivative representations."""
     headers = coingecko_headers()
-    solana_ids = fetch_verified_solana_ids(headers)
+    solana_only_ids = fetch_solana_only_ids(headers)
     out: list[dict] = []
 
-    # Pull a wider source universe so that removing stables still leaves up to
-    # 500 valid non-stable Solana candidates. Exact platform verification is
-    # mandatory; ecosystem-category membership alone never qualifies an asset.
+    # Pull a wider source universe so that strict identity filtering still
+    # leaves up to 500 valid candidates. An asset is rejected if CoinGecko
+    # exposes any other active platform address; this prevents ordinary
+    # Ethereum/BTC assets merely represented on Solana from entering the list.
     for page in range(1, 5):
         url = (
             "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd"
@@ -102,7 +156,7 @@ def fetch_coingecko() -> list[dict]:
         batch = fetch_json(url, headers=headers)
         if not isinstance(batch, list):
             raise RuntimeError("CoinGecko response is not a list")
-        out.extend(x for x in batch if str(x.get("id") or "") in solana_ids)
+        out.extend(x for x in batch if str(x.get("id") or "") in solana_only_ids)
         if len(batch) < 250:
             break
         time.sleep(1.2)
@@ -111,7 +165,7 @@ def fetch_coingecko() -> list[dict]:
     seen: set[str] = set()
     for x in out:
         coin_id = str(x.get("id") or "")
-        if not coin_id or coin_id in seen or is_stable_like(x):
+        if not coin_id or coin_id in seen or is_stable_like(x) or is_pegged_or_derivative_like(x):
             continue
         seen.add(coin_id)
         ath = x.get("ath")
@@ -123,8 +177,10 @@ def fetch_coingecko() -> list[dict]:
             "source": "coingecko",
             "network": NETWORK,
             "network_verified": True,
-            "network_verification": "COINGECKO_PLATFORMS_SOLANA_ADDRESS_PRESENT",
+            "network_verification": "COINGECKO_SOLANA_ONLY_ACTIVE_PLATFORM_FOOTPRINT",
+            "solana_only_platform_verified": True,
             "stablecoin_excluded": True,
+            "pegged_derivative_excluded": True,
             "id": coin_id,
             "symbol": str(x.get("symbol") or "").upper(),
             "name": x.get("name"),
@@ -189,12 +245,12 @@ def score_market_signals(x: dict) -> tuple[float, list[str]]:
 
 def load_state() -> dict:
     if not STATE.exists():
-        return {"version": 3, "network": NETWORK, "first_t0": now_iso(), "coins": {}}
+        return {"version": 4, "network": NETWORK, "first_t0": now_iso(), "coins": {}}
     try:
         state = json.loads(STATE.read_text())
     except Exception:
-        state = {"version": 3, "network": NETWORK, "first_t0": now_iso(), "coins": {}}
-    state["version"] = 3
+        state = {"version": 4, "network": NETWORK, "first_t0": now_iso(), "coins": {}}
+    state["version"] = 4
     state["network"] = NETWORK
     return state
 
@@ -205,7 +261,13 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
     coins_state = state.setdefault("coins", {})
     normalized = []
     for i, x in enumerate(rows[:MAX_CANDIDATES], 1):
-        if x.get("network") != NETWORK or x.get("network_verified") is not True or is_stable_like(x):
+        if (
+            x.get("network") != NETWORK
+            or x.get("network_verified") is not True
+            or x.get("solana_only_platform_verified") is not True
+            or is_stable_like(x)
+            or is_pegged_or_derivative_like(x)
+        ):
             continue
         x["universe_rank"] = len(normalized) + 1
         x["market_cap_rank"] = x.get("market_cap_rank") or x["universe_rank"]
@@ -249,15 +311,15 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
     core_count = sum(1 for x in normalized if x["watch_status"] != "OUTSIDE_CORE_DRAWDOWN_BAND")
     waking = sum(1 for x in normalized if x["watch_status"] == "WAKING_MARKET_ONLY")
     return {
-        "version": 3,
+        "version": 4,
         "mode": MODE,
         "network": NETWORK,
-        "network_filter": "STRICT_EXACT_PLATFORM_VERIFICATION",
-        "asset_filter": "SOLANA_VERIFIED_NON_STABLE_ONLY",
+        "network_filter": "STRICT_SOLANA_ONLY_PLATFORM_FOOTPRINT",
+        "asset_filter": "SOLANA_ONLY_PLATFORM_NON_STABLE_NON_PEGGED_ONLY",
         "generated_at": ts,
         "production_portfolio_impact": "NONE",
         "no_hindsight": True,
-        "universe_definition": "UP_TO_500_NON_STABLE_SOLANA_ASSETS_BY_MARKET_CAP_FROM_SOLANA_ECOSYSTEM_FEED; EXACT_COINGECKO_PLATFORM_SOLANA_VERIFICATION_REQUIRED",
+        "universe_definition": "UP_TO_500_SOLANA_ONLY_PLATFORM_ASSETS_BY_MARKET_CAP_FROM_SOLANA_ECOSYSTEM_FEED; ANY OTHER ACTIVE PLATFORM ADDRESS, STABLE, WRAPPED, PEGGED, STAKED, LP OR TOKENIZED_RECEIPT IS EXCLUDED",
         "source": source,
         "counts": {
             "universe": len(normalized),
@@ -268,6 +330,8 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
         "scoring_contract": {
             "market_score_max": 100,
             "stablecoins": "EXCLUDED",
+            "wrapped_pegged_derivatives": "EXCLUDED",
+            "cross_platform_assets": "EXCLUDED",
             "holder_growth": "PENDING_VERIFIED_SOURCE",
             "concentration_decline": "PENDING_VERIFIED_SOURCE",
             "fundamentals_product_community": "PENDING_VERIFIED_SOURCE",
