@@ -2,126 +2,74 @@ name: Wallet500 Backup Scan
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/backup-scan.yml'
   schedule:
     - cron: '33 * * * *'
 
 permissions:
-  contents: write
+  contents: read
+  actions: write
 
 concurrency:
-  group: wallet500-live-scan
-  cancel-in-progress: false
+  group: wallet500-backup-sentinel
+  cancel-in-progress: true
 
 jobs:
   backup:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+          fetch-depth: 1
+
       - name: Check whether primary data is stale
         id: stale
+        shell: bash
         run: |
-          python3 - <<'PY'
-          import json, os
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
           from datetime import datetime, timezone
           from pathlib import Path
-          stale=True
-          p=Path('data/run-summary.json')
+
+          stale = True
+          age = 999999.0
+          p = Path('data/run-summary.json')
           if p.exists():
               try:
-                  d=json.loads(p.read_text())
-                  ts=datetime.fromisoformat(d['updated_at'])
-                  age=(datetime.now(timezone.utc)-ts).total_seconds()
-                  stale=age>1200
-                  print(f'current scan age={age:.0f}s stale={stale}')
-              except Exception as e:
-                  print('cannot parse run-summary:',e)
-          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
-              f.write('stale='+('true' if stale else 'false')+'\n')
+                  d = json.loads(p.read_text())
+                  ts = datetime.fromisoformat(d['updated_at'])
+                  age = (datetime.now(timezone.utc) - ts).total_seconds() / 60
+                  stale = age > 20
+              except Exception:
+                  stale = True
+          print('stale=' + ('true' if stale else 'false'))
+          print(f'age_minutes={age:.1f}')
           PY
-      - name: Install
-        if: steps.stale.outputs.stale == 'true'
-        run: pip install -e .
-      - name: Run fallback verified intelligence scan
-        if: steps.stale.outputs.stale == 'true'
-        env:
-          PYTHONUNBUFFERED: '1'
-        run: |
-          date -u +%s > /tmp/w500-backup-start
-          python -m wallet500.orchestrator
-      - name: Apply universal live survival gate
-        if: steps.stale.outputs.stale == 'true'
-        run: python -m wallet500.fresh_solana_gate
-      - name: Capture immutable qualified evidence
-        if: steps.stale.outputs.stale == 'true'
-        run: python -m wallet500.evidence_capture
-      - name: Send gated Telegram alerts
+
+      - name: Fresh primary data needs no backup action
+        if: steps.stale.outputs.stale != 'true'
+        run: echo "Primary scan is fresh enough (${{ steps.stale.outputs.age_minutes }} minutes); backup exits cleanly."
+
+      - name: Dispatch full primary scan only when idle
         if: steps.stale.outputs.stale == 'true'
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python -m wallet500.telegram_alerts
-      - name: Extract verified Solana wallet candidates
-        if: steps.stale.outputs.stale == 'true'
-        continue-on-error: true
-        run: python -m wallet500.wallet_candidate_discovery
-      - name: Record backup recovery
-        if: steps.stale.outputs.stale == 'true'
-        env:
-          W500_EVENT: ${{ github.event_name }}
-          W500_RUN_ID: ${{ github.run_id }}
-        run: |
-          python3 - <<'PY'
-          import json, os
-          from datetime import datetime, timezone
-          from pathlib import Path
-          rp=Path('data/run-summary.json')
-          start_file=Path('/tmp/w500-backup-start')
-          if not start_file.exists(): raise SystemExit('FATAL: backup start proof missing')
-          start_epoch=float(start_file.read_text().strip())
-          d=json.loads(rp.read_text())
-          ts=datetime.fromisoformat(d['updated_at'])
-          if ts.tzinfo is None: raise SystemExit('FATAL: backup updated_at is timezone-naive')
-          if ts.timestamp() < start_epoch-5:
-              raise SystemExit(f'FATAL: backup output predates current recovery run ({d["updated_at"]})')
-          if rp.stat().st_mtime < start_epoch-5:
-              raise SystemExit('FATAL: run-summary file was not rewritten by current recovery run')
-          future=(ts-datetime.now(timezone.utc)).total_seconds()
-          if future>30: raise SystemExit(f'FATAL: backup output timestamp is in the future ({future:.0f}s)')
-          hp=Path('data/scheduler-health.json')
-          try: h=json.loads(hp.read_text()) if hp.exists() else {}
-          except Exception: h={}
-          hist=h.get('history') if isinstance(h.get('history'),list) else []
-          now=datetime.now(timezone.utc).isoformat()
-          item={'at':now,'workflow':'BACKUP_STALE_RECOVERY','event':os.getenv('W500_EVENT'),'run_id':os.getenv('W500_RUN_ID'),'scan_updated_at':d['updated_at'],'scan_run_total':d.get('scan_runs_total'),'freshness_proof':'CURRENT_RECOVERY_RUN'}
-          hist.append(item); hist=hist[-200:]
-          hp.write_text(json.dumps({'updated_at':now,'last':item,'history':hist},indent=2))
-          PY
-      - name: Validate alert report
-        if: steps.stale.outputs.stale == 'true'
-        run: test -s data/telegram-alert-report.json
-      - name: Publish recovered scan data
-        if: steps.stale.outputs.stale == 'true'
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-backup'
-          git config user.email 'wallet500-backup@users.noreply.github.com'
-          git add data/
-          git diff --cached --quiet && exit 0
-          git commit -m 'data: backup stale-data recovery scan'
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git merge --no-edit -X ours origin/main || true
-            if git push origin HEAD:main; then exit 0; fi
-            sleep 3
-          done
-          exit 1
+
+          # Backup is a scheduler sentinel only. It must never calculate, merge,
+          # auto-resolve or publish truth-bearing data. All recovery goes through
+          # the complete Live Scan chain and its fail-closed strict validation.
+          runs_json="$(gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/live-scan.yml/runs?per_page=30")"
+
+          active_count="$(printf '%s' "$runs_json" | jq '[.workflow_runs[] | select(.status == "in_progress" or .status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length')"
+
+          if [ "$active_count" -gt 0 ]; then
+            echo "BACKUP_STALE_BUT_PRIMARY_ACTIVE age=${{ steps.stale.outputs.age_minutes }}m active=${active_count}; no duplicate dispatch."
+            exit 0
+          fi
+
+          echo "BACKUP_STALE_DISPATCH_FULL_PRIMARY age=${{ steps.stale.outputs.age_minutes }}m"
+          gh workflow run live-scan.yml --repo "$GITHUB_REPOSITORY" --ref main
