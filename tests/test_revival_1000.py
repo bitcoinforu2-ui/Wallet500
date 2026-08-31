@@ -1,4 +1,4 @@
-from wallet500.revival_1000 import score_market_signals
+from wallet500.revival_1000 import is_stable_like, score_market_signals
 
 
 def test_deep_drawdown_early_awakening_scores_without_hindsight():
@@ -36,3 +36,12 @@ def test_parabolic_move_gets_chase_penalty():
     assert late < early
     assert "CHASE_RISK_24H_GE_50" in reasons
     assert "LATE_PARABOLIC_24H_GE_100" in reasons
+
+
+def test_stablecoins_are_excluded_from_revival_universe():
+    assert is_stable_like({"id": "usd-coin", "symbol": "USDC", "name": "USDC"})
+    assert is_stable_like({"id": "tether", "symbol": "USDT", "name": "Tether"})
+    assert is_stable_like({"id": "dai", "symbol": "DAI", "name": "Dai"})
+    assert is_stable_like({"id": "paypal-usd", "symbol": "PYUSD", "name": "PayPal USD"})
+    assert not is_stable_like({"id": "chainlink", "symbol": "LINK", "name": "Chainlink"})
+    assert not is_stable_like({"id": "render-token", "symbol": "RENDER", "name": "Render"})
