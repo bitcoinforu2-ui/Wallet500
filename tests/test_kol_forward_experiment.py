@@ -12,9 +12,10 @@ def test_source_numbers_parse_compact_amounts():
     assert values["source_stated_liquidity_usd"] == 136_000
 
 
-def test_template_hash_ignores_ca_and_numbers():
-    a = _template_hash("CALL CA: 7TdDuWRJACtjqWWbUR5JEiUyhG2UyV4LJTnfWPoPX3iu MC: $71k")
-    b = _template_hash("CALL CA: BRZ5aeJCDuruA42V1CntqKvofa2G7DS3yyxx1pZEpump MC: $99k")
+def test_template_hash_deduplicates_same_token_copy_with_changed_numbers():
+    ca = "7TdDuWRJACtjqWWbUR5JEiUyhG2UyV4LJTnfWPoPX3iu"
+    a = _template_hash(f"CALL CA: {ca} MC: $71k")
+    b = _template_hash(f"CALL CA: {ca} MC: $99k")
     assert a == b
 
 
