@@ -1,6 +1,6 @@
 # Wallet500 Experiment V1
 
-Generated: 2026-08-31T18:06:17.677943+00:00
+Generated: 2026-08-31T18:20:57.898624+00:00
 
 Prospective research only — production policy unchanged.
 
@@ -8,10 +8,10 @@ Prospective research only — production policy unchanged.
 
 | Experiment | N | Survival 1h | Survival 6h | Failed | Median ROI | P25 ROI | Max DD | Verified Tradable | Status |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| FIVE_MINUTE_FINGERPRINT | 84 | 70.24 | 60.71 | 29.76 | -8.159094 | -99.99879 | None | 70.24 | ANALYZABLE |
-| SURVIVOR_FIRST | 103 | 97.09 | 83.5 | 0.97 | 0.0 | -0.288913 | None | 99.03 | ANALYZABLE |
-| SOURCE_TOURNAMENT | 143 | 78.32 | 67.13 | 20.28 | 0.0 | -23.85689 | None | 79.72 | ANALYZABLE |
+| FIVE_MINUTE_FINGERPRINT | 85 | 69.41 | 60.0 | 29.41 | -8.056708 | -99.998788 | None | 70.59 | ANALYZABLE |
+| SURVIVOR_FIRST | 106 | 95.28 | 82.08 | 0.0 | 0.0 | 0.0 | None | 100.0 | ANALYZABLE |
+| SOURCE_TOURNAMENT | 146 | 76.71 | 65.75 | 19.86 | 0.0 | -23.194794 | None | 80.14 | ANALYZABLE |
 
 ## Source Tournament
 
-- NATIVE_FIRST_ELIGIBLE: N=143 median ROI=0.0% verified=79.72%
+- NATIVE_FIRST_ELIGIBLE: N=146 median ROI=0.0% verified=80.14%
