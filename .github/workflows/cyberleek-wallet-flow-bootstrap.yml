@@ -1,0 +1,120 @@
+name: Wallet500 CYBERLEEK Wallet Flow Bootstrap
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cyberleek-wallet-flow-bootstrap.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-cyberleek-wallet-flow-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install package
+        run: pip install -e .
+      - name: Patch dashboard and Pages truth path
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          dash=Path('dashboard-cyberleek.html')
+          s=dash.read_text(encoding='utf-8')
+          s=s.replace('24H BUYS / SELLS','DEX TXNS 24H · BUYS / SELLS')
+          s=s.replace('BUY / SELL RATIO','DEX TXN RATIO · NOT WALLETS')
+          marker='<section class="grid6"><div class="card"><div class="lab">LIVE MARKET CAP</div>'
+          panel='''<section class="panel" id="wallet-flow-real"><h2>ON-CHAIN WALLET FLOW · EXACT PAIR</h2><div class="source" id="wfStatus">טוען מדד ארנקים אמיתי…</div><div class="grid6"><div class="card"><div class="lab">UNIQUE BUYERS · 1H</div><div id="wfBuyers" class="smallnum cyan">—</div></div><div class="card"><div class="lab">UNIQUE SELLERS · 1H</div><div id="wfSellers" class="smallnum">—</div></div><div class="card"><div class="lab">FIRST-SEEN BUYERS · 1H</div><div id="wfNew" class="smallnum green">—</div><div class="metricNote">ראשונים שנצפו מאז T0 של המוניטור — לא טענת holder חדש לכל החיים</div></div><div class="card"><div class="lab">REPEAT BUYERS · 1H</div><div id="wfRepeat" class="smallnum yellow">—</div></div><div class="card"><div class="lab">TOKEN BUY / SELL FLOW · 1H</div><div id="wfFlow" class="smallnum">—</div><div class="metricNote">יחס כמות CYBERLEEK שנכנסה לארנקי קונים מול יצאה מארנקי מוכרים שזוהו</div></div><div class="card"><div class="lab">TX / UNIQUE TRADER · 1H</div><div id="wfTxPer" class="smallnum">—</div></div></div><div id="wfWindows" class="source">ממתין לנתוני on-chain…</div><div class="source">TRUTH: מספרי DEX BUYS/SELLS למעלה הם עסקאות בלבד. המדד כאן סופר ארנקים רק כאשר owner של CYBERLEEK הוא signer בעסקה ונמדד לו token-balance delta. עסקאות שלא ניתן לייחס בוודאות נשארות UNRESOLVED ולא מנחשים אותן.</div></section>'''
+          if 'ON-CHAIN WALLET FLOW · EXACT PAIR' not in s:
+              if marker not in s:
+                  raise SystemExit('dashboard wallet-flow insertion marker missing')
+              s=s.replace(marker,panel+marker,1)
+          if 'WalletFlowRealV1' not in s:
+              script='''<script id="WalletFlowRealV1">(()=>{const g=id=>document.getElementById(id),n=x=>Number(x||0),fmt=x=>Number.isFinite(Number(x))?Number(x).toLocaleString('en-US'):'—',ratio=x=>x===null||x===undefined||!Number.isFinite(Number(x))?'—':Number(x).toFixed(2)+'x';function row(k,w){if(!w)return k+': —';return k+': '+fmt(w.unique_buyers)+'B / '+fmt(w.unique_sellers)+'S · first '+fmt(w.first_seen_buyers_since_t0)+' · repeat '+fmt(w.repeat_buyers)+' · flow '+ratio(w.token_flow_ratio)+' · tx/w '+(w.tx_per_unique_trader==null?'—':Number(w.tx_per_unique_trader).toFixed(2))}function render(d){let h=(d.windows||{}).h1||{},c=d.coverage||{};g('wfBuyers').textContent=fmt(h.unique_buyers);g('wfSellers').textContent=fmt(h.unique_sellers);g('wfNew').textContent=fmt(h.first_seen_buyers_since_t0);g('wfRepeat').textContent=fmt(h.repeat_buyers);g('wfFlow').textContent=ratio(h.token_flow_ratio);g('wfTxPer').textContent=h.tx_per_unique_trader==null?'—':Number(h.tx_per_unique_trader).toFixed(2)+'x';g('wfStatus').textContent=(d.status||'—')+' · T0 '+(d.monitor_started_at||'—')+' · tracked wallets '+fmt(c.tracked_wallets_since_t0)+' · last resolution '+(c.last_run_resolution_pct==null?'—':Number(c.last_run_resolution_pct).toFixed(1)+'%')+(c.coverage_gap?' · COVERAGE GAP':'');let w=d.windows||{};g('wfWindows').innerHTML=[row('5m',w.m5),row('1h',w.h1),row('6h',w.h6),row('24h',w.h24)].map(x=>'<div class="q">'+x+'</div>').join('')}async function poll(){try{let r=await fetch('../data/cyberleek-wallet-flow.json?v='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error(r.status);render(await r.json())}catch(e){let x=g('wfStatus');if(x)x.textContent='WALLET FLOW UNAVAILABLE · '+e.message}}poll();setInterval(poll,15000)})();</script>'''
+              if '</body>' not in s:
+                  raise SystemExit('dashboard body marker missing')
+              s=s.replace('</body>',script+'</body>',1)
+          dash.write_text(s,encoding='utf-8')
+
+          pages=Path('.github/workflows/pages.yml')
+          p=pages.read_text(encoding='utf-8')
+          trigger="      - 'data/case-study-cyberleek.json'\n"
+          if "data/cyberleek-wallet-flow.json" not in p:
+              if trigger not in p:
+                  raise SystemExit('pages CYBERLEEK data trigger marker missing')
+              p=p.replace(trigger,trigger+"      - 'data/cyberleek-wallet-flow.json'\n",1)
+          check="          check_text _site/cyberleek/index.html 'CYBERLEEK · EXACT-PAIR DEEP WATCH'\n"
+          if "check_file _site/data/cyberleek-wallet-flow.json" not in p:
+              if check not in p:
+                  raise SystemExit('pages CYBERLEEK check marker missing')
+              p=p.replace(check,"          check_file _site/data/cyberleek-wallet-flow.json\n"+check+"          check_text _site/cyberleek/index.html 'ON-CHAIN WALLET FLOW · EXACT PAIR'\n",1)
+          jsoncheck="          python -m json.tool _site/data/case-study-cyberleek.json >/dev/null || fail 'invalid cyberleek case-study json'\n"
+          if "invalid cyberleek wallet-flow json" not in p:
+              if jsoncheck not in p:
+                  raise SystemExit('pages CYBERLEEK json marker missing')
+              p=p.replace(jsoncheck,jsoncheck+"          python -m json.tool _site/data/cyberleek-wallet-flow.json >/dev/null || fail 'invalid cyberleek wallet-flow json'\n",1)
+          verify="grep -Fq 'CYBERLEEK · EXACT-PAIR DEEP WATCH' <<<\"$cyber\""
+          if "ON-CHAIN WALLET FLOW · EXACT PAIR' <<<\"$cyber\"" not in p and verify in p:
+              p=p.replace(verify,verify+" && grep -Fq 'ON-CHAIN WALLET FLOW · EXACT PAIR' <<<\"$cyber\"",1)
+          pages.write_text(p,encoding='utf-8')
+          PY
+      - name: Establish forward T0 and first on-chain cursor
+        env:
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+        run: |
+          if [ -z "${SOLANA_RPC_URL:-}" ]; then unset SOLANA_RPC_URL; fi
+          python -m wallet500.cyberleek_wallet_flow
+      - name: Validate implementation
+        run: |
+          python -m py_compile src/wallet500/cyberleek_wallet_flow.py
+          python -m json.tool data/cyberleek-wallet-flow.json >/dev/null
+          grep -Fq 'DEX TXN RATIO · NOT WALLETS' dashboard-cyberleek.html
+          grep -Fq 'ON-CHAIN WALLET FLOW · EXACT PAIR' dashboard-cyberleek.html
+          grep -Fq 'data/cyberleek-wallet-flow.json' .github/workflows/pages.yml
+          python - <<'PY'
+          import json
+          d=json.load(open('data/cyberleek-wallet-flow.json'))
+          assert d['exact_pair']=='G8kgi7aUpeX8EVR8VMkrth9SKEv5BietWC33UjAiiMGh'
+          assert d['truth_contract']['unresolved_transactions_are_not_guessed'] is True
+          assert d['truth_contract']['dex_txn_counts_are_not_wallet_counts'] is True
+          print('REAL_WALLET_FLOW_STATIC_OK')
+          PY
+      - name: Commit installed dashboard metric
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dashboard-cyberleek.html .github/workflows/pages.yml data/cyberleek-wallet-flow.json
+          if [ -f data/cyberleek-wallet-flow-state.json ]; then git add data/cyberleek-wallet-flow-state.json; fi
+          if git diff --cached --quiet; then
+            echo 'Wallet-flow dashboard already installed'
+            exit 0
+          fi
+          git commit -m 'feat: replace CYBERLEEK txn proxy with real wallet flow'
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo 'Wallet-flow bootstrap stopped fail-closed on rebase conflict'
+              exit 1
+            fi
+            if git push origin HEAD:main; then exit 0; fi
+            [ "$attempt" -eq 3 ] && exit 1
+            sleep $((attempt * 2))
+          done
