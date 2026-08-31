@@ -1,0 +1,76 @@
+name: Wallet500 Profile5 Long Horizon Research
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+  push:
+    paths:
+      - '.github/workflows/profile5-long-horizon.yml'
+      - 'src/wallet500/profile5_long_horizon.py'
+      - 'data/profile5-long-horizon-config.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-profile5-long-horizon-research
+  cancel-in-progress: false
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build fixed five exact-pair long-horizon profiles
+        run: |
+          export PYTHONPATH="$PWD/src"
+          python -m wallet500.profile5_long_horizon
+
+      - name: Validate truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/profile5-long-horizon-report.json')
+          assert p.exists()
+          d=json.loads(p.read_text())
+          assert d['mode']=='RESEARCH_ONLY_FIXED_5_EXACT_PAIRS'
+          assert d['pair_identity_policy']=='EXACT_LOCKED_PAIR_ONLY'
+          assert d['lookahead_policy']=='FORBIDDEN'
+          assert d['production_portfolio_impact']=='NONE'
+          assert d['tokens_requested']==5
+          for row in d['profiles']:
+              assert row['pair_identity_locked'] is True
+              assert row['verified_tradable_claim'] is False
+              assert row['engine_roi_claim'] is False
+              assert set(row['windows'])=={'7','30','90','270','365'}
+          print('Profile5 truth contract passed')
+          PY
+
+      - name: Commit research output only
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-research-bot'
+          git config user.email 'wallet500-research-bot@users.noreply.github.com'
+          git add data/profile5-long-horizon-report.json
+          if git diff --cached --quiet; then
+            echo 'No research output change'
+            exit 0
+          fi
+          git commit -m 'research: refresh fixed 5 long-horizon token profiles'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git merge --no-edit -X ours origin/main
+            if git push origin HEAD:main; then break; fi
+            sleep 3
+            if [ "$attempt" = 5 ]; then exit 1; fi
+          done
