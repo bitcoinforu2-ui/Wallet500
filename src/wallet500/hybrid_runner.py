@@ -129,7 +129,12 @@ def run() -> dict:
     source = engine._load(engine.SOURCE, {})
     source_generated_at = str(source.get("generated_at") or "")
     source_dt = engine._dt(source_generated_at)
-    if source.get("mode") != "RESEARCH_ONLY_REVIVAL_SOLANA_500_V4" or source.get("network") != engine.NETWORK:
+    if (
+        source.get("mode") != "RESEARCH_ONLY_REVIVAL_SOLANA_EXPANDED_V6"
+        or source.get("network") != engine.NETWORK
+        or source.get("production_portfolio_impact") != "NONE"
+        or source.get("no_hindsight") is not True
+    ):
         raise RuntimeError("HYBRID_SOURCE_TRUTH_CONTRACT_REJECTED")
     if source_dt is None:
         raise RuntimeError("HYBRID_SOURCE_TIMESTAMP_INVALID")
