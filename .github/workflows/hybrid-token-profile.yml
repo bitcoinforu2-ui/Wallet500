@@ -1,0 +1,107 @@
+name: Wallet500 Hybrid Token Profiles
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '15,45 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/hybrid_token_profile.py'
+      - 'tests/test_hybrid_token_profile.py'
+      - '.github/workflows/hybrid-token-profile.yml'
+      - 'data/revival-1000-latest.json'
+      - 'data/hybrid-external-evidence.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-main-data-publisher
+  cancel-in-progress: false
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Unit tests
+        run: python -m pytest -q tests/test_hybrid_token_profile.py
+      - name: Build exact-address hybrid profiles
+        run: python -m wallet500.hybrid_token_profile
+      - name: Validate hybrid truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from wallet500.revival_1000 import looks_like_solana_address
+
+          p=Path('data/hybrid-token-profiles.json')
+          s=Path('data/hybrid-token-state.json')
+          if not p.exists() or not s.exists(): raise SystemExit('HYBRID_OUTPUT_MISSING')
+          d=json.loads(p.read_text())
+          st=json.loads(s.read_text())
+          if d.get('mode')!='RESEARCH_ONLY_HYBRID_TOKEN_PROFILE_V1': raise SystemExit('HYBRID_MODE_INVALID')
+          if d.get('contract')!='HYBRID_TOKEN_PROFILE_V1': raise SystemExit('HYBRID_CONTRACT_INVALID')
+          if d.get('network')!='solana': raise SystemExit('HYBRID_NETWORK_INVALID')
+          if d.get('production_portfolio_impact')!='NONE': raise SystemExit('HYBRID_PRODUCTION_IMPACT_INVALID')
+          if d.get('no_hindsight') is not True: raise SystemExit('HYBRID_NO_HINDSIGHT_MISSING')
+          if st.get('last_source_generated_at') != d.get('source_generated_at'): raise SystemExit('HYBRID_STATE_SOURCE_MISMATCH')
+          rows=d.get('profiles') or []
+          if not (100 <= len(rows) <= 500): raise SystemExit(f'HYBRID_PROFILE_COUNT_INVALID:{len(rows)}')
+          addresses=[str(x.get('token_address') or '') for x in rows]
+          if len(addresses)!=len(set(addresses)): raise SystemExit('HYBRID_DUPLICATE_TOKEN_ADDRESS')
+          if any(not looks_like_solana_address(x) for x in addresses): raise SystemExit('HYBRID_INVALID_SOLANA_ADDRESS')
+          allowed={'BASELINE_LEARNING','NORMAL','ABNORMAL_ACTIVITY','HYBRID_IGNITION','RISK_DISTRIBUTION'}
+          for x in rows:
+              raw=float(x.get('hybrid_score_raw') or 0); cov=float(x.get('evidence_coverage_pct') or 0); norm=float(x.get('hybrid_score_verified_normalized') or 0); risk=float(x.get('risk_score') or 0)
+              if not (0<=raw<=100 and 0<=cov<=100 and 0<=norm<=100 and 0<=risk<=100): raise SystemExit('HYBRID_SCORE_RANGE_INVALID')
+              if raw > cov + 1e-6: raise SystemExit('HYBRID_RAW_SCORE_EXCEEDS_EVIDENCE_COVERAGE')
+              if x.get('status') not in allowed: raise SystemExit('HYBRID_STATUS_INVALID')
+              ch=x.get('channels') or {}
+              for name in ('holders','wallets','social','news'):
+                  c=ch.get(name) or {}
+                  if c.get('available') is not True and float(c.get('score') or 0)!=0: raise SystemExit(f'HYBRID_UNVERIFIED_{name.upper()}_SCORED')
+              if x.get('status')=='HYBRID_IGNITION':
+                  if not x.get('baseline_ready') or len(x.get('strong_channels') or [])<2 or raw<35 or norm<70 or risk>=35:
+                      raise SystemExit('HYBRID_IGNITION_CONTRACT_BROKEN')
+          print('HYBRID_TOKEN_PROFILE_V1_OK', d.get('counts'))
+          PY
+      - name: Publish hybrid profiles and compact baseline state
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-hybrid-bot'
+          git config user.email 'wallet500-hybrid-bot@users.noreply.github.com'
+
+          tmp="$(mktemp -d)"
+          cp data/hybrid-token-profiles.json "$tmp/hybrid-token-profiles.json"
+          cp data/hybrid-token-state.json "$tmp/hybrid-token-state.json"
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/hybrid-token-profiles.json" data/hybrid-token-profiles.json
+            cp "$tmp/hybrid-token-state.json" data/hybrid-token-state.json
+            git add data/hybrid-token-profiles.json data/hybrid-token-state.json
+            if git diff --cached --quiet; then
+              echo 'HYBRID_NO_DATA_CHANGE'
+              exit 0
+            fi
+            git commit -m 'data: refresh exact-address hybrid token profiles'
+            if git push origin HEAD:main; then
+              echo 'HYBRID_PUBLISH_OK'
+              exit 0
+            fi
+            echo "HYBRID_PUBLISH_RETRY attempt=$attempt"
+            sleep 3
+          done
+          echo '::error::HYBRID_PUBLISH_RACE_EXHAUSTED'
+          exit 1
