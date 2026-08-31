@@ -5,7 +5,7 @@ on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_run:
-    workflows: ['Wallet500 Revival Solana 1000']
+    workflows: ['Wallet500 Revival Solana 500']
     types: [completed]
   push:
     branches: [main]
@@ -87,7 +87,7 @@ jobs:
           check_text _site/performance/index.html 'dashboard-live-price.js'
           check_text _site/terminal/index.html '<title>Wallet500 Terminal</title>'
           check_text _site/control/index.html '<title>Wallet500 Control Center V2</title>'
-          check_text _site/revival/index.html '<title>Wallet500 Revival Solana 1000</title>'
+          check_text _site/revival/index.html '<title>Wallet500 Revival Solana 500</title>'
           python -m json.tool _site/data/run-summary.json >/dev/null || fail 'invalid run-summary.json'
           python -m json.tool _site/data/realizable-performance-summary.json >/dev/null || fail 'invalid realizable-performance-summary.json'
           python -m json.tool _site/data/external-signal-cohort-summary.json >/dev/null || fail 'invalid external-signal-cohort-summary.json'
@@ -96,16 +96,23 @@ jobs:
           from pathlib import Path
           p=Path('_site/data/revival-1000-latest.json')
           d=json.loads(p.read_text())
-          if d.get('mode') != 'RESEARCH_ONLY_REVIVAL_SOLANA_1000_V2':
-              raise SystemExit('revival Solana data truth mode missing')
+          if d.get('mode') != 'RESEARCH_ONLY_REVIVAL_SOLANA_500_V3':
+              raise SystemExit('revival Solana 500 data truth mode missing')
           if d.get('network') != 'solana':
               raise SystemExit('revival network is not Solana')
           if d.get('network_filter') != 'STRICT_EXACT_PLATFORM_VERIFICATION':
               raise SystemExit('revival Solana verification contract missing')
+          if d.get('asset_filter') != 'SOLANA_VERIFIED_NON_STABLE_ONLY':
+              raise SystemExit('revival non-stable asset filter missing')
           coins=d.get('coins') or []
+          if len(coins) > 500:
+              raise SystemExit('revival universe exceeds 500')
           if any(x.get('network') != 'solana' or x.get('network_verified') is not True for x in coins):
               raise SystemExit('non-Solana or unverified asset present in revival data')
-          print('REVIVAL_SOLANA_DATA_OK', d.get('counts', {}))
+          banned={'USDC','USDT','DAI','USDS','USD1','USDE','PYUSD','FDUSD','TUSD','USDP','GUSD','FRAX','LUSD','CRVUSD','USDD','USDB','USDX','USD0','USDY','EURC','EURS'}
+          if any(str(x.get('symbol') or '').upper() in banned for x in coins):
+              raise SystemExit('stablecoin present in revival 500 data')
+          print('REVIVAL_SOLANA_500_DATA_OK', d.get('counts', {}))
           PY
           echo 'BUILD_VERIFY_OK'
       - name: Configure GitHub Pages
@@ -130,7 +137,7 @@ jobs:
             revival="$(curl -fsSL --max-time 20 "${BASE}revival/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             revival_data="$(curl -fsSL --max-time 20 "${BASE}data/revival-1000-latest.json?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             adapter="$(curl -fsSL --max-time 20 "${BASE}dashboard-live-price.js?sha=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'EXTERNAL-ONLY EXPERIMENT' <<<"$root" && ! grep -Fq 'ניסוי TOP 10' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'RESEARCH LAB — VISUAL' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter" && grep -Fq 'WALLET500 · REVIVAL SOLANA 1000' <<<"$revival" && python -c 'import json,sys; d=json.load(sys.stdin); raise SystemExit(0 if d.get("mode")=="RESEARCH_ONLY_REVIVAL_SOLANA_1000_V2" and d.get("network")=="solana" and d.get("network_filter")=="STRICT_EXACT_PLATFORM_VERIFICATION" else 1)' <<<"$revival_data" >/dev/null 2>&1; then ok=1; break; fi
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'EXTERNAL-ONLY EXPERIMENT' <<<"$root" && ! grep -Fq 'ניסוי TOP 10' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'RESEARCH LAB — VISUAL' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter" && grep -Fq 'WALLET500 · REVIVAL SOLANA 500' <<<"$revival" && python -c 'import json,sys; d=json.load(sys.stdin); c=d.get("coins") or []; raise SystemExit(0 if d.get("mode")=="RESEARCH_ONLY_REVIVAL_SOLANA_500_V3" and d.get("network")=="solana" and d.get("network_filter")=="STRICT_EXACT_PLATFORM_VERIFICATION" and d.get("asset_filter")=="SOLANA_VERIFIED_NON_STABLE_ONLY" and len(c)<=500 else 1)' <<<"$revival_data" >/dev/null 2>&1; then ok=1; break; fi
             echo "verify attempt $attempt/30 not ready yet"
             sleep 10
           done
