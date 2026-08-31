@@ -29,7 +29,13 @@ jobs:
         env:
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
         run: |
-          if [ -z "${SOLANA_RPC_URL:-}" ]; then unset SOLANA_RPC_URL; fi
+          # Fail over only when no private RPC is configured. PublicNode currently
+          # publishes this as its Solana mainnet RPC endpoint; wallet identities
+          # are still derived only from signed token-owner deltas on the locked pair.
+          if [ -z "${SOLANA_RPC_URL:-}" ]; then
+            export SOLANA_RPC_URL='https://solana-rpc.publicnode.com'
+            echo 'Using verified public Solana RPC fallback'
+          fi
           python -m wallet500.cyberleek_wallet_flow
       - name: Validate truth output
         run: |
