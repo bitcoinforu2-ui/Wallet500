@@ -1,0 +1,78 @@
+name: Wallet500 Profile5 Depth V2 Research
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/profile5-depth-v2.yml'
+      - 'src/wallet500/profile5_depth_v2.py'
+      - 'data/profile5-depth-v2-config.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-profile5-depth-v2-research
+  cancel-in-progress: false
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile research collector
+        run: python -m py_compile src/wallet500/profile5_depth_v2.py
+
+      - name: Build five mature exact-pair profiles
+        run: |
+          export PYTHONPATH="$PWD/src"
+          python -m wallet500.profile5_depth_v2
+
+      - name: Validate strict research truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('data/profile5-depth-v2-report.json').read_text())
+          assert d['mode']=='RESEARCH_ONLY_MATURE_SURVIVOR_PROFILE5'
+          assert d['pair_identity_policy']=='EXACT_LOCKED_PAIR_ONLY'
+          assert d['production_portfolio_impact']=='NONE'
+          assert d['pairs_requested']==5
+          assert 'SURVIVORSHIP' in d['selection_bias_warning']
+          assert 'Liquidity >= $50K' in d['verified_tradable_policy_unchanged']
+          for row in d['profiles']:
+              assert row['pair_identity_locked'] is True
+              assert row['verified_tradable_claim'] is False
+              assert row['engine_roi_claim'] is False
+              assert row['wallet500_backtest_claim'] is False
+              assert set(row['windows'])=={'7','30','90','270','365'}
+          print('Profile5 Depth V2 strict research truth contract passed')
+          PY
+
+      - name: Commit research output only
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-research-bot'
+          git config user.email 'wallet500-research-bot@users.noreply.github.com'
+          git add data/profile5-depth-v2-report.json
+          if git diff --cached --quiet; then
+            echo 'No research output change'
+            exit 0
+          fi
+          git commit -m 'research: refresh profile5 depth v2'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git merge --no-edit -X ours origin/main
+            if git push origin HEAD:main; then break; fi
+            sleep 3
+            if [ "$attempt" = 5 ]; then exit 1; fi
+          done
