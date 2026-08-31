@@ -157,7 +157,6 @@ def _market_channel(coin: dict, stats: dict) -> dict:
         "deviation": {"volume_24h": vol, "price": price},
     }
 
-
 def _liquidity_pair_channel(coin: dict, stats: dict, previous_pair: str | None) -> tuple[dict, float, list[str]]:
     exact = coin.get("dex_link_type") == "DEXSCREENER_VERIFIED_PAIR"
     pair = str(coin.get("dex_pair_address") or "")
@@ -345,7 +344,12 @@ def build_profile(coin: dict, token_state: dict | None, external_row: dict | Non
 
 def run() -> dict:
     source = _load(SOURCE, {})
-    if source.get("mode") != "RESEARCH_ONLY_REVIVAL_SOLANA_500_V4" or source.get("network") != NETWORK:
+    if (
+        source.get("mode") != "RESEARCH_ONLY_REVIVAL_SOLANA_EXPANDED_V6"
+        or source.get("network") != NETWORK
+        or source.get("production_portfolio_impact") != "NONE"
+        or source.get("no_hindsight") is not True
+    ):
         raise RuntimeError("HYBRID_SOURCE_TRUTH_CONTRACT_REJECTED")
     generated_at = str(source.get("generated_at") or "")
     if _dt(generated_at) is None:
