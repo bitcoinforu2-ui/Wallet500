@@ -27,6 +27,12 @@ on:
 permissions:
   contents: write
 
+# This workflow publishes measurement/research files that overlap with the live scan data set.
+# Serialize all main data publishers so immutable/prospective ledgers cannot rebase-conflict.
+concurrency:
+  group: wallet500-main-data-publisher
+  cancel-in-progress: false
+
 jobs:
   measure:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
