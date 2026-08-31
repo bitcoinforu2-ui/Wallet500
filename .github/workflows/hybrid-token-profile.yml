@@ -48,14 +48,18 @@ jobs:
         env:
           HYBRID_HOLDER_SCAN_BUDGET: '12'
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
-        run: python -m wallet500.hybrid_onchain_evidence
+        run: |
+          if [ -z "${SOLANA_RPC_URL:-}" ]; then
+            export SOLANA_RPC_URL='https://api.mainnet-beta.solana.com'
+          fi
+          python -m wallet500.hybrid_onchain_evidence
       - name: Build exact-address hybrid profiles
         run: python -m wallet500.hybrid_runner
       - name: Validate hybrid truth contract
         run: |
           python - <<'PY'
           import json
-          from datetime import datetime, timezone
+          from datetime import datetime, timedelta, timezone
           from pathlib import Path
           from wallet500.revival_1000 import looks_like_solana_address
 
@@ -72,6 +76,17 @@ jobs:
           if d.get('production_portfolio_impact')!='NONE': raise SystemExit('HYBRID_PRODUCTION_IMPACT_INVALID')
           if d.get('no_hindsight') is not True: raise SystemExit('HYBRID_NO_HINDSIGHT_MISSING')
           if st.get('last_source_generated_at') != d.get('source_generated_at'): raise SystemExit('HYBRID_STATE_SOURCE_MISMATCH')
+          timing=d.get('external_evidence_timing_contract') or {}
+          if timing.get('market_snapshot_rule')!='MARKET_BASELINE_UPDATES_ONCE_PER_UNIQUE_REVIVAL_SOURCE_TIMESTAMP': raise SystemExit('HYBRID_BASELINE_IDEMPOTENCY_CONTRACT_MISSING')
+          if not timing.get('external_fingerprint') or st.get('last_external_fingerprint')!=timing.get('external_fingerprint'): raise SystemExit('HYBRID_EXTERNAL_FINGERPRINT_STATE_MISMATCH')
+          try:
+              generated=datetime.fromisoformat(str(d.get('generated_at')).replace('Z','+00:00'))
+              source_generated=datetime.fromisoformat(str(d.get('source_generated_at')).replace('Z','+00:00'))
+              if generated.tzinfo is None: generated=generated.replace(tzinfo=timezone.utc)
+              if source_generated.tzinfo is None: source_generated=source_generated.replace(tzinfo=timezone.utc)
+          except Exception: raise SystemExit('HYBRID_PROFILE_TIMESTAMP_INVALID')
+          if generated < source_generated: raise SystemExit('HYBRID_PROFILE_PRECEDES_MARKET_SOURCE')
+          if generated > datetime.now(timezone.utc)+timedelta(minutes=2): raise SystemExit('HYBRID_PROFILE_FUTURE_TIMESTAMP')
           if ev.get('contract')!='HYBRID_EXTERNAL_EVIDENCE_V1' or ev.get('network')!='solana': raise SystemExit('HYBRID_EXTERNAL_CONTRACT_INVALID')
           if ev.get('production_portfolio_impact')!='NONE': raise SystemExit('HYBRID_EXTERNAL_PRODUCTION_IMPACT_INVALID')
           for x in ev.get('observations') or []:
@@ -85,7 +100,7 @@ jobs:
                   observed=datetime.fromisoformat(str(x.get('observed_at')).replace('Z','+00:00'))
                   if observed.tzinfo is None: observed=observed.replace(tzinfo=timezone.utc)
               except Exception: raise SystemExit('HYBRID_HOLDER_TIMESTAMP_INVALID')
-              if observed > datetime.now(timezone.utc): raise SystemExit('HYBRID_HOLDER_FUTURE_TIMESTAMP')
+              if observed > datetime.now(timezone.utc)+timedelta(minutes=2): raise SystemExit('HYBRID_HOLDER_FUTURE_TIMESTAMP')
           rows=d.get('profiles') or []
           if not (100 <= len(rows) <= 500): raise SystemExit(f'HYBRID_PROFILE_COUNT_INVALID:{len(rows)}')
           addresses=[str(x.get('token_address') or '') for x in rows]
@@ -93,6 +108,7 @@ jobs:
           if any(not looks_like_solana_address(x) for x in addresses): raise SystemExit('HYBRID_INVALID_SOLANA_ADDRESS')
           allowed={'BASELINE_LEARNING','NORMAL','ABNORMAL_ACTIVITY','HYBRID_IGNITION','RISK_DISTRIBUTION'}
           for x in rows:
+              if x.get('observed_at') != d.get('generated_at'): raise SystemExit('HYBRID_PROFILE_OBSERVED_AT_MISMATCH')
               raw=float(x.get('hybrid_score_raw') or 0); cov=float(x.get('evidence_coverage_pct') or 0); norm=float(x.get('hybrid_score_verified_normalized') or 0); risk=float(x.get('risk_score') or 0)
               if not (0<=raw<=100 and 0<=cov<=100 and 0<=norm<=100 and 0<=risk<=100): raise SystemExit('HYBRID_SCORE_RANGE_INVALID')
               if raw > cov + 1e-6: raise SystemExit('HYBRID_RAW_SCORE_EXCEEDS_EVIDENCE_COVERAGE')
@@ -101,6 +117,12 @@ jobs:
               for name in ('holders','wallets','social','news'):
                   c=ch.get(name) or {}
                   if c.get('available') is not True and float(c.get('score') or 0)!=0: raise SystemExit(f'HYBRID_UNVERIFIED_{name.upper()}_SCORED')
+                  if c.get('available') is True:
+                      try:
+                          observed=datetime.fromisoformat(str(c.get('observed_at')).replace('Z','+00:00'))
+                          if observed.tzinfo is None: observed=observed.replace(tzinfo=timezone.utc)
+                      except Exception: raise SystemExit(f'HYBRID_{name.upper()}_TIMESTAMP_INVALID')
+                      if observed > generated+timedelta(minutes=2): raise SystemExit(f'HYBRID_{name.upper()}_AFTER_PROFILE_TIMESTAMP')
               if x.get('status')=='HYBRID_IGNITION':
                   if not x.get('baseline_ready') or len(x.get('strong_channels') or [])<2 or raw<35 or norm<70 or risk>=35:
                       raise SystemExit('HYBRID_IGNITION_CONTRACT_BROKEN')
