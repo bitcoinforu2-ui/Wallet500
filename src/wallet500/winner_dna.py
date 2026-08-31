@@ -9,9 +9,11 @@ from statistics import median
 DATA = Path("data")
 OUT = DATA / "winner-dna-study.json"
 LIQ_FLOOR = 50_000.0
-TOP_N = 100
-CONTROL_MULTIPLIER = 3
+CONTROL_MULTIPLIER = 2
 FIXED_HORIZON = "24h"
+WINNER_MIN_RETURN_PCT = 25.0
+CONTROL_MAX_RETURN_PCT = 5.0
+MIN_GROUP_N = 20
 
 
 def load(name, default=None):
@@ -65,6 +67,7 @@ def pre_outcome_features(token):
         verified.append(h)
     if not verified:
         return None
+    verified.sort(key=lambda h: parse_ts(h.get("observed_at") or h.get("at") or h.get("timestamp")) or datetime.max.replace(tzinfo=timezone.utc))
     h = verified[0]
     liq = f(h.get("liquidity_usd"), 0.0) or 0.0
     vol = f(h.get("volume_h1"), 0.0) or 0.0
@@ -124,7 +127,7 @@ def build_candidate(o):
         return None
     return {
         "key": key(o.get("chain"), o.get("token"), pair),
-        "chain": o.get("chain"),
+        "chain": str(o.get("chain") or "").lower(),
         "token": o.get("token"),
         "pair_address": pair,
         "discovered_at": o.get("first_seen") or o.get("tracking_started_at"),
@@ -133,40 +136,79 @@ def build_candidate(o):
     }
 
 
-def main():
-    outcomes = load("outcome-tracker.json")
-    raw = [build_candidate(o) for o in (outcomes.get("tokens") or {}).values() if isinstance(o, dict)]
-    candidates = [r for r in raw if r]
-    winners = sorted(candidates, key=lambda r: r["outcome"]["return_pct"], reverse=True)[:TOP_N]
-    winner_keys = {r["key"] for r in winners}
-    pool = [r for r in candidates if r["key"] not in winner_keys]
+def _feature_lifts(winners, controls):
+    w = feature_summary(winners)
+    c = feature_summary(controls)
+    lifts = {}
+    for field in w:
+        a, b = w.get(field), c.get(field)
+        lifts[field] = round(a / b, 6) if a is not None and b not in (None, 0) else None
+    return w, c, lifts
+
+
+def build_study(candidates: list[dict], chain: str | None = None) -> dict:
+    eligible = [r for r in candidates if chain is None or r.get("chain") == chain]
+    winners = [r for r in eligible if f((r.get("outcome") or {}).get("return_pct"), -1e99) >= WINNER_MIN_RETURN_PCT]
+    controls_pool = [r for r in eligible if f((r.get("outcome") or {}).get("return_pct"), 1e99) <= CONTROL_MAX_RETURN_PCT]
+    ambiguous = [r for r in eligible if r not in winners and r not in controls_pool]
+
     controls, used = [], set()
-    for w in winners:
-        same_chain = [r for r in pool if r["chain"] == w["chain"] and r["key"] not in used]
+    for w in sorted(winners, key=lambda r: r["outcome"]["return_pct"], reverse=True):
+        same_chain = [r for r in controls_pool if r.get("chain") == w.get("chain") and r["key"] not in used]
         ranked = sorted(same_chain, key=lambda r: distance(w["features"], r["features"]) + time_penalty(w, r))
         for c in ranked[:CONTROL_MULTIPLIER]:
             used.add(c["key"])
             controls.append(c)
+
+    winner_medians, control_medians, lifts = _feature_lifts(winners, controls)
+    status = "RESEARCH_READY" if len(winners) >= MIN_GROUP_N and len(controls) >= MIN_GROUP_N else "INSUFFICIENT_BALANCED_SAMPLE"
+    return {
+        "status": status,
+        "chain": chain or "all",
+        "label_rule": f"WINNER=24h return >= {WINNER_MIN_RETURN_PCT:.0f}%; CONTROL=24h return <= {CONTROL_MAX_RETURN_PCT:.0f}%; middle band excluded",
+        "eligible_n": len(eligible),
+        "winner_n": len(winners),
+        "control_pool_n": len(controls_pool),
+        "control_n": len(controls),
+        "ambiguous_excluded_n": len(ambiguous),
+        "minimum_group_n_for_research_ready": MIN_GROUP_N,
+        "winner_feature_medians": winner_medians,
+        "control_feature_medians": control_medians,
+        "winner_to_control_median_ratio": lifts,
+        "control_policy": "same chain; nearest pre-outcome liquidity/volume/txns plus discovery-time proximity; future return never enters matching distance",
+        "winners": sorted(winners, key=lambda r: r["outcome"]["return_pct"], reverse=True)[:100],
+        "controls": controls[:200],
+    }
+
+
+def main():
+    outcomes = load("outcome-tracker.json")
+    raw = [build_candidate(o) for o in (outcomes.get("tokens") or {}).values() if isinstance(o, dict)]
+    candidates = [r for r in raw if r]
+    overall = build_study(candidates)
+    solana = build_study(candidates, "solana")
     result = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "method": "WINNER_DNA_SHADOW_V2",
         "production_change": False,
-        "warning": "Historical label study only. Winners use a fixed exact-pair 24h checkpoint and require >=$50K at the earliest exact-pair snapshot. Prospective validation is still required.",
+        "warning": "Historical label study only. Fixed exact-pair 24h outcomes and >=$50K earliest exact-pair snapshots are required. A study is blocked unless both winner and matched-control groups meet the minimum sample size. Prospective validation is still required.",
         "liquidity_floor_usd": LIQ_FLOOR,
         "winner_horizon": FIXED_HORIZON,
-        "winner_target_n": TOP_N,
+        "winner_min_return_pct": WINNER_MIN_RETURN_PCT,
+        "control_max_return_pct": CONTROL_MAX_RETURN_PCT,
         "eligible_fixed_horizon_n": len(candidates),
-        "winner_n": len(winners),
-        "control_n": len(controls),
-        "control_policy": "same chain; nearest point-in-time liquidity/volume/txns plus discovery-time proximity; future return excluded from matching distance",
-        "winner_feature_medians": feature_summary(winners),
-        "control_feature_medians": feature_summary(controls),
-        "winners": winners,
-        "controls": controls,
-        "next_step": "freeze candidate DNA rules and validate only on unseen future discoveries",
+        "status": overall["status"],
+        "winner_n": overall["winner_n"],
+        "control_n": overall["control_n"],
+        "winner_feature_medians": overall["winner_feature_medians"],
+        "control_feature_medians": overall["control_feature_medians"],
+        "winner_to_control_median_ratio": overall["winner_to_control_median_ratio"],
+        "overall_study": overall,
+        "solana_study": solana,
+        "next_step": "Use only RESEARCH_READY cohort differences as shadow context, then freeze rules and validate prospectively on unseen future discoveries.",
     }
     OUT.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
-    print(json.dumps({k: result[k] for k in ("method", "eligible_fixed_horizon_n", "winner_n", "control_n", "winner_feature_medians", "control_feature_medians")}, indent=2))
+    print(json.dumps({"method": result["method"], "eligible_fixed_horizon_n": len(candidates), "overall": {k: overall[k] for k in ("status", "winner_n", "control_n")}, "solana": {k: solana[k] for k in ("status", "winner_n", "control_n")}}, indent=2))
 
 
 if __name__ == "__main__":
