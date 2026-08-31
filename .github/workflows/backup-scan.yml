@@ -55,7 +55,9 @@ jobs:
         if: steps.stale.outputs.stale == 'true'
         env:
           PYTHONUNBUFFERED: '1'
-        run: python -m wallet500.orchestrator
+        run: |
+          date -u +%s > /tmp/w500-backup-start
+          python -m wallet500.orchestrator
       - name: Apply universal live survival gate
         if: steps.stale.outputs.stale == 'true'
         run: python -m wallet500.fresh_solana_gate
@@ -83,16 +85,24 @@ jobs:
           from datetime import datetime, timezone
           from pathlib import Path
           rp=Path('data/run-summary.json')
+          start_file=Path('/tmp/w500-backup-start')
+          if not start_file.exists(): raise SystemExit('FATAL: backup start proof missing')
+          start_epoch=float(start_file.read_text().strip())
           d=json.loads(rp.read_text())
           ts=datetime.fromisoformat(d['updated_at'])
-          age=(datetime.now(timezone.utc)-ts).total_seconds()
-          if age>300: raise SystemExit(f'FATAL: backup output stale ({age:.0f}s)')
+          if ts.tzinfo is None: raise SystemExit('FATAL: backup updated_at is timezone-naive')
+          if ts.timestamp() < start_epoch-5:
+              raise SystemExit(f'FATAL: backup output predates current recovery run ({d["updated_at"]})')
+          if rp.stat().st_mtime < start_epoch-5:
+              raise SystemExit('FATAL: run-summary file was not rewritten by current recovery run')
+          future=(ts-datetime.now(timezone.utc)).total_seconds()
+          if future>30: raise SystemExit(f'FATAL: backup output timestamp is in the future ({future:.0f}s)')
           hp=Path('data/scheduler-health.json')
           try: h=json.loads(hp.read_text()) if hp.exists() else {}
           except Exception: h={}
           hist=h.get('history') if isinstance(h.get('history'),list) else []
           now=datetime.now(timezone.utc).isoformat()
-          item={'at':now,'workflow':'BACKUP_STALE_RECOVERY','event':os.getenv('W500_EVENT'),'run_id':os.getenv('W500_RUN_ID'),'scan_updated_at':d['updated_at'],'scan_run_total':d.get('scan_runs_total')}
+          item={'at':now,'workflow':'BACKUP_STALE_RECOVERY','event':os.getenv('W500_EVENT'),'run_id':os.getenv('W500_RUN_ID'),'scan_updated_at':d['updated_at'],'scan_run_total':d.get('scan_runs_total'),'freshness_proof':'CURRENT_RECOVERY_RUN'}
           hist.append(item); hist=hist[-200:]
           hp.write_text(json.dumps({'updated_at':now,'last':item,'history':hist},indent=2))
           PY
