@@ -16,9 +16,11 @@ on:
 permissions:
   contents: write
 
+# This workflow and Revival 1000 both commit generated truth data to main.
+# A shared non-cancelling group prevents concurrent publishers from racing.
 concurrency:
-  group: wallet500-live-scan
-  cancel-in-progress: true
+  group: wallet500-main-data-publisher
+  cancel-in-progress: false
 
 jobs:
   scan:

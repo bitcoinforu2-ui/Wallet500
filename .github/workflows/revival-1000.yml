@@ -14,8 +14,11 @@ on:
 permissions:
   contents: write
 
+# Revival and the primary live scan both publish generated data back to main.
+# Serialize those publishers so neither workflow can rebase across a moving
+# generated-data commit and fail with a false publish conflict.
 concurrency:
-  group: wallet500-revival-1000
+  group: wallet500-main-data-publisher
   cancel-in-progress: false
 
 jobs:
