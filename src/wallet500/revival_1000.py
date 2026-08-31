@@ -11,7 +11,8 @@ from urllib.request import Request, urlopen
 DATA = Path("data")
 LATEST = DATA / "revival-1000-latest.json"
 STATE = DATA / "revival-1000-state.json"
-MODE = "RESEARCH_ONLY_REVIVAL_1000_V1"
+MODE = "RESEARCH_ONLY_REVIVAL_SOLANA_1000_V2"
+NETWORK = "solana"
 
 
 def now_iso() -> str:
@@ -24,23 +25,62 @@ def fetch_json(url: str, headers: dict | None = None, timeout: int = 25):
         return json.loads(r.read().decode("utf-8"))
 
 
-def fetch_coingecko() -> list[dict]:
+def coingecko_headers() -> dict:
     key = os.getenv("COINGECKO_DEMO_API_KEY", "").strip()
-    headers = {"x-cg-demo-api-key": key} if key else {}
-    out = []
+    return {"x-cg-demo-api-key": key} if key else {}
+
+
+def fetch_verified_solana_ids(headers: dict) -> set[str]:
+    """Return CoinGecko IDs that explicitly expose a Solana platform address."""
+    raw = fetch_json(
+        "https://api.coingecko.com/api/v3/coins/list?include_platform=true",
+        headers=headers,
+    )
+    if not isinstance(raw, list):
+        raise RuntimeError("CoinGecko coin list is not a list")
+    ids: set[str] = set()
+    for x in raw:
+        platforms = x.get("platforms") or {}
+        if platforms.get("solana"):
+            coin_id = str(x.get("id") or "").strip()
+            if coin_id:
+                ids.add(coin_id)
+    if len(ids) < 100:
+        raise RuntimeError(f"insufficient verified Solana ids: {len(ids)}")
+    return ids
+
+
+def fetch_coingecko() -> list[dict]:
+    """Fetch up to 1000 market-cap-ranked assets and keep only exact Solana-platform matches."""
+    headers = coingecko_headers()
+    solana_ids = fetch_verified_solana_ids(headers)
+    out: list[dict] = []
+
+    # The ecosystem feed gives us a market-cap-ranked candidate universe cheaply.
+    # We then intersect it with the exact platform registry above, so category
+    # membership alone can never qualify an asset as Solana.
     for page in range(1, 5):
         url = (
             "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd"
-            f"&order=market_cap_desc&per_page=250&page={page}&sparkline=false"
+            "&category=solana-ecosystem&order=market_cap_desc"
+            f"&per_page=250&page={page}&sparkline=false"
             "&price_change_percentage=7d,30d"
         )
         batch = fetch_json(url, headers=headers)
         if not isinstance(batch, list):
             raise RuntimeError("CoinGecko response is not a list")
-        out.extend(batch)
+        out.extend(x for x in batch if str(x.get("id") or "") in solana_ids)
+        if len(batch) < 250:
+            break
         time.sleep(1.2)
+
     rows = []
-    for x in out[:1000]:
+    seen: set[str] = set()
+    for x in out:
+        coin_id = str(x.get("id") or "")
+        if not coin_id or coin_id in seen:
+            continue
+        seen.add(coin_id)
         ath = x.get("ath")
         price = x.get("current_price")
         dd = None
@@ -48,7 +88,10 @@ def fetch_coingecko() -> list[dict]:
             dd = (1.0 - float(price) / float(ath)) * 100.0
         rows.append({
             "source": "coingecko",
-            "id": x.get("id"),
+            "network": NETWORK,
+            "network_verified": True,
+            "network_verification": "COINGECKO_PLATFORMS_SOLANA_ADDRESS_PRESENT",
+            "id": coin_id,
             "symbol": str(x.get("symbol") or "").upper(),
             "name": x.get("name"),
             "market_cap_rank": x.get("market_cap_rank"),
@@ -62,39 +105,9 @@ def fetch_coingecko() -> list[dict]:
             "change_7d_pct": x.get("price_change_percentage_7d_in_currency"),
             "change_30d_pct": x.get("price_change_percentage_30d_in_currency"),
         })
-    return rows
 
-
-def fetch_coinpaprika() -> list[dict]:
-    raw = fetch_json("https://api.coinpaprika.com/v1/tickers?quotes=USD&limit=1000")
-    rows = []
-    for x in raw[:1000]:
-        q = (x.get("quotes") or {}).get("USD") or {}
-        ath = q.get("ath_price")
-        price = q.get("price")
-        dd = None
-        pf = q.get("percent_from_price_ath")
-        if pf is not None:
-            dd = abs(float(pf)) if float(pf) <= 0 else 0.0
-        elif ath and price is not None and float(ath) > 0:
-            dd = (1.0 - float(price) / float(ath)) * 100.0
-        rows.append({
-            "source": "coinpaprika",
-            "id": x.get("id"),
-            "symbol": str(x.get("symbol") or "").upper(),
-            "name": x.get("name"),
-            "market_cap_rank": x.get("rank"),
-            "market_cap_usd": q.get("market_cap"),
-            "price_usd": price,
-            "volume_24h_usd": q.get("volume_24h"),
-            "ath_usd": ath,
-            "ath_date": q.get("ath_date"),
-            "drawdown_from_ath_pct": dd,
-            "change_24h_pct": q.get("percent_change_24h"),
-            "change_7d_pct": q.get("percent_change_7d"),
-            "change_30d_pct": q.get("percent_change_30d"),
-        })
-    return rows
+    rows.sort(key=lambda x: (x.get("market_cap_usd") is None, -n(x.get("market_cap_usd"))))
+    return rows[:1000]
 
 
 def n(v, default=0.0) -> float:
@@ -142,11 +155,14 @@ def score_market_signals(x: dict) -> tuple[float, list[str]]:
 
 def load_state() -> dict:
     if not STATE.exists():
-        return {"version": 1, "first_t0": now_iso(), "coins": {}}
+        return {"version": 2, "network": NETWORK, "first_t0": now_iso(), "coins": {}}
     try:
-        return json.loads(STATE.read_text())
+        state = json.loads(STATE.read_text())
     except Exception:
-        return {"version": 1, "first_t0": now_iso(), "coins": {}}
+        state = {"version": 2, "network": NETWORK, "first_t0": now_iso(), "coins": {}}
+    state["version"] = 2
+    state["network"] = NETWORK
+    return state
 
 
 def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
@@ -155,11 +171,13 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
     coins_state = state.setdefault("coins", {})
     normalized = []
     for i, x in enumerate(rows[:1000], 1):
-        x["universe_rank"] = i
-        x["market_cap_rank"] = x.get("market_cap_rank") or i
-        x["dex_link"] = "https://dexscreener.com/search?q=" + quote(str(x.get("symbol") or x.get("id") or ""))
-        x["dex_link_type"] = "SEARCH_ONLY_NOT_EXACT_PAIR"
-        x["coingecko_link"] = "https://www.coingecko.com/en/coins/" + str(x.get("id") or "") if source == "coingecko" else None
+        if x.get("network") != NETWORK or x.get("network_verified") is not True:
+            continue
+        x["universe_rank"] = len(normalized) + 1
+        x["market_cap_rank"] = x.get("market_cap_rank") or x["universe_rank"]
+        x["dex_link"] = "https://dexscreener.com/solana/" + quote(str(x.get("symbol") or x.get("id") or ""))
+        x["dex_link_type"] = "SOLANA_SEARCH_ONLY_NOT_EXACT_PAIR"
+        x["coingecko_link"] = "https://www.coingecko.com/en/coins/" + str(x.get("id") or "")
         score, reasons = score_market_signals(x)
         x["watch_score_market_only"] = round(score, 2)
         x["watch_reasons"] = reasons
@@ -178,9 +196,18 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
         x["pre_alpha_eligible"] = False
         x["pre_alpha_blocker"] = "HOLDER_AND_FUNDAMENTAL_EVIDENCE_NOT_YET_VERIFIED"
         key = str(x.get("id") or x.get("symbol") or i)
-        st = coins_state.setdefault(key, {"first_seen_at": ts, "t0_price_usd": x.get("price_usd"), "t0_rank": i})
+        st = coins_state.setdefault(
+            key,
+            {
+                "first_seen_at": ts,
+                "t0_price_usd": x.get("price_usd"),
+                "t0_rank": x["universe_rank"],
+                "network": NETWORK,
+            },
+        )
         x["t0"] = st
         normalized.append(x)
+
     state["last_updated_at"] = ts
     state["coins"] = coins_state
     DATA.mkdir(exist_ok=True)
@@ -188,20 +215,27 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
     core_count = sum(1 for x in normalized if x["watch_status"] != "OUTSIDE_CORE_DRAWDOWN_BAND")
     waking = sum(1 for x in normalized if x["watch_status"] == "WAKING_MARKET_ONLY")
     return {
-        "version": 1,
+        "version": 2,
         "mode": MODE,
+        "network": NETWORK,
+        "network_filter": "STRICT_EXACT_PLATFORM_VERIFICATION",
         "generated_at": ts,
         "production_portfolio_impact": "NONE",
         "no_hindsight": True,
-        "universe_definition": "TOP_1000_BY_MARKET_CAP_MONITORED; CORE_RESEARCH_BAND_70_TO_95_PCT_BELOW_ATH",
+        "universe_definition": "UP_TO_1000_SOLANA_ASSETS_BY_MARKET_CAP_FROM_SOLANA_ECOSYSTEM_FEED; EXACT_COINGECKO_PLATFORM_SOLANA_VERIFICATION_REQUIRED",
         "source": source,
-        "counts": {"universe": len(normalized), "core_drawdown_watch": core_count, "waking_market_only": waking, "pre_alpha": 0},
+        "counts": {
+            "universe": len(normalized),
+            "core_drawdown_watch": core_count,
+            "waking_market_only": waking,
+            "pre_alpha": 0,
+        },
         "scoring_contract": {
             "market_score_max": 100,
             "holder_growth": "PENDING_VERIFIED_SOURCE",
             "concentration_decline": "PENDING_VERIFIED_SOURCE",
             "fundamentals_product_community": "PENDING_VERIFIED_SOURCE",
-            "rule": "MISSING_EVIDENCE_NEVER_IMPUTED_AS_TRUE"
+            "rule": "MISSING_EVIDENCE_NEVER_IMPUTED_AS_TRUE",
         },
         "failures": failures,
         "coins": normalized,
@@ -210,22 +244,24 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
 
 def main() -> None:
     failures = []
-    rows = []
-    source = "NONE"
-    for name, fn in (("coingecko", fetch_coingecko), ("coinpaprika", fetch_coinpaprika)):
-        try:
-            rows = fn()
-            if len(rows) >= 100:
-                source = name
-                break
-            raise RuntimeError(f"insufficient rows: {len(rows)}")
-        except Exception as e:
-            failures.append({"failure_code": "REVIVAL_UNIVERSE_SOURCE_FAILED", "source": name, "severity": "DEGRADED", "blocks_production": False, "actual": f"{type(e).__name__}: {e}", "diagnosed_at": now_iso()})
-    if not rows:
-        raise SystemExit("REVIVAL_1000_NO_MARKET_SOURCE")
-    payload = build(rows, source, failures)
+    try:
+        rows = fetch_coingecko()
+    except Exception as e:
+        failures.append({
+            "failure_code": "REVIVAL_SOLANA_UNIVERSE_SOURCE_FAILED",
+            "source": "coingecko",
+            "severity": "BLOCKING",
+            "blocks_production": False,
+            "actual": f"{type(e).__name__}: {e}",
+            "diagnosed_at": now_iso(),
+        })
+        raise SystemExit("REVIVAL_SOLANA_NO_VERIFIED_MARKET_SOURCE")
+
+    if len(rows) < 100:
+        raise SystemExit(f"REVIVAL_SOLANA_INSUFFICIENT_VERIFIED_UNIVERSE:{len(rows)}")
+    payload = build(rows, "coingecko", failures)
     LATEST.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
-    print(json.dumps({"mode": MODE, "source": source, **payload["counts"], "failures": len(failures)}))
+    print(json.dumps({"mode": MODE, "network": NETWORK, "source": "coingecko", **payload["counts"], "failures": len(failures)}))
 
 
 if __name__ == "__main__":
