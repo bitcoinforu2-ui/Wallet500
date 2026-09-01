@@ -10,7 +10,7 @@ SOLANA_API='https://api.0x.org/solana/swap-instructions'
 KEY=os.getenv('ZEROX_API_KEY','').strip()
 CHAIN_IDS={'ETH':1,'ETHEREUM':1,'BSC':56,'BNB':56}
 STABLE={
-    1:('0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',6,'USDC'),
+    1:('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',6,'USDC'),
     56:('0x55d398326f99059fF775485246999027B3197955',18,'USDT'),
 }
 EVM_RPC={
@@ -156,20 +156,23 @@ def run():
             'proof_level':'0X_EXIT_FIRM_QUOTE_NOT_EXECUTED_NOT_ENTRY_PROOF'
         })
     verified=[x for x in out if x.get('cash_status')=='EXIT_QUOTE_VERIFIED']
-    invested=len(verified); value=sum(float(x.get('quoted_usd_value') or 0) for x in verified)
-    profit=value-invested
-    roi=((value/invested)-1)*100 if invested else 0.0
+    hypothetical_cost=len(verified); quoted_value=sum(float(x.get('quoted_usd_value') or 0) for x in verified)
+    hypothetical_profit=quoted_value-hypothetical_cost
+    hypothetical_roi=((quoted_value/hypothetical_cost)-1)*100 if hypothetical_cost else 0.0
     payload={
-        'updated_at':now,'method':'CASH_EXIT_QUOTE_VERIFIED_V2_0X',
+        'updated_at':now,'method':'CASH_EXIT_QUOTE_VERIFIED_V3_TRUTH_LABELS',
         'source_market_eligible_count':len(rows),'cash_quote_verified_count':len(verified),
         'exit_quote_verified_count':len(verified),'quote_unavailable_count':len(out)-len(verified),
-        'cash_verified_investment_usd':float(invested),'cash_verified_quoted_value_usd':round(value,6),
-        'cash_verified_profit_usd':round(profit,6),'cash_verified_roi_pct':round(roi,4),
-        'hypothetical_entry_cost_usd':float(invested),'quoted_exit_value_usd':round(value,6),
-        'quoted_exit_profit_vs_hypothetical_entry_usd':round(profit,6),
-        'quoted_exit_roi_vs_hypothetical_entry_pct':round(roi,4),
-        'truth_note':'A verified row proves a current 0x exit quote for the token quantity implied by a historical $1 entry price. It does NOT prove that the historical buy was executable or executed.',
-        'important_limit':'FIRM EXIT QUOTE VERIFIED, NOT TRADE EXECUTED AND NOT HISTORICAL ENTRY-EXECUTION PROOF.',
+        'verification_scope':'CURRENT_EXIT_QUOTE_ONLY',
+        'historical_entry_execution_verified':False,
+        'cash_verified_investment_usd':None,'cash_verified_quoted_value_usd':None,
+        'cash_verified_profit_usd':None,'cash_verified_roi_pct':None,
+        'legacy_verified_metric_status':'WITHHELD_NO_HISTORICAL_ENTRY_EXECUTION_PROOF',
+        'hypothetical_entry_cost_usd':float(hypothetical_cost),'quoted_exit_value_usd':round(quoted_value,6),
+        'quoted_exit_profit_vs_hypothetical_entry_usd':round(hypothetical_profit,6),
+        'quoted_exit_roi_vs_hypothetical_entry_pct':round(hypothetical_roi,4),
+        'truth_note':'A verified row proves only a current 0x exit quote for the token quantity implied by a historical $1 reference price. It does NOT prove the historical buy was executable or executed. Therefore verified investment, profit, PnL and ROI fields are intentionally withheld.',
+        'important_limit':'CURRENT FIRM EXIT QUOTE VERIFIED ONLY; NO HISTORICAL ENTRY-EXECUTION PROOF; NOT VERIFIED ROI OR PNL.',
         'rows':out
     }
     write(DATA/'cash-verified-performance.json',payload)
