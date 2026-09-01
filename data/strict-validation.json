@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "updated_at": "2026-09-01T05:03:48.913995+00:00",
+  "version": 2,
+  "updated_at": "2026-09-01T05:25:05.679758+00:00",
   "mode": "FAIL_CLOSED_PRODUCTION_INTEGRITY_VALIDATION",
   "minimum_liquidity_usd": 50000.0,
   "checks": [
@@ -33,8 +33,8 @@
       "name": "holder_cluster_all_inputs_accounted",
       "status": "PASS",
       "evidence": {
-        "input": 2,
-        "accounted": 2
+        "input": 0,
+        "accounted": 0
       }
     },
     {
@@ -75,12 +75,46 @@
       "name": "active_exact_pair_and_liquidity_integrity",
       "status": "PASS",
       "evidence": {
-        "active_count": 2,
+        "active_count": 0,
         "failures": []
+      }
+    },
+    {
+      "name": "decision_engine_shadow_only",
+      "status": "PASS",
+      "evidence": {
+        "mode": "SHADOW_DECISION_ONLY_NO_REAL_MONEY_NO_PRODUCTION_GATE_CHANGE",
+        "production_change": false
+      }
+    },
+    {
+      "name": "decision_engine_fail_closed_contract",
+      "status": "PASS",
+      "evidence": {
+        "exact_pair_required": true,
+        "liquidity_floor_required": true,
+        "holder_cluster_fail_closed_for_buy": true,
+        "lp_protection_fail_closed_for_buy": true,
+        "executable_exit_depth_fail_closed_for_buy": true,
+        "no_hindsight": true,
+        "real_money_execution": false
+      }
+    },
+    {
+      "name": "decision_engine_no_auto_weight_changes",
+      "status": "PASS",
+      "evidence": false
+    },
+    {
+      "name": "decision_engine_buy_has_complete_evidence",
+      "status": "PASS",
+      "evidence": {
+        "decision_count": 0,
+        "invalid_buys": []
       }
     }
   ],
   "passed": true,
   "failure_count": 0,
-  "policy": "Validation may block publication; it never relaxes thresholds, pair identity, holder/cluster evidence, immutable track record, no-hindsight, or paper-only rules."
+  "policy": "Validation may block publication; it never relaxes thresholds, pair identity, holder/cluster evidence, immutable track record, no-hindsight, paper-only rules, or the Decision Engine V1 shadow-only contract."
 }
