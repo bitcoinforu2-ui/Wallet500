@@ -159,3 +159,17 @@
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
+
+(function(){
+  function keepExperimentRubricVisible(){
+    const bar=document.getElementById('w500-experiment-rubric');
+    if(!bar) return;
+    bar.style.setProperty('position','sticky','important');
+    bar.style.setProperty('top','0','important');
+    bar.style.setProperty('z-index','2147483000','important');
+    bar.style.setProperty('background','rgba(2,8,13,.98)','important');
+    bar.style.setProperty('box-shadow','0 4px 14px rgba(0,0,0,.45)','important');
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',keepExperimentRubricVisible,{once:true});
+  else keepExperimentRubricVisible();
+})();
