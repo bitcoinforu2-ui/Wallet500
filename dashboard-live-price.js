@@ -190,3 +190,33 @@
   function install(){ensureStyle();ensureHeader();const tbody=document.getElementById('rows');if(tbody)new MutationObserver(()=>queueMicrotask(paint)).observe(tbody,{childList:true});loadHolders();setInterval(loadHolders,60000);setInterval(paint,2000)}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
+
+(function(){
+  if(document.title!=='Wallet500 Revival Solana Expanded') return;
+  let busy=false;
+  function relabelSnapshotAge(){
+    const age=document.getElementById('age');
+    const box=age?.closest('.k');
+    const lab=box?.querySelector('.lab');
+    if(lab){lab.textContent='REVIVAL SNAPSHOT AGE';lab.title='Age of revival-1000-latest.json only; this is not engine freshness.'}
+    if(age)age.title='Revival research snapshot age — separate from live engine and browser exact-pair marks.';
+  }
+  async function refreshEngineFreshness(){
+    if(busy)return;busy=true;
+    try{
+      const r=await fetch('../data/run-summary.json?v='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);
+      const d=await r.json();const t=Date.parse(d.updated_at);if(!Number.isFinite(t))throw Error('BAD_TIMESTAMP');
+      const sec=Math.max(0,Math.floor((Date.now()-t)/1000));
+      const txt=sec<60?`${sec}s ago`:`${Math.floor(sec/60)}m ago`;
+      const livebar=document.querySelector('.livebar');if(!livebar)return;
+      let el=document.getElementById('engineFreshMeta');if(!el){el=document.createElement('span');el.id='engineFreshMeta';livebar.appendChild(el)}
+      el.textContent='ENGINE: '+txt;
+      el.className=sec<=600?'green':sec<=1800?'yellow':'red';
+      el.title='Wallet500 run-summary freshness. Separate from Revival snapshot age and browser live marks.';
+    }catch(_e){
+      const livebar=document.querySelector('.livebar');if(livebar){let el=document.getElementById('engineFreshMeta');if(!el){el=document.createElement('span');el.id='engineFreshMeta';livebar.appendChild(el)}el.textContent='ENGINE: unavailable';el.className='red';}
+    }finally{busy=false}
+  }
+  function install(){relabelSnapshotAge();refreshEngineFreshness();setInterval(relabelSnapshotAge,2000);setInterval(refreshEngineFreshness,60000)}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
+})();
