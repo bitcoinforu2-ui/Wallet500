@@ -1,4 +1,4 @@
-from wallet500.revival_precursor import evaluate, score_derivatives, score_paid_attention, score_social, score_whale
+from wallet500.revival_precursor import attach_immutable_t0, evaluate, score_derivatives, score_paid_attention, score_social, score_whale
 
 
 def coin():
@@ -9,6 +9,7 @@ def coin():
         "name": "Useless Coin",
         "id": "the-useless-coin",
         "dex_pair_address": "Q2sPHPdUWFMg7M7wwrQKLrn619cAucfRsmhVJffodSp",
+        "dex_link_type": "DEXSCREENER_VERIFIED_PAIR",
         "price_usd": 0.07,
         "drawdown_from_ath_pct": 84,
         "change_24h_pct": 7,
@@ -221,3 +222,32 @@ def test_verified_no_paid_event_is_zero_not_missing():
     assert signals == ["NO_RECENT_PAID_VISIBILITY"]
     assert missing == []
     assert meta["feed_verified"] is True
+
+
+def test_unverified_pair_can_never_be_actionable():
+    unresolved = coin()
+    unresolved["dex_link_type"] = "NO_VERIFIED_DEX_PAIR"
+    row = evaluate(unresolved, waking(), whale(), derivatives(), paid_events())
+    assert row["status"] == "IDENTITY_UNVERIFIED_RESEARCH_ONLY"
+    assert row["identity"]["actionable_eligible"] is False
+    assert "EXACT_DEX_PAIR" in row["missing_evidence"]
+
+
+def test_precursor_exposes_verified_holder_wallet_social_facts():
+    row = evaluate(coin(), waking(), whale(), derivatives(), paid_events())
+    evidence = row["evidence_snapshot"]
+    assert evidence["holders"]["verified"] is True
+    assert evidence["wallets"]["score"] == 75.0
+    assert evidence["social"]["metrics"]["mentions"] == 22
+
+
+def test_t0_is_immutable_when_later_observation_changes():
+    state = {"version": 3, "network": "solana", "targets": {}}
+    first = evaluate(coin(), waking(), whale(), derivatives(), paid_events())
+    attach_immutable_t0(first, state, "2026-09-01T10:00:00+00:00")
+    later_coin = coin()
+    later_coin["price_usd"] = 0.14
+    later = evaluate(later_coin, waking(), whale(), derivatives(), paid_events())
+    attach_immutable_t0(later, state, "2026-09-01T11:00:00+00:00")
+    assert later["t0"]["observed_at"] == "2026-09-01T10:00:00+00:00"
+    assert later["t0"]["price_usd"] == 0.07
