@@ -32,8 +32,9 @@ def test_fresh_trigger_is_sent_once(tmp_path, monkeypatch):
     second = run(str(tmp_path), now=now, sender=lambda _b, _c, text: messages.append(text), chat_resolver=lambda _b: "chat")
     assert first["delivered_count"] == 1
     assert second["delivered_count"] == 0
-    assert len(messages) == 1
-    assert "עדיין לא BUY" in messages[0]
+    assert len(messages) == 2
+    assert "Wallet500 מחובר" in messages[0]
+    assert "עדיין לא BUY" in messages[1]
 
 
 def test_historical_trigger_is_suppressed(tmp_path, monkeypatch):
@@ -44,7 +45,8 @@ def test_historical_trigger_is_suppressed(tmp_path, monkeypatch):
     report = run(str(tmp_path), now=datetime(2026, 9, 1, 19, 0, tzinfo=timezone.utc), sender=lambda _b, _c, text: messages.append(text), chat_resolver=lambda _b: "chat")
     assert report["delivered_count"] == 0
     assert report["stale_suppressed_count"] == 1
-    assert messages == []
+    assert len(messages) == 1
+    assert "Wallet500 מחובר" in messages[0]
 
 
 def test_missing_secrets_fails_closed_without_send(tmp_path, monkeypatch):
