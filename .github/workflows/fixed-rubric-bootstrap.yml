@@ -1,0 +1,47 @@
+name: Wallet500 Fixed Experiment Rubric Bootstrap
+on:
+  push:
+    paths:
+      - '.github/workflows/fixed-rubric-bootstrap.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Force experiment rubric fixed across deployed dashboards
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/pages.yml')
+          s=p.read_text(encoding='utf-8')
+          old='#w500-experiment-rubric{direction:rtl;overflow-x:auto;white-space:nowrap;background:#02080d;'
+          new='#w500-experiment-rubric{position:fixed!important;top:0!important;left:0!important;right:0!important;width:100%!important;z-index:2147483000!important;direction:rtl;overflow-x:auto;white-space:nowrap;background:#02080d;box-shadow:0 4px 14px rgba(0,0,0,.55)!important;'
+          if old not in s and new not in s:
+              raise SystemExit('rubric style marker missing')
+          s=s.replace(old,new,1)
+          hover='#w500-experiment-rubric a:hover{border-color:#49f0a6!important;color:#49f0a6!important}</style>'
+          hover_new='#w500-experiment-rubric a:hover{border-color:#49f0a6!important;color:#49f0a6!important}#w500-experiment-rubric-spacer{height:46px!important}</style>'
+          if '#w500-experiment-rubric-spacer{height:46px!important}' not in s:
+              if hover not in s: raise SystemExit('rubric hover marker missing')
+              s=s.replace(hover,hover_new,1)
+          nav_end='</div></nav>\'\'\''
+          nav_new='</div></nav><div id="w500-experiment-rubric-spacer" aria-hidden="true"></div>\'\'\''
+          if 'id="w500-experiment-rubric-spacer"' not in s:
+              if nav_end not in s: raise SystemExit('rubric nav end marker missing')
+              s=s.replace(nav_end,nav_new,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Verify fixed rubric contract
+        run: |
+          grep -Fq 'position:fixed!important' .github/workflows/pages.yml
+          grep -Fq 'id="w500-experiment-rubric-spacer"' .github/workflows/pages.yml
+      - name: Commit fixed rubric deployment contract
+        run: |
+          if git diff --quiet; then echo 'No changes'; exit 0; fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/workflows/pages.yml
+          git commit -m 'ui: force experiment rubric fixed across dashboards'
+          git push
