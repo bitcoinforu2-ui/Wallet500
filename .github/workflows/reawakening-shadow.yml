@@ -35,6 +35,13 @@ jobs:
           python -m pytest -q tests/test_reawakening_shadow.py
       - name: Build forward-only shadow lane
         run: python -m wallet500.reawakening_shadow
+      - name: Send only fresh Survivor Reawakening Telegram alerts
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python -m pytest -q tests/test_reawakening_telegram.py
+          python -m wallet500.reawakening_telegram
       - name: Validate truth contract
         run: |
           python - <<'PY'
@@ -57,12 +64,16 @@ jobs:
           tmp="$(mktemp -d)"
           cp data/reawakening-shadow.json "$tmp/latest.json"
           cp data/reawakening-shadow-state.json "$tmp/state.json"
+          cp data/reawakening-telegram-report.json "$tmp/telegram-report.json"
+          cp data/reawakening-telegram-state.json "$tmp/telegram-state.json"
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
             cp "$tmp/latest.json" data/reawakening-shadow.json
             cp "$tmp/state.json" data/reawakening-shadow-state.json
-            git add data/reawakening-shadow.json data/reawakening-shadow-state.json
+            cp "$tmp/telegram-report.json" data/reawakening-telegram-report.json
+            cp "$tmp/telegram-state.json" data/reawakening-telegram-state.json
+            git add data/reawakening-shadow.json data/reawakening-shadow-state.json data/reawakening-telegram-report.json data/reawakening-telegram-state.json
             if git diff --cached --quiet; then exit 0; fi
             git commit -m 'research: refresh survivor reawakening shadow'
             if git push origin HEAD:main; then exit 0; fi
