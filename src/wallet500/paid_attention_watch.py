@@ -32,6 +32,9 @@ MODE = "RESEARCH_ONLY_PAID_ATTENTION_WATCH_V1"
 CONTRACT = "PAID_ATTENTION_WATCH_V1"
 NETWORK = "solana"
 FRESHNESS_HOURS = 36
+MIN_RESEARCH_LIQUIDITY_USD = 50_000.0
+EXTREME_THIN_LIQUIDITY_USD = 10_000.0
+_LIQ_UNSET = object()
 
 BANNED_SYMBOLS = {
     "USDC", "USDT", "DAI", "USDS", "USD1", "USDE", "PYUSD", "FDUSD", "TUSD",
@@ -167,7 +170,42 @@ def timing_class(group: dict) -> str:
     return "PROMOTION_TIMING_NEUTRAL"
 
 
-def classify_watch(timing: str, confirmation: str, distribution: dict | None) -> str:
+def liquidity_class(t0_liquidity_usd, live_liquidity_usd, timing: str) -> str:
+    t0_liq = _n(t0_liquidity_usd)
+    live_liq = _n(live_liquidity_usd)
+    if live_liq is None:
+        return "LIQUIDITY_UNVERIFIED"
+    if live_liq < EXTREME_THIN_LIQUIDITY_USD:
+        if t0_liq is not None and t0_liq >= MIN_RESEARCH_LIQUIDITY_USD:
+            return "POST_PROMOTION_LIQUIDITY_COLLAPSE"
+        return "EXTREME_THIN_LIQUIDITY"
+    if live_liq < MIN_RESEARCH_LIQUIDITY_USD:
+        if t0_liq is not None and t0_liq >= MIN_RESEARCH_LIQUIDITY_USD:
+            return "POST_PROMOTION_LIQUIDITY_DRAIN"
+        return "LOW_LIQUIDITY_BELOW_RESEARCH_FLOOR"
+    if timing == "PROMOTION_DURING_CAPITULATION" and t0_liq is not None and t0_liq < MIN_RESEARCH_LIQUIDITY_USD:
+        return "POST_COLLAPSE_PAID_PROMOTION"
+    return "RESEARCH_LIQUIDITY_OK"
+
+
+def classify_watch(
+    timing: str,
+    confirmation: str,
+    distribution: dict | None,
+    t0_liquidity_usd=_LIQ_UNSET,
+    live_liquidity_usd=_LIQ_UNSET,
+) -> str:
+    enforce_liquidity = t0_liquidity_usd is not _LIQ_UNSET or live_liquidity_usd is not _LIQ_UNSET
+    if enforce_liquidity:
+        t0_value = None if t0_liquidity_usd is _LIQ_UNSET else t0_liquidity_usd
+        live_value = None if live_liquidity_usd is _LIQ_UNSET else live_liquidity_usd
+        liq_class = liquidity_class(t0_value, live_value, timing)
+        if liq_class == "LIQUIDITY_UNVERIFIED":
+            return "PAID_ATTENTION_LIQUIDITY_UNVERIFIED"
+        if liq_class in {"EXTREME_THIN_LIQUIDITY", "POST_PROMOTION_LIQUIDITY_COLLAPSE", "POST_COLLAPSE_PAID_PROMOTION"}:
+            return "PAID_ATTENTION_PUMP_DUMP_LEARNING"
+        if liq_class in {"LOW_LIQUIDITY_BELOW_RESEARCH_FLOOR", "POST_PROMOTION_LIQUIDITY_DRAIN"}:
+            return "PAID_ATTENTION_LOW_LIQUIDITY_LEARNING"
     risk = _n((distribution or {}).get("risk_score"))
     if risk is not None and risk >= 50:
         return "PAID_ATTENTION_RISK_RESEARCH"
@@ -312,7 +350,10 @@ def run(output_dir: str = "data") -> dict:
         dist = distribution.get(token)
         confirmation, confirmation_score, strong = confirmation_status(channels, dist)
         timing = timing_class(group)
-        watch_status = classify_watch(timing, confirmation, dist)
+        t0_liquidity_usd = _n((group.get("t0") or {}).get("liquidity_usd"))
+        live_liquidity_usd = _n(live.get("liquidity_usd"))
+        liq_class = liquidity_class(t0_liquidity_usd, live_liquidity_usd, timing)
+        watch_status = classify_watch(timing, confirmation, dist, t0_liquidity_usd, live_liquidity_usd)
 
         st["identity"] = identity
         st["social_mentions"] = len(social_events)
@@ -345,6 +386,13 @@ def run(output_dir: str = "data") -> dict:
                 "t0_price_change_h24_pct": _n((group.get("t0") or {}).get("price_change_h24_pct")),
             },
             "market": live,
+            "liquidity_evidence": {
+                "t0_liquidity_usd": t0_liquidity_usd,
+                "live_liquidity_usd": live_liquidity_usd,
+                "liquidity_class": liq_class,
+                "research_floor_usd": MIN_RESEARCH_LIQUIDITY_USD,
+                "extreme_thin_floor_usd": EXTREME_THIN_LIQUIDITY_USD,
+            },
             "confirmation_status": confirmation,
             "confirmation_score": confirmation_score,
             "strong_families": strong,
@@ -363,6 +411,9 @@ def run(output_dir: str = "data") -> dict:
         "PAID_ATTENTION_RESEARCH_WATCH": 1,
         "PAID_ATTENTION_RISK_RESEARCH": 2,
         "PAID_ATTENTION_LATE_MOVE": 3,
+        "PAID_ATTENTION_LOW_LIQUIDITY_LEARNING": 4,
+        "PAID_ATTENTION_PUMP_DUMP_LEARNING": 5,
+        "PAID_ATTENTION_LIQUIDITY_UNVERIFIED": 6,
     }
     rows.sort(key=lambda x: (
         priority.get(x.get("watch_status"), 9),
@@ -379,6 +430,12 @@ def run(output_dir: str = "data") -> dict:
         "research_watch": sum(1 for x in rows if x["watch_status"] == "PAID_ATTENTION_RESEARCH_WATCH"),
         "risk": sum(1 for x in rows if x["watch_status"] == "PAID_ATTENTION_RISK_RESEARCH"),
         "late_move": sum(1 for x in rows if x["watch_status"] == "PAID_ATTENTION_LATE_MOVE"),
+        "low_liquidity_learning": sum(1 for x in rows if x["watch_status"] == "PAID_ATTENTION_LOW_LIQUIDITY_LEARNING"),
+        "pump_dump_learning": sum(1 for x in rows if x["watch_status"] == "PAID_ATTENTION_PUMP_DUMP_LEARNING"),
+        "liquidity_unverified": sum(1 for x in rows if x["watch_status"] == "PAID_ATTENTION_LIQUIDITY_UNVERIFIED"),
+        "live_liquidity_ge_50k": sum(1 for x in rows if _n((x.get("market") or {}).get("liquidity_usd"), 0.0) >= MIN_RESEARCH_LIQUIDITY_USD),
+        "live_liquidity_lt_50k": sum(1 for x in rows if _n((x.get("market") or {}).get("liquidity_usd"), 0.0) < MIN_RESEARCH_LIQUIDITY_USD),
+        "live_liquidity_lt_10k": sum(1 for x in rows if _n((x.get("market") or {}).get("liquidity_usd"), 0.0) < EXTREME_THIN_LIQUIDITY_USD),
         "ad_and_boost": sum(1 for x in rows if (x.get("promotion") or {}).get("ad_and_boost") is True),
         "boost_500_plus": sum(1 for x in rows if float((x.get("promotion") or {}).get("boost_total_amount") or 0) >= 500),
     }
@@ -399,6 +456,8 @@ def run(output_dir: str = "data") -> dict:
             "Promotion timing is measured from Wallet500 T0 facts only; no later performance is used to classify early vs late.",
             "EARLY_CONFIRMING requires independent Waking confirmation evidence in addition to early promotion timing.",
             "Missing providers remain unavailable and never become positive evidence.",
+            "Paid Attention main watch requires verified live exact-pair liquidity >= $50K; thinner or unverified pairs are quarantined for learning only.",
+            "T0 liquidity and live liquidity are preserved to distinguish already-thin promotions from post-promotion liquidity collapse.",
         ],
         "counts": counts,
         "provider_status_counts": provider_counts,

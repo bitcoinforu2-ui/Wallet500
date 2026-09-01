@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from wallet500.paid_attention_watch import _fresh_paid_groups, classify_watch, timing_class
+from wallet500.paid_attention_watch import _fresh_paid_groups, classify_watch, liquidity_class, timing_class
 
 
 TOKEN = "9NMQjV8PVxx8rDxym1fG3Dbc8D2YFwWUZKYQ9VU6pump"
@@ -104,3 +104,20 @@ def test_distribution_risk_overrides_early_confirmation():
         "WAKING_STRONG_RESEARCH",
         {"risk_score": 75},
     ) == "PAID_ATTENTION_RISK_RESEARCH"
+
+
+def test_extreme_thin_liquidity_goes_to_pump_dump_learning():
+    assert classify_watch("PROMOTION_DURING_CAPITULATION", "WAKING_UNCONFIRMED_RESEARCH", None, 2500, 2200) == "PAID_ATTENTION_PUMP_DUMP_LEARNING"
+
+def test_below_50k_is_learning_not_main_watch():
+    assert classify_watch("PROMOTION_PRE_BREAKOUT_WINDOW", "WAKING_STRONG_RESEARCH", None, 30000, 35000) == "PAID_ATTENTION_LOW_LIQUIDITY_LEARNING"
+
+def test_liquidity_collapse_after_healthy_t0_is_learning():
+    assert liquidity_class(80000, 4000, "PROMOTION_PRE_BREAKOUT_WINDOW") == "POST_PROMOTION_LIQUIDITY_COLLAPSE"
+    assert classify_watch("PROMOTION_PRE_BREAKOUT_WINDOW", "WAKING_STRONG_RESEARCH", None, 80000, 4000) == "PAID_ATTENTION_PUMP_DUMP_LEARNING"
+
+def test_unverified_liquidity_is_quarantined():
+    assert classify_watch("PROMOTION_PRE_BREAKOUT_WINDOW", "WAKING_STRONG_RESEARCH", None, 80000, None) == "PAID_ATTENTION_LIQUIDITY_UNVERIFIED"
+
+def test_healthy_liquidity_can_be_early_confirming():
+    assert classify_watch("PROMOTION_PRE_BREAKOUT_WINDOW", "WAKING_STRONG_RESEARCH", None, 80000, 90000) == "PAID_ATTENTION_EARLY_CONFIRMING"
