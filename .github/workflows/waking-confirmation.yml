@@ -104,7 +104,7 @@ jobs:
           if policy.get('post_promotion_outcomes_used_for_scoring') is not False: raise SystemExit('PAID_ATTENTION_HINDSIGHT_RISK')
           rrows=r.get('targets') or []
           if int((r.get('counts') or {}).get('targets') or 0)!=len(rrows): raise SystemExit('PRECURSOR_COUNT_MISMATCH')
-          allowed_precursor={'HIGH_CONVICTION_PRECURSOR','PRE_BREAKOUT_CANDIDATE','EARLY_REVIVAL_WATCH','LATE_MOVE_DO_NOT_CHASE','INSUFFICIENT_PRECURSOR_EVIDENCE'}
+          allowed_precursor={'HIGH_CONVICTION_PRECURSOR','PRE_BREAKOUT_CANDIDATE','EARLY_REVIVAL_WATCH','LATE_MOVE_DO_NOT_CHASE','INSUFFICIENT_PRECURSOR_EVIDENCE','IDENTITY_UNVERIFIED_RESEARCH_ONLY'}
           for x in rrows:
               if x.get('status') not in allowed_precursor: raise SystemExit('PRECURSOR_STATUS_INVALID')
               if x.get('production_portfolio_impact')!='NONE': raise SystemExit('PRECURSOR_ROW_PRODUCTION_IMPACT')
