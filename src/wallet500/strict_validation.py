@@ -34,6 +34,7 @@ def run(output_dir: str = "data"):
     exact = _load(out / "exact-pair-survival-report.json", {})
     paper = _load(out / "paper-truth-summary.json", {})
     active = _load(out / "active-qualified-candidates.json", [])
+    decision = _load(out / "decision-engine-v1.json", {})
 
     checks: list[dict] = []
 
@@ -100,16 +101,59 @@ def run(output_dir: str = "data"):
                 active_failures.append({"index": i, "liquidity_usd": live_liq, "reason": "ACTIVE_SUB_50K_LIQUIDITY"})
     _check(checks, "active_exact_pair_and_liquidity_integrity", active_ok and not active_failures, {"active_count": len(active) if isinstance(active, list) else None, "failures": active_failures[:20]})
 
+    decision_mode = str(decision.get("mode") or "") if isinstance(decision, dict) else ""
+    decision_contract = decision.get("truth_contract") or {} if isinstance(decision, dict) else {}
+    decision_learning = decision.get("learning") or {} if isinstance(decision, dict) else {}
+    _check(
+        checks,
+        "decision_engine_shadow_only",
+        decision_mode == "SHADOW_DECISION_ONLY_NO_REAL_MONEY_NO_PRODUCTION_GATE_CHANGE" and decision.get("production_change") is False,
+        {"mode": decision_mode, "production_change": decision.get("production_change") if isinstance(decision, dict) else None},
+    )
+    contract_ok = (
+        isinstance(decision_contract, dict)
+        and decision_contract.get("exact_pair_required") is True
+        and decision_contract.get("liquidity_floor_required") is True
+        and decision_contract.get("holder_cluster_fail_closed_for_buy") is True
+        and decision_contract.get("lp_protection_fail_closed_for_buy") is True
+        and decision_contract.get("executable_exit_depth_fail_closed_for_buy") is True
+        and decision_contract.get("no_hindsight") is True
+        and decision_contract.get("real_money_execution") is False
+    )
+    _check(checks, "decision_engine_fail_closed_contract", contract_ok, decision_contract)
+    _check(
+        checks,
+        "decision_engine_no_auto_weight_changes",
+        isinstance(decision_learning, dict) and decision_learning.get("auto_weight_changes") is False,
+        decision_learning.get("auto_weight_changes") if isinstance(decision_learning, dict) else None,
+    )
+    decision_rows = decision.get("decisions") if isinstance(decision, dict) else None
+    invalid_buys = []
+    if isinstance(decision_rows, list):
+        for i, row in enumerate(decision_rows):
+            if not isinstance(row, dict) or row.get("recommended_action") != "BUY":
+                continue
+            hard = row.get("hard_safety_failures") or []
+            gaps = row.get("evidence_gaps") or []
+            if hard or gaps:
+                invalid_buys.append({"index": i, "key": row.get("key"), "hard": hard, "gaps": gaps})
+    _check(
+        checks,
+        "decision_engine_buy_has_complete_evidence",
+        isinstance(decision_rows, list) and not invalid_buys,
+        {"decision_count": len(decision_rows) if isinstance(decision_rows, list) else None, "invalid_buys": invalid_buys[:20]},
+    )
+
     failures = [c for c in checks if c["status"] != "PASS"]
     payload = {
-        "version": 1,
+        "version": 2,
         "updated_at": now.isoformat(),
         "mode": "FAIL_CLOSED_PRODUCTION_INTEGRITY_VALIDATION",
         "minimum_liquidity_usd": MIN_LIQUIDITY_USD,
         "checks": checks,
         "passed": not failures,
         "failure_count": len(failures),
-        "policy": "Validation may block publication; it never relaxes thresholds, pair identity, holder/cluster evidence, immutable track record, no-hindsight, or paper-only rules.",
+        "policy": "Validation may block publication; it never relaxes thresholds, pair identity, holder/cluster evidence, immutable track record, no-hindsight, paper-only rules, or the Decision Engine V1 shadow-only contract.",
     }
     (out / "strict-validation.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(json.dumps({"passed": payload["passed"], "failure_count": payload["failure_count"], "failures": failures}, indent=2))
