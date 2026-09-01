@@ -1,0 +1,100 @@
+name: Wallet500 Paid Attention Liquidity Hardening Bootstrap
+on:
+  push:
+    paths:
+      - '.github/workflows/paid-liquidity-hardening-bootstrap.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch paid attention liquidity classification
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('src/wallet500/paid_attention_watch.py')
+          s=p.read_text(encoding='utf-8')
+          if 'MIN_RESEARCH_LIQUIDITY_USD = 50_000.0' not in s:
+              s=s.replace('FRESHNESS_HOURS = 36\n', 'FRESHNESS_HOURS = 36\nMIN_RESEARCH_LIQUIDITY_USD = 50_000.0\nEXTREME_THIN_LIQUIDITY_USD = 10_000.0\n', 1)
+
+          old='''def classify_watch(timing: str, confirmation: str, distribution: dict | None) -> str:\n    risk = _n((distribution or {}).get("risk_score"))\n    if risk is not None and risk >= 50:\n        return "PAID_ATTENTION_RISK_RESEARCH"\n    if timing == "PROMOTION_AFTER_BREAKOUT":\n        return "PAID_ATTENTION_LATE_MOVE"\n    if timing == "PROMOTION_PRE_BREAKOUT_WINDOW" and confirmation in {\n        "WAKING_CONFIRMED_RESEARCH", "WAKING_STRONG_RESEARCH"\n    }:\n        return "PAID_ATTENTION_EARLY_CONFIRMING"\n    return "PAID_ATTENTION_RESEARCH_WATCH"\n'''
+          new='''def liquidity_class(t0_liquidity_usd, live_liquidity_usd, timing: str) -> str:\n    t0_liq = _n(t0_liquidity_usd)\n    live_liq = _n(live_liquidity_usd)\n    if live_liq is None:\n        return "LIQUIDITY_UNVERIFIED"\n    if live_liq < EXTREME_THIN_LIQUIDITY_USD:\n        if t0_liq is not None and t0_liq >= MIN_RESEARCH_LIQUIDITY_USD:\n            return "POST_PROMOTION_LIQUIDITY_COLLAPSE"\n        return "EXTREME_THIN_LIQUIDITY"\n    if live_liq < MIN_RESEARCH_LIQUIDITY_USD:\n        if t0_liq is not None and t0_liq >= MIN_RESEARCH_LIQUIDITY_USD:\n            return "POST_PROMOTION_LIQUIDITY_DRAIN"\n        return "LOW_LIQUIDITY_BELOW_RESEARCH_FLOOR"\n    if timing == "PROMOTION_DURING_CAPITULATION" and t0_liq is not None and t0_liq < MIN_RESEARCH_LIQUIDITY_USD:\n        return "POST_COLLAPSE_PAID_PROMOTION"\n    return "RESEARCH_LIQUIDITY_OK"\n\n\ndef classify_watch(\n    timing: str,\n    confirmation: str,\n    distribution: dict | None,\n    t0_liquidity_usd=None,\n    live_liquidity_usd=None,\n) -> str:\n    liq_class = liquidity_class(t0_liquidity_usd, live_liquidity_usd, timing)\n    if liq_class in {"EXTREME_THIN_LIQUIDITY", "POST_PROMOTION_LIQUIDITY_COLLAPSE", "POST_COLLAPSE_PAID_PROMOTION"}:\n        return "PAID_ATTENTION_PUMP_DUMP_LEARNING"\n    if liq_class in {"LOW_LIQUIDITY_BELOW_RESEARCH_FLOOR", "POST_PROMOTION_LIQUIDITY_DRAIN"}:\n        return "PAID_ATTENTION_LOW_LIQUIDITY_LEARNING"\n    risk = _n((distribution or {}).get("risk_score"))\n    if risk is not None and risk >= 50:\n        return "PAID_ATTENTION_RISK_RESEARCH"\n    if timing == "PROMOTION_AFTER_BREAKOUT":\n        return "PAID_ATTENTION_LATE_MOVE"\n    if timing == "PROMOTION_PRE_BREAKOUT_WINDOW" and confirmation in {\n        "WAKING_CONFIRMED_RESEARCH", "WAKING_STRONG_RESEARCH"\n    }:\n        return "PAID_ATTENTION_EARLY_CONFIRMING"\n    return "PAID_ATTENTION_RESEARCH_WATCH"\n'''
+          if old in s:
+              s=s.replace(old,new,1)
+          elif 'def liquidity_class(' not in s:
+              raise SystemExit('classify_watch marker missing')
+
+          old_call='''        timing = timing_class(group)\n        watch_status = classify_watch(timing, confirmation, dist)\n'''
+          new_call='''        timing = timing_class(group)\n        t0_liquidity_usd = _n((group.get("t0") or {}).get("liquidity_usd"))\n        live_liquidity_usd = _n(live.get("liquidity_usd"))\n        liq_class = liquidity_class(t0_liquidity_usd, live_liquidity_usd, timing)\n        watch_status = classify_watch(\n            timing, confirmation, dist, t0_liquidity_usd, live_liquidity_usd\n        )\n'''
+          if old_call in s:
+              s=s.replace(old_call,new_call,1)
+          elif 't0_liquidity_usd = _n((group.get("t0")' not in s:
+              raise SystemExit('classification call marker missing')
+
+          market_marker='''            "market": live,\n            "confirmation_status": confirmation,\n'''
+          market_new='''            "market": live,\n            "liquidity_evidence": {\n                "t0_liquidity_usd": t0_liquidity_usd,\n                "live_liquidity_usd": live_liquidity_usd,\n                "liquidity_class": liq_class,\n                "research_floor_usd": MIN_RESEARCH_LIQUIDITY_USD,\n                "extreme_thin_floor_usd": EXTREME_THIN_LIQUIDITY_USD,\n            },\n            "confirmation_status": confirmation,\n'''
+          if market_marker in s and '"liquidity_evidence": {' not in s:
+              s=s.replace(market_marker,market_new,1)
+
+          old_priority='''        "PAID_ATTENTION_RISK_RESEARCH": 2,\n        "PAID_ATTENTION_LATE_MOVE": 3,\n'''
+          new_priority='''        "PAID_ATTENTION_RISK_RESEARCH": 2,\n        "PAID_ATTENTION_LATE_MOVE": 3,\n        "PAID_ATTENTION_LOW_LIQUIDITY_LEARNING": 4,\n        "PAID_ATTENTION_PUMP_DUMP_LEARNING": 5,\n'''
+          if old_priority in s:
+              s=s.replace(old_priority,new_priority,1)
+
+          count_marker='''        "late_move": sum(1 for x in rows if x["watch_status"] == "PAID_ATTENTION_LATE_MOVE"),\n        "ad_and_boost":'''
+          count_new='''        "late_move": sum(1 for x in rows if x["watch_status"] == "PAID_ATTENTION_LATE_MOVE"),\n        "low_liquidity_learning": sum(1 for x in rows if x["watch_status"] == "PAID_ATTENTION_LOW_LIQUIDITY_LEARNING"),\n        "pump_dump_learning": sum(1 for x in rows if x["watch_status"] == "PAID_ATTENTION_PUMP_DUMP_LEARNING"),\n        "live_liquidity_ge_50k": sum(1 for x in rows if _n((x.get("market") or {}).get("liquidity_usd"), 0.0) >= MIN_RESEARCH_LIQUIDITY_USD),\n        "live_liquidity_lt_50k": sum(1 for x in rows if _n((x.get("market") or {}).get("liquidity_usd"), 0.0) < MIN_RESEARCH_LIQUIDITY_USD),\n        "live_liquidity_lt_10k": sum(1 for x in rows if _n((x.get("market") or {}).get("liquidity_usd"), 0.0) < EXTREME_THIN_LIQUIDITY_USD),\n        "ad_and_boost":'''
+          if count_marker in s:
+              s=s.replace(count_marker,count_new,1)
+
+          rule='''            "Missing providers remain unavailable and never become positive evidence.",\n'''
+          rule_new='''            "Missing providers remain unavailable and never become positive evidence.",\n            "Paid Attention main watch requires live exact-pair liquidity >= $50K; thinner pairs remain visible only in the learning archive.",\n            "T0 liquidity and live liquidity are both preserved to distinguish already-thin promotions from post-promotion liquidity collapse.",\n'''
+          if rule in s and 'Paid Attention main watch requires live exact-pair liquidity' not in s:
+              s=s.replace(rule,rule_new,1)
+          p.write_text(s,encoding='utf-8')
+
+          t=Path('tests/test_paid_attention_watch.py')
+          q=t.read_text(encoding='utf-8')
+          q=q.replace('from wallet500.paid_attention_watch import _fresh_paid_groups, classify_watch, timing_class',
+                      'from wallet500.paid_attention_watch import _fresh_paid_groups, classify_watch, liquidity_class, timing_class')
+          if 'test_extreme_thin_liquidity_goes_to_pump_dump_learning' not in q:
+              q += '''\n\ndef test_extreme_thin_liquidity_goes_to_pump_dump_learning():\n    assert classify_watch(\n        "PROMOTION_DURING_CAPITULATION",\n        "WAKING_UNCONFIRMED_RESEARCH",\n        None,\n        2_500,\n        2_200,\n    ) == "PAID_ATTENTION_PUMP_DUMP_LEARNING"\n\n\ndef test_live_liquidity_below_50k_is_learning_not_main_watch():\n    assert classify_watch(\n        "PROMOTION_PRE_BREAKOUT_WINDOW",\n        "WAKING_STRONG_RESEARCH",\n        None,\n        30_000,\n        35_000,\n    ) == "PAID_ATTENTION_LOW_LIQUIDITY_LEARNING"\n\n\ndef test_liquidity_collapse_after_healthy_t0_is_preserved_as_learning():\n    assert liquidity_class(80_000, 4_000, "PROMOTION_PRE_BREAKOUT_WINDOW") == "POST_PROMOTION_LIQUIDITY_COLLAPSE"\n    assert classify_watch(\n        "PROMOTION_PRE_BREAKOUT_WINDOW",\n        "WAKING_STRONG_RESEARCH",\n        None,\n        80_000,\n        4_000,\n    ) == "PAID_ATTENTION_PUMP_DUMP_LEARNING"\n\n\ndef test_healthy_liquidity_can_still_be_early_confirming():\n    assert classify_watch(\n        "PROMOTION_PRE_BREAKOUT_WINDOW",\n        "WAKING_STRONG_RESEARCH",\n        None,\n        80_000,\n        90_000,\n    ) == "PAID_ATTENTION_EARLY_CONFIRMING"\n'''
+          t.write_text(q,encoding='utf-8')
+
+          d=Path('data/decision-lab.html')
+          h=d.read_text(encoding='utf-8')
+          old_info='Boost או Ad מאומת מכניס את המטבע למחקר גם אם Revival לא גילה אותו קודם. זהו Trigger לתשומת לב בלבד — לא BUY ולא PRE-ALPHA. EARLY CONFIRMING דורש ראיות עצמאיות מעבר לתשלום.'
+          new_info='Boost או Ad מאומת מכניס למחקר בלבד. הרשימה הראשית מציגה רק exact-pair עם נזילות חיה ≥ $50K. זוגות דקים נשמרים למטה כ-Pump/Dump Learning כדי ללמוד מהם, אך אינם מועמדי Watch.'
+          h=h.replace(old_info,new_info)
+          attention_marker='<div id="attention" class="grid" style="margin-top:8px"><div class="sub">טוען Paid Attention Watch...</div></div></section>'
+          attention_new='<div id="attention" class="grid" style="margin-top:8px"><div class="sub">טוען Paid Attention Watch...</div></div><div class="head" style="margin-top:14px">⚠ Pump/Dump + Low Liquidity Learning Archive</div><div class="sub">נשמר ללמידה בלבד. מתחת ל-$50K אינו מופיע ב-Watch הראשי; מתחת ל-$10K מסומן Pump/Dump Learning.</div><div id="attentionLearning" class="grid" style="margin-top:8px"></div></section>'
+          if attention_marker in h and 'id="attentionLearning"' not in h:
+              h=h.replace(attention_marker,attention_new,1)
+
+          old_kpis="[['TRACKED',c.tracked],['EARLY CONFIRMING',c.early_confirming],['RESEARCH WATCH',c.research_watch],['LATE MOVE',c.late_move],['RISK',c.risk],['AD+BOOST',c.ad_and_boost],['BOOST 500+',c.boost_500_plus]]"
+          new_kpis="[['TRACKED',c.tracked],['LIQ ≥50K',c.live_liquidity_ge_50k],['EARLY CONFIRMING',c.early_confirming],['RESEARCH WATCH',c.research_watch],['LATE MOVE',c.late_move],['<50K LEARN',c.live_liquidity_lt_50k],['<10K P&D',c.live_liquidity_lt_10k]]"
+          h=h.replace(old_kpis,new_kpis)
+          old_att="$('attention').innerHTML=(a.targets||[]).length?(a.targets||[]).slice(0,36).map(attCard).join(''):'<div class=\"sub\">"
+          if old_att in h and "attentionLearning" in h:
+              # keep replacement compact; the original fallback tail remains after the marker.
+              h=h.replace("$('attention').innerHTML=(a.targets||[]).length?(a.targets||[]).slice(0,36).map(attCard).join(''):", "let at=a.targets||[],learn=at.filter(x=>['PAID_ATTENTION_LOW_LIQUIDITY_LEARNING','PAID_ATTENTION_PUMP_DUMP_LEARNING'].includes(x.watch_status)),active=at.filter(x=>!['PAID_ATTENTION_LOW_LIQUIDITY_LEARNING','PAID_ATTENTION_PUMP_DUMP_LEARNING'].includes(x.watch_status));$('attention').innerHTML=active.length?active.slice(0,36).map(attCard).join(''):",1)
+              h=h.replace("try{let p=await j('revival-precursor-latest.json')", "$('attentionLearning').innerHTML=learn.length?learn.slice(0,18).map(attCard).join(''):'<div class=\"sub\">אין כרגע low-liquidity learning cases.</div>';try{let p=await j('revival-precursor-latest.json')",1)
+          d.write_text(h,encoding='utf-8')
+          PY
+      - name: Verify patch
+        run: |
+          grep -Fq 'MIN_RESEARCH_LIQUIDITY_USD = 50_000.0' src/wallet500/paid_attention_watch.py
+          grep -Fq 'PAID_ATTENTION_PUMP_DUMP_LEARNING' src/wallet500/paid_attention_watch.py
+          grep -Fq 'PAID_ATTENTION_LOW_LIQUIDITY_LEARNING' src/wallet500/paid_attention_watch.py
+          grep -Fq 'attentionLearning' data/decision-lab.html
+          python -m pytest -q tests/test_paid_attention_watch.py
+      - name: Commit source hardening
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/wallet500/paid_attention_watch.py tests/test_paid_attention_watch.py data/decision-lab.html
+          if git diff --cached --quiet; then echo 'No changes'; exit 0; fi
+          git commit -m 'research: separate low liquidity paid promotions into learning archive'
+          git push
