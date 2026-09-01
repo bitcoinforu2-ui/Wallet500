@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from wallet500.revival_1000 import looks_like_solana_address
+
 DATA = Path("data")
 REVIVAL = DATA / "revival-1000-latest.json"
 WAKING = DATA / "waking-confirmation-latest.json"
@@ -66,6 +68,54 @@ def _dt(value: Any) -> datetime | None:
 
 def _verified_channel(row: dict | None) -> bool:
     return isinstance(row, dict) and row.get("verified") is True
+
+
+def verify_exact_identity(coin: dict) -> tuple[bool, list[str]]:
+    """Fail closed unless the current Solana mint and DEX pair are canonical."""
+    missing: list[str] = []
+    mint = str(coin.get("token_address") or "")
+    pair = str(coin.get("dex_pair_address") or "")
+    if coin.get("network") != NETWORK or not looks_like_solana_address(mint):
+        missing.append("EXACT_SOLANA_MINT")
+    if not pair or coin.get("dex_link_type") != "DEXSCREENER_VERIFIED_PAIR":
+        missing.append("EXACT_DEX_PAIR")
+    return not missing, missing
+
+
+def _channel_snapshot(channels: dict) -> dict:
+    """Expose verified precursor facts without turning missing data into zero."""
+    out: dict[str, dict] = {}
+    for name in ("holders", "wallets", "social"):
+        channel = channels.get(name) if isinstance(channels, dict) else None
+        verified = _verified_channel(channel)
+        out[name] = {
+            "verified": verified,
+            "score": (_n(channel.get("score")) if verified else None) if isinstance(channel, dict) else None,
+            "observed_at": channel.get("observed_at") if isinstance(channel, dict) else None,
+            "source": channel.get("source") if isinstance(channel, dict) else "NOT_CONNECTED",
+            "metrics": dict(channel.get("metrics") or {}) if verified and isinstance(channel, dict) else {},
+            "signals": list(channel.get("signals") or []) if verified and isinstance(channel, dict) else [],
+        }
+    return out
+
+
+def attach_immutable_t0(row: dict, state: dict, observed_at: str) -> dict:
+    """Persist the first exact-identity precursor observation and never rewrite it."""
+    mint = str(row.get("token_address") or "")
+    records = state.setdefault("targets", {})
+    existing = records.get(mint)
+    if not isinstance(existing, dict):
+        existing = {
+            "observed_at": observed_at,
+            "token_address": mint,
+            "pair_address": row.get("pair_address"),
+            "price_usd": row.get("price_usd"),
+            "status": row.get("status"),
+            "evidence": row.get("evidence_snapshot"),
+        }
+        records[mint] = existing
+    row["t0"] = dict(existing)
+    return row
 
 
 def _evidence_map(payload: dict, key: str) -> dict[str, dict]:
@@ -422,7 +472,7 @@ def score_paid_attention(events: list[dict] | None, coin: dict) -> tuple[float |
     return round(_clamp(score), 2), signals, missing, meta
 
 
-def combine(families: dict[str, dict], coin: dict) -> dict:
+def combine(families: dict[str, dict], coin: dict, exact_identity_verified: bool = True) -> dict:
     weighted = 0.0
     available_weight = 0.0
     strong = []
@@ -464,7 +514,9 @@ def combine(families: dict[str, dict], coin: dict) -> dict:
         for x in ("social_attention", "whale_smart_money", "derivatives_cex")
     )
 
-    if c24 >= 35 or c7 >= 85:
+    if not exact_identity_verified:
+        status = "IDENTITY_UNVERIFIED_RESEARCH_ONLY"
+    elif c24 >= 35 or c7 >= 85:
         status = "LATE_MOVE_DO_NOT_CHASE"
     elif coverage >= 75 and normalized >= 75 and len(strong) >= 4 and market_score >= 60 and (flow_score or 0) >= 45 and independent_confirmation:
         status = "HIGH_CONVICTION_PRECURSOR"
@@ -495,6 +547,9 @@ def evaluate(
     paid_events: list[dict] | None = None,
 ) -> dict:
     channels = (waking or {}).get("channels") or {}
+    exact_identity_verified, identity_missing = verify_exact_identity(coin)
+    exact_mint_verified = "EXACT_SOLANA_MINT" not in identity_missing
+    exact_pair_verified = "EXACT_DEX_PAIR" not in identity_missing
     market_score, market_signals = score_market_structure(coin)
     hw_score, hw_signals, hw_missing = score_holder_wallet(channels)
     social_score, social_signals, social_missing = score_social(channels)
@@ -509,7 +564,8 @@ def evaluate(
         "derivatives_cex": {"score": deriv_score, "signals": deriv_signals, "missing": deriv_missing},
         "paid_attention": {"score": paid_score, "signals": paid_signals, "missing": paid_missing, "meta": paid_meta, "supporting_only": True},
     }
-    decision = combine(families, coin)
+    decision = combine(families, coin, exact_identity_verified)
+    decision["missing_evidence"] = sorted(set(decision["missing_evidence"] + identity_missing))
     return {
         "network": NETWORK,
         "token_address": coin.get("token_address"),
@@ -517,6 +573,12 @@ def evaluate(
         "name": coin.get("name"),
         "coingecko_id": coin.get("id"),
         "pair_address": coin.get("dex_pair_address"),
+        "identity": {
+            "exact_mint_verified": exact_mint_verified,
+            "exact_pair_verified": exact_pair_verified,
+            "actionable_eligible": exact_identity_verified,
+            "blockers": identity_missing,
+        },
         "price_usd": coin.get("price_usd"),
         "drawdown_from_ath_pct": coin.get("drawdown_from_ath_pct"),
         "change_24h_pct": coin.get("change_24h_pct"),
@@ -527,6 +589,7 @@ def evaluate(
         "revival_score_verified": coin.get("revival_score_verified"),
         "waking_confirmation_status": (waking or {}).get("confirmation_status"),
         "families": families,
+        "evidence_snapshot": _channel_snapshot(channels),
         **decision,
         "production_portfolio_impact": "NONE",
     }
@@ -579,6 +642,13 @@ def run(output_dir: str = "data") -> dict:
     }
     rows.sort(key=lambda x: (priority.get(x["status"], 9), -float(x["confidence_adjusted_score"])))
     now = datetime.now(timezone.utc).isoformat()
+    state = _load(STATE, {"version": 3, "network": NETWORK, "targets": {}})
+    if not isinstance(state, dict) or state.get("network") not in {None, NETWORK}:
+        raise RuntimeError("REVIVAL_PRECURSOR_STATE_CONTRACT_REJECTED")
+    state.setdefault("targets", {})
+    for row in rows:
+        if (row.get("identity") or {}).get("actionable_eligible") is True:
+            attach_immutable_t0(row, state, now)
     counts: dict[str, int] = {}
     paid_counts = {"with_recent_paid_attention": 0, "pre_breakout_paid_timing": 0, "late_paid_timing": 0, "ad_and_boost": 0}
     for row in rows:
@@ -595,7 +665,7 @@ def run(output_dir: str = "data") -> dict:
             paid_counts["ad_and_boost"] += 1
 
     payload = {
-        "version": 2,
+        "version": 3,
         "mode": MODE,
         "contract": CONTRACT,
         "network": NETWORK,
@@ -616,6 +686,8 @@ def run(output_dir: str = "data") -> dict:
             "missing evidence is never converted to a positive score",
             "social attention is supporting evidence and cannot by itself create a pre-breakout candidate",
             "whale/smart-money evidence must be exact-mint verified",
+            "an actionable precursor requires a canonical Solana mint and a DEXSCREENER_VERIFIED_PAIR; unresolved identity is research-only",
+            "T0 is the first exact-identity precursor observation and is immutable across later runs",
             "derivatives evidence must have canonical token mapping; symbol-only matches cannot score",
             "paid DEX Screener boosts/ads are supporting attention evidence only and cannot independently confirm a pre-breakout candidate",
             "paid-attention timing uses only T0 facts known at Wallet500 first-seen; later promotion outcomes never score the precursor",
@@ -628,7 +700,8 @@ def run(output_dir: str = "data") -> dict:
         "targets": rows,
     }
     _write(LATEST, payload)
-    _write(STATE, {"version": 2, "updated_at": now, "last_counts": payload["counts"]})
+    state.update({"version": 3, "network": NETWORK, "updated_at": now, "last_counts": payload["counts"]})
+    _write(STATE, state)
     print("REVIVAL_PRECURSOR_V2_PAID_ATTENTION_OK", payload["counts"])
     return payload
 
