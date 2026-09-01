@@ -5,7 +5,7 @@ on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_run:
-    workflows: ['Wallet500 Revival Solana Expanded', 'Wallet500 Revival Solana 500', 'Wallet500 Hybrid Token Profiles']
+    workflows: ['Wallet500 Revival Solana Expanded', 'Wallet500 Revival Solana 500', 'Wallet500 Hybrid Token Profiles', 'Wallet500 Paid Attention Research Watch']
     types: [completed]
   push:
     branches: [main]
@@ -19,6 +19,7 @@ on:
       - 'dashboard-revival1000.html'
       - 'dashboard-hybrid.html'
       - 'dashboard-cyberleek.html'
+      - 'dashboard-kol-forward.html'
       - 'dashboard-reference-fix.js'
       - 'dashboard-live-price.js'
       - 'wallet500_option2_emblem.jpg'
@@ -43,6 +44,7 @@ on:
       - 'data/decision-engine-v1.json'
       - 'data/decision-engine-v1-ledger.json'
       - 'data/decision-lab.html'
+      - 'data/paid-attention-research-watch.json'
       - 'data/hybrid-token-profiles.json'
       - 'data/case-study-cyberleek.json'
       - '.github/workflows/pages.yml'
@@ -69,7 +71,7 @@ jobs:
           check_file(){ test -s "$1" || fail "missing or empty: $1"; echo "OK file $1"; }
           check_text(){ grep -Fq "$2" "$1" || fail "missing marker [$2] in $1"; echo "OK marker $1 :: $2"; }
           rm -rf _site
-          mkdir -p _site/live _site/terminal _site/performance _site/backtest _site/control _site/hub _site/revival _site/hybrid _site/cyberleek _site/decision
+          mkdir -p _site/live _site/terminal _site/performance _site/backtest _site/control _site/hub _site/revival _site/hybrid _site/cyberleek _site/decision _site/kol
           cp index.html _site/index.html
           cp index.html _site/dashboard-hub.html
           cp index.html _site/hub.html
@@ -83,12 +85,14 @@ jobs:
           cp dashboard-hybrid.html _site/hybrid/index.html
           cp dashboard-hybrid.html _site/dashboard-hybrid.html
           cp dashboard-cyberleek.html _site/cyberleek/index.html
+          cp dashboard-kol-forward.html _site/kol/index.html
           cp data/decision-lab.html _site/decision/index.html
           cp dashboard-reference-fix.js _site/dashboard-reference-fix.js
           cp dashboard-live-price.js _site/dashboard-live-price.js
           cp -r data _site/data
           python - <<'PY'
           from pathlib import Path
+          import re
 
           decision_link='<a href="/Wallet500/decision/">🧠 Decision Lab</a>'
           nav_marker='<a href="/Wallet500/backtest/">מחקר 7/30/90</a>'
@@ -97,14 +101,21 @@ jobs:
               if decision_link not in s:
                   if nav_marker not in s: raise SystemExit(f'Decision nav insertion marker missing in {p}')
                   s=s.replace(nav_marker, nav_marker+decision_link, 1)
-                  p.write_text(s, encoding='utf-8')
+              ext='<section class="sec panel exp"><div class="head">ניסוי חיצוני — 6 שעות'
+              if ext in s and 'id="external-only"' not in s:
+                  s=s.replace(ext, '<section id="external-only" class="sec panel exp"><div class="head">ניסוי חיצוני — 6 שעות', 1)
+              p.write_text(s, encoding='utf-8')
 
           d=Path('_site/decision/index.html')
           s=d.read_text(encoding='utf-8')
           old="fetch('./'+n+'?v='+Date.now(),{cache:'no-store'})"
           new="fetch('../data/'+n+'?v='+Date.now(),{cache:'no-store'})"
           if old not in s: raise SystemExit('Decision Lab data path marker missing')
-          d.write_text(s.replace(old,new,1), encoding='utf-8')
+          s=s.replace(old,new,1)
+          paid='<section class="panel"><div class="head">🔥 Paid Attention Research Watch'
+          if paid in s and 'id="paid-attention"' not in s:
+              s=s.replace(paid, '<section class="panel" id="paid-attention"><div class="head">🔥 Paid Attention Research Watch', 1)
+          d.write_text(s, encoding='utf-8')
 
           p=Path('_site/revival/index.html')
           s=p.read_text(encoding='utf-8')
@@ -113,31 +124,68 @@ jobs:
           if 'CASE STUDY · CYBERLEEK' not in s:
               if marker not in s: raise SystemExit('revival insertion marker missing')
               s=s.replace(marker,panel+marker,1)
-              p.write_text(s,encoding='utf-8')
+          absorption='<div class="candidatePanel">\n  <div class="candidateHead"><div><div class="candidateTitle">ABSORPTION CANDIDATES · PRE-MOVE WATCH'
+          if absorption in s and 'id="absorption"' not in s:
+              s=s.replace(absorption, '<div class="candidatePanel" id="absorption">\n  <div class="candidateHead"><div><div class="candidateTitle">ABSORPTION CANDIDATES · PRE-MOVE WATCH', 1)
+          p.write_text(s,encoding='utf-8')
+
+          rubric_style='''<style id="w500-rubric-style">#w500-experiment-rubric{direction:rtl;overflow-x:auto;white-space:nowrap;background:#02080d;border-bottom:1px solid #1d4c5b;padding:7px 8px;font:11px Arial,sans-serif;-webkit-overflow-scrolling:touch}#w500-experiment-rubric .w500-rubric-row{display:inline-flex;gap:6px;align-items:center;min-width:max-content}#w500-experiment-rubric .w500-rubric-label{color:#7da5b2;font-weight:900;padding:6px 4px}#w500-experiment-rubric a{display:inline-block;color:#42ddff!important;text-decoration:none!important;border:1px solid #214d5d!important;background:#06131a!important;padding:7px 9px!important;border-radius:6px!important;font-weight:800!important}#w500-experiment-rubric a:hover{border-color:#49f0a6!important;color:#49f0a6!important}</style>'''
+          rubric='''<nav id="w500-experiment-rubric" data-contract="W500_EXPERIMENT_RUBRIC_V1"><div class="w500-rubric-row"><span class="w500-rubric-label">ניסויים:</span><a href="/Wallet500/">🏠 מצב</a><a href="/Wallet500/revival/">♻ Revival</a><a href="/Wallet500/revival/#absorption">🟡 Absorption / Pre-Move</a><a href="/Wallet500/decision/#paid-attention">🔥 Paid Attention</a><a href="/Wallet500/decision/">🧠 Decision Lab</a><a href="/Wallet500/kol/">🗣 KOL Forward</a><a href="/Wallet500/performance/">💵 $1 Performance</a><a href="/Wallet500/backtest/">📊 7/30/90</a><a href="/Wallet500/hybrid/">🧬 Hybrid</a><a href="/Wallet500/cyberleek/">🔬 CYBERLEEK</a><a href="/Wallet500/#external-only">🧾 External-only</a><a href="/Wallet500/live/">📡 Live</a><a href="/Wallet500/control/">⚙ Control</a><a href="/Wallet500/terminal/">⌨ Terminal</a></div></nav>'''
+          public_pages=[
+              Path('_site/index.html'),Path('_site/dashboard-hub.html'),Path('_site/hub.html'),Path('_site/hub/index.html'),
+              Path('_site/live/index.html'),Path('_site/terminal/index.html'),Path('_site/performance/index.html'),Path('_site/backtest/index.html'),
+              Path('_site/control/index.html'),Path('_site/revival/index.html'),Path('_site/hybrid/index.html'),Path('_site/dashboard-hybrid.html'),
+              Path('_site/cyberleek/index.html'),Path('_site/decision/index.html'),Path('_site/kol/index.html')
+          ]
+          for page in public_pages:
+              s=page.read_text(encoding='utf-8')
+              if 'W500_EXPERIMENT_RUBRIC_V1' in s:
+                  continue
+              if '</head>' not in s:
+                  raise SystemExit(f'Rubric head marker missing in {page}')
+              s=s.replace('</head>',rubric_style+'</head>',1)
+              s,n=re.subn(r'<body([^>]*)>',lambda m:m.group(0)+rubric,s,count=1,flags=re.I)
+              if n!=1:
+                  raise SystemExit(f'Rubric body marker missing in {page}')
+              page.write_text(s,encoding='utf-8')
           PY
           if [ -f wallet500_option2_emblem.jpg ]; then cp wallet500_option2_emblem.jpg _site/; fi
           touch _site/.nojekyll
           printf '%s\n' "$GITHUB_SHA" > _site/build.txt
-          for f in _site/index.html _site/live/index.html _site/terminal/index.html _site/performance/index.html _site/control/index.html _site/revival/index.html _site/hybrid/index.html _site/cyberleek/index.html _site/decision/index.html _site/dashboard-live-price.js _site/data/run-summary.json _site/data/realizable-performance-summary.json _site/data/external-signal-cohort-summary.json _site/data/revival-1000-latest.json _site/data/case-study-cyberleek.json; do check_file "$f"; done
+          for f in _site/index.html _site/live/index.html _site/terminal/index.html _site/performance/index.html _site/control/index.html _site/revival/index.html _site/hybrid/index.html _site/cyberleek/index.html _site/decision/index.html _site/kol/index.html _site/dashboard-live-price.js _site/data/run-summary.json _site/data/realizable-performance-summary.json _site/data/external-signal-cohort-summary.json _site/data/revival-1000-latest.json _site/data/case-study-cyberleek.json; do check_file "$f"; done
           check_text _site/index.html 'WALLET500 · מצב הפרויקט'
           check_text _site/index.html 'EXTERNAL-ONLY EXPERIMENT'
-          check_text _site/index.html '/Wallet500/decision/'
+          check_text _site/index.html 'id="external-only"'
+          check_text _site/index.html 'W500_EXPERIMENT_RUBRIC_V1'
           check_text _site/live/index.html '<title>Wallet500 Live</title>'
           check_text _site/live/index.html 'Liquidity ≥ $50K'
+          check_text _site/live/index.html 'W500_EXPERIMENT_RUBRIC_V1'
           check_text _site/performance/index.html 'LIVE PRICE 5s'
           check_text _site/performance/index.html 'RESEARCH LAB — VISUAL'
           check_text _site/performance/index.html 'dashboard-live-price.js'
+          check_text _site/performance/index.html 'W500_EXPERIMENT_RUBRIC_V1'
           check_text _site/terminal/index.html '<title>Wallet500 Terminal</title>'
+          check_text _site/terminal/index.html 'W500_EXPERIMENT_RUBRIC_V1'
           check_text _site/control/index.html '<title>Wallet500 Control Center V2</title>'
+          check_text _site/control/index.html 'W500_EXPERIMENT_RUBRIC_V1'
           check_text _site/decision/index.html '<title>Wallet500 Decision Lab V1</title>'
           check_text _site/decision/index.html "fetch('../data/'+n"
+          check_text _site/decision/index.html 'id="paid-attention"'
+          check_text _site/decision/index.html 'W500_EXPERIMENT_RUBRIC_V1'
           check_text _site/revival/index.html '<title>Wallet500 Revival Solana Expanded</title>'
           check_text _site/revival/index.html 'ABSORPTION CANDIDATES · PRE-MOVE WATCH'
+          check_text _site/revival/index.html 'id="absorption"'
           check_text _site/revival/index.html 'EXPANSION: SOLANA NETWORK / CROSS-PLATFORM UNKNOWN'
           check_text _site/revival/index.html 'CASE STUDY · CYBERLEEK · REVIVAL DEEP WATCH'
+          check_text _site/revival/index.html 'W500_EXPERIMENT_RUBRIC_V1'
           check_text _site/hybrid/index.html '<title>Wallet500 Hybrid Token Radar</title>'
           check_text _site/hybrid/index.html 'TRUTH CONTRACT'
+          check_text _site/hybrid/index.html 'W500_EXPERIMENT_RUBRIC_V1'
           check_text _site/cyberleek/index.html 'CYBERLEEK · EXACT-PAIR DEEP WATCH'
+          check_text _site/cyberleek/index.html 'W500_EXPERIMENT_RUBRIC_V1'
+          check_text _site/kol/index.html '<title>Wallet500 · KOL Forward Lab</title>'
+          check_text _site/kol/index.html 'KOL FORWARD LAB · זיהוי מוקדם בלבד'
+          check_text _site/kol/index.html 'W500_EXPERIMENT_RUBRIC_V1'
           python -m json.tool _site/data/run-summary.json >/dev/null || fail 'invalid run-summary.json'
           python -m json.tool _site/data/realizable-performance-summary.json >/dev/null || fail 'invalid realizable-performance-summary.json'
           python -m json.tool _site/data/external-signal-cohort-summary.json >/dev/null || fail 'invalid external-signal-cohort-summary.json'
@@ -204,11 +252,12 @@ jobs:
             hybrid="$(curl -fsSL --max-time 20 "${BASE}hybrid/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             cyber="$(curl -fsSL --max-time 20 "${BASE}cyberleek/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             decision="$(curl -fsSL --max-time 20 "${BASE}decision/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
+            kol="$(curl -fsSL --max-time 20 "${BASE}kol/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             revival_data="$(curl -fsSL --max-time 20 "${BASE}data/revival-1000-latest.json?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             adapter="$(curl -fsSL --max-time 20 "${BASE}dashboard-live-price.js?sha=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'EXTERNAL-ONLY EXPERIMENT' <<<"$root" && grep -Fq '/Wallet500/decision/' <<<"$root" && ! grep -Fq 'ניסוי TOP 10' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'RESEARCH LAB — VISUAL' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter" && grep -Fq 'WALLET500 · REVIVAL SOLANA EXPANDED' <<<"$revival" && grep -Fq 'CASE STUDY · CYBERLEEK · REVIVAL DEEP WATCH' <<<"$revival" && grep -Fq 'WALLET500 · HYBRID TOKEN RADAR' <<<"$hybrid" && grep -Fq 'CYBERLEEK · EXACT-PAIR DEEP WATCH' <<<"$cyber" && grep -Fq 'DECISION LAB V1' <<<"$decision" && python -c 'import json,sys; d=json.load(sys.stdin); c=d.get("coins") or []; e=[x for x in c if x.get("source")=="revival_discovery_state+dexscreener_absorption_expansion"]; ok=d.get("mode")=="RESEARCH_ONLY_REVIVAL_SOLANA_EXPANDED_V6" and d.get("network")=="solana" and d.get("candidate_cap") is None and len(c)>=100 and all(x.get("network_verified") is True and x.get("network")=="solana" for x in c) and all(x.get("solana_only_platform_verified") is False and x.get("cross_platform_status")=="UNKNOWN_RESEARCH_ONLY" and x.get("pre_alpha_eligible") is False for x in e); raise SystemExit(0 if ok else 1)' <<<"$revival_data" >/dev/null 2>&1; then ok=1; break; fi
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'EXTERNAL-ONLY EXPERIMENT' <<<"$root" && grep -Fq 'W500_EXPERIMENT_RUBRIC_V1' <<<"$root" && grep -Fq '/Wallet500/kol/' <<<"$root" && ! grep -Fq 'ניסוי TOP 10' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'RESEARCH LAB — VISUAL' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter" && grep -Fq 'WALLET500 · REVIVAL SOLANA EXPANDED' <<<"$revival" && grep -Fq 'id="absorption"' <<<"$revival" && grep -Fq 'W500_EXPERIMENT_RUBRIC_V1' <<<"$revival" && grep -Fq 'CASE STUDY · CYBERLEEK · REVIVAL DEEP WATCH' <<<"$revival" && grep -Fq 'WALLET500 · HYBRID TOKEN RADAR' <<<"$hybrid" && grep -Fq 'CYBERLEEK · EXACT-PAIR DEEP WATCH' <<<"$cyber" && grep -Fq 'DECISION LAB V1' <<<"$decision" && grep -Fq 'id="paid-attention"' <<<"$decision" && grep -Fq 'KOL FORWARD LAB · זיהוי מוקדם בלבד' <<<"$kol" && grep -Fq 'W500_EXPERIMENT_RUBRIC_V1' <<<"$kol" && python -c 'import json,sys; d=json.load(sys.stdin); c=d.get("coins") or []; e=[x for x in c if x.get("source")=="revival_discovery_state+dexscreener_absorption_expansion"]; ok=d.get("mode")=="RESEARCH_ONLY_REVIVAL_SOLANA_EXPANDED_V6" and d.get("network")=="solana" and d.get("candidate_cap") is None and len(c)>=100 and all(x.get("network_verified") is True and x.get("network")=="solana" for x in c) and all(x.get("solana_only_platform_verified") is False and x.get("cross_platform_status")=="UNKNOWN_RESEARCH_ONLY" and x.get("pre_alpha_eligible") is False for x in e); raise SystemExit(0 if ok else 1)' <<<"$revival_data" >/dev/null 2>&1; then ok=1; break; fi
             echo "verify attempt $attempt/30 not ready yet"
             sleep 10
           done
           [ "$ok" -eq 1 ] || { echo 'Public Wallet500 verification failed'; exit 1; }
-          echo "PUBLIC_VERIFY_OK root=${BASE} performance=${BASE}performance/ revival=${BASE}revival/ decision=${BASE}decision/ cyberleek=${BASE}cyberleek/ hybrid=${BASE}hybrid/ build=${GITHUB_SHA}"
+          echo "PUBLIC_VERIFY_OK root=${BASE} performance=${BASE}performance/ revival=${BASE}revival/ decision=${BASE}decision/ kol=${BASE}kol/ cyberleek=${BASE}cyberleek/ hybrid=${BASE}hybrid/ build=${GITHUB_SHA}"
