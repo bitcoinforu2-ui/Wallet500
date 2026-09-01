@@ -1,14 +1,14 @@
 {
-  "updated_at": "2026-09-01T07:14:59.878400+00:00",
-  "market_scan": 396,
+  "updated_at": "2026-09-01T07:25:04.979253+00:00",
+  "market_scan": 400,
   "qualified": 3,
   "rejected": 24,
-  "pump_dump_risk": 3,
+  "pump_dump_risk": 2,
   "revival_qualified": 0,
-  "revival_watch": 0,
-  "outcomes_updated": 354,
+  "revival_watch": 2,
+  "outcomes_updated": 349,
   "pair_mismatch_refetched": 3,
-  "pair_unavailable": 10,
+  "pair_unavailable": 12,
   "qualification_min_liquidity_usd": 50000.0,
   "intelligence_policy": {
     "mode": "OLD_COIN_REVIVAL_FIRST",
@@ -34,9 +34,9 @@
   "cex": {
     "healthy_sources": 7,
     "requested_sources": 10,
-    "contracts_seen": 4993,
-    "symbols_seen": 1936,
-    "alerts": 51,
+    "contracts_seen": 4997,
+    "symbols_seen": 1939,
+    "alerts": 37,
     "errors": 2
   },
   "established_hour_census": {
@@ -52,7 +52,7 @@
   "catalyst_dna": {
     "profiles": 5822,
     "source_attribution_sources": 7,
-    "archetypes": 32
+    "archetypes": 33
   },
   "time_machine": {
     "patterns_tested": 32,
@@ -68,10 +68,10 @@
     "errors": 0,
     "rule": "social momentum never overrides liquidity/security/holder-cluster/manipulation gates"
   },
-  "cex_revival_alerts": 51,
+  "cex_revival_alerts": 37,
   "mode": "OLD_COIN_REVIVAL_FIRST_80+1H_CENSUS+CATALYST_DNA+TIME_MACHINE+SOCIAL_CATALYST+NEW_TOKEN_LAB_20",
   "quality_gate_qualified": 3,
-  "active_qualified": 2,
+  "active_qualified": 1,
   "live_survival_pending": 1,
   "live_survival_failed": 0,
   "fresh_solana_pending": 1,
@@ -98,8 +98,8 @@
   },
   "production_risk_gate": {
     "min_live_liquidity_usd": 50000,
-    "active_before_gate": 2,
-    "active_after_gate": 2,
+    "active_before_gate": 1,
+    "active_after_gate": 1,
     "blocked_now": 0,
     "exit_warnings_now": 0,
     "hard_rule": "CURRENT_LIQUIDITY_MUST_REMAIN_GE_50K",
@@ -112,39 +112,66 @@
     "source": "active-qualified-candidates.json",
     "lane": "PRE_PRODUCTION_EVIDENCE_GATHERING",
     "production_authorization": false,
-    "active_candidates_seen": 2,
+    "active_candidates_seen": 1,
     "solana_candidates_scanned": 1,
-    "verified_wallet_candidates": 4,
-    "raw_wallet_appearances": 4,
-    "evm_candidates_deferred": 1,
+    "verified_wallet_candidates": 7,
+    "raw_wallet_appearances": 7,
+    "evm_candidates_deferred": 0,
     "limits": {
       "max_tokens": 5,
       "signatures_per_pool": 12
     }
   },
   "system_health": {
-    "overall": "HEALTHY",
+    "overall": "DEGRADED",
     "failure_summary": {
-      "count": 0,
+      "count": 1,
       "production_blockers": 0,
       "system_production_blockers": 0,
-      "candidate_gate_blocks": 2,
-      "codes": []
+      "candidate_gate_blocks": 1,
+      "codes": [
+        "ALL_ACTIVE_CANDIDATES_QUARANTINED_FOR_INCOMPLETE_EVIDENCE"
+      ]
     },
     "gate_summary": {
-      "holder_cluster_input": 2,
+      "holder_cluster_input": 1,
       "verified_promoted": 0,
       "quarantined": 1,
-      "blocked": 1,
-      "candidate_gate_blocks": 2,
+      "blocked": 0,
+      "candidate_gate_blocks": 1,
       "production_authorized_candidates": 0,
       "interpretation": "Candidate gate blocks are correct fail-closed decisions and are separate from system health failures."
     },
-    "failures": [],
+    "failures": [
+      {
+        "component": "holder_cluster_evidence_coverage",
+        "status": "DEGRADED",
+        "input_count": 1,
+        "promoted_count": 0,
+        "quarantine_count": 1,
+        "blocked_count": 0,
+        "reason": "ALL_ACTIVE_CANDIDATES_QUARANTINED_FOR_INCOMPLETE_EVIDENCE",
+        "failure_code": "ALL_ACTIVE_CANDIDATES_QUARANTINED_FOR_INCOMPLETE_EVIDENCE",
+        "severity": "HIGH",
+        "blocks_production": false,
+        "expected": {
+          "promoted_count_min": 1,
+          "verification_complete": true
+        },
+        "actual": {
+          "input_count": 1,
+          "promoted_count": 0,
+          "quarantine_count": 1,
+          "blocked_count": 0
+        },
+        "recommended_action": "INSPECT_QUARANTINE_REASONS_AND_MISSING_HOLDER_CLUSTER_EVIDENCE",
+        "diagnosed_at": "2026-09-01T07:25:15.836188+00:00"
+      }
+    ],
     "checks": {
       "primary_scan": {
         "status": "HEALTHY",
-        "age_seconds": 16.4,
+        "age_seconds": 10.9,
         "max_age_seconds": 600,
         "failure_code": "OK",
         "severity": "INFO",
@@ -152,7 +179,7 @@
         "expected": null,
         "actual": null,
         "recommended_action": "NONE",
-        "diagnosed_at": "2026-09-01T07:15:16.290143+00:00"
+        "diagnosed_at": "2026-09-01T07:25:15.836188+00:00"
       },
       "old_coin_revival": {
         "status": "HEALTHY",
@@ -162,7 +189,7 @@
         "expected": null,
         "actual": null,
         "recommended_action": "NONE",
-        "diagnosed_at": "2026-09-01T07:15:16.290143+00:00"
+        "diagnosed_at": "2026-09-01T07:25:15.836188+00:00"
       },
       "new_token_lab": {
         "status": "HEALTHY",
@@ -172,7 +199,7 @@
         "expected": null,
         "actual": null,
         "recommended_action": "NONE",
-        "diagnosed_at": "2026-09-01T07:15:16.290143+00:00"
+        "diagnosed_at": "2026-09-01T07:25:15.836188+00:00"
       },
       "holder_cluster_fail_closed": {
         "status": "HEALTHY",
@@ -183,7 +210,7 @@
         "expected": null,
         "actual": null,
         "recommended_action": "NONE",
-        "diagnosed_at": "2026-09-01T07:15:16.290143+00:00"
+        "diagnosed_at": "2026-09-01T07:25:15.836188+00:00"
       },
       "liquidity_policy": {
         "status": "HEALTHY",
@@ -196,39 +223,47 @@
         "expected": null,
         "actual": null,
         "recommended_action": "NONE",
-        "diagnosed_at": "2026-09-01T07:15:16.290143+00:00"
+        "diagnosed_at": "2026-09-01T07:25:15.836188+00:00"
       },
       "holder_cluster_evidence_coverage": {
-        "status": "HEALTHY",
-        "input_count": 2,
+        "status": "DEGRADED",
+        "input_count": 1,
         "promoted_count": 0,
         "quarantine_count": 1,
-        "blocked_count": 1,
-        "reason": null,
-        "failure_code": "OK",
-        "severity": "INFO",
+        "blocked_count": 0,
+        "reason": "ALL_ACTIVE_CANDIDATES_QUARANTINED_FOR_INCOMPLETE_EVIDENCE",
+        "failure_code": "ALL_ACTIVE_CANDIDATES_QUARANTINED_FOR_INCOMPLETE_EVIDENCE",
+        "severity": "HIGH",
         "blocks_production": false,
-        "expected": null,
-        "actual": null,
-        "recommended_action": "NONE",
-        "diagnosed_at": "2026-09-01T07:15:16.290143+00:00"
+        "expected": {
+          "promoted_count_min": 1,
+          "verification_complete": true
+        },
+        "actual": {
+          "input_count": 1,
+          "promoted_count": 0,
+          "quarantine_count": 1,
+          "blocked_count": 0
+        },
+        "recommended_action": "INSPECT_QUARANTINE_REASONS_AND_MISSING_HOLDER_CLUSTER_EVIDENCE",
+        "diagnosed_at": "2026-09-01T07:25:15.836188+00:00"
       },
       "wallet_forensics": {
         "status": "HEALTHY",
-        "age_seconds": 4.1,
+        "age_seconds": 2.0,
         "source": "active-qualified-candidates.json",
-        "active_candidates_expected": 2,
-        "active_candidates_seen": 2,
-        "verified_wallet_candidates": 4,
+        "active_candidates_expected": 1,
+        "active_candidates_seen": 1,
+        "verified_wallet_candidates": 7,
         "solana_candidates_scanned": 1,
-        "evm_candidates_deferred": 1,
+        "evm_candidates_deferred": 0,
         "failure_code": "OK",
         "severity": "INFO",
         "blocks_production": false,
         "expected": null,
         "actual": null,
         "recommended_action": "NONE",
-        "diagnosed_at": "2026-09-01T07:15:16.290143+00:00"
+        "diagnosed_at": "2026-09-01T07:25:15.836188+00:00"
       }
     },
     "lane_metrics": {
@@ -237,13 +272,13 @@
         "new_token_research": 20
       },
       "new_token": {
-        "market_scan": 396,
+        "market_scan": 400,
         "qualified": 3,
-        "qualification_rate": 0.007576
+        "qualification_rate": 0.0075
       },
       "revival": {
         "qualified": 0,
-        "cex_revival_alerts": 51
+        "cex_revival_alerts": 37
       },
       "allocation_decision": "HOLD_CURRENT_POLICY_UNTIL_FORWARD_OUTCOME_SAMPLE_IS_LARGE_ENOUGH"
     }
