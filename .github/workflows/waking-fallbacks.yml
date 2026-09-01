@@ -40,6 +40,44 @@ jobs:
         run: python -m pytest -q tests/test_waking_fallbacks.py tests/test_waking_confirmation.py
       - name: Enrich WAKING with exact-mint RugCheck and official Telegram
         run: python -m wallet500.waking_fallbacks
+      - name: Normalize fallback provider evidence idempotently
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          p=Path('data/waking-confirmation-latest.json')
+          d=json.loads(p.read_text())
+          owned={'rugcheck','telegram_official'}
+          current_counts={}
+          for row in d.get('targets') or []:
+              statuses=list(row.get('provider_status') or [])
+              keep=[]
+              latest={}
+              for item in statuses:
+                  if not isinstance(item,dict):
+                      keep.append(item); continue
+                  provider=str(item.get('provider') or '')
+                  if provider in owned:
+                      latest[provider]=item
+                  else:
+                      keep.append(item)
+              for provider in ('rugcheck','telegram_official'):
+                  item=latest.get(provider)
+                  if item is not None:
+                      keep.append(item)
+                      key=f"{provider}:{item.get('status')}"
+                      current_counts[key]=current_counts.get(key,0)+1
+              row['provider_status']=keep
+          counts={}
+          for key,value in (d.get('provider_status_counts') or {}).items():
+              if str(key).split(':',1)[0] not in owned:
+                  counts[key]=value
+          counts.update(current_counts)
+          d['provider_status_counts']=counts
+          p.write_text(json.dumps(d,indent=2,ensure_ascii=False))
+          print('WAKING_FALLBACK_PROVIDER_EVIDENCE_NORMALIZED',current_counts)
+          PY
       - name: Validate no-key fallback truth contract
         run: |
           python - <<'PY'
@@ -60,6 +98,7 @@ jobs:
               raise SystemExit('RUGCHECK_DOUBLE_COUNT_GUARD_MISSING')
           allowed={'WAKING_UNCONFIRMED_RESEARCH','WAKING_CONFIRMED_RESEARCH','WAKING_STRONG_RESEARCH','WAKING_RISK_RESEARCH'}
           rows=d.get('targets') or []
+          recomputed={}
           for x in rows:
               if x.get('base_watch_status')!='WAKING_MARKET_ONLY' or not looks_like_solana_address(x.get('token_address')):
                   raise SystemExit('WAKING_FALLBACK_IDENTITY_INVALID')
@@ -72,8 +111,17 @@ jobs:
               if str(dist.get('source') or '').startswith('RUGCHECK_'):
                   if dist.get('score_semantics')!='CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY':
                       raise SystemExit('RUGCHECK_DISTRIBUTION_SEMANTICS_INVALID')
+              owned=[z for z in (x.get('provider_status') or []) if isinstance(z,dict) and z.get('provider') in {'rugcheck','telegram_official'}]
+              providers=[z.get('provider') for z in owned]
+              if len(providers)!=len(set(providers)):
+                  raise SystemExit('WAKING_FALLBACK_PROVIDER_STATUS_DUPLICATE')
+              for z in owned:
+                  key=f"{z.get('provider')}:{z.get('status')}"
+                  recomputed[key]=recomputed.get(key,0)+1
           c=d.get('counts') or {}
           if int(c.get('waking_targets') or 0)!=len(rows): raise SystemExit('WAKING_FALLBACK_COUNT_MISMATCH')
+          reported={k:v for k,v in (d.get('provider_status_counts') or {}).items() if str(k).split(':',1)[0] in {'rugcheck','telegram_official'}}
+          if reported!=recomputed: raise SystemExit('WAKING_FALLBACK_PROVIDER_COUNT_MISMATCH')
           print('WAKING_NO_KEY_FALLBACKS_VALID',c,d.get('provider_status_counts'))
           PY
       - name: Publish enriched Waking snapshots
