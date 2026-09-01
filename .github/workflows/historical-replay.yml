@@ -17,8 +17,11 @@ on:
 permissions:
   contents: write
 
+# All workflows that publish generated data to main must share one
+# non-cancelling group. This prevents a research checkpoint commit from
+# racing the live truth publisher while it is rebasing/pushing.
 concurrency:
-  group: wallet500-historical-replay-research
+  group: wallet500-main-data-publisher
   cancel-in-progress: false
 
 jobs:
@@ -92,16 +95,44 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-research-bot'
           git config user.email 'wallet500-research-bot@users.noreply.github.com'
-          git add data/historical-backfill-state.json data/historical-backfill-report.json data/onchain-historical-reconstruction-state.json data/onchain-historical-reconstruction.json data/historical-replay-report.json data/historical-truth-backtest.json
-          if git diff --cached --quiet; then
-            echo 'No research output change'
-            exit 0
-          fi
-          git commit -m 'research: advance onchain historical truth checkpoint'
+
+          # Preserve only the validated research outputs. On every retry reset
+          # to the newest main first, then re-apply those files. This avoids
+          # merge strategies that could accidentally carry stale generated
+          # data from the job's checkout over newer truth data.
+          tmp="$(mktemp -d)"
+          files=(
+            historical-backfill-state.json
+            historical-backfill-report.json
+            onchain-historical-reconstruction-state.json
+            onchain-historical-reconstruction.json
+            historical-replay-report.json
+            historical-truth-backtest.json
+          )
+          for f in "${files[@]}"; do cp "data/$f" "$tmp/$f"; done
+
           for attempt in 1 2 3 4 5; do
             git fetch origin main
-            git merge --no-edit -X ours origin/main
-            if git push origin HEAD:main; then break; fi
+            git reset --hard origin/main
+            for f in "${files[@]}"; do cp "$tmp/$f" "data/$f"; done
+            git add \
+              data/historical-backfill-state.json \
+              data/historical-backfill-report.json \
+              data/onchain-historical-reconstruction-state.json \
+              data/onchain-historical-reconstruction.json \
+              data/historical-replay-report.json \
+              data/historical-truth-backtest.json
+            if git diff --cached --quiet; then
+              echo 'No research output change'
+              exit 0
+            fi
+            git commit -m 'research: advance onchain historical truth checkpoint'
+            if git push origin HEAD:main; then
+              echo 'HISTORICAL_RESEARCH_PUBLISH_OK'
+              exit 0
+            fi
+            echo "HISTORICAL_RESEARCH_PUBLISH_RETRY attempt=$attempt"
             sleep 3
-            if [ "$attempt" = 5 ]; then exit 1; fi
           done
+          echo '::error::HISTORICAL_RESEARCH_PUBLISH_RACE_EXHAUSTED'
+          exit 1
