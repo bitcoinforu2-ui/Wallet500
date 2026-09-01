@@ -1,13 +1,38 @@
 {
-  "updated_at": "2026-09-01T09:40:05.665364+00:00",
+  "updated_at": "2026-09-01T09:54:00.522688+00:00",
   "mode": "FAIL_CLOSED_ONCHAIN_DEPLOYMENT_ENRICHMENT_V3_ADAPTIVE_LOGS",
   "input_count": 2,
-  "enriched_count": 2,
+  "enriched_count": 1,
   "already_had_start_block": 0,
-  "unresolved_count": 0,
+  "unresolved_count": 1,
   "verification_methods": {
-    "DIRECT_DEPLOYMENT_TX_PROVEN_FROM_ZERO_ADDRESS_MINT": 2
+    "DIRECT_DEPLOYMENT_TX_PROVEN_FROM_ZERO_ADDRESS_MINT": 1
   },
-  "unresolved": [],
+  "unresolved": [
+    {
+      "chain": "bsc",
+      "token": "0x1a062db7893ccc1721178660b7d97eed0702ee1a",
+      "reason": "MINT_LOG_RANGE_UNAVAILABLE",
+      "evidence": {
+        "verified": false,
+        "reason": "MINT_LOG_RANGE_UNAVAILABLE",
+        "failed_chunk": [
+          119310817,
+          119310879
+        ],
+        "chunks_completed": 3,
+        "adaptive_log_queries": 66,
+        "adaptive_splits": 31,
+        "anchor_block": 119315816,
+        "archive_boundary_available": false,
+        "archive_failure": {
+          "failed_block": 59661400,
+          "queries": 2,
+          "rpc_endpoints_used": 1
+        },
+        "latest_block": 119322801
+      }
+    }
+  ],
   "truth_rule": "deployment/start block is written only from an eth_getCode deployment boundary or a direct contract-creation transaction independently proven from a zero-address ERC20 mint; adaptive RPC splitting improves evidence availability but never converts unavailable evidence into proof"
 }
