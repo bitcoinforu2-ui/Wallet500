@@ -38,6 +38,11 @@ on:
       - 'data/quality-shadow-summary.json'
       - 'data/revival-1000-latest.json'
       - 'data/revival-1000-state.json'
+      - 'data/revival-precursor-latest.json'
+      - 'data/revival-precursor-state.json'
+      - 'data/decision-engine-v1.json'
+      - 'data/decision-engine-v1-ledger.json'
+      - 'data/decision-lab.html'
       - 'data/hybrid-token-profiles.json'
       - 'data/case-study-cyberleek.json'
       - '.github/workflows/pages.yml'
@@ -64,7 +69,7 @@ jobs:
           check_file(){ test -s "$1" || fail "missing or empty: $1"; echo "OK file $1"; }
           check_text(){ grep -Fq "$2" "$1" || fail "missing marker [$2] in $1"; echo "OK marker $1 :: $2"; }
           rm -rf _site
-          mkdir -p _site/live _site/terminal _site/performance _site/backtest _site/control _site/hub _site/revival _site/hybrid _site/cyberleek
+          mkdir -p _site/live _site/terminal _site/performance _site/backtest _site/control _site/hub _site/revival _site/hybrid _site/cyberleek _site/decision
           cp index.html _site/index.html
           cp index.html _site/dashboard-hub.html
           cp index.html _site/hub.html
@@ -78,11 +83,29 @@ jobs:
           cp dashboard-hybrid.html _site/hybrid/index.html
           cp dashboard-hybrid.html _site/dashboard-hybrid.html
           cp dashboard-cyberleek.html _site/cyberleek/index.html
+          cp data/decision-lab.html _site/decision/index.html
           cp dashboard-reference-fix.js _site/dashboard-reference-fix.js
           cp dashboard-live-price.js _site/dashboard-live-price.js
           cp -r data _site/data
           python - <<'PY'
           from pathlib import Path
+
+          decision_link='<a href="/Wallet500/decision/">🧠 Decision Lab</a>'
+          nav_marker='<a href="/Wallet500/backtest/">מחקר 7/30/90</a>'
+          for p in [Path('_site/index.html'), Path('_site/dashboard-hub.html'), Path('_site/hub.html'), Path('_site/hub/index.html')]:
+              s=p.read_text(encoding='utf-8')
+              if decision_link not in s:
+                  if nav_marker not in s: raise SystemExit(f'Decision nav insertion marker missing in {p}')
+                  s=s.replace(nav_marker, nav_marker+decision_link, 1)
+                  p.write_text(s, encoding='utf-8')
+
+          d=Path('_site/decision/index.html')
+          s=d.read_text(encoding='utf-8')
+          old="fetch('./'+n+'?v='+Date.now(),{cache:'no-store'})"
+          new="fetch('../data/'+n+'?v='+Date.now(),{cache:'no-store'})"
+          if old not in s: raise SystemExit('Decision Lab data path marker missing')
+          d.write_text(s.replace(old,new,1), encoding='utf-8')
+
           p=Path('_site/revival/index.html')
           s=p.read_text(encoding='utf-8')
           marker='<div class="note">'
@@ -95,9 +118,10 @@ jobs:
           if [ -f wallet500_option2_emblem.jpg ]; then cp wallet500_option2_emblem.jpg _site/; fi
           touch _site/.nojekyll
           printf '%s\n' "$GITHUB_SHA" > _site/build.txt
-          for f in _site/index.html _site/live/index.html _site/terminal/index.html _site/performance/index.html _site/control/index.html _site/revival/index.html _site/hybrid/index.html _site/cyberleek/index.html _site/dashboard-live-price.js _site/data/run-summary.json _site/data/realizable-performance-summary.json _site/data/external-signal-cohort-summary.json _site/data/revival-1000-latest.json _site/data/case-study-cyberleek.json; do check_file "$f"; done
+          for f in _site/index.html _site/live/index.html _site/terminal/index.html _site/performance/index.html _site/control/index.html _site/revival/index.html _site/hybrid/index.html _site/cyberleek/index.html _site/decision/index.html _site/dashboard-live-price.js _site/data/run-summary.json _site/data/realizable-performance-summary.json _site/data/external-signal-cohort-summary.json _site/data/revival-1000-latest.json _site/data/case-study-cyberleek.json; do check_file "$f"; done
           check_text _site/index.html 'WALLET500 · מצב הפרויקט'
           check_text _site/index.html 'EXTERNAL-ONLY EXPERIMENT'
+          check_text _site/index.html '/Wallet500/decision/'
           check_text _site/live/index.html '<title>Wallet500 Live</title>'
           check_text _site/live/index.html 'Liquidity ≥ $50K'
           check_text _site/performance/index.html 'LIVE PRICE 5s'
@@ -105,6 +129,8 @@ jobs:
           check_text _site/performance/index.html 'dashboard-live-price.js'
           check_text _site/terminal/index.html '<title>Wallet500 Terminal</title>'
           check_text _site/control/index.html '<title>Wallet500 Control Center V2</title>'
+          check_text _site/decision/index.html '<title>Wallet500 Decision Lab V1</title>'
+          check_text _site/decision/index.html "fetch('../data/'+n"
           check_text _site/revival/index.html '<title>Wallet500 Revival Solana Expanded</title>'
           check_text _site/revival/index.html 'ABSORPTION CANDIDATES · PRE-MOVE WATCH'
           check_text _site/revival/index.html 'EXPANSION: SOLANA NETWORK / CROSS-PLATFORM UNKNOWN'
@@ -177,11 +203,12 @@ jobs:
             revival="$(curl -fsSL --max-time 20 "${BASE}revival/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             hybrid="$(curl -fsSL --max-time 20 "${BASE}hybrid/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             cyber="$(curl -fsSL --max-time 20 "${BASE}cyberleek/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
+            decision="$(curl -fsSL --max-time 20 "${BASE}decision/?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             revival_data="$(curl -fsSL --max-time 20 "${BASE}data/revival-1000-latest.json?sha=${GITHUB_SHA}" 2>/dev/null || true)"
             adapter="$(curl -fsSL --max-time 20 "${BASE}dashboard-live-price.js?sha=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'EXTERNAL-ONLY EXPERIMENT' <<<"$root" && ! grep -Fq 'ניסוי TOP 10' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'RESEARCH LAB — VISUAL' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter" && grep -Fq 'WALLET500 · REVIVAL SOLANA EXPANDED' <<<"$revival" && grep -Fq 'CASE STUDY · CYBERLEEK · REVIVAL DEEP WATCH' <<<"$revival" && grep -Fq 'WALLET500 · HYBRID TOKEN RADAR' <<<"$hybrid" && grep -Fq 'CYBERLEEK · EXACT-PAIR DEEP WATCH' <<<"$cyber" && python -c 'import json,sys; d=json.load(sys.stdin); c=d.get("coins") or []; e=[x for x in c if x.get("source")=="revival_discovery_state+dexscreener_absorption_expansion"]; ok=d.get("mode")=="RESEARCH_ONLY_REVIVAL_SOLANA_EXPANDED_V6" and d.get("network")=="solana" and d.get("candidate_cap") is None and len(c)>=100 and all(x.get("network_verified") is True and x.get("network")=="solana" for x in c) and all(x.get("solana_only_platform_verified") is False and x.get("cross_platform_status")=="UNKNOWN_RESEARCH_ONLY" and x.get("pre_alpha_eligible") is False for x in e); raise SystemExit(0 if ok else 1)' <<<"$revival_data" >/dev/null 2>&1; then ok=1; break; fi
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'EXTERNAL-ONLY EXPERIMENT' <<<"$root" && grep -Fq '/Wallet500/decision/' <<<"$root" && ! grep -Fq 'ניסוי TOP 10' <<<"$root" && grep -Fq 'LIVE PRICE 5s' <<<"$perf" && grep -Fq 'RESEARCH LAB — VISUAL' <<<"$perf" && grep -Fq 'Wallet500LivePrice' <<<"$adapter" && grep -Fq 'WALLET500 · REVIVAL SOLANA EXPANDED' <<<"$revival" && grep -Fq 'CASE STUDY · CYBERLEEK · REVIVAL DEEP WATCH' <<<"$revival" && grep -Fq 'WALLET500 · HYBRID TOKEN RADAR' <<<"$hybrid" && grep -Fq 'CYBERLEEK · EXACT-PAIR DEEP WATCH' <<<"$cyber" && grep -Fq 'DECISION LAB V1' <<<"$decision" && python -c 'import json,sys; d=json.load(sys.stdin); c=d.get("coins") or []; e=[x for x in c if x.get("source")=="revival_discovery_state+dexscreener_absorption_expansion"]; ok=d.get("mode")=="RESEARCH_ONLY_REVIVAL_SOLANA_EXPANDED_V6" and d.get("network")=="solana" and d.get("candidate_cap") is None and len(c)>=100 and all(x.get("network_verified") is True and x.get("network")=="solana" for x in c) and all(x.get("solana_only_platform_verified") is False and x.get("cross_platform_status")=="UNKNOWN_RESEARCH_ONLY" and x.get("pre_alpha_eligible") is False for x in e); raise SystemExit(0 if ok else 1)' <<<"$revival_data" >/dev/null 2>&1; then ok=1; break; fi
             echo "verify attempt $attempt/30 not ready yet"
             sleep 10
           done
           [ "$ok" -eq 1 ] || { echo 'Public Wallet500 verification failed'; exit 1; }
-          echo "PUBLIC_VERIFY_OK root=${BASE} performance=${BASE}performance/ revival=${BASE}revival/ cyberleek=${BASE}cyberleek/ hybrid=${BASE}hybrid/ build=${GITHUB_SHA}"
+          echo "PUBLIC_VERIFY_OK root=${BASE} performance=${BASE}performance/ revival=${BASE}revival/ decision=${BASE}decision/ cyberleek=${BASE}cyberleek/ hybrid=${BASE}hybrid/ build=${GITHUB_SHA}"
