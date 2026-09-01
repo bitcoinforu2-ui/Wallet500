@@ -28,8 +28,8 @@ def test_fresh_trigger_is_sent_once(tmp_path, monkeypatch):
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
     messages = []
     now = datetime(2026, 9, 1, 19, 0, tzinfo=timezone.utc)
-    first = run(str(tmp_path), now=now, sender=lambda _b, _c, text: messages.append(text))
-    second = run(str(tmp_path), now=now, sender=lambda _b, _c, text: messages.append(text))
+    first = run(str(tmp_path), now=now, sender=lambda _b, _c, text: messages.append(text), chat_resolver=lambda _b: "chat")
+    second = run(str(tmp_path), now=now, sender=lambda _b, _c, text: messages.append(text), chat_resolver=lambda _b: "chat")
     assert first["delivered_count"] == 1
     assert second["delivered_count"] == 0
     assert len(messages) == 1
@@ -41,7 +41,7 @@ def test_historical_trigger_is_suppressed(tmp_path, monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
     messages = []
-    report = run(str(tmp_path), now=datetime(2026, 9, 1, 19, 0, tzinfo=timezone.utc), sender=lambda _b, _c, text: messages.append(text))
+    report = run(str(tmp_path), now=datetime(2026, 9, 1, 19, 0, tzinfo=timezone.utc), sender=lambda _b, _c, text: messages.append(text), chat_resolver=lambda _b: "chat")
     assert report["delivered_count"] == 0
     assert report["stale_suppressed_count"] == 1
     assert messages == []
@@ -54,3 +54,39 @@ def test_missing_secrets_fails_closed_without_send(tmp_path, monkeypatch):
     report = run(str(tmp_path), now=datetime(2026, 9, 1, 19, 0, tzinfo=timezone.utc), sender=lambda *_: (_ for _ in ()).throw(AssertionError()))
     assert report["configured"] is False
     assert report["delivered_count"] == 0
+
+
+def test_chat_id_can_be_resolved_without_secret(tmp_path, monkeypatch):
+    write_source(tmp_path, [target()])
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot")
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    seen = []
+    report = run(
+        str(tmp_path),
+        now=datetime(2026, 9, 1, 19, 0, tzinfo=timezone.utc),
+        sender=lambda _b, chat, _text: seen.append(chat),
+        chat_resolver=lambda _b: "123456",
+    )
+    assert report["configured"] is True
+    assert report["chat_resolution"] == "PRIVATE_WALLET500_HANDSHAKE"
+    assert seen == ["123456", "123456"]
+    assert report["connection_confirmation_sent"] is True
+    assert "123456" not in json.dumps(report)
+
+
+def test_connection_confirmation_is_sent_only_once(tmp_path, monkeypatch):
+    write_source(tmp_path, [])
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot")
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    messages = []
+    kwargs = {
+        "now": datetime(2026, 9, 1, 19, 0, tzinfo=timezone.utc),
+        "sender": lambda _b, _c, text: messages.append(text),
+        "chat_resolver": lambda _b: "123456",
+    }
+    first = run(str(tmp_path), **kwargs)
+    second = run(str(tmp_path), **kwargs)
+    assert first["connection_confirmation_sent"] is True
+    assert second["connection_confirmation_sent"] is False
+    assert len(messages) == 1
+    assert "Wallet500 מחובר" in messages[0]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,6 +37,23 @@ def _fingerprint(row: dict) -> str:
     return f"{row.get('token_key')}:{row.get('triggered_at')}:{row.get('pair_address')}"
 
 
+def _discover_private_chat_id(bot_token: str) -> str | None:
+    """Resolve only an explicit private `Wallet500` handshake; never log the ID."""
+    if not bot_token:
+        return None
+    url = f"https://api.telegram.org/bot{bot_token}/getUpdates?limit=100&timeout=0"
+    with urllib.request.urlopen(urllib.request.Request(url), timeout=15) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    matches = []
+    for update in payload.get("result") or []:
+        message = update.get("message") or update.get("edited_message") or {}
+        chat = message.get("chat") or {}
+        text = str(message.get("text") or "").strip().lower()
+        if chat.get("type") == "private" and text == "wallet500" and chat.get("id") is not None:
+            matches.append((int(update.get("update_id") or 0), str(chat["id"])))
+    return sorted(matches)[-1][1] if matches else None
+
+
 def _message(row: dict) -> str:
     chain = str(row.get("chain") or "unknown").upper().replace("BSC", "BNB")
     metrics = row.get("metrics") or {}
@@ -62,15 +80,44 @@ def _message(row: dict) -> str:
     ])
 
 
-def run(output_dir: str | None = None, now: datetime | None = None, sender=_send) -> dict:
+def run(output_dir: str | None = None, now: datetime | None = None, sender=_send, chat_resolver=_discover_private_chat_id) -> dict:
     out = Path(output_dir or os.getenv("WALLET500_OUTPUT_DIR", "data"))
     payload = _load(out / SOURCE, {})
     state = _load(out / STATE, {"sent": {}})
     sent = state.get("sent") if isinstance(state.get("sent"), dict) else {}
+    connection_confirmed = bool(state.get("connection_confirmed"))
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    configured_chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    chat_id = configured_chat_id
+    resolution = "SECRET" if chat_id else "UNRESOLVED"
+    resolution_error = None
+    if bot_token and not chat_id:
+        try:
+            chat_id = str(chat_resolver(bot_token) or "")
+            if chat_id:
+                resolution = "PRIVATE_WALLET500_HANDSHAKE"
+        except Exception as exc:
+            resolution_error = f"{type(exc).__name__}: {exc}"[:300]
     configured = bool(bot_token and chat_id)
     reference = now or datetime.now(timezone.utc)
+    connection_confirmation_sent = False
+    connection_confirmation_error = None
+    if configured and not connection_confirmed:
+        try:
+            sender(
+                bot_token,
+                chat_id,
+                "\n".join([
+                    "✅ Wallet500 מחובר",
+                    "מנוע Survivor Reawakening פעיל.",
+                    "מכאן יישלחו רק התראות מחקר חמות וחדשות — לא הוראות קנייה.",
+                    "הודעות היסטוריות לא יישלחו מחדש.",
+                ]),
+            )
+            connection_confirmed = True
+            connection_confirmation_sent = True
+        except Exception as exc:
+            connection_confirmation_error = f"{type(exc).__name__}: {exc}"[:300]
     delivered = []
     stale = []
     errors = []
@@ -102,6 +149,11 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
         "updated_at": reference.isoformat(),
         "source": SOURCE,
         "configured": configured,
+        "chat_resolution": resolution,
+        "chat_resolution_error": resolution_error,
+        "connection_confirmed": connection_confirmed,
+        "connection_confirmation_sent": connection_confirmation_sent,
+        "connection_confirmation_error": connection_confirmation_error,
         "eligible_count": len(eligible),
         "delivered_count": len(delivered),
         "stale_suppressed_count": len(stale),
@@ -115,9 +167,15 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
             "dedupe": "one message per token+triggered_at+exact_pair fingerprint",
             "historical_triggers_are_never_sent_as_new alerts": True,
             "classification": "RESEARCH_HOT_NOT_BUY",
+            "chat_privacy": "chat id is resolved in-memory from a private Wallet500 handshake and is never written to repository data",
         },
     }
-    _write(out / STATE, {"version": 1, "updated_at": reference.isoformat(), "sent": sent})
+    _write(out / STATE, {
+        "version": 1,
+        "updated_at": reference.isoformat(),
+        "connection_confirmed": connection_confirmed,
+        "sent": sent,
+    })
     _write(out / REPORT, report)
     return report
 
