@@ -15,6 +15,7 @@ on:
       - 'data/revival-1000-latest.json'
       - 'data/whale-flow-evidence.json'
       - 'data/derivatives-evidence.json'
+      - 'data/paid-visibility-ledger.json'
 
 permissions:
   contents: write
@@ -64,6 +65,7 @@ jobs:
           d=json.loads(p.read_text())
           st=json.loads(s.read_text())
           r=json.loads(rp.read_text())
+          rst=json.loads(rs.read_text())
           if d.get('mode')!='RESEARCH_ONLY_WAKING_CONFIRMATION_V1': raise SystemExit('WAKING_MODE_INVALID')
           if d.get('contract')!='WAKING_CONFIRMATION_V1': raise SystemExit('WAKING_CONTRACT_INVALID')
           if d.get('network')!='solana' or d.get('production_portfolio_impact')!='NONE': raise SystemExit('WAKING_SAFETY_INVALID')
@@ -93,6 +95,11 @@ jobs:
           if r.get('contract')!='REVIVAL_PRECURSOR_V1': raise SystemExit('PRECURSOR_CONTRACT_INVALID')
           if r.get('network')!='solana' or r.get('production_portfolio_impact')!='NONE': raise SystemExit('PRECURSOR_SAFETY_INVALID')
           if r.get('no_hindsight') is not True: raise SystemExit('PRECURSOR_NO_HINDSIGHT_MISSING')
+          if int(r.get('version') or 0)<2 or int(rst.get('version') or 0)<2: raise SystemExit('PRECURSOR_PAID_ATTENTION_VERSION_MISSING')
+          policy=r.get('paid_attention_policy') or {}
+          if policy.get('role')!='SUPPORTING_ONLY_NOT_INDEPENDENT_CONFIRMATION': raise SystemExit('PAID_ATTENTION_ROLE_INVALID')
+          if float(policy.get('max_precursor_bonus_points') or 99)>7: raise SystemExit('PAID_ATTENTION_BONUS_TOO_LARGE')
+          if policy.get('post_promotion_outcomes_used_for_scoring') is not False: raise SystemExit('PAID_ATTENTION_HINDSIGHT_RISK')
           rrows=r.get('targets') or []
           if int((r.get('counts') or {}).get('targets') or 0)!=len(rrows): raise SystemExit('PRECURSOR_COUNT_MISMATCH')
           allowed_precursor={'HIGH_CONVICTION_PRECURSOR','PRE_BREAKOUT_CANDIDATE','EARLY_REVIVAL_WATCH','LATE_MOVE_DO_NOT_CHASE','INSUFFICIENT_PRECURSOR_EVIDENCE'}
@@ -110,8 +117,21 @@ jobs:
                           raise SystemExit('UNVERIFIED_WHALE_SCORED')
                       if name=='derivatives_cex' and 'DERIVATIVES_CANONICAL_MAPPING' in (x.get('missing_evidence') or []):
                           raise SystemExit('UNVERIFIED_DERIVATIVES_SCORED')
+              paid=fam.get('paid_attention') or {}
+              meta=paid.get('meta') or {}
+              if paid.get('supporting_only') is not True: raise SystemExit('PAID_ATTENTION_NOT_SUPPORTING_ONLY')
+              if meta.get('post_promotion_outcomes_used_for_scoring') is not False: raise SystemExit('PAID_ATTENTION_ROW_HINDSIGHT_RISK')
+              ps=paid.get('score')
+              signals=set(paid.get('signals') or [])
+              bonus=float(x.get('paid_attention_bonus') or 0)
+              if bonus<0 or bonus>7: raise SystemExit('PAID_ATTENTION_ROW_BONUS_RANGE')
+              if 'PROMOTION_AFTER_BREAKOUT_LATE' in signals:
+                  if ps is not None and float(ps)>35: raise SystemExit('LATE_PAID_ATTENTION_NOT_CAPPED')
+                  if bonus!=0: raise SystemExit('LATE_PAID_ATTENTION_BONUS_PRESENT')
+              if meta.get('exact_pair_timing_verified') is False and ps is not None and float(ps)>30:
+                  raise SystemExit('UNVERIFIED_PAID_PAIR_TIMING_OVER_SCORED')
           print('WAKING_CONFIRMATION_V1_VALID',d.get('counts'),d.get('provider_status_counts'))
-          print('REVIVAL_PRECURSOR_V1_VALID',r.get('counts'))
+          print('REVIVAL_PRECURSOR_V2_PAID_ATTENTION_VALID',r.get('counts'))
           PY
       - name: Publish Waking and Precursor snapshots
         run: |
