@@ -101,8 +101,12 @@ jobs:
             git commit -m 'data: refresh global pre-listing intelligence'
             for attempt in 1 2 3 4 5; do
               git fetch origin main
-              git merge --no-edit -X ours origin/main
-              if git push origin HEAD:main; then break; fi
+              if ! git rebase origin/main; then
+                git rebase --abort || true
+                echo 'GLOBAL_LISTING_PUBLISH_REJECTED: rebase conflict; refusing automatic conflict resolution'
+                exit 1
+              fi
+              if git push origin HEAD:main; then exit 0; fi
               sleep 3
               if [ "$attempt" = 5 ]; then exit 1; fi
             done
