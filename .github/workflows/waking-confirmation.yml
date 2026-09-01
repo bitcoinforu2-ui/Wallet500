@@ -20,8 +20,10 @@ on:
 permissions:
   contents: write
 
+# Serialize every workflow that can publish generated data to main.
+# This prevents Waking/Precursor snapshots from racing the live-scan rebase/push.
 concurrency:
-  group: wallet500-waking-confirmation
+  group: wallet500-main-data-publisher
   cancel-in-progress: false
 
 jobs:
