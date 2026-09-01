@@ -1,4 +1,4 @@
-from wallet500.revival_precursor import evaluate, score_derivatives, score_social, score_whale
+from wallet500.revival_precursor import evaluate, score_derivatives, score_paid_attention, score_social, score_whale
 
 
 def coin():
@@ -74,12 +74,56 @@ def derivatives():
     }
 
 
+def paid_events(h24=8, h6=12, boost=500, include_ad=True):
+    pair = coin()["dex_pair_address"]
+    token = coin()["token_address"]
+    rows = [{
+        "event_id": "boost-1",
+        "provider": "dexscreener",
+        "promotion_type": "BOOST",
+        "chain": "solana",
+        "token_address": token,
+        "pair_address": pair,
+        "pair_identity_locked": True,
+        "first_seen_at": "2026-09-01T01:00:00+00:00",
+        "last_seen_at": "2026-09-01T02:00:00+00:00",
+        "boost_total_amount_latest": boost,
+        "t0": {
+            "price_change_h1_pct": 3,
+            "price_change_h6_pct": h6,
+            "price_change_h24_pct": h24,
+            "liquidity_usd": 500_000,
+        },
+        "impact_by_horizon": [{"horizon_min": 360, "promoted_price_change_pct": 9999}],
+    }]
+    if include_ad:
+        rows.append({
+            "event_id": "ad-1",
+            "provider": "dexscreener",
+            "promotion_type": "AD",
+            "chain": "solana",
+            "token_address": token,
+            "pair_address": pair,
+            "pair_identity_locked": True,
+            "first_seen_at": "2026-09-01T02:00:00+00:00",
+            "last_seen_at": "2026-09-01T02:00:00+00:00",
+            "t0": {
+                "price_change_h1_pct": 4,
+                "price_change_h6_pct": h6,
+                "price_change_h24_pct": h24,
+                "liquidity_usd": 500_000,
+            },
+        })
+    return rows
+
+
 def test_full_independent_evidence_can_be_high_conviction_precursor():
-    row = evaluate(coin(), waking(), whale(), derivatives())
+    row = evaluate(coin(), waking(), whale(), derivatives(), paid_events())
     assert row["status"] in {"HIGH_CONVICTION_PRECURSOR", "PRE_BREAKOUT_CANDIDATE"}
     assert row["evidence_coverage_pct"] == 100.0
     assert "whale_smart_money" in row["strong_families"]
     assert "derivatives_cex" in row["strong_families"]
+    assert row["paid_attention_bonus"] > 0
 
 
 def test_missing_whale_and_derivatives_never_score_as_true():
@@ -130,5 +174,50 @@ def test_social_single_source_hype_is_capped():
 def test_late_move_is_do_not_chase_even_with_strong_evidence():
     late = coin()
     late["change_24h_pct"] = 43
-    row = evaluate(late, waking(), whale(), derivatives())
+    row = evaluate(late, waking(), whale(), derivatives(), paid_events())
     assert row["status"] == "LATE_MOVE_DO_NOT_CHASE"
+
+
+def test_paid_attention_captures_boost_ad_and_prebreakout_timing():
+    score, signals, missing, meta = score_paid_attention(paid_events(), coin())
+    assert score >= 75
+    assert "BOOST_INTENSITY_GE_500" in signals
+    assert "AD_AND_BOOST_CONCURRENT" in signals
+    assert "PROMOTION_PRE_BREAKOUT_WINDOW" in signals
+    assert meta["boost_total_amount_max"] == 500
+    assert meta["ad_and_boost_concurrent"] is True
+    assert meta["timing_class"] == "PROMOTION_PRE_BREAKOUT_WINDOW"
+    assert meta["post_promotion_outcomes_used_for_scoring"] is False
+    assert missing == []
+
+
+def test_late_paid_promotion_is_capped_and_gets_no_bonus():
+    events = paid_events(h24=140, h6=95, boost=500)
+    score, signals, _, meta = score_paid_attention(events, coin())
+    assert score <= 35
+    assert "PROMOTION_AFTER_BREAKOUT_LATE" in signals
+    assert meta["timing_class"] == "PROMOTION_AFTER_BREAKOUT"
+    row = evaluate(coin(), waking(), whale(), derivatives(), events)
+    assert row["paid_attention_bonus"] == 0
+
+
+def test_paid_attention_never_becomes_independent_confirmation():
+    row = evaluate(coin(), None, None, None, paid_events())
+    assert row["families"]["paid_attention"]["score"] >= 75
+    assert row["status"] not in {"PRE_BREAKOUT_CANDIDATE", "HIGH_CONVICTION_PRECURSOR"}
+
+
+def test_missing_paid_feed_is_explicit_not_fake_zero():
+    score, signals, missing, meta = score_paid_attention(None, coin())
+    assert score is None
+    assert signals == []
+    assert missing == ["PAID_VISIBILITY_FEED"]
+    assert meta["feed_verified"] is False
+
+
+def test_verified_no_paid_event_is_zero_not_missing():
+    score, signals, missing, meta = score_paid_attention([], coin())
+    assert score == 0.0
+    assert signals == ["NO_RECENT_PAID_VISIBILITY"]
+    assert missing == []
+    assert meta["feed_verified"] is True
