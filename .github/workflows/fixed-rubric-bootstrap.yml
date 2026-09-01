@@ -10,45 +10,50 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Force experiment rubric fixed across deployed dashboards
+      - name: Force fixed rubric in dashboard sources
         run: |
           python - <<'PY'
           from pathlib import Path
-          p=Path('.github/workflows/pages.yml')
-          s=p.read_text(encoding='utf-8')
-          old='#w500-experiment-rubric{direction:rtl;overflow-x:auto;white-space:nowrap;background:#02080d;'
-          new='#w500-experiment-rubric{position:fixed!important;top:0!important;left:0!important;right:0!important;width:100%!important;z-index:2147483000!important;direction:rtl;overflow-x:auto;white-space:nowrap;background:#02080d;box-shadow:0 4px 14px rgba(0,0,0,.55)!important;'
-          if old not in s and new not in s:
-              raise SystemExit('rubric style marker missing')
-          s=s.replace(old,new,1)
-          hover='#w500-experiment-rubric a:hover{border-color:#49f0a6!important;color:#49f0a6!important}</style>'
-          hover_new='#w500-experiment-rubric a:hover{border-color:#49f0a6!important;color:#49f0a6!important}#w500-experiment-rubric-spacer{height:46px!important}</style>'
-          if '#w500-experiment-rubric-spacer{height:46px!important}' not in s:
-              if hover not in s: raise SystemExit('rubric hover marker missing')
-              s=s.replace(hover,hover_new,1)
-          nav_end='</div></nav>\'\'\''
-          nav_new='</div></nav><div id="w500-experiment-rubric-spacer" aria-hidden="true"></div>\'\'\''
-          if 'id="w500-experiment-rubric-spacer"' not in s:
-              if nav_end not in s: raise SystemExit('rubric nav end marker missing')
-              s=s.replace(nav_end,nav_new,1)
-          p.write_text(s,encoding='utf-8')
+          files=[
+            Path('index.html'),
+            Path('dashboard-live.html'),
+            Path('dashboard-terminal.html'),
+            Path('dashboard-performance.html'),
+            Path('dashboard-backtest.html'),
+            Path('dashboard-engine-control.html'),
+            Path('dashboard-revival1000.html'),
+            Path('dashboard-hybrid.html'),
+            Path('dashboard-cyberleek.html'),
+            Path('dashboard-kol-forward.html'),
+            Path('data/decision-lab.html'),
+          ]
+          old='''<style id="w500-sticky-rubric-source">/* W500_STICKY_RUBRIC_V1 */#w500-experiment-rubric{position:sticky!important;top:0!important;z-index:2147483000!important;background:rgba(2,8,13,.98)!important;box-shadow:0 4px 14px rgba(0,0,0,.45)!important;-webkit-overflow-scrolling:touch!important}</style>'''
+          new='''<style id="w500-sticky-rubric-source">/* W500_FIXED_RUBRIC_V2 */#w500-experiment-rubric{position:fixed!important;top:0!important;left:0!important;right:0!important;width:100%!important;z-index:2147483000!important;background:rgba(2,8,13,.99)!important;box-shadow:0 4px 14px rgba(0,0,0,.55)!important;-webkit-overflow-scrolling:touch!important;box-sizing:border-box!important}body{padding-top:46px!important}</style>'''
+          changed=0
+          for p in files:
+              if not p.exists():
+                  raise SystemExit(f'missing dashboard source: {p}')
+              s=p.read_text(encoding='utf-8')
+              if 'W500_FIXED_RUBRIC_V2' in s:
+                  continue
+              if old not in s:
+                  raise SystemExit(f'old rubric marker missing in {p}')
+              p.write_text(s.replace(old,new,1),encoding='utf-8')
+              changed+=1
+          print('patched',changed,'dashboard sources')
           PY
-      - name: Verify fixed rubric contract
+      - name: Verify fixed source contract
         run: |
-          grep -Fq 'position:fixed!important' .github/workflows/pages.yml
-          grep -Fq 'id="w500-experiment-rubric-spacer"' .github/workflows/pages.yml
-      - name: Commit and push with rebase retry
+          for f in index.html dashboard-live.html dashboard-terminal.html dashboard-performance.html dashboard-backtest.html dashboard-engine-control.html dashboard-revival1000.html dashboard-hybrid.html dashboard-cyberleek.html dashboard-kol-forward.html data/decision-lab.html; do
+            grep -Fq 'W500_FIXED_RUBRIC_V2' "$f"
+            grep -Fq 'position:fixed!important' "$f"
+            grep -Fq 'body{padding-top:46px!important}' "$f"
+          done
+      - name: Commit source fix
         run: |
           if git diff --quiet; then echo 'No changes'; exit 0; fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add .github/workflows/pages.yml
-          git commit -m 'ui: force experiment rubric fixed across dashboards'
-          for i in 1 2 3 4; do
-            git fetch origin main
-            git rebase origin/main
-            if git push origin HEAD:main; then exit 0; fi
-            sleep 2
-          done
-          echo 'push failed after retries'
-          exit 1
+          git add index.html dashboard-live.html dashboard-terminal.html dashboard-performance.html dashboard-backtest.html dashboard-engine-control.html dashboard-revival1000.html dashboard-hybrid.html dashboard-cyberleek.html dashboard-kol-forward.html data/decision-lab.html
+          git commit -m 'ui: make experiment rubric fixed on every dashboard'
+          git push
