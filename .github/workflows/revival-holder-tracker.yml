@@ -13,8 +13,10 @@ on:
 permissions:
   contents: write
 
+# This workflow publishes generated data to main. It must share the same
+# non-cancelling publisher lock as every other main data writer.
 concurrency:
-  group: wallet500-revival-holder-tracker
+  group: wallet500-main-data-publisher
   cancel-in-progress: false
 
 jobs:
