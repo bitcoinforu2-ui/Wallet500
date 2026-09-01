@@ -11,13 +11,17 @@ REVIVAL = DATA / "revival-1000-latest.json"
 WAKING = DATA / "waking-confirmation-latest.json"
 WHALE = DATA / "whale-flow-evidence.json"
 DERIVATIVES = DATA / "derivatives-evidence.json"
+PAID_VISIBILITY = DATA / "paid-visibility-ledger.json"
 LATEST = DATA / "revival-precursor-latest.json"
 STATE = DATA / "revival-precursor-state.json"
 
 MODE = "RESEARCH_ONLY_REVIVAL_PRECURSOR_V1"
 CONTRACT = "REVIVAL_PRECURSOR_V1"
 NETWORK = "solana"
+PAID_EVENT_FRESHNESS_HOURS = 36
 
+# Paid attention is deliberately NOT a core weighted family. It can add only a
+# small supporting bonus after the core precursor evidence is already present.
 FAMILY_WEIGHTS = {
     "market_structure": 30.0,
     "holder_wallet_accumulation": 25.0,
@@ -52,6 +56,14 @@ def _clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
     return max(lo, min(hi, v))
 
 
+def _dt(value: Any) -> datetime | None:
+    try:
+        d = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
 def _verified_channel(row: dict | None) -> bool:
     return isinstance(row, dict) and row.get("verified") is True
 
@@ -67,6 +79,33 @@ def _evidence_map(payload: dict, key: str) -> dict[str, dict]:
         mint = str(row.get("token_address") or row.get("token") or "")
         if mint:
             out[mint] = row
+    return out
+
+
+def _paid_event_map(payload: dict | None) -> dict[str, list[dict]] | None:
+    if not isinstance(payload, dict):
+        return None
+    if (
+        payload.get("mode") != "RESEARCH_ONLY_PAID_VISIBILITY_LAB_V1"
+        or payload.get("contract") != "PAID_VISIBILITY_LAB_V1"
+        or payload.get("production_portfolio_impact") != "NONE"
+        or payload.get("no_hindsight") is not True
+    ):
+        raise RuntimeError("PAID_VISIBILITY_PRECURSOR_SOURCE_CONTRACT_REJECTED")
+    reference = _dt(payload.get("updated_at")) or datetime.now(timezone.utc)
+    out: dict[str, list[dict]] = {}
+    for event in payload.get("events") or []:
+        if not isinstance(event, dict) or str(event.get("chain") or "").lower() != NETWORK:
+            continue
+        mint = str(event.get("token_address") or "")
+        if not mint:
+            continue
+        last_seen = _dt(event.get("last_seen_at")) or _dt(event.get("first_seen_at"))
+        if last_seen is None:
+            continue
+        age_h = max(0.0, (reference - last_seen).total_seconds() / 3600.0)
+        if age_h <= PAID_EVENT_FRESHNESS_HOURS:
+            out.setdefault(mint, []).append(event)
     return out
 
 
@@ -176,7 +215,6 @@ def score_social(channels: dict) -> tuple[float | None, list[str], list[str]]:
     authors = int(_n(metrics.get("authors"), 0) or 0)
     raw = _clamp(_n(social.get("score"), 0.0) or 0.0)
     signals = list(social.get("signals") or [])
-    # Attention is supporting evidence only; single-source hype is deliberately capped.
     if sources < 2 or authors < 3:
         raw = min(raw, 35.0)
         signals.append("SOCIAL_SINGLE_SOURCE_OR_LOW_AUTHOR_DIVERSITY")
@@ -247,6 +285,143 @@ def score_derivatives(row: dict | None) -> tuple[float | None, list[str], list[s
     return round(_clamp(score), 2), signals, []
 
 
+def score_paid_attention(events: list[dict] | None, coin: dict) -> tuple[float | None, list[str], list[str], dict]:
+    """Score only information known at/when paid visibility was first observed.
+
+    Post-promotion performance checkpoints are intentionally ignored here to keep
+    the precursor no-hindsight. Paid attention can support a setup but never acts
+    as independent confirmation for PRE_BREAKOUT/HIGH_CONVICTION.
+    """
+    if events is None:
+        return None, [], ["PAID_VISIBILITY_FEED"], {
+            "feed_verified": False,
+            "post_promotion_outcomes_used_for_scoring": False,
+        }
+    if not events:
+        return 0.0, ["NO_RECENT_PAID_VISIBILITY"], [], {
+            "feed_verified": True,
+            "event_count": 0,
+            "promotion_types": [],
+            "post_promotion_outcomes_used_for_scoring": False,
+        }
+
+    pair = str(coin.get("dex_pair_address") or "")
+    valid = [x for x in events if isinstance(x, dict) and str(x.get("token_address") or "") == str(coin.get("token_address") or "")]
+    if not valid:
+        return 0.0, ["NO_RECENT_PAID_VISIBILITY"], [], {
+            "feed_verified": True,
+            "event_count": 0,
+            "promotion_types": [],
+            "post_promotion_outcomes_used_for_scoring": False,
+        }
+
+    signals: list[str] = ["PAID_VISIBILITY_FIRST_SEEN"]
+    missing: list[str] = []
+    score = 10.0
+    promotion_types = sorted({str(x.get("promotion_type") or "UNKNOWN") for x in valid})
+    boost_events = [x for x in valid if x.get("promotion_type") == "BOOST"]
+    ad_events = [x for x in valid if x.get("promotion_type") == "AD"]
+    boost_total = max([_n(x.get("boost_total_amount_latest"), 0.0) or 0.0 for x in boost_events] or [0.0])
+
+    if boost_total >= 500:
+        score += 20
+        signals.append("BOOST_INTENSITY_GE_500")
+    elif boost_total >= 250:
+        score += 15
+        signals.append("BOOST_INTENSITY_GE_250")
+    elif boost_total >= 100:
+        score += 10
+        signals.append("BOOST_INTENSITY_GE_100")
+    elif boost_total > 0:
+        score += 5
+        signals.append("BOOST_INTENSITY_POSITIVE")
+
+    concurrent = False
+    if boost_events and ad_events:
+        for b in boost_events:
+            bt = _dt(b.get("first_seen_at"))
+            if bt is None:
+                continue
+            for a in ad_events:
+                at = _dt(a.get("first_seen_at"))
+                if at is not None and abs((bt - at).total_seconds()) <= 6 * 3600:
+                    concurrent = True
+                    break
+            if concurrent:
+                break
+    if concurrent:
+        score += 15
+        signals.append("AD_AND_BOOST_CONCURRENT")
+
+    exact = [
+        x for x in valid
+        if x.get("pair_identity_locked") is True
+        and pair
+        and str(x.get("pair_address") or "") == pair
+        and isinstance(x.get("t0"), dict)
+    ]
+    exact.sort(key=lambda x: str(x.get("first_seen_at") or ""))
+    timing_class = "UNVERIFIED_EXACT_PAIR_TIMING"
+    first_seen = min([str(x.get("first_seen_at") or "") for x in valid if x.get("first_seen_at")] or [""]) or None
+    t0_h24 = None
+    t0_h6 = None
+    t0_h1 = None
+    t0_liq = None
+
+    if exact:
+        first_exact = exact[0]
+        t0 = first_exact.get("t0") or {}
+        t0_h24 = _n(t0.get("price_change_h24_pct"))
+        t0_h6 = _n(t0.get("price_change_h6_pct"))
+        t0_h1 = _n(t0.get("price_change_h1_pct"))
+        t0_liq = _n(t0.get("liquidity_usd"))
+
+        if (t0_h24 is not None and t0_h24 >= 35) or (t0_h6 is not None and t0_h6 >= 80):
+            score -= 25
+            score = min(score, 35.0)
+            timing_class = "PROMOTION_AFTER_BREAKOUT"
+            signals.append("PROMOTION_AFTER_BREAKOUT_LATE")
+        elif t0_h24 is not None and -15 <= t0_h24 <= 20 and (t0_h6 is None or t0_h6 <= 35):
+            score += 35
+            timing_class = "PROMOTION_PRE_BREAKOUT_WINDOW"
+            signals.append("PROMOTION_PRE_BREAKOUT_WINDOW")
+        elif t0_h24 is not None and 20 < t0_h24 < 35:
+            score += 15
+            timing_class = "PROMOTION_DURING_ADVANCING_MOVE"
+            signals.append("PROMOTION_DURING_ADVANCING_MOVE")
+        elif t0_h24 is not None and t0_h24 <= -40:
+            timing_class = "PROMOTION_DURING_CAPITULATION"
+            signals.append("PROMOTION_DURING_CAPITULATION")
+        else:
+            timing_class = "PROMOTION_TIMING_NEUTRAL"
+            signals.append("PROMOTION_TIMING_MEASURED")
+
+        if t0_liq is not None and t0_liq >= 50_000:
+            score += 10
+            signals.append("PROMOTED_PAIR_LIQUIDITY_GE_50K_AT_FIRST_SEEN")
+    else:
+        score = min(score, 30.0)
+        missing.append("PAID_VISIBILITY_EXACT_PAIR_TIMING")
+        signals.append("PAID_VISIBILITY_TOKEN_LEVEL_ONLY")
+
+    meta = {
+        "feed_verified": True,
+        "event_count": len(valid),
+        "promotion_types": promotion_types,
+        "first_seen_at": first_seen,
+        "boost_total_amount_max": boost_total,
+        "ad_and_boost_concurrent": concurrent,
+        "exact_pair_timing_verified": bool(exact),
+        "timing_class": timing_class,
+        "t0_price_change_h1_pct": t0_h1,
+        "t0_price_change_h6_pct": t0_h6,
+        "t0_price_change_h24_pct": t0_h24,
+        "t0_liquidity_usd": t0_liq,
+        "post_promotion_outcomes_used_for_scoring": False,
+    }
+    return round(_clamp(score), 2), signals, missing, meta
+
+
 def combine(families: dict[str, dict], coin: dict) -> dict:
     weighted = 0.0
     available_weight = 0.0
@@ -254,16 +429,30 @@ def combine(families: dict[str, dict], coin: dict) -> dict:
     missing = []
     for name, weight in FAMILY_WEIGHTS.items():
         f = families[name]
+        missing.extend(f.get("missing") or [])
         score = f.get("score")
         if score is None:
-            missing.extend(f.get("missing") or [name])
             continue
         available_weight += weight
         weighted += weight * _clamp(float(score)) / 100.0
         if float(score) >= 55:
             strong.append(name)
     coverage = 100.0 * available_weight / sum(FAMILY_WEIGHTS.values())
-    normalized = 100.0 * weighted / available_weight if available_weight else 0.0
+    normalized_core = 100.0 * weighted / available_weight if available_weight else 0.0
+
+    paid = families.get("paid_attention") or {}
+    missing.extend(paid.get("missing") or [])
+    paid_score = paid.get("score")
+    paid_signals = set(paid.get("signals") or [])
+    paid_bonus = 0.0
+    if paid_score is not None and "PROMOTION_AFTER_BREAKOUT_LATE" not in paid_signals:
+        if float(paid_score) >= 75:
+            paid_bonus = 7.0
+        elif float(paid_score) >= 55:
+            paid_bonus = 5.0
+        elif float(paid_score) >= 35:
+            paid_bonus = 2.0
+    normalized = min(100.0, normalized_core + paid_bonus)
     confidence_adjusted = normalized * coverage / 100.0
 
     c24 = _n(coin.get("change_24h_pct"), 0.0) or 0.0
@@ -277,7 +466,7 @@ def combine(families: dict[str, dict], coin: dict) -> dict:
 
     if c24 >= 35 or c7 >= 85:
         status = "LATE_MOVE_DO_NOT_CHASE"
-    elif coverage >= 75 and normalized >= 75 and len(strong) >= 4 and market_score >= 60:
+    elif coverage >= 75 and normalized >= 75 and len(strong) >= 4 and market_score >= 60 and (flow_score or 0) >= 45 and independent_confirmation:
         status = "HIGH_CONVICTION_PRECURSOR"
     elif coverage >= 60 and normalized >= 65 and market_score >= 55 and (flow_score or 0) >= 45 and independent_confirmation:
         status = "PRE_BREAKOUT_CANDIDATE"
@@ -288,6 +477,8 @@ def combine(families: dict[str, dict], coin: dict) -> dict:
 
     return {
         "status": status,
+        "normalized_score_core_evidence": round(normalized_core, 2),
+        "paid_attention_bonus": round(paid_bonus, 2),
         "normalized_score_available_evidence": round(normalized, 2),
         "confidence_adjusted_score": round(confidence_adjusted, 2),
         "evidence_coverage_pct": round(coverage, 2),
@@ -296,19 +487,27 @@ def combine(families: dict[str, dict], coin: dict) -> dict:
     }
 
 
-def evaluate(coin: dict, waking: dict | None = None, whale: dict | None = None, derivatives: dict | None = None) -> dict:
+def evaluate(
+    coin: dict,
+    waking: dict | None = None,
+    whale: dict | None = None,
+    derivatives: dict | None = None,
+    paid_events: list[dict] | None = None,
+) -> dict:
     channels = (waking or {}).get("channels") or {}
     market_score, market_signals = score_market_structure(coin)
     hw_score, hw_signals, hw_missing = score_holder_wallet(channels)
     social_score, social_signals, social_missing = score_social(channels)
     whale_score, whale_signals, whale_missing = score_whale(whale)
     deriv_score, deriv_signals, deriv_missing = score_derivatives(derivatives)
+    paid_score, paid_signals, paid_missing, paid_meta = score_paid_attention(paid_events, coin)
     families = {
         "market_structure": {"score": market_score, "signals": market_signals, "missing": []},
         "holder_wallet_accumulation": {"score": hw_score, "signals": hw_signals, "missing": hw_missing},
         "social_attention": {"score": social_score, "signals": social_signals, "missing": social_missing},
         "whale_smart_money": {"score": whale_score, "signals": whale_signals, "missing": whale_missing},
         "derivatives_cex": {"score": deriv_score, "signals": deriv_signals, "missing": deriv_missing},
+        "paid_attention": {"score": paid_score, "signals": paid_signals, "missing": paid_missing, "meta": paid_meta, "supporting_only": True},
     }
     decision = combine(families, coin)
     return {
@@ -334,12 +533,13 @@ def evaluate(coin: dict, waking: dict | None = None, whale: dict | None = None, 
 
 
 def run(output_dir: str = "data") -> dict:
-    global DATA, REVIVAL, WAKING, WHALE, DERIVATIVES, LATEST, STATE
+    global DATA, REVIVAL, WAKING, WHALE, DERIVATIVES, PAID_VISIBILITY, LATEST, STATE
     DATA = Path(output_dir)
     REVIVAL = DATA / "revival-1000-latest.json"
     WAKING = DATA / "waking-confirmation-latest.json"
     WHALE = DATA / "whale-flow-evidence.json"
     DERIVATIVES = DATA / "derivatives-evidence.json"
+    PAID_VISIBILITY = DATA / "paid-visibility-ledger.json"
     LATEST = DATA / "revival-precursor-latest.json"
     STATE = DATA / "revival-precursor-state.json"
     DATA.mkdir(parents=True, exist_ok=True)
@@ -348,6 +548,7 @@ def run(output_dir: str = "data") -> dict:
     waking = _load(WAKING, {})
     whale = _load(WHALE, {})
     derivatives = _load(DERIVATIVES, {})
+    paid = _load(PAID_VISIBILITY, None)
 
     if revival.get("network") != NETWORK or revival.get("production_portfolio_impact") != "NONE":
         raise RuntimeError("REVIVAL_PRECURSOR_SOURCE_CONTRACT_REJECTED")
@@ -357,6 +558,7 @@ def run(output_dir: str = "data") -> dict:
     waking_map = _evidence_map(waking, "targets")
     whale_map = _evidence_map(whale, "observations")
     derivative_map = _evidence_map(derivatives, "observations")
+    paid_map = _paid_event_map(paid)
 
     rows = []
     for coin in revival.get("coins") or []:
@@ -365,7 +567,8 @@ def run(output_dir: str = "data") -> dict:
         if coin.get("watch_status") not in {"WAKING_MARKET_ONLY", "DEEP_WATCH"}:
             continue
         mint = str(coin.get("token_address") or "")
-        rows.append(evaluate(coin, waking_map.get(mint), whale_map.get(mint), derivative_map.get(mint)))
+        paid_events = None if paid_map is None else paid_map.get(mint, [])
+        rows.append(evaluate(coin, waking_map.get(mint), whale_map.get(mint), derivative_map.get(mint), paid_events))
 
     priority = {
         "HIGH_CONVICTION_PRECURSOR": 0,
@@ -377,34 +580,56 @@ def run(output_dir: str = "data") -> dict:
     rows.sort(key=lambda x: (priority.get(x["status"], 9), -float(x["confidence_adjusted_score"])))
     now = datetime.now(timezone.utc).isoformat()
     counts: dict[str, int] = {}
+    paid_counts = {"with_recent_paid_attention": 0, "pre_breakout_paid_timing": 0, "late_paid_timing": 0, "ad_and_boost": 0}
     for row in rows:
         counts[row["status"]] = counts.get(row["status"], 0) + 1
+        paid_family = (row.get("families") or {}).get("paid_attention") or {}
+        meta = paid_family.get("meta") or {}
+        if int(meta.get("event_count") or 0) > 0:
+            paid_counts["with_recent_paid_attention"] += 1
+        if meta.get("timing_class") == "PROMOTION_PRE_BREAKOUT_WINDOW":
+            paid_counts["pre_breakout_paid_timing"] += 1
+        if meta.get("timing_class") == "PROMOTION_AFTER_BREAKOUT":
+            paid_counts["late_paid_timing"] += 1
+        if meta.get("ad_and_boost_concurrent") is True:
+            paid_counts["ad_and_boost"] += 1
 
     payload = {
-        "version": 1,
+        "version": 2,
         "mode": MODE,
         "contract": CONTRACT,
         "network": NETWORK,
         "generated_at": now,
         "source_revival_generated_at": revival.get("generated_at"),
         "source_waking_generated_at": waking.get("generated_at") if isinstance(waking, dict) else None,
+        "source_paid_visibility_updated_at": paid.get("updated_at") if isinstance(paid, dict) else None,
         "production_portfolio_impact": "NONE",
         "no_hindsight": True,
         "family_weights": FAMILY_WEIGHTS,
+        "paid_attention_policy": {
+            "role": "SUPPORTING_ONLY_NOT_INDEPENDENT_CONFIRMATION",
+            "max_precursor_bonus_points": 7,
+            "freshness_hours": PAID_EVENT_FRESHNESS_HOURS,
+            "post_promotion_outcomes_used_for_scoring": False,
+        },
         "truth_rules": [
             "missing evidence is never converted to a positive score",
             "social attention is supporting evidence and cannot by itself create a pre-breakout candidate",
             "whale/smart-money evidence must be exact-mint verified",
             "derivatives evidence must have canonical token mapping; symbol-only matches cannot score",
+            "paid DEX Screener boosts/ads are supporting attention evidence only and cannot independently confirm a pre-breakout candidate",
+            "paid-attention timing uses only T0 facts known at Wallet500 first-seen; later promotion outcomes never score the precursor",
+            "late paid promotion after a >=35% 24h or >=80% 6h move is capped and cannot receive a precursor bonus",
+            "AD+BOOST concurrence and boost intensity are recorded separately from organic demand",
             "late 24h/7d moves are classified as do-not-chase even when other signals are strong",
             "this layer is research/shadow only and cannot change production portfolio decisions",
         ],
-        "counts": {"targets": len(rows), **counts},
+        "counts": {"targets": len(rows), **counts, **paid_counts},
         "targets": rows,
     }
     _write(LATEST, payload)
-    _write(STATE, {"version": 1, "updated_at": now, "last_counts": payload["counts"]})
-    print("REVIVAL_PRECURSOR_V1_OK", payload["counts"])
+    _write(STATE, {"version": 2, "updated_at": now, "last_counts": payload["counts"]})
+    print("REVIVAL_PRECURSOR_V2_PAID_ATTENTION_OK", payload["counts"])
     return payload
 
 
