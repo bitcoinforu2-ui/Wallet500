@@ -53,6 +53,15 @@ jobs:
           assert t.get('dex_txn_counts_are_not_wallet_counts') is True
           assert t.get('unresolved_transactions_are_not_guessed') is True
           assert t.get('first_seen_buyers_are_since_monitor_t0_not_lifetime_new_holders') is True
+          c=d.get('coverage') or {}
+          resolved=int(c.get('last_run_resolved_swaps') or 0)
+          unresolved=int(c.get('last_run_unresolved') or 0)
+          denom=resolved+unresolved
+          pct=(resolved/denom*100.0) if denom else None
+          threshold=float(c.get('minimum_resolution_pct') or 80.0)
+          if pct is not None and pct < threshold:
+              assert c.get('coverage_gap') is True, (pct, c)
+              assert c.get('coverage_quality') == 'PARTIAL', c
           print('CYBERLEEK_WALLET_FLOW_TRUTH_OK')
           PY
       - name: Commit forward wallet-flow state
