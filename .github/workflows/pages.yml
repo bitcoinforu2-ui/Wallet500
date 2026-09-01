@@ -20,6 +20,7 @@ on:
       - 'dashboard-hybrid.html'
       - 'dashboard-cyberleek.html'
       - 'dashboard-kol-forward.html'
+      - 'dashboard-precursor.html'
       - 'dashboard-reference-fix.js'
       - 'dashboard-live-price.js'
       - 'wallet500_option2_emblem.jpg'
@@ -71,7 +72,7 @@ jobs:
           check_file(){ test -s "$1" || fail "missing or empty: $1"; echo "OK file $1"; }
           check_text(){ grep -Fq "$2" "$1" || fail "missing marker [$2] in $1"; echo "OK marker $1 :: $2"; }
           rm -rf _site
-          mkdir -p _site/live _site/terminal _site/performance _site/backtest _site/control _site/hub _site/revival _site/hybrid _site/cyberleek _site/decision _site/kol
+          mkdir -p _site/live _site/terminal _site/performance _site/backtest _site/control _site/hub _site/revival _site/hybrid _site/cyberleek _site/decision _site/kol _site/precursor
           cp index.html _site/index.html
           cp index.html _site/dashboard-hub.html
           cp index.html _site/hub.html
@@ -86,6 +87,7 @@ jobs:
           cp dashboard-hybrid.html _site/dashboard-hybrid.html
           cp dashboard-cyberleek.html _site/cyberleek/index.html
           cp dashboard-kol-forward.html _site/kol/index.html
+          cp dashboard-precursor.html _site/precursor/index.html
           cp data/decision-lab.html _site/decision/index.html
           cp dashboard-reference-fix.js _site/dashboard-reference-fix.js
           cp dashboard-live-price.js _site/dashboard-live-price.js
@@ -135,7 +137,7 @@ jobs:
               Path('_site/index.html'),Path('_site/dashboard-hub.html'),Path('_site/hub.html'),Path('_site/hub/index.html'),
               Path('_site/live/index.html'),Path('_site/terminal/index.html'),Path('_site/performance/index.html'),Path('_site/backtest/index.html'),
               Path('_site/control/index.html'),Path('_site/revival/index.html'),Path('_site/hybrid/index.html'),Path('_site/dashboard-hybrid.html'),
-              Path('_site/cyberleek/index.html'),Path('_site/decision/index.html'),Path('_site/kol/index.html')
+              Path('_site/cyberleek/index.html'),Path('_site/decision/index.html'),Path('_site/kol/index.html'),Path('_site/precursor/index.html')
           ]
           for page in public_pages:
               s=page.read_text(encoding='utf-8')
@@ -152,7 +154,7 @@ jobs:
           if [ -f wallet500_option2_emblem.jpg ]; then cp wallet500_option2_emblem.jpg _site/; fi
           touch _site/.nojekyll
           printf '%s\n' "$GITHUB_SHA" > _site/build.txt
-          for f in _site/index.html _site/live/index.html _site/terminal/index.html _site/performance/index.html _site/control/index.html _site/revival/index.html _site/hybrid/index.html _site/cyberleek/index.html _site/decision/index.html _site/kol/index.html _site/dashboard-live-price.js _site/data/run-summary.json _site/data/realizable-performance-summary.json _site/data/external-signal-cohort-summary.json _site/data/revival-1000-latest.json _site/data/case-study-cyberleek.json; do check_file "$f"; done
+          for f in _site/index.html _site/live/index.html _site/terminal/index.html _site/performance/index.html _site/control/index.html _site/revival/index.html _site/hybrid/index.html _site/cyberleek/index.html _site/decision/index.html _site/kol/index.html _site/precursor/index.html _site/dashboard-live-price.js _site/data/run-summary.json _site/data/realizable-performance-summary.json _site/data/external-signal-cohort-summary.json _site/data/revival-1000-latest.json _site/data/case-study-cyberleek.json; do check_file "$f"; done
           check_text _site/index.html 'WALLET500 · מצב הפרויקט'
           check_text _site/index.html 'EXTERNAL-ONLY EXPERIMENT'
           check_text _site/index.html 'id="external-only"'
@@ -186,6 +188,9 @@ jobs:
           check_text _site/kol/index.html '<title>Wallet500 · KOL Forward Lab</title>'
           check_text _site/kol/index.html 'KOL FORWARD LAB · זיהוי מוקדם בלבד'
           check_text _site/kol/index.html 'W500_EXPERIMENT_RUBRIC_V1'
+          check_text _site/precursor/index.html 'WALLET500 · PRECURSOR EVIDENCE'
+          check_text _site/precursor/index.html 'HOLDER · WALLETS · SOCIAL'
+          check_text _site/precursor/index.html 'W500_EXPERIMENT_RUBRIC_V1'
           python -m json.tool _site/data/run-summary.json >/dev/null || fail 'invalid run-summary.json'
           python -m json.tool _site/data/realizable-performance-summary.json >/dev/null || fail 'invalid realizable-performance-summary.json'
           python -m json.tool _site/data/external-signal-cohort-summary.json >/dev/null || fail 'invalid external-signal-cohort-summary.json'
