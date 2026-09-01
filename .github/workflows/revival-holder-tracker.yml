@@ -1,0 +1,75 @@
+name: Wallet500 Revival Holder Tracker
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '12,42 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/revival_holder_tracker.py'
+      - '.github/workflows/revival-holder-tracker.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-revival-holder-tracker
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e .
+      - name: Track verified holder T0 and growth
+        env:
+          REVIVAL_HOLDER_BATCH: '30'
+        run: python -m wallet500.revival_holder_tracker
+      - name: Validate holder truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/revival-holder-latest.json')
+          s=Path('data/revival-holder-state.json')
+          if not p.exists() or not s.exists(): raise SystemExit('REVIVAL_HOLDER_OUTPUT_MISSING')
+          d=json.loads(p.read_text())
+          if d.get('mode')!='RESEARCH_ONLY_REVIVAL_HOLDER_TRACKER_V1': raise SystemExit('REVIVAL_HOLDER_MODE_INVALID')
+          if d.get('network')!='solana' or d.get('production_portfolio_impact')!='NONE' or d.get('no_hindsight') is not True: raise SystemExit('REVIVAL_HOLDER_TRUTH_INVALID')
+          if 'NEVER FABRICATE RETROACTIVE HOLDER COUNT' not in str(d.get('truth_rule')): raise SystemExit('REVIVAL_HOLDER_NO_RETROACTIVE_RULE_MISSING')
+          for x in d.get('coins') or []:
+              if x.get('first_holder_count') is None or x.get('holder_count') is None: raise SystemExit('REVIVAL_HOLDER_NULL_COUNT')
+              if int(x['holder_growth_count']) != int(x['holder_count'])-int(x['first_holder_count']): raise SystemExit('REVIVAL_HOLDER_DELTA_MISMATCH')
+          print('REVIVAL_HOLDER_TRACKER_V1_OK', {'covered':d.get('covered'),'universe':d.get('universe'),'success':d.get('successful_this_run')})
+          PY
+      - name: Publish holder tracker state
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          cp data/revival-holder-latest.json "$tmp/latest.json"
+          cp data/revival-holder-state.json "$tmp/state.json"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/latest.json" data/revival-holder-latest.json
+            cp "$tmp/state.json" data/revival-holder-state.json
+            git add data/revival-holder-latest.json data/revival-holder-state.json
+            if git diff --cached --quiet; then echo 'REVIVAL_HOLDER_NO_CHANGE'; exit 0; fi
+            git commit -m 'data: refresh Revival holder tracker'
+            if git push origin HEAD:main; then echo 'REVIVAL_HOLDER_PUBLISH_OK'; exit 0; fi
+            echo "REVIVAL_HOLDER_PUBLISH_RETRY attempt=$attempt"
+            sleep 3
+          done
+          echo '::error::REVIVAL_HOLDER_PUBLISH_RACE_EXHAUSTED'
+          exit 1
