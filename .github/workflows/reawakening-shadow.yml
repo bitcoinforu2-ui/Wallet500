@@ -1,0 +1,71 @@
+name: Wallet500 Survivor Reawakening Shadow
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '8,23,38,53 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/reawakening_shadow.py'
+      - 'tests/test_reawakening_shadow.py'
+      - '.github/workflows/reawakening-shadow.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-main-data-publisher
+  cancel-in-progress: false
+
+jobs:
+  shadow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install and test
+        run: |
+          pip install -e . pytest
+          python -m pytest -q tests/test_reawakening_shadow.py
+      - name: Build forward-only shadow lane
+        run: python -m wallet500.reawakening_shadow
+      - name: Validate truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/reawakening-shadow.json'); s=Path('data/reawakening-shadow-state.json')
+          if not p.exists() or not s.exists(): raise SystemExit('REAWAKENING_OUTPUT_MISSING')
+          d=json.loads(p.read_text())
+          if d.get('mode')!='RESEARCH_ONLY_SURVIVOR_REAWAKENING_V1': raise SystemExit('REAWAKENING_MODE_INVALID')
+          if d.get('contract')!='SURVIVOR_REAWAKENING_V1': raise SystemExit('REAWAKENING_CONTRACT_INVALID')
+          if d.get('production_portfolio_impact')!='NONE' or d.get('automatic_buy') is not False: raise SystemExit('REAWAKENING_SAFETY_INVALID')
+          if d.get('no_hindsight') is not True: raise SystemExit('REAWAKENING_NO_HINDSIGHT_MISSING')
+          print('SURVIVOR_REAWAKENING_V1_OK', d.get('counts'))
+          PY
+      - name: Publish immutable shadow state
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          cp data/reawakening-shadow.json "$tmp/latest.json"
+          cp data/reawakening-shadow-state.json "$tmp/state.json"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/latest.json" data/reawakening-shadow.json
+            cp "$tmp/state.json" data/reawakening-shadow-state.json
+            git add data/reawakening-shadow.json data/reawakening-shadow-state.json
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'research: refresh survivor reawakening shadow'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 3
+          done
+          exit 1
