@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: wallet500-profile5-long-horizon-research
+  group: wallet500-main-data-publisher
   cancel-in-progress: false
 
 jobs:
@@ -69,8 +69,12 @@ jobs:
           git commit -m 'research: refresh fixed 5 long-horizon token profiles'
           for attempt in 1 2 3 4 5; do
             git fetch origin main
-            git merge --no-edit -X ours origin/main
-            if git push origin HEAD:main; then break; fi
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo 'PROFILE5_HORIZON_PUBLISH_REJECTED: rebase conflict; refusing automatic conflict resolution'
+              exit 1
+            fi
+            if git push origin HEAD:main; then exit 0; fi
             sleep 3
             if [ "$attempt" = 5 ]; then exit 1; fi
           done
