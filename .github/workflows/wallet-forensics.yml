@@ -21,6 +21,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # Scheduled-run retries keep the original event SHA. Forensics is a
+          # current-state research job, so always generate evidence from the
+          # latest main rather than rebasing outputs computed from a stale SHA.
+          ref: main
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
