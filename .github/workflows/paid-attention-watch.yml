@@ -16,7 +16,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: wallet500-paid-attention-watch
+  group: wallet500-main-data-publisher
   cancel-in-progress: false
 
 jobs:
@@ -58,7 +58,15 @@ jobs:
           if d.get('trigger_policy')!='VERIFIED_PAID_VISIBILITY_CREATES_RESEARCH_WATCH_ONLY': raise SystemExit('PAID_ATTENTION_TRIGGER_POLICY_INVALID')
           rows=d.get('targets') or []
           if int((d.get('counts') or {}).get('tracked') or 0)!=len(rows): raise SystemExit('PAID_ATTENTION_WATCH_COUNT_MISMATCH')
-          allowed={'PAID_ATTENTION_RESEARCH_WATCH','PAID_ATTENTION_EARLY_CONFIRMING','PAID_ATTENTION_LATE_MOVE','PAID_ATTENTION_RISK_RESEARCH'}
+          allowed={
+              'PAID_ATTENTION_RESEARCH_WATCH',
+              'PAID_ATTENTION_EARLY_CONFIRMING',
+              'PAID_ATTENTION_LATE_MOVE',
+              'PAID_ATTENTION_RISK_RESEARCH',
+              'PAID_ATTENTION_LOW_LIQUIDITY_LEARNING',
+              'PAID_ATTENTION_PUMP_DUMP_LEARNING',
+              'PAID_ATTENTION_LIQUIDITY_UNVERIFIED',
+          }
           banned={'USDC','USDT','DAI','USDS','USD1','USDE','PYUSD','FDUSD','TUSD','USDP','GUSD','FRAX','LUSD','CRVUSD','USDD','USDB','USDX','USD0','USDY','EURC','EURS','WBTC','CBBTC','TBTC','LBTC','SOLVBTC','WSOL','BNSOL','JITOSOL','JUPSOL','MSOL','STSOL','VSOL','JLP','SUSDE','SYRUPUSDC','USYC','USTB','BUILD'}
           for x in rows:
               if x.get('network')!='solana' or not looks_like_solana_address(str(x.get('token_address') or '')): raise SystemExit('PAID_ATTENTION_TOKEN_IDENTITY_INVALID')
