@@ -10,6 +10,10 @@ def old_date(days: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
 
+def pair_created_ms(days: int) -> int:
+    return int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
+
+
 def test_cex_gate_keeps_only_unique_verified_old_symbol(tmp_path, monkeypatch):
     p = tmp_path / "cex.json"
     p.write_text(json.dumps({
@@ -65,6 +69,75 @@ def test_revival_gate_accepts_exact_old_id_and_old_pair(tmp_path, monkeypatch):
     assert all(x["market_age_min_days"] >= 180 for x in out["coins"])
     assert out["counts"]["age_verified_180d_plus"] == 2
     assert out["counts"]["age_gate_rejected"] == 1
+
+
+def test_active_gate_uses_exact_token_history_not_symbol(tmp_path, monkeypatch):
+    active = tmp_path / "active.json"
+    audit = tmp_path / "audit.json"
+    active.write_text(json.dumps([
+        {
+            "chain": "bsc", "token": "0xOLD", "pair_address": "0xNEWPAIR",
+            "locked_pair_address": "0xNEWPAIR", "pair_identity_locked": True,
+            "pair_created_at": pair_created_ms(20),
+        },
+        {
+            "chain": "bsc", "token": "0xYOUNG", "pair_address": "0xYPAIR",
+            "locked_pair_address": "0xYPAIR", "pair_identity_locked": True,
+            "pair_created_at": pair_created_ms(20),
+        },
+        {
+            "chain": "bsc", "token": "0xNOLOCK", "pair_address": "0xPAIR",
+            "locked_pair_address": "0xOTHER", "pair_identity_locked": True,
+            "pair_created_at": pair_created_ms(500),
+        },
+    ]))
+
+    def fake_pairs(chain, token):
+        if token == "0xOLD":
+            return [
+                {
+                    "pairAddress": "0xOLDPAIR", "pairCreatedAt": pair_created_ms(420),
+                    "baseToken": {"address": "0xOLD"}, "quoteToken": {"address": "0xQUOTE"},
+                },
+                {
+                    "pairAddress": "0xNEWPAIR", "pairCreatedAt": pair_created_ms(20),
+                    "baseToken": {"address": "0xOLD"}, "quoteToken": {"address": "0xQUOTE"},
+                },
+            ]
+        if token == "0xYOUNG":
+            return [{
+                "pairAddress": "0xYPAIR", "pairCreatedAt": pair_created_ms(20),
+                "baseToken": {"address": "0xYOUNG"}, "quoteToken": {"address": "0xQUOTE"},
+            }]
+        return []
+
+    monkeypatch.setattr(g, "token_pairs", fake_pairs)
+    report = g.enforce_active_candidates(active, audit)
+    out = json.loads(active.read_text())
+    assert report["accepted"] == 1
+    assert report["rejected"] == 2
+    assert len(out) == 1
+    assert out[0]["token"] == "0xOLD"
+    assert out[0]["market_age_verified"] is True
+    assert out[0]["market_age_min_days"] >= 180
+    assert out[0]["market_age_evidence_source"] == "DEXSCREENER_OLDEST_CURRENT_EXACT_TOKEN_PAIR_CREATED_AT"
+    g.validate_active_file(active)
+
+
+def test_active_gate_accepts_old_locked_pair_without_extra_lookup(tmp_path, monkeypatch):
+    active = tmp_path / "active.json"
+    audit = tmp_path / "audit.json"
+    active.write_text(json.dumps([{
+        "chain": "solana", "token": "So11111111111111111111111111111111111111111",
+        "pair_address": "PAIR111111111111111111111111111111111111111",
+        "locked_pair_address": "PAIR111111111111111111111111111111111111111",
+        "pair_identity_locked": True, "pair_created_at": pair_created_ms(365),
+    }]))
+    monkeypatch.setattr(g, "token_pairs", lambda _chain, _token: (_ for _ in ()).throw(AssertionError("lookup should not run")))
+    report = g.enforce_active_candidates(active, audit)
+    assert report["accepted"] == 1
+    out = json.loads(active.read_text())
+    assert out[0]["market_age_evidence_source"] == "DEXSCREENER_EXACT_LOCKED_PAIR_CREATED_AT"
 
 
 def test_validate_file_fails_closed_on_unverified_row(tmp_path):
