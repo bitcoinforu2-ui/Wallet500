@@ -82,7 +82,11 @@ jobs:
           if not all(x.exists() for x in (fp,fs,fd,fa)): raise SystemExit('REVIVAL_FORENSICS_OUTPUT_MISSING')
           f=json.loads(fp.read_text())
           if f.get('mode')!='RESEARCH_ONLY_REVIVAL_FORENSICS_V2': raise SystemExit('REVIVAL_FORENSICS_MODE_INVALID')
+          if f.get('revision')!='2.1': raise SystemExit('REVIVAL_FORENSICS_REVISION_INVALID')
           if f.get('contract')!='REVIVAL_FORENSICS_V2': raise SystemExit('REVIVAL_FORENSICS_CONTRACT_INVALID')
+          if f.get('t0_source_contract')!='REVIVAL_GENERATED_AT_EXACT_PUBLICATION_V1': raise SystemExit('REVIVAL_FORENSICS_T0_SOURCE_CONTRACT_INVALID')
+          if f.get('waking_authority')!='REVIVAL_1000_LATEST_WATCH_STATUS': raise SystemExit('REVIVAL_FORENSICS_WAKING_AUTHORITY_INVALID')
+          if f.get('confirmation_role')!='OPTIONAL_ENRICHMENT_NEVER_ENTRY_GATE': raise SystemExit('REVIVAL_FORENSICS_CONFIRMATION_ROLE_INVALID')
           if f.get('network')!='solana': raise SystemExit('REVIVAL_FORENSICS_NETWORK_INVALID')
           if f.get('production_portfolio_impact')!='NONE': raise SystemExit('REVIVAL_FORENSICS_PRODUCTION_IMPACT_NOT_NONE')
           if f.get('automatic_buy') is not False: raise SystemExit('REVIVAL_FORENSICS_AUTOMATIC_BUY_INVALID')
@@ -90,14 +94,25 @@ jobs:
           if 'NEVER_SWITCH' not in str(f.get('pair_identity_rule')): raise SystemExit('REVIVAL_FORENSICS_PAIR_LOCK_MISSING')
           if '180' not in str(f.get('age_rule')): raise SystemExit('REVIVAL_FORENSICS_AGE_GATE_MISSING')
           if '24H' not in str(f.get('full_lifecycle_rule')): raise SystemExit('REVIVAL_FORENSICS_LIFECYCLE_MISSING')
+
           for event in f.get('events') or []:
               t0=event.get('t0') or {}
+              if t0.get('t0_source')!='REVIVAL_1000_LATEST_GENERATED_AT': raise SystemExit('REVIVAL_FORENSICS_EVENT_T0_SOURCE_INVALID')
+              if t0.get('waking_t0')!=t0.get('price_source_generated_at'): raise SystemExit('REVIVAL_FORENSICS_T0_PRICE_TIME_MISMATCH')
               if len(str(t0.get('evidence_sha256') or '')) != 64: raise SystemExit('REVIVAL_FORENSICS_EVIDENCE_HASH_INVALID')
               if not t0.get('pair_address'): raise SystemExit('REVIVAL_FORENSICS_PAIR_ID_MISSING')
               if t0.get('market_age_verified') is not True or int(t0.get('market_age_min_days') or 0) < 180:
                   raise SystemExit('REVIVAL_FORENSICS_EVENT_AGE_INVALID')
+              for horizon in (event.get('horizons') or {}).values():
+                  if horizon.get('available') is True and horizon.get('pair_identity')!='STRICT_MATCH':
+                      raise SystemExit('REVIVAL_FORENSICS_HORIZON_PAIR_NOT_STRICT')
+
+          for event in f.get('invalidated_events_audit') or []:
+              if event.get('eligible_for_learning') is not False:
+                  raise SystemExit('REVIVAL_FORENSICS_INVALIDATED_EVENT_LEARNING_LEAK')
+
           print('REVIVAL_LIQUIDITY_LEARNING_OK', d.get('counts'), d.get('learning_summary'))
-          print('REVIVAL_FORENSICS_V2_OK', f.get('counts'), f.get('wallet500_status'))
+          print('REVIVAL_FORENSICS_V2_1_OK', f.get('counts'), f.get('wallet500_status'))
           PY
       - name: Publish learning and forensics state
         run: |
