@@ -34,7 +34,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install
-        run: pip install -e .
+        run: pip install -e . pytest
+      - name: Test 180-day mature age hard gate
+        run: python -m pytest -q tests/test_mature_age_gate.py
       - name: Ingest 6h external signal cohort
         continue-on-error: true
         run: python -m wallet500.external_signal_cohort
@@ -56,6 +58,10 @@ jobs:
         run: |
           set -o pipefail
           timeout --signal=TERM --kill-after=30s 12m python -m wallet500.orchestrator
+      - name: Enforce verified 180-day mature-coin gate on CEX Revival
+        env:
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: python -m wallet500.mature_age_gate --cex
       - name: Apply universal live survival gate
         run: python -m wallet500.fresh_solana_gate
       - name: Revalidate immutable exact pairs
