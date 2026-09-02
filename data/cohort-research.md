@@ -1,25 +1,25 @@
 # Wallet500 Cohort Research
 
-Generated: 2026-09-01T15:37:20.283573+00:00
-Source snapshot: 2026-09-01T15:37:17.748277+00:00
+Generated: 2026-09-02T01:04:19.143181+00:00
+Source snapshot: 2026-09-02T01:04:16.370601+00:00
 
 ## Baseline
-- N=270 ROI=944.1539% P/L=$2549.215419
+- N=312 ROI=3.992864989934292e+37% P/L=$1.2457738768594992e+38
 
 ## Best post-hoc counterfactuals (min 5 retained)
-- liq>=500k: N=63 ROI=4117.5197% delta=3173.3658pp
-- liq>=250k & vol>=100k: N=90 ROI=2902.7465% delta=1958.5926pp
-- liq>=250k: N=112 ROI=2333.2113% delta=1389.0574pp
-- tx>=500: N=132 ROI=1966.244% delta=1022.0901pp
-- liq>=100k & tx>=250: N=147 ROI=1765.2316% delta=821.0777pp
-- turnover<=1: N=148 ROI=1749.2076% delta=805.0537pp
-- liq>=100k & vol>=50k: N=155 ROI=1673.1425% delta=728.9886pp
-- vol>=100k: N=161 ROI=1596.0673% delta=651.9134pp
-- liq>=100k: N=189 ROI=1371.983% delta=427.8291pp
-- turnover<=2: N=207 ROI=1229.027% delta=284.8731pp
+- pre-runup<=10%: N=141 ROI=8.835275722407796e+37% delta=4.842410732473505e+37pp
+- pre-runup<=25%: N=158 ROI=7.884644790249995e+37% delta=3.8917798003157026e+37pp
+- pre-runup<=50%: N=159 ROI=7.835055829305026e+37% delta=3.842190839370734e+37pp
+- pre-runup<=100%: N=159 ROI=7.835055829305026e+37% delta=3.842190839370734e+37pp
+- turnover>=0.5: N=172 ROI=7.242871377090111e+37% delta=3.250006387155819e+37pp
+- turnover<=1: N=174 ROI=7.159619981951144e+37% delta=3.1667549920168524e+37pp
+- turnover<=2: N=244 ROI=5.1056306428668e+37% delta=1.1127656529325079e+37pp
+- liq>=75k: N=253 ROI=4.9240074184169925e+37% delta=9.311424284827005e+36pp
+- turnover>=0.25: N=258 ROI=4.828580918060074e+37% delta=8.357159281257823e+36pp
+- tx>=100: N=284 ROI=4.386527735420772e+37% delta=3.936627454864797e+36pp
 
 ## Missed-star scan
-- Candidates: 959
-- Gate reasons now: {'BASE_GATE_NOW_PASS_OTHER_OR_TIMING': 65, 'LIQ_LT_50K': 853, 'VOL_LT_15K': 596, 'TX_LT_50': 480}
+- Candidates: 1046
+- Gate reasons now: {'BASE_GATE_NOW_PASS_OTHER_OR_TIMING': 66, 'LIQ_LT_50K': 938, 'VOL_LT_15K': 646, 'TX_LT_50': 516}
 
 Research only; validate prospectively before changing production gates.
