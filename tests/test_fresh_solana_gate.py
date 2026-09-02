@@ -121,6 +121,42 @@ def test_bsc_candidate_with_verified_crash_never_stays_active():
     assert "VERIFIED_RETURN_BELOW_MINUS_25PCT" in out["live_survival_reasons"]
 
 
+def test_new_bsc_pair_is_pending_until_age_and_observation_confirmation():
+    # 20-minute-old pair: this is the class that allowed BECO/BITC to appear ACTIVE
+    # during their first spike. Every chain must now wait for confirmation.
+    pair_created_ms = int((NOW.timestamp() - 20 * 60) * 1000)
+    candidate = {
+        "chain": "bsc",
+        "token": "0xFRESH",
+        "pair_created_at": pair_created_ms,
+        "liquidity_usd": 90000,
+        "volume_h1": 180000,
+        "buys_h1": 500,
+        "sells_h1": 200,
+        "price_usd": 0.0005,
+        "price_change_h1": 250,
+        "price_change_m5": 30,
+    }
+    outcomes = {
+        "tokens": {
+            "bsc:0xfresh": {
+                "current_return_pct": 10.0,
+                "peak_price_usd": 0.00055,
+                "current_price_usd": 0.0005,
+                "history": [
+                    {"observed_at": "2026-08-27T10:27:00+00:00", "liquidity_usd": 88000},
+                    {"observed_at": "2026-08-27T10:32:00+00:00", "liquidity_usd": 90000},
+                ],
+            }
+        }
+    }
+    out = evaluate(candidate, outcomes, NOW)
+    assert out["pair_age_minutes"] == 20.0
+    assert out["live_survival_gate"] == "PENDING"
+    assert "PAIR_AGE_LT_45M" in out["live_survival_reasons"]
+    assert out["fresh_pair_gate"] == "PENDING"
+
+
 def test_ethereum_pump_then_fast_reversal_fails():
     candidate = {
         "chain": "ethereum",
