@@ -85,7 +85,8 @@ def test_under_180_days_fails_closed(tmp_path):
     seed(tmp_path, [cex], [p])
     result = build(tmp_path)
     assert result["counts"]["real_alerts"] == 0
-    assert "VERIFIED_MARKET_AGE_180D_REQUIRED" in result["verified_watch"][0]["blockers"]
+    # Under-age candidates are not even allowed into the visible verified-watch lane.
+    assert result["counts"]["verified_watch_not_real"] == 0
 
 
 def test_late_move_never_becomes_real_alert(tmp_path):
