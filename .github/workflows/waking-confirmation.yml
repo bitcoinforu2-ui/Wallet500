@@ -9,8 +9,10 @@ on:
     paths:
       - 'src/wallet500/waking_confirmation.py'
       - 'src/wallet500/revival_precursor.py'
+      - 'src/wallet500/real_alerts.py'
       - 'tests/test_waking_confirmation.py'
       - 'tests/test_revival_precursor.py'
+      - 'tests/test_real_alerts.py'
       - '.github/workflows/waking-confirmation.yml'
       - 'data/revival-1000-latest.json'
       - 'data/whale-flow-evidence.json'
@@ -20,8 +22,6 @@ on:
 permissions:
   contents: write
 
-# Serialize every workflow that can publish generated data to main.
-# This prevents Waking/Precursor snapshots from racing the live-scan rebase/push.
 concurrency:
   group: wallet500-main-data-publisher
   cancel-in-progress: false
@@ -41,7 +41,7 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Unit tests
-        run: python -m pytest -q tests/test_waking_confirmation.py tests/test_revival_precursor.py
+        run: python -m pytest -q tests/test_waking_confirmation.py tests/test_revival_precursor.py tests/test_real_alerts.py
       - name: Scan WAKING holder, wallet, social and news evidence
         env:
           BIRDEYE_API_KEY: ${{ secrets.BIRDEYE_API_KEY }}
@@ -65,10 +65,7 @@ jobs:
           rs=Path('data/revival-precursor-state.json')
           if not p.exists() or not s.exists(): raise SystemExit('WAKING_CONFIRMATION_OUTPUT_MISSING')
           if not rp.exists() or not rs.exists(): raise SystemExit('REVIVAL_PRECURSOR_OUTPUT_MISSING')
-          d=json.loads(p.read_text())
-          st=json.loads(s.read_text())
-          r=json.loads(rp.read_text())
-          rst=json.loads(rs.read_text())
+          d=json.loads(p.read_text()); st=json.loads(s.read_text()); r=json.loads(rp.read_text()); rst=json.loads(rs.read_text())
           if d.get('mode')!='RESEARCH_ONLY_WAKING_CONFIRMATION_V1': raise SystemExit('WAKING_MODE_INVALID')
           if d.get('contract')!='WAKING_CONFIRMATION_V1': raise SystemExit('WAKING_CONTRACT_INVALID')
           if d.get('network')!='solana' or d.get('production_portfolio_impact')!='NONE': raise SystemExit('WAKING_SAFETY_INVALID')
@@ -85,8 +82,7 @@ jobs:
               score=float(x.get('confirmation_score') or 0)
               if not 0<=score<=100: raise SystemExit('WAKING_SCORE_RANGE_INVALID')
               for name,ch in (x.get('channels') or {}).items():
-                  if ch.get('verified') is not True and float(ch.get('score') or 0)!=0:
-                      raise SystemExit('UNVERIFIED_CHANNEL_SCORED:'+name)
+                  if ch.get('verified') is not True and float(ch.get('score') or 0)!=0: raise SystemExit('UNVERIFIED_CHANNEL_SCORED:'+name)
           try:
               t=datetime.fromisoformat(str(d.get('generated_at')).replace('Z','+00:00'))
               if t.tzinfo is None:t=t.replace(tzinfo=timezone.utc)
@@ -109,54 +105,43 @@ jobs:
           for x in rrows:
               if x.get('status') not in allowed_precursor: raise SystemExit('PRECURSOR_STATUS_INVALID')
               if x.get('production_portfolio_impact')!='NONE': raise SystemExit('PRECURSOR_ROW_PRODUCTION_IMPACT')
-              cov=float(x.get('evidence_coverage_pct') or 0)
-              score=float(x.get('normalized_score_available_evidence') or 0)
+              cov=float(x.get('evidence_coverage_pct') or 0); score=float(x.get('normalized_score_available_evidence') or 0)
               if not 0<=cov<=100 or not 0<=score<=100: raise SystemExit('PRECURSOR_SCORE_RANGE_INVALID')
               fam=x.get('families') or {}
               for name in ('whale_smart_money','derivatives_cex'):
                   f=fam.get(name) or {}
                   if f.get('score') is not None:
-                      if name=='whale_smart_money' and 'WHALE_SMART_MONEY_EXACT_MINT' in (x.get('missing_evidence') or []):
-                          raise SystemExit('UNVERIFIED_WHALE_SCORED')
-                      if name=='derivatives_cex' and 'DERIVATIVES_CANONICAL_MAPPING' in (x.get('missing_evidence') or []):
-                          raise SystemExit('UNVERIFIED_DERIVATIVES_SCORED')
-              paid=fam.get('paid_attention') or {}
-              meta=paid.get('meta') or {}
+                      if name=='whale_smart_money' and 'WHALE_SMART_MONEY_EXACT_MINT' in (x.get('missing_evidence') or []): raise SystemExit('UNVERIFIED_WHALE_SCORED')
+                      if name=='derivatives_cex' and 'DERIVATIVES_CANONICAL_MAPPING' in (x.get('missing_evidence') or []): raise SystemExit('UNVERIFIED_DERIVATIVES_SCORED')
+              paid=fam.get('paid_attention') or {}; meta=paid.get('meta') or {}
               if paid.get('supporting_only') is not True: raise SystemExit('PAID_ATTENTION_NOT_SUPPORTING_ONLY')
               if meta.get('post_promotion_outcomes_used_for_scoring') is not False: raise SystemExit('PAID_ATTENTION_ROW_HINDSIGHT_RISK')
-              ps=paid.get('score')
-              signals=set(paid.get('signals') or [])
-              bonus=float(x.get('paid_attention_bonus') or 0)
+              ps=paid.get('score'); signals=set(paid.get('signals') or []); bonus=float(x.get('paid_attention_bonus') or 0)
               if bonus<0 or bonus>7: raise SystemExit('PAID_ATTENTION_ROW_BONUS_RANGE')
               if 'PROMOTION_AFTER_BREAKOUT_LATE' in signals:
                   if ps is not None and float(ps)>35: raise SystemExit('LATE_PAID_ATTENTION_NOT_CAPPED')
                   if bonus!=0: raise SystemExit('LATE_PAID_ATTENTION_BONUS_PRESENT')
-              if meta.get('exact_pair_timing_verified') is False and ps is not None and float(ps)>30:
-                  raise SystemExit('UNVERIFIED_PAID_PAIR_TIMING_OVER_SCORED')
+              if meta.get('exact_pair_timing_verified') is False and ps is not None and float(ps)>30: raise SystemExit('UNVERIFIED_PAID_PAIR_TIMING_OVER_SCORED')
           print('WAKING_CONFIRMATION_V1_VALID',d.get('counts'),d.get('provider_status_counts'))
           print('REVIVAL_PRECURSOR_V2_PAID_ATTENTION_VALID',r.get('counts'))
           PY
-      - name: Publish Waking and Precursor snapshots
+      - name: Refresh unified REAL ALERT feed immediately
+        run: python -m wallet500.real_alerts
+      - name: Publish Waking, Precursor and REAL ALERT snapshots
         run: |
           set -euo pipefail
           git config user.name 'wallet500-waking-bot'
           git config user.email 'wallet500-waking-bot@users.noreply.github.com'
           tmp="$(mktemp -d)"
-          cp data/waking-confirmation-latest.json "$tmp/waking-confirmation-latest.json"
-          cp data/waking-confirmation-state.json "$tmp/waking-confirmation-state.json"
-          cp data/revival-precursor-latest.json "$tmp/revival-precursor-latest.json"
-          cp data/revival-precursor-state.json "$tmp/revival-precursor-state.json"
+          for f in waking-confirmation-latest.json waking-confirmation-state.json revival-precursor-latest.json revival-precursor-state.json real-alerts.json; do cp "data/$f" "$tmp/$f"; done
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
-            cp "$tmp/waking-confirmation-latest.json" data/waking-confirmation-latest.json
-            cp "$tmp/waking-confirmation-state.json" data/waking-confirmation-state.json
-            cp "$tmp/revival-precursor-latest.json" data/revival-precursor-latest.json
-            cp "$tmp/revival-precursor-state.json" data/revival-precursor-state.json
-            git add data/waking-confirmation-latest.json data/waking-confirmation-state.json data/revival-precursor-latest.json data/revival-precursor-state.json
-            if git diff --cached --quiet; then echo 'WAKING_PRECURSOR_NO_DATA_CHANGE'; exit 0; fi
-            git commit -m 'data: refresh Waking and Revival Precursor intelligence'
-            if git push origin HEAD:main; then echo 'WAKING_PRECURSOR_PUBLISH_OK'; exit 0; fi
-            echo "WAKING_PRECURSOR_PUBLISH_RETRY attempt=$attempt"; sleep 3
+            for f in waking-confirmation-latest.json waking-confirmation-state.json revival-precursor-latest.json revival-precursor-state.json real-alerts.json; do cp "$tmp/$f" "data/$f"; done
+            git add data/waking-confirmation-latest.json data/waking-confirmation-state.json data/revival-precursor-latest.json data/revival-precursor-state.json data/real-alerts.json
+            if git diff --cached --quiet; then echo 'WAKING_PRECURSOR_REAL_ALERT_NO_DATA_CHANGE'; exit 0; fi
+            git commit -m 'data: refresh Waking Precursor and REAL ALERT intelligence'
+            if git push origin HEAD:main; then echo 'WAKING_PRECURSOR_REAL_ALERT_PUBLISH_OK'; exit 0; fi
+            echo "WAKING_PRECURSOR_REAL_ALERT_PUBLISH_RETRY attempt=$attempt"; sleep 3
           done
-          echo '::error::WAKING_PRECURSOR_PUBLISH_RACE_EXHAUSTED'; exit 1
+          echo '::error::WAKING_PRECURSOR_REAL_ALERT_PUBLISH_RACE_EXHAUSTED'; exit 1
