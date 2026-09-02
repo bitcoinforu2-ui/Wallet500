@@ -16,10 +16,10 @@ on:
 permissions:
   contents: write
 
-# This workflow and Revival 1000 both commit generated truth data to main.
-# A shared non-cancelling group prevents concurrent publishers from racing.
+# Core live truth refresh gets its own serial queue so shared publisher saturation
+# cannot evict scans before they start. Publish remains race-safe/fail-closed below.
 concurrency:
-  group: wallet500-main-data-publisher
+  group: wallet500-live-scan-publisher
   cancel-in-progress: false
   queue: max
 
