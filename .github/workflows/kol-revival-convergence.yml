@@ -9,6 +9,7 @@ on:
     paths:
       - 'experiments/kol-revival-convergence-v1.json'
       - 'src/wallet500/kol_revival_convergence.py'
+      - 'src/wallet500/kol_revival_convergence_runner.py'
       - 'tests/test_kol_revival_convergence.py'
       - '.github/workflows/kol-revival-convergence.yml'
 
@@ -37,7 +38,7 @@ jobs:
       - name: Scan verified KOL wallets forward only
         env:
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
-        run: python -m wallet500.kol_revival_convergence
+        run: python -m wallet500.kol_revival_convergence_runner
       - name: Validate fail-closed mature contract
         run: |
           python - <<'PY'
@@ -58,7 +59,7 @@ jobs:
                   m=x.get('market') or {}
                   if m.get('market_age_verified') is not True or float(m.get('market_age_min_days') or 0)<180: raise SystemExit('UNDERAGE_KOL_SIGNAL')
                   if m.get('liquidity_pass') is not True or float(m.get('liquidity_usd') or 0)<50000: raise SystemExit('LOW_LIQ_KOL_SIGNAL')
-          print('KOL_REVIVAL_CONVERGENCE_V1_OK', d.get('active_convergences'), d.get('strong_or_higher_now'))
+          print('KOL_REVIVAL_CONVERGENCE_V1_OK', d.get('active_convergences'), d.get('strong_or_higher_now'), 'retry_wallets', d.get('rpc_retry_wallets'))
           PY
       - name: Publish immutable forward ledger
         run: |
