@@ -5,7 +5,7 @@ def test_below_50k_is_hard_block():
     x={'chain':'solana','token':'T','liquidity_usd':49999}
     r=evaluate(x,{})
     assert r['production_risk_blocked'] is True
-    assert 'LIVE_LIQUIDITY_BELOW_50K_HARD_BLOCK' in r['production_risk_critical']
+    assert 'EXECUTION_POOL_LIQUIDITY_BELOW_50K_HARD_BLOCK' in r['production_risk_critical']
 
 
 def test_liquidity_evacuation_is_hard_block():
