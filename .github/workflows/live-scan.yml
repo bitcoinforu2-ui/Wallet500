@@ -8,7 +8,7 @@ on:
     branches: [main]
     paths:
       - 'src/**'
-      - 'tests/test_real_alerts.py'
+      - 'tests/**'
       - 'experiments/**'
       - 'pyproject.toml'
       - '.github/workflows/live-scan.yml'
@@ -17,10 +17,10 @@ on:
 permissions:
   contents: write
 
-# Generation v2 deliberately releases the queue from a stale pre-watchdog run.
-# New scans remain serialized with each other; scoring/gates are unchanged.
+# Generation v3 releases the live alert path from older long-running scans.
+# The fast veteran CEX identity feed is published before slower research stages.
 concurrency:
-  group: wallet500-live-scan-publisher-v2
+  group: wallet500-live-scan-publisher-v3
   cancel-in-progress: false
 
 jobs:
@@ -36,8 +36,48 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e . pytest
-      - name: Test mature age, exact pair and real-alert truth contracts
-        run: python -m pytest -q tests/test_mature_age_gate.py tests/test_telegram_exact_pair.py tests/test_real_alerts.py
+      - name: Test mature age, ambiguous identity, exact DEX and real-alert truth contracts
+        run: >-
+          python -m pytest -q
+          tests/test_mature_age_gate.py
+          tests/test_cex_identity_preflight.py
+          tests/test_cex_identity.py
+          tests/test_telegram_exact_pair.py
+          tests/test_real_alerts.py
+
+      - name: Refresh fast veteran CEX identity lane
+        env:
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: python -m wallet500.cex_fast_lane
+
+      - name: Publish fast CEX identity and REAL ALERT feed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "4189822+github-actions[bot]@users.noreply.github.com"
+          git add data/cex-revival-radar.json data/cex-learning.json data/real-alerts.json || true
+          git add data/cex-state.json data/cex-state.json.gz 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No fast-lane data changes"
+          else
+            git commit -m "data: refresh fast veteran CEX identity feed"
+            for attempt in 1 2 3; do
+              git fetch origin main
+              if ! git rebase origin/main; then
+                git rebase --abort || true
+                echo "Fast publish stopped fail-closed: rebase conflict"
+                exit 1
+              fi
+              if git push origin HEAD:main; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                echo "Fast publish failed after 3 attempts"
+                exit 1
+              fi
+              sleep $((attempt * 2))
+            done
+          fi
+
       - name: Ingest 6h external signal cohort
         continue-on-error: true
         run: python -m wallet500.external_signal_cohort
@@ -52,21 +92,21 @@ jobs:
         run: |
           python -m pytest -q tests/test_cryptoyeezus_copy.py tests/test_cryptoyeezus_verified_monitor.py
           python -m wallet500.cryptoyeezus_verified_monitor
-      - name: Capture Moonshot launchpad discovery feed
-        continue-on-error: true
-        run: python -m wallet500.moonshot_radar
-      - name: Run revival-first intelligence scan
+
+      - name: Run veteran revival intelligence scan
+        env:
+          WALLET500_CEX_PRECOMPUTED: '1'
         run: |
           set -o pipefail
           timeout --signal=TERM --kill-after=30s 12m python -m wallet500.orchestrator
-      - name: Enforce verified 180-day mature-coin gate on CEX Revival
+
+      - name: Reconfirm CEX age and exact DEX identity after research scan
         env:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
-        run: python -m wallet500.mature_age_gate --cex
-      - name: Resolve CEX alerts to exact on-chain identity and DEX pair
-        env:
-          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
-        run: python -m wallet500.cex_identity
+        run: |
+          python -m wallet500.cex_identity_preflight
+          python -m wallet500.cex_identity
+
       - name: Apply universal live survival gate
         run: python -m wallet500.fresh_solana_gate
       - name: Revalidate immutable exact pairs
@@ -149,7 +189,7 @@ jobs:
       - name: Publish verified scan data
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "4189822+github-actions[bot]@users.noreply.github.com"
           git add data/
           if git diff --cached --quiet; then
             echo "No data changes"
