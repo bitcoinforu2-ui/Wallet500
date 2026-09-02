@@ -40,7 +40,7 @@ def _write(path: Path, payload: Any) -> None:
 
 def _http_json(url: str, *, method: str = "GET", payload: Any = None, timeout: int = 20) -> Any:
     body = None if payload is None else json.dumps(payload).encode("utf-8")
-    headers = {"User-Agent": "Wallet500-KOLRevivalConvergence/1.0", "Accept": "application/json"}
+    headers = {"User-Agent": "Wallet500-KOLRevivalConvergence/1.1", "Accept": "application/json"}
     if body is not None:
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
@@ -84,13 +84,92 @@ def verified_swap_evidence(tx: dict[str, Any]) -> str | None:
     return None
 
 
+def build_effective_independence_groups(
+    signature_sets: dict[str, set[str]],
+    config: dict[str, Any],
+    prior_links: list[dict[str, Any]] | None = None,
+) -> tuple[dict[str, str], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Fail-closed KOL independence: wallets sharing a recent on-chain tx count once.
+
+    Link evidence is sticky via prior_links so a pair does not become "independent" merely
+    because the shared transaction later falls outside the recent RPC window.
+    """
+    wallets = [x for x in config.get("wallets") or [] if isinstance(x, dict) and x.get("id")]
+    ids = [str(x["id"]) for x in wallets]
+    parent = {x: x for x in ids}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: str, b: str) -> None:
+        if a not in parent or b not in parent:
+            return
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    # Explicit configured groups are conservative hard links.
+    by_cfg: dict[str, list[str]] = {}
+    for w in wallets:
+        group = str(w.get("independence_group") or w["id"])
+        by_cfg.setdefault(group, []).append(str(w["id"]))
+    for members in by_cfg.values():
+        for other in members[1:]:
+            union(members[0], other)
+
+    links: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in prior_links or []:
+        a, b = sorted((str(row.get("a") or ""), str(row.get("b") or "")))
+        if a in parent and b in parent and a != b:
+            union(a, b)
+            links[(a, b)] = dict(row)
+
+    current_evidence: list[dict[str, Any]] = []
+    for i, a in enumerate(ids):
+        sa = {x for x in signature_sets.get(a, set()) if x}
+        for b in ids[i + 1 :]:
+            shared = sorted(sa & {x for x in signature_sets.get(b, set()) if x})
+            if not shared:
+                continue
+            union(a, b)
+            key = tuple(sorted((a, b)))
+            evidence = {
+                "a": key[0],
+                "b": key[1],
+                "reason": "SHARED_RECENT_SOLANA_TRANSACTION",
+                "shared_signature": shared[0],
+                "shared_signature_count_in_window": len(shared),
+                "first_seen_at": (links.get(key) or {}).get("first_seen_at") or _now(),
+                "last_seen_at": _now(),
+            }
+            links[key] = evidence
+            current_evidence.append(evidence)
+
+    members_by_root: dict[str, list[str]] = {}
+    for wid in ids:
+        members_by_root.setdefault(find(wid), []).append(wid)
+    mapping: dict[str, str] = {}
+    clusters: list[dict[str, Any]] = []
+    for members in members_by_root.values():
+        members = sorted(members)
+        group_id = members[0] if len(members) == 1 else "AUTO_LINKED:" + "+".join(members)
+        for wid in members:
+            mapping[wid] = group_id
+        if len(members) > 1:
+            clusters.append({"group_id": group_id, "wallet_ids": members, "count_as_independent_sources": 1})
+    clusters.sort(key=lambda x: x["group_id"])
+    return mapping, list(links.values()), clusters
+
+
 def _pair_created_ms(pair: dict[str, Any]) -> int | None:
     raw = pair.get("pairCreatedAt")
     try:
         val = int(float(raw))
     except Exception:
         return None
-    # DexScreener uses milliseconds; tolerate seconds defensively.
     return val * 1000 if val < 10_000_000_000 else val
 
 
@@ -102,7 +181,6 @@ def verify_exact_mint_market(
     min_age_days: float = 180.0,
     liquidity_floor_usd: float = 50_000.0,
 ) -> dict[str, Any]:
-    """Pure exact-mint market verifier used by runtime and tests."""
     exact = []
     for p in pairs if isinstance(pairs, list) else []:
         if not isinstance(p, dict) or str(p.get("chainId") or "").lower() != "solana":
@@ -113,21 +191,12 @@ def verify_exact_mint_market(
             continue
         exact.append(p)
     if not exact:
-        return {
-            "exact_mint_verified": False,
-            "market_age_verified": False,
-            "liquidity_pass": False,
-            "reason": "NO_EXACT_MINT_PAIR",
-        }
+        return {"exact_mint_verified": False, "market_age_verified": False, "liquidity_pass": False, "reason": "NO_EXACT_MINT_PAIR"}
 
     now_ms = int(now_ms if now_ms is not None else time.time() * 1000)
     created = [x for x in (_pair_created_ms(p) for p in exact) if x and x <= now_ms]
-    if not created:
-        age_days = None
-        age_ok = False
-    else:
-        age_days = (now_ms - min(created)) / 86_400_000.0
-        age_ok = age_days >= float(min_age_days)
+    age_days = (now_ms - min(created)) / 86_400_000.0 if created else None
+    age_ok = age_days is not None and age_days >= float(min_age_days)
 
     def liq(p: dict[str, Any]) -> float:
         x = p.get("liquidity") if isinstance(p.get("liquidity"), dict) else {}
@@ -142,16 +211,14 @@ def verify_exact_mint_market(
         price = float(primary.get("priceUsd") or 0)
     except Exception:
         price = 0.0
-    pair_address = str(primary.get("pairAddress") or "")
-    url = str(primary.get("url") or "")
     return {
         "exact_mint_verified": True,
         "market_age_verified": bool(age_ok),
         "market_age_min_days": round(age_days, 3) if age_days is not None else None,
         "market_age_evidence_source": "DEXSCREENER_OLDEST_CURRENT_EXACT_MINT_PAIR",
         "oldest_pair_created_at_ms": min(created) if created else None,
-        "pair_address": pair_address,
-        "pair_url": url,
+        "pair_address": str(primary.get("pairAddress") or ""),
+        "pair_url": str(primary.get("url") or ""),
         "dex": str(primary.get("dexId") or ""),
         "price_usd": price,
         "liquidity_usd": round(liquidity, 6),
@@ -161,8 +228,7 @@ def verify_exact_mint_market(
 
 
 def resolve_market(mint: str, config: dict[str, Any]) -> dict[str, Any]:
-    url = f"https://api.dexscreener.com/token-pairs/v1/solana/{mint}"
-    rows = _http_json(url, timeout=20)
+    rows = _http_json(f"https://api.dexscreener.com/token-pairs/v1/solana/{mint}", timeout=20)
     return verify_exact_mint_market(
         rows if isinstance(rows, list) else [],
         mint,
@@ -178,9 +244,8 @@ def _event_dt(event: dict[str, Any]) -> datetime | None:
             return datetime.fromtimestamp(float(bt), tz=timezone.utc)
         except Exception:
             pass
-    raw = event.get("observed_at")
     try:
-        d = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        d = datetime.fromisoformat(str(event.get("observed_at")).replace("Z", "+00:00"))
         return d.astimezone(timezone.utc) if d.tzinfo else d.replace(tzinfo=timezone.utc)
     except Exception:
         return None
@@ -188,6 +253,11 @@ def _event_dt(event: dict[str, Any]) -> datetime | None:
 
 def _wallet_meta(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {str(x.get("id")): x for x in config.get("wallets") or [] if isinstance(x, dict) and x.get("id")}
+
+
+def _group_for_event(row: dict[str, Any], meta: dict[str, dict[str, Any]]) -> str:
+    wid = str(row.get("wallet_id") or "")
+    return str(row.get("effective_independence_group") or (meta.get(wid) or {}).get("independence_group") or row.get("independence_group") or wid)
 
 
 def convergence_for_mint(
@@ -212,28 +282,22 @@ def convergence_for_mint(
     groups_at_max: set[str] = set()
     wallets_at_max: set[str] = set()
     max_window = max(windows or [30])
-    max_rows = []
-    for row in rows:
-        dt = _event_dt(row)
-        if dt and 0 <= (last_t - dt).total_seconds() <= max_window * 60:
-            max_rows.append(row)
+    max_rows = [row for row in rows if _event_dt(row) and 0 <= (last_t - _event_dt(row)).total_seconds() <= max_window * 60]
     for row in max_rows:
         wid = str(row.get("wallet_id") or "")
         wallet_counts[wid] = wallet_counts.get(wid, 0) + 1
         wallets_at_max.add(wid)
-        group = str((meta.get(wid) or {}).get("independence_group") or row.get("independence_group") or wid)
+        group = _group_for_event(row, meta)
         if group:
             groups_at_max.add(group)
     for w in windows:
         groups = set()
         for row in rows:
             dt = _event_dt(row)
-            if not dt or not (0 <= (last_t - dt).total_seconds() <= w * 60):
-                continue
-            wid = str(row.get("wallet_id") or "")
-            group = str((meta.get(wid) or {}).get("independence_group") or row.get("independence_group") or wid)
-            if group:
-                groups.add(group)
+            if dt and 0 <= (last_t - dt).total_seconds() <= w * 60:
+                group = _group_for_event(row, meta)
+                if group:
+                    groups.add(group)
         counts[str(w)] = len(groups)
     independent = max(counts.values(), default=0)
     thresholds = sorted(int(x) for x in (config.get("thresholds") or [2, 3, 4, 5]))
@@ -241,14 +305,12 @@ def convergence_for_mint(
     if not reached:
         return None
     level = max(reached)
-    if level >= 5:
-        signal = "KOL_REVIVAL_CONVERGENCE_EXCEPTIONAL"
-    elif level >= 4:
-        signal = "KOL_REVIVAL_CONVERGENCE_HIGH"
-    elif level >= 3:
-        signal = "KOL_REVIVAL_CONVERGENCE_STRONG"
-    else:
-        signal = "KOL_REVIVAL_CONVERGENCE_WATCH"
+    signal = (
+        "KOL_REVIVAL_CONVERGENCE_EXCEPTIONAL" if level >= 5 else
+        "KOL_REVIVAL_CONVERGENCE_HIGH" if level >= 4 else
+        "KOL_REVIVAL_CONVERGENCE_STRONG" if level >= 3 else
+        "KOL_REVIVAL_CONVERGENCE_WATCH"
+    )
     if not market.get("market_age_verified"):
         signal = "AGE_BLOCKED"
     elif not market.get("liquidity_pass"):
@@ -289,20 +351,18 @@ def _threshold_cross_signature(events: list[dict[str, Any]], mint: str, config: 
         groups = set()
         for prior in rows[: i + 1]:
             dt = _event_dt(prior)
-            if not dt or not (0 <= (end - dt).total_seconds() <= max_window * 60):
-                continue
-            wid = str(prior.get("wallet_id") or "")
-            groups.add(str((meta.get(wid) or {}).get("independence_group") or prior.get("independence_group") or wid))
-        if len({x for x in groups if x}) >= threshold:
+            if dt and 0 <= (end - dt).total_seconds() <= max_window * 60:
+                group = _group_for_event(prior, meta)
+                if group:
+                    groups.add(group)
+        if len(groups) >= threshold:
             return str(row.get("signature") or "") or None
     return None
 
 
 def _relative_size(event: dict[str, Any], prior_events: list[dict[str, Any]]) -> dict[str, Any]:
     try:
-        raw = int(event.get("quote_amount_raw") or 0)
-        decimals = int(event.get("quote_decimals") or 0)
-        amount = raw / (10 ** decimals)
+        amount = int(event.get("quote_amount_raw") or 0) / (10 ** int(event.get("quote_decimals") or 0))
     except Exception:
         return {"quote_amount": None, "size_vs_wallet_median": None, "size_signal": "UNKNOWN"}
     same = []
@@ -331,6 +391,7 @@ def _new_state(config: dict[str, Any]) -> dict[str, Any]:
         "mode": "FORWARD_ONLY_WALLET_FIRST_RESEARCH",
         "created_at": _now(),
         "wallet_boundaries": {},
+        "independence_links": [],
         "events": [],
         "threshold_records": [],
         "errors": [],
@@ -387,6 +448,7 @@ def run_once(*, market_resolver: Callable[[str, dict[str, Any]], dict[str, Any]]
     events = state.setdefault("events", [])
     seen = {str(x.get("event_id") or "") for x in events if isinstance(x, dict)}
     boundaries = state.setdefault("wallet_boundaries", {})
+    signature_sets: dict[str, set[str]] = {}
 
     for wallet in config.get("wallets") or []:
         wid = str(wallet.get("id") or "")
@@ -395,11 +457,11 @@ def run_once(*, market_resolver: Callable[[str, dict[str, Any]], dict[str, Any]]
             continue
         try:
             signatures = _recent_signatures(rpc_url, address, signature_batch)
+            signature_sets[wid] = {str(x.get("signature") or "") for x in signatures if x.get("signature")}
         except Exception as exc:
             errors.append({"wallet_id": wid, "stage": "SIGNATURES", "error": f"{type(exc).__name__}: {exc}"[:400]})
             continue
         boundary = str(boundaries.get(wid) or "")
-        # Hard prospective boundary: the first successful observation never books history.
         if not boundary:
             if signatures:
                 boundaries[wid] = str(signatures[0].get("signature") or "")
@@ -454,6 +516,12 @@ def run_once(*, market_resolver: Callable[[str, dict[str, Any]], dict[str, Any]]
         if signatures:
             boundaries[wid] = str(signatures[0].get("signature") or boundary)
 
+    effective_groups, sticky_links, clusters = build_effective_independence_groups(signature_sets, config, state.get("independence_links") or [])
+    state["independence_links"] = sticky_links
+    for e in events:
+        wid = str(e.get("wallet_id") or "")
+        if wid in effective_groups:
+            e["effective_independence_group"] = effective_groups[wid]
     if len(events) > 20000:
         del events[:-20000]
 
@@ -525,11 +593,16 @@ def run_once(*, market_resolver: Callable[[str, dict[str, Any]], dict[str, Any]]
     state["updated_at"] = _now()
     state.setdefault("errors", []).extend(errors)
     state["errors"] = state["errors"][-100:]
+    state["effective_independence_groups"] = effective_groups
     summary = {
         "version": "KOL_REVIVAL_CONVERGENCE_V1",
         "mode": "FORWARD_ONLY_WALLET_FIRST_RESEARCH",
         "updated_at": state["updated_at"],
         "wallets_configured": len(config.get("wallets") or []),
+        "effective_independent_sources": len(set(effective_groups.values())) if effective_groups else 0,
+        "wallet_independence_groups": effective_groups,
+        "independence_clusters": clusters,
+        "new_link_evidence_this_run": [x for x in sticky_links if x.get("last_seen_at") == max((z.get("last_seen_at") for z in sticky_links), default=None)] if sticky_links else [],
         "forward_buy_events": len(events),
         "active_convergences": len(active),
         "active_eligible_research_watch": sum(1 for x in active if x.get("eligible_research_watch")),
