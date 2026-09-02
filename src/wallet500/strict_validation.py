@@ -158,6 +158,8 @@ def run(output_dir: str = "data"):
     (out / "strict-validation.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(json.dumps({"passed": payload["passed"], "failure_count": payload["failure_count"], "failures": failures}, indent=2))
     if failures:
+        failed_checks = ",".join(c["name"] for c in failures)
+        print(f"::error title=Wallet500 strict validation failed::failed_checks={failed_checks}")
         raise SystemExit(1)
     return payload
 
