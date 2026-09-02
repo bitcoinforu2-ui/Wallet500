@@ -18,10 +18,12 @@ on:
 permissions:
   contents: write
 
-# Generation v3 releases the live alert path from older long-running scans.
-# The fast veteran CEX identity feed is published before slower research stages.
+# Serialize the live truth publisher with workflows that write overlapping data
+# (notably Waking/Precursor -> real-alerts.json). This prevents validated live
+# snapshots from failing their final fail-closed rebase because another publisher
+# moved the same truth files during the scan.
 concurrency:
-  group: wallet500-live-scan-publisher-v3
+  group: wallet500-main-data-publisher
   cancel-in-progress: false
 
 jobs:
