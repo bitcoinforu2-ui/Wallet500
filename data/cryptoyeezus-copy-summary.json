@@ -1,6 +1,6 @@
 {
   "version": "CRYPTOYEEZUS_DIRECT_WALLET_COPY_V1",
-  "updated_at": "2026-09-02T10:06:35.549873+00:00",
+  "updated_at": "2026-09-02T11:25:46.453801+00:00",
   "source_wallet": "JCxTzSXz1f8s3UEtYQzaDdBDWneaD6yo1cX38RBf6Rjd",
   "copy_ratio": 0.01,
   "live_execution_armed": false,
@@ -36,7 +36,7 @@
     "take_profit_multiple": 3.0,
     "shadow_compare_multiple": 4.0,
     "source_sell_exit": true,
-    "allow_live_execution": true,
+    "allow_live_execution": false,
     "max_price_impact_pct": 0.1,
     "max_marks_per_position": 500,
     "rpc_url": "https://api.mainnet-beta.solana.com",
@@ -44,11 +44,11 @@
       "Forward-only: first run establishes a boundary and never backfills real or simulated entries.",
       "Only source-wallet-signed transactions that resolve to one quote-asset outflow and one token inflow are BUY events.",
       "Airdrops, dust, plain transfers, LP operations and ambiguous multi-asset flows fail closed.",
-      "Copy size is floor(source input raw amount * 1%).",
-      "Primary exit is the first executable 3x quote or the first verified source-wallet sell, whichever occurs first.",
+      "Copy size is floor(source input raw amount * 1%) for paper/shadow measurement only.",
+      "Primary paper exit is the first executable 3x quote or the first verified source-wallet sell, whichever occurs first.",
       "4x is tracked as a shadow comparator and post-exit performance continues to be marked.",
-      "Real-money execution is never claimed without a Jupiter execute success response and transaction signature.",
-      "GitHub Actions stays shadow-only; live mode requires a persistent private runtime with secrets outside the repository."
+      "Real-money execution is prohibited for this experiment; no wallet signing or transaction submission is permitted.",
+      "GitHub Actions and any external runtime must remain paper/shadow-only."
     ]
   }
 }
