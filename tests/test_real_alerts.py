@@ -94,3 +94,42 @@ def test_late_move_never_becomes_real_alert(tmp_path):
     result = build(tmp_path)
     assert result["counts"]["real_alerts"] == 0
     assert any("LATE_MOVE_DO_NOT_CHASE" in x["blockers"] for x in result["verified_watch"])
+
+
+def test_total_liquidity_over_50k_cannot_rescue_thin_execution_pool(tmp_path):
+    cex = base_cex(liq=8_700)
+    cex["execution_pool_liquidity_usd"] = 8_700
+    cex["dex_total_liquidity_usd"] = 120_000
+    seed(tmp_path, [cex], [precursor()])
+    result = build(tmp_path)
+    assert result["counts"]["real_alerts"] == 0
+    row = result["verified_watch"][0]
+    assert row["execution_pool_liquidity_usd"] == 8_700
+    assert row["dex_total_liquidity_usd"] == 120_000
+    assert "EXECUTION_POOL_LIQUIDITY_LT_50K" in row["blockers"]
+
+
+def test_deep_exact_execution_pool_over_50k_passes_even_if_stale_thin_row_exists(tmp_path):
+    cex = base_cex(liq=1_100_000)
+    cex["pair_address"] = "DeepPair11111111111111111111111111111111111"
+    cex["execution_pool_liquidity_usd"] = 1_100_000
+    cex["dex_total_liquidity_usd"] = 1_108_700
+    cex["liquidity_gate_metric"] = "EXECUTION_POOL_LIQUIDITY_USD"
+
+    stale = {
+        "qualification": "QUALIFIED",
+        "chain": "solana",
+        "token": "Mint111111111111111111111111111111111111111",
+        "pair_address": "ThinPair11111111111111111111111111111111111",
+        "liquidity_usd": 8_700,
+        "market_age_verified": True,
+        "market_age_min_days": 900,
+    }
+    seed(tmp_path, [cex], [precursor()], [stale])
+    result = build(tmp_path)
+    assert result["counts"]["real_alerts"] == 1
+    row = result["alerts"][0]
+    assert row["pair_address"] == cex["pair_address"]
+    assert row["execution_pool_liquidity_usd"] == 1_100_000
+    assert row["dex_total_liquidity_usd"] == 1_108_700
+    assert row["liquidity_gate_metric"] == "EXECUTION_POOL_LIQUIDITY_USD"
