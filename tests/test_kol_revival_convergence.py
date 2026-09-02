@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from wallet500.kol_revival_convergence import (
+    build_effective_independence_groups,
     convergence_for_mint,
     verified_swap_evidence,
     verify_exact_mint_market,
@@ -37,9 +38,9 @@ def _config():
     }
 
 
-def _event(wallet, minute, sig, *, group=None):
+def _event(wallet, minute, sig, *, group=None, effective=None):
     base = datetime(2026, 9, 2, 12, 0, tzinfo=timezone.utc).timestamp()
-    return {
+    row = {
         "side": "BUY",
         "mint": MINT,
         "wallet_id": wallet,
@@ -47,6 +48,9 @@ def _event(wallet, minute, sig, *, group=None):
         "signature": sig,
         "block_time": base + minute * 60,
     }
+    if effective:
+        row["effective_independence_group"] = effective
+    return row
 
 
 def test_market_verifier_requires_exact_old_mint_and_liquidity():
@@ -92,11 +96,47 @@ def test_linked_wallet_group_counts_once_and_repeat_buy_is_separate_signal():
     market = {"market_age_verified": True, "liquidity_pass": True}
     out = convergence_for_mint(events, MINT, _config(), market, now=datetime(2026, 9, 2, 12, 9, tzinfo=timezone.utc))
     assert out is not None
-    # C and D share G3, so A/G1 + G3 = only two independent groups.
     assert out["independent_wallet_groups"] == 2
     assert out["signal_state"] == "KOL_REVIVAL_CONVERGENCE_WATCH"
     assert out["repeat_accumulator_count"] == 1
     assert out["repeat_accumulators"] == ["A"]
+
+
+def test_shared_recent_signature_auto_links_wallets_and_link_is_sticky():
+    cfg = {
+        "wallets": [
+            {"id": "A", "independence_group": "A"},
+            {"id": "B", "independence_group": "B"},
+            {"id": "C", "independence_group": "C"},
+        ]
+    }
+    mapping, links, clusters = build_effective_independence_groups(
+        {"A": {"shared", "a1"}, "B": {"shared", "b1"}, "C": {"c1"}}, cfg
+    )
+    assert mapping["A"] == mapping["B"]
+    assert mapping["A"] != mapping["C"]
+    assert len(clusters) == 1
+    assert set(clusters[0]["wallet_ids"]) == {"A", "B"}
+    assert links and links[0]["reason"] == "SHARED_RECENT_SOLANA_TRANSACTION"
+
+    # Once observed, the conservative link remains even when it falls out of the recent RPC window.
+    mapping2, _, _ = build_effective_independence_groups(
+        {"A": {"a2"}, "B": {"b2"}, "C": {"c2"}}, cfg, links
+    )
+    assert mapping2["A"] == mapping2["B"]
+
+
+def test_effective_auto_link_group_overrides_configured_independence():
+    events = [
+        _event("A", 0, "s1", effective="AUTO:A+B"),
+        _event("B", 2, "s2", effective="AUTO:A+B"),
+        _event("C", 4, "s3", effective="C"),
+    ]
+    market = {"market_age_verified": True, "liquidity_pass": True}
+    out = convergence_for_mint(events, MINT, _config(), market, now=datetime(2026, 9, 2, 12, 5, tzinfo=timezone.utc))
+    assert out is not None
+    assert out["independent_wallet_groups"] == 2
+    assert out["signal_state"] == "KOL_REVIVAL_CONVERGENCE_WATCH"
 
 
 def test_mature_or_liquidity_failures_never_become_eligible_signal():
