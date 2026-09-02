@@ -1,0 +1,61 @@
+name: Wallet500 Research Decision Engine
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/research_decision_engine.py'
+      - 'data/filter-tuning-advisor.json'
+      - 'data/rejected-outcome-report.json'
+      - 'data/case-study-cyberleek.json'
+      - 'data/case-study-doge1.json'
+      - 'docs/experiments/research-decision-engine-v1.md'
+permissions:
+  contents: write
+concurrency:
+  group: research-decision-engine
+  cancel-in-progress: false
+jobs:
+  advise:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install package
+        run: pip install -e . pytest
+      - name: Safety tests
+        run: pytest -q tests/test_research_decision_engine.py
+      - name: Build research decisions
+        run: python -m wallet500.research_decision_engine
+      - name: Validate advisory contract
+        run: |
+          python - <<'PY'
+          import json
+          d=json.load(open('data/research-decision-engine.json'))
+          assert d['mode']=='RESEARCH_ADVISORY_ONLY'
+          assert d['production_change_allowed'] is False
+          assert d['production_thresholds_modified'] is False
+          assert 'LIQUIDITY_GTE_50K_EXACT_EXECUTION_POOL' in d['hard_rules']
+          assert 'EXACT_PAIR_IDENTITY' in d['hard_rules']
+          assert 'HOLDER_CLUSTER_FAIL_CLOSED' in d['hard_rules']
+          print(d['decision_states'])
+          PY
+      - name: Publish advisory output
+        run: |
+          if git diff --quiet -- data/research-decision-engine.json; then
+            echo 'No advisory change'
+            exit 0
+          fi
+          git config user.name 'wallet500-research-bot'
+          git config user.email 'wallet500-research-bot@users.noreply.github.com'
+          git add data/research-decision-engine.json
+          git commit -m 'research: refresh decision engine advisory'
+          git pull --rebase origin main
+          git push origin HEAD:main
