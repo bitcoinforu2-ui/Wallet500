@@ -22,8 +22,25 @@ def dex_pair(address="0xPAIR", token="0xABC", chain="bsc", liq=100000):
     }
 
 
+def gt_pair(address="0xGT", liq=120000):
+    return {
+        **candidate(),
+        "pair_address": address,
+        "dex": "PancakeSwap Infinity",
+        "dex_url": "https://www.geckoterminal.com/bsc/pools/" + address,
+        "price_usd": 0.5,
+        "liquidity_usd": liq,
+        "volume_h1": 1000,
+        "volume_h24": 50000,
+        "pair_created_at": 123,
+        "pair_provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+        "exact_token_side": "BASE",
+    }
+
+
 def test_primary_token_pairs_exact_address(monkeypatch):
     monkeypatch.setattr(c, "token_pairs", lambda _chain, _token: [dex_pair()])
+    monkeypatch.setattr(c, "_geckoterminal_pairs", lambda _candidate: [])
     rows = c._verified_pairs(candidate())
     assert len(rows) == 1
     assert rows[0]["pair_address"] == "0xPAIR"
@@ -38,7 +55,7 @@ def test_search_fallback_requires_exact_contract(monkeypatch):
             dex_pair(address="0xRIGHT", token="0xABC"),
         ]
     })
-    monkeypatch.setattr(c, "_geckoterminal_pairs", lambda _candidate: (_ for _ in ()).throw(AssertionError("GT should not run")))
+    monkeypatch.setattr(c, "_geckoterminal_pairs", lambda _candidate: [])
     rows = c._verified_pairs(candidate())
     assert [x["pair_address"] for x in rows] == ["0xRIGHT"]
     assert rows[0]["pair_provider"] == "DEXSCREENER_EXACT_ADDRESS_SEARCH"
@@ -47,23 +64,19 @@ def test_search_fallback_requires_exact_contract(monkeypatch):
 def test_secondary_provider_used_when_dexscreener_misses(monkeypatch):
     monkeypatch.setattr(c, "token_pairs", lambda _chain, _token: [])
     monkeypatch.setattr(c, "_dexscreener_search_pairs", lambda _candidate: [])
-    monkeypatch.setattr(c, "_geckoterminal_pairs", lambda cand: [{
-        **cand,
-        "pair_address": "0xGT",
-        "dex": "PancakeSwap V3",
-        "dex_url": "https://www.geckoterminal.com/bsc/pools/0xGT",
-        "price_usd": 0.5,
-        "liquidity_usd": 120000,
-        "volume_h1": 1000,
-        "volume_h24": 50000,
-        "pair_created_at": 123,
-        "pair_provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
-        "exact_token_side": "BASE",
-    }])
+    monkeypatch.setattr(c, "_geckoterminal_pairs", lambda _candidate: [gt_pair()])
     rows = c._verified_pairs(candidate())
     assert len(rows) == 1
     assert rows[0]["pair_address"] == "0xGT"
     assert rows[0]["pair_provider"] == "GECKOTERMINAL_EXACT_TOKEN_POOLS"
+
+
+def test_secondary_provider_enriches_even_when_dexscreener_has_thin_pool(monkeypatch):
+    monkeypatch.setattr(c, "token_pairs", lambda _chain, _token: [dex_pair(address="0xTHIN", liq=8700)])
+    monkeypatch.setattr(c, "_geckoterminal_pairs", lambda _candidate: [gt_pair(address="0xDEEP", liq=1_100_000)])
+    rows = c._verified_pairs(candidate())
+    assert {x["pair_address"] for x in rows} == {"0xTHIN", "0xDEEP"}
+    assert max(rows, key=lambda x: x["liquidity_usd"])["pair_address"] == "0xDEEP"
 
 
 def test_symbol_like_pair_with_wrong_address_is_rejected():
@@ -117,6 +130,54 @@ def test_resolve_one_uses_catalog_without_per_coin_lookup(monkeypatch):
     assert row["identity_status"] == "DEX_VERIFIED"
     assert row["token_address"] == "0xAAA"
     assert row["identity_source"].startswith("COINGECKO_PLATFORM_CATALOG")
+    assert row["execution_pool_liquidity_usd"] == 90000
+    assert row["dex_total_liquidity_usd"] == 90000
+
+
+def test_resolve_one_selects_deepest_pool_and_keeps_total_liquidity(monkeypatch):
+    monkeypatch.setattr(c, "_verified_pairs", lambda cand: [
+        {
+            **cand,
+            "pair_address": "0xTHIN",
+            "dex": "uniswap",
+            "dex_url": "https://dexscreener.com/bsc/0xTHIN",
+            "price_usd": 0.55,
+            "liquidity_usd": 8700,
+            "volume_h1": 100,
+            "volume_h24": 40000,
+            "pair_created_at": 123,
+            "pair_provider": "DEXSCREENER_TOKEN_PAIRS",
+            "exact_token_side": "BASE",
+        },
+        {
+            **cand,
+            "pair_address": "0xDEEP",
+            "dex": "PancakeSwap Infinity",
+            "dex_url": "https://www.geckoterminal.com/bsc/pools/0xDEEP",
+            "price_usd": 0.55,
+            "liquidity_usd": 1_100_000,
+            "volume_h1": 20000,
+            "volume_h24": 3_500_000,
+            "pair_created_at": 456,
+            "pair_provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+            "exact_token_side": "BASE",
+        },
+    ])
+    alert = {"symbol": "UAIUSDT", "coingecko_id": "unifai-network"}
+    catalog = {"unifai-network": [{
+        "chain": "bsc",
+        "token_address": "0xABC",
+        "coingecko_platform": "binance-smart-chain",
+        "identity_candidate_source": "COINGECKO_PLATFORM_CATALOG",
+    }]}
+    row = c.resolve_one(alert, catalog, {}, allow_single_lookup=False)
+    assert row["pair_address"] == "0xDEEP"
+    assert row["dex_liquidity_usd"] == 1_100_000
+    assert row["execution_pool_liquidity_usd"] == 1_100_000
+    assert row["dex_total_liquidity_usd"] == 1_108_700
+    assert row["dex_pool_count"] == 2
+    assert row["dex_tradable_pool_count_50k"] == 1
+    assert row["liquidity_gate_metric"] == "EXECUTION_POOL_LIQUIDITY_USD"
 
 
 def test_registry_fallback_requires_exact_coingecko_id_match():
