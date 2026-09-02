@@ -12,6 +12,7 @@ from .real_alerts import run as build_real_alerts
 
 DATA = Path("data")
 MIN_AGE_DAYS = 180
+APPROVED_PRODUCTION_MIN_AGE_DAYS = 7
 
 
 def _load(path: Path, default):
@@ -169,6 +170,16 @@ def run(data_dir: Path = DATA) -> dict:
     through strict external verification. Provider outages can delay unknown
     identities but can never turn symbol-only data into an actionable result.
     """
+    # Fail closed on an unapproved production truth-rule change. The 180-day
+    # cohort remains available for research, but it cannot silently become the
+    # live production threshold without strong quantitative approval.
+    if MIN_AGE_DAYS != APPROVED_PRODUCTION_MIN_AGE_DAYS:
+        raise RuntimeError(
+            "UNAPPROVED_PRODUCTION_MARKET_AGE_THRESHOLD:"
+            f"observed={MIN_AGE_DAYS}:approved_baseline={APPROVED_PRODUCTION_MIN_AGE_DAYS}:"
+            "research_evidence_is_not_production_approval"
+        )
+
     data_dir.mkdir(parents=True, exist_ok=True)
     radar_path = data_dir / "cex-revival-radar.json"
     now_dt = datetime.now(timezone.utc)
