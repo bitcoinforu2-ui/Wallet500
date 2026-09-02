@@ -50,7 +50,7 @@ jobs:
           PY
       - name: Publish advisory output
         run: |
-          if git diff --quiet -- data/research-decision-engine.json; then
+          if [ -z "$(git status --porcelain -- data/research-decision-engine.json)" ]; then
             echo 'No advisory change'
             exit 0
           fi
