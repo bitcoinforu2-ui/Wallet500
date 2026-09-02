@@ -1,75 +1,75 @@
 # Wallet500 — Measurable vs Rest Experiment
 
 {
-  "generated_at": "2026-09-02T02:21:38.373738+00:00",
+  "generated_at": "2026-09-02T02:46:34.801036+00:00",
   "method": "MEASURABLE_VS_REST_BIAS_EXPERIMENT_V1",
   "production_change": false,
   "truth_rule": "Do not interpret measurability as alpha until technical/data-coverage bias is separated from market-feature differences.",
-  "tracked_total": 31048,
-  "measured_now_n": 429,
-  "rest_n": 30619,
+  "tracked_total": 31159,
+  "measured_now_n": 439,
+  "rest_n": 30720,
   "technical_layer": {
     "measured": {
-      "n": 429,
-      "pair_locked_n": 429,
+      "n": 439,
+      "pair_locked_n": 439,
       "pair_locked_pct": 100.0,
-      "earliest_snapshot_available_n": 429,
+      "earliest_snapshot_available_n": 439,
       "earliest_snapshot_available_pct": 100.0,
-      "current_pair_available_n": 429,
+      "current_pair_available_n": 439,
       "current_pair_available_pct": 100.0,
       "chains": {
-        "bsc": 138,
-        "ethereum": 83,
+        "bsc": 135,
+        "ethereum": 96,
         "solana": 208
       },
       "measurement_statuses": {
-        "VERIFIED_EXACT_PAIR": 429
+        "VERIFIED_EXACT_PAIR": 439
       }
     },
     "rest": {
-      "n": 30619,
-      "pair_locked_n": 28795,
-      "pair_locked_pct": 94.04,
-      "earliest_snapshot_available_n": 20298,
-      "earliest_snapshot_available_pct": 66.29,
-      "current_pair_available_n": 20299,
-      "current_pair_available_pct": 66.3,
+      "n": 30720,
+      "pair_locked_n": 28896,
+      "pair_locked_pct": 94.06,
+      "earliest_snapshot_available_n": 20400,
+      "earliest_snapshot_available_pct": 66.41,
+      "current_pair_available_n": 20401,
+      "current_pair_available_pct": 66.41,
       "chains": {
-        "bsc": 11096,
-        "ethereum": 1032,
-        "solana": 18491
+        "bsc": 11134,
+        "ethereum": 1019,
+        "solana": 18567
       },
       "measurement_statuses": {
-        "AWAITING_EXACT_PAIR_OBSERVATION": 28797,
+        "AWAITING_EXACT_PAIR_OBSERVATION": 28898,
         "UNKNOWN": 69,
         "LEGACY_UNVERIFIABLE_PAIR": 1753
       }
     },
-    "snapshot_coverage_gap_pp": 33.71
+    "snapshot_coverage_gap_pp": 33.59
   },
   "market_layer_earliest_snapshot_only": {
     "measured": {
-      "comparable_n": 429,
-      "liquidity_usd_median": 0.09,
-      "volume_h1_median": 2421.01,
-      "turnover_h1_median": 0.38468,
-      "buy_sell_ratio_median": 1.333333,
-      "txns_h1_median": 39.0
+      "comparable_n": 439,
+      "liquidity_usd_median": 0.32,
+      "volume_h1_median": 2251.83,
+      "turnover_h1_median": 0.506101,
+      "buy_sell_ratio_median": 1.391304,
+      "txns_h1_median": 34.0
     },
     "rest": {
-      "comparable_n": 20298,
+      "comparable_n": 20400,
       "liquidity_usd_median": 0.0,
-      "volume_h1_median": 1414.055,
-      "turnover_h1_median": 5.132595,
+      "volume_h1_median": 1418.8,
+      "turnover_h1_median": 5.155443,
       "buy_sell_ratio_median": 1.25,
       "txns_h1_median": 30.0
     },
     "measured_to_rest_ratios": {
       "liquidity_median_ratio_measured_to_rest": null,
-      "volume_median_ratio_measured_to_rest": 1.712105,
-      "turnover_median_ratio_measured_to_rest": 0.074948,
-      "buy_sell_ratio_median_ratio_measured_to_rest": 1.066666,
-      "txns_median_ratio_measured_to_rest": 1.3
+      "volume_median_ratio_measured_to_rest": 1.587137,
+      "turnover_median_ratio_measured_to_rest": 0.098168,
+      "buy_sell_ratio_median_ratio_measured_to_rest": 1.113043,
+      "txns_median_ratio_measured_to_rest": 1.133333
     }
   },
   "interpretation_guard": "Market medians use only each token earliest stored historical observation. Missing-history tokens remain in coverage diagnostics.",
