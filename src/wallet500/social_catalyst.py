@@ -32,6 +32,11 @@ def _source(x:dict)->str:
     return s if s in SOCIAL_SOURCES else 'other'
 
 
+def _truthy(v)->bool:
+    if isinstance(v,bool):return v
+    return str(v or '').strip().lower() in {'1','true','yes','y','paid','sponsored'}
+
+
 def _contracts(x:dict)->list[tuple[str|None,str]]:
     out=[];explicit=x.get('contract') or x.get('token') or x.get('token_address') or x.get('mint')
     chain=(str(x.get('chain') or '').lower() or None)
@@ -61,9 +66,21 @@ def _normalize(raw:dict,seen_at:str)->list[dict]:
     url=raw.get('url') or raw.get('post_url');published=raw.get('published_at') or raw.get('created_at') or raw.get('timestamp')
     text=str(raw.get('text') or raw.get('body') or raw.get('caption') or raw.get('title') or '')[:2000]
     followers=raw.get('followers');engagement=raw.get('engagement') or raw.get('views') or raw.get('likes')
+    # Preserve provenance/quality metadata from providers instead of collapsing every
+    # post into an equal "mention". Downstream organic-acceleration analysis is
+    # fail-closed: missing metadata is unknown, never silently assumed organic.
+    quality_meta={
+        'project_owned':any(_truthy(raw.get(k)) for k in ('project_owned','official','is_project_account','project_account','team_account')),
+        'author_role':raw.get('author_role') or raw.get('account_role'),
+        'paid':any(_truthy(raw.get(k)) for k in ('paid','is_paid','paid_promotion')),
+        'sponsored':any(_truthy(raw.get(k)) for k in ('sponsored','is_sponsored')),
+        'incentivized':_truthy(raw.get('incentivized')),
+        'promotion_type':raw.get('promotion_type') or raw.get('campaign_type'),
+        'provider_event_id':raw.get('event_id') or raw.get('post_id') or raw.get('id'),
+    }
     rows=[]
     for chain,contract in _contracts(raw):
-        row={'source':source,'author':author,'contract':contract,'chain':chain,'url':url,'published_at':published,'first_seen_by_wallet500':seen_at,'text':text,'followers':followers,'engagement':engagement}
+        row={'source':source,'author':author,'contract':contract,'chain':chain,'url':url,'published_at':published,'first_seen_by_wallet500':seen_at,'text':text,'followers':followers,'engagement':engagement,**quality_meta}
         row['fingerprint']=_fingerprint(row);rows.append(row)
     return rows
 
@@ -136,9 +153,9 @@ def run_social_catalyst(out:Path|str='data',now:str|None=None)->dict:
         a['unique_contracts']=len(a.pop('contracts'));a['engagement_observations']=a['engagement_observations'][-50:];influence.append(a)
     influence.sort(key=lambda x:(x['unique_contracts'],x['mentions']),reverse=True)
 
-    ledger={'version':1,'updated_at':now,'method':'IMMUTABLE_SOCIAL_EVENT_LEDGER_NO_CAUSALITY_ASSUMED','events_count':len(events),'new_events_this_run':new_count,'events':events};_write(ledger_path,ledger)
-    report={'version':1,'updated_at':now,'status':'ACTIVE_INPUT_BRIDGE' if raw else 'WAITING_FOR_SOCIAL_FEEDS','configured_feed_count':len([u for u in os.getenv('WALLET500_SOCIAL_FEED_URLS','').split(',') if u.strip()]),'seed_events_count':len(_seed_events(out)),'new_events':new_count,'candidate_count':len(candidates),'candidates':candidates[:500],'errors':errors,'rule':'Social attention is a catalyst/research signal only; it never overrides liquidity, security, holder-cluster or manipulation gates.'};_write(out/'social-discovery-candidates.json',report)
-    _write(out/'social-influencer-ledger.json',{'version':1,'updated_at':now,'method':'OBSERVED_MENTIONS_ONLY_NO_INFLUENCE_CLAIM_WITHOUT_FORWARD_OUTCOMES','influencers':influence[:1000]})
+    ledger={'version':2,'updated_at':now,'method':'IMMUTABLE_SOCIAL_EVENT_LEDGER_NO_CAUSALITY_ASSUMED','events_count':len(events),'new_events_this_run':new_count,'quality_metadata_preserved':True,'events':events};_write(ledger_path,ledger)
+    report={'version':2,'updated_at':now,'status':'ACTIVE_INPUT_BRIDGE' if raw else 'WAITING_FOR_SOCIAL_FEEDS','configured_feed_count':len([u for u in os.getenv('WALLET500_SOCIAL_FEED_URLS','').split(',') if u.strip()]),'seed_events_count':len(_seed_events(out)),'new_events':new_count,'candidate_count':len(candidates),'candidates':candidates[:500],'errors':errors,'rule':'Raw social mentions are evidence only. Organic acceleration must be computed separately and never overrides liquidity, security, holder-cluster or manipulation gates.'};_write(out/'social-discovery-candidates.json',report)
+    _write(out/'social-influencer-ledger.json',{'version':2,'updated_at':now,'method':'OBSERVED_MENTIONS_ONLY_NO_INFLUENCE_CLAIM_WITHOUT_FORWARD_OUTCOMES','influencers':influence[:1000]})
     return {'status':report['status'],'events':len(events),'new_events':new_count,'candidates':len(candidates),'influencers':len(influence),'errors':len(errors)}
 
 
