@@ -19,10 +19,10 @@ on:
 permissions:
   contents: write
 
-# This workflow writes truth-ledger data to main. It must share the same
-# non-cancelling publisher lock as every other generated-data writer.
+# Paper Truth owns its two ledger artifacts and already rebases/pushes fail-closed.
+# Keep its runs from being displaced by unrelated high-frequency data publishers.
 concurrency:
-  group: wallet500-main-data-publisher
+  group: wallet500-paper-truth-publisher
   cancel-in-progress: false
   queue: max
 
