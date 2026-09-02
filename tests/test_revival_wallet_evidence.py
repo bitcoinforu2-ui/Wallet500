@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from wallet500 import revival_wallet_evidence as wallet
 
@@ -53,6 +53,12 @@ def test_extract_trade_requires_signed_token_owner_delta():
 def test_extract_trade_does_not_accept_other_mint_delta():
     tx = _tx("OtherMint", "Wallet111", 10, 25)
     assert wallet._extract_trade(tx, "sig", "TargetMint") is None
+
+
+def test_extract_trade_fails_closed_on_errored_transaction():
+    tx = _tx("TargetMint", "Wallet111", 10, 25)
+    tx["meta"]["err"] = {"InstructionError": [2, "Custom"]}
+    assert wallet._extract_trade(tx, "sig-error", "TargetMint") is None
 
 
 def test_window_counts_unique_verified_wallets():
