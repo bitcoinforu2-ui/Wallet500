@@ -173,15 +173,51 @@ def run(data_dir: Path = DATA) -> dict:
     through strict external verification. Provider outages can delay unknown
     identities but can never turn symbol-only data into an actionable result.
     """
-    # Fail closed on an unapproved production truth-rule change. The 180-day
-    # cohort remains available for research, but it cannot silently become the
-    # live production threshold without strong quantitative approval.
+    # Do not let an unapproved research threshold become production truth. At the
+    # same time, a governance mismatch must not freeze the unrelated DEX truth lane.
+    # Quarantine CEX actionable output to an empty fail-closed set, rebuild the
+    # unified alert feed, and allow the rest of the validated live scan to proceed.
     if MIN_AGE_DAYS != APPROVED_PRODUCTION_MIN_AGE_DAYS:
-        raise RuntimeError(
-            "UNAPPROVED_PRODUCTION_MARKET_AGE_THRESHOLD:"
-            f"observed={MIN_AGE_DAYS}:approved_baseline={APPROVED_PRODUCTION_MIN_AGE_DAYS}:"
-            "research_evidence_is_not_production_approval"
-        )
+        data_dir.mkdir(parents=True, exist_ok=True)
+        radar_path = data_dir / "cex-revival-radar.json"
+        now = datetime.now(timezone.utc).isoformat()
+        previous = _load(radar_path, {})
+        previous_alerts = list(previous.get("alerts") or []) if isinstance(previous, dict) else []
+        blocked_payload = {
+            **(previous if isinstance(previous, dict) else {}),
+            "version": max(int((previous or {}).get("version") or 0), 10) if isinstance(previous, dict) else 10,
+            "alerts": [],
+            "alerts_count": 0,
+            "raw_alerts_before_age_gate": len(previous_alerts),
+            "age_gate": {
+                "status": "BLOCKED_FAIL_CLOSED_UNAPPROVED_PRODUCTION_THRESHOLD",
+                "minimum_market_age_days": MIN_AGE_DAYS,
+                "approved_production_minimum_market_age_days": APPROVED_PRODUCTION_MIN_AGE_DAYS,
+                "accepted": 0,
+                "rejected": len(previous_alerts),
+                "unknown_or_unresolved_identity": "REJECT",
+                "production_change_allowed": False,
+                "policy": "RESEARCH_THRESHOLD_MUST_NOT_BECOME_PRODUCTION_TRUTH_WITHOUT_STRONG_NUMERICAL_EVIDENCE",
+            },
+            "generated_identity_preflight_at": now,
+            "fast_lane_degraded": {
+                "at": now,
+                "reason": "UNAPPROVED_PRODUCTION_MARKET_AGE_THRESHOLD",
+                "policy": "CEX_ACTIONABLE_OUTPUT_QUARANTINED_FAIL_CLOSED;_UNRELATED_LIVE_TRUTH_LANE_CONTINUES",
+            },
+        }
+        _write(radar_path, blocked_payload)
+        real = build_real_alerts(data_dir)
+        return {
+            "status": "BLOCKED_FAIL_CLOSED_UNAPPROVED_PRODUCTION_THRESHOLD",
+            "generated_at": now,
+            "raw_cex_alerts": len(previous_alerts),
+            "registry_verified": 0,
+            "external_age_identity_preflight": {"status": "NOT_RUN_POLICY_BLOCK"},
+            "external_error": None,
+            "dex_identity": {"dex_verified": 0, "pair_pending": 0, "identity_pending": 0},
+            "real_alert_feed": real,
+        }
 
     data_dir.mkdir(parents=True, exist_ok=True)
     radar_path = data_dir / "cex-revival-radar.json"
