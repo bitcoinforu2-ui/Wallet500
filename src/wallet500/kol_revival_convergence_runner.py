@@ -31,10 +31,10 @@ def install_rpc_hardening() -> None:
     tx_cache: dict[tuple[str, str], dict[str, Any] | None] = {}
 
     def throttled_retry_rpc(rpc_url: str, method: str, params: list[Any]) -> Any:
-        # Public/free Solana RPCs commonly rate-limit bursty getTransaction traffic.
-        # A small cross-call gap plus exponential retry is cheaper than silently losing a BUY.
-        for attempt in range(6):
-            gap = 0.16 - (time.monotonic() - last_call["at"])
+        # Keep each run bounded. If a provider stays rate-limited, the no-loss boundary rollback
+        # below makes the next scheduled run retry the interval instead of silently skipping it.
+        for attempt in range(3):
+            gap = 0.25 - (time.monotonic() - last_call["at"])
             if gap > 0:
                 time.sleep(gap)
             try:
@@ -43,14 +43,14 @@ def install_rpc_hardening() -> None:
                 return out
             except urllib.error.HTTPError as exc:
                 last_call["at"] = time.monotonic()
-                if exc.code != 429 or attempt >= 5:
+                if exc.code != 429 or attempt >= 2:
                     raise
-                time.sleep(min(8.0, 0.8 * (2**attempt)))
+                time.sleep(0.6 * (2**attempt))
             except (urllib.error.URLError, TimeoutError, RuntimeError):
                 last_call["at"] = time.monotonic()
-                if attempt >= 5:
+                if attempt >= 2:
                     raise
-                time.sleep(min(8.0, 0.6 * (2**attempt)))
+                time.sleep(0.5 * (2**attempt))
         raise RuntimeError("RPC_RETRY_EXHAUSTED")
 
     engine._rpc = throttled_retry_rpc
@@ -59,7 +59,7 @@ def install_rpc_hardening() -> None:
         key = (rpc_url, signature)
         if key in tx_cache:
             return tx_cache[key]
-        # original_tx resolves engine._rpc dynamically, so it receives the hardened RPC above.
+        # Shared transactions across correlated KOL wallets are fetched once per run.
         tx = original_tx(rpc_url, signature)
         tx_cache[key] = tx
         return tx
@@ -73,10 +73,9 @@ def run() -> dict[str, Any]:
     install_rpc_hardening()
     summary = engine.run_once()
 
-    # Critical no-loss rule: the engine historically advances a wallet boundary even when one
-    # transaction in that interval could not be parsed because the RPC rate-limited us. Roll that
-    # wallet back to the previous boundary so the next 5-minute run retries the interval. Event IDs
-    # are immutable/deduped, therefore already-recorded BUYs are not double-booked.
+    # Critical no-loss rule: if RPC parsing failed anywhere in a wallet's new interval, restore
+    # its previous boundary. The next 5-minute pass retries that interval. Event IDs are immutable
+    # and deduped, so already-recorded BUYs are not double-booked.
     retry_wallets = {
         str(e.get("wallet_id") or "")
         for e in (summary.get("errors") or [])
