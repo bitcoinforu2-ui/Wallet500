@@ -16,12 +16,11 @@ on:
 permissions:
   contents: write
 
-# Core live truth refresh gets its own serial queue so shared publisher saturation
-# cannot evict scans before they start. Publish remains race-safe/fail-closed below.
+# Generation v2 deliberately releases the queue from a stale pre-watchdog run.
+# New scans remain serialized with each other; scoring/gates are unchanged.
 concurrency:
-  group: wallet500-live-scan-publisher
+  group: wallet500-live-scan-publisher-v2
   cancel-in-progress: false
-  queue: max
 
 jobs:
   scan:
@@ -54,7 +53,9 @@ jobs:
         continue-on-error: true
         run: python -m wallet500.moonshot_radar
       - name: Run revival-first intelligence scan
-        run: python -m wallet500.orchestrator
+        run: |
+          set -o pipefail
+          timeout --signal=TERM --kill-after=30s 12m python -m wallet500.orchestrator
       - name: Apply universal live survival gate
         run: python -m wallet500.fresh_solana_gate
       - name: Revalidate immutable exact pairs
