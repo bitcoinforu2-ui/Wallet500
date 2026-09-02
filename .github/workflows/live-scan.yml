@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - 'src/**'
+      - 'tests/test_real_alerts.py'
       - 'experiments/**'
       - 'pyproject.toml'
       - '.github/workflows/live-scan.yml'
@@ -35,8 +36,8 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e . pytest
-      - name: Test 180-day mature age hard gate
-        run: python -m pytest -q tests/test_mature_age_gate.py tests/test_telegram_exact_pair.py
+      - name: Test mature age, exact pair and real-alert truth contracts
+        run: python -m pytest -q tests/test_mature_age_gate.py tests/test_telegram_exact_pair.py tests/test_real_alerts.py
       - name: Ingest 6h external signal cohort
         continue-on-error: true
         run: python -m wallet500.external_signal_cohort
@@ -62,6 +63,10 @@ jobs:
         env:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: python -m wallet500.mature_age_gate --cex
+      - name: Resolve CEX alerts to exact on-chain identity and DEX pair
+        env:
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: python -m wallet500.cex_identity
       - name: Apply universal live survival gate
         run: python -m wallet500.fresh_solana_gate
       - name: Revalidate immutable exact pairs
@@ -101,6 +106,8 @@ jobs:
         run: python -m wallet500.filter_tuning_advisor
       - name: Capture immutable qualified evidence
         run: python -m wallet500.evidence_capture
+      - name: Build fail-closed unified REAL ALERT feed
+        run: python -m wallet500.real_alerts
       - name: Send gated Telegram alerts
         run: python -m wallet500.telegram_alerts
       - name: Send HOT email alerts
