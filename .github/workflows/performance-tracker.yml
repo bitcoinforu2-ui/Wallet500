@@ -29,10 +29,10 @@ on:
 permissions:
   contents: write
 
-# This workflow publishes measurement/research files that overlap with the live scan data set.
-# Serialize all main data publishers so immutable/prospective ledgers cannot rebase-conflict.
+# Truth-critical measurement must not starve behind high-frequency data publishers.
+# Keep this workflow serial in its own queue; publish still fetches/rebases and fails closed on conflicts.
 concurrency:
-  group: wallet500-main-data-publisher
+  group: wallet500-performance-publisher
   cancel-in-progress: false
   queue: max
 
