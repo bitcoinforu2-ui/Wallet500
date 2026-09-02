@@ -31,13 +31,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install and test KOL convergence truth rules
+      - name: Test KOL convergence truth rules on code changes/manual runs
+        if: github.event_name != 'schedule'
         run: |
           pip install -e . pytest
           python -m pytest -q tests/test_kol_revival_convergence.py
       - name: Scan verified KOL wallets forward only
         env:
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+          PYTHONPATH: src
         run: python -m wallet500.kol_revival_convergence_runner
       - name: Validate fail-closed mature contract
         run: |
