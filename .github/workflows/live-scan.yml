@@ -39,6 +39,17 @@ jobs:
       - name: Ingest 6h external signal cohort
         continue-on-error: true
         run: python -m wallet500.external_signal_cohort
+      - name: Track CryptoYeezus direct wallet 1pct shadow lane
+        continue-on-error: true
+        env:
+          COPY_LIVE_ENABLED: 'false'
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+          JUPITER_API_KEY: ${{ secrets.JUPITER_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python -m pytest -q tests/test_cryptoyeezus_copy.py
+          python -m wallet500.cryptoyeezus_copy
       - name: Capture Moonshot launchpad discovery feed
         continue-on-error: true
         run: python -m wallet500.moonshot_radar
