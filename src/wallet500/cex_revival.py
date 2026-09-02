@@ -118,7 +118,7 @@ def _enrich_with_history(rows,state,now):
         hist.append({'observed_at':now,'price':r['price'],'change_24h_pct':r['change_24h_pct'],'volume_24h':r['volume_24h'],'funding_rate':r['funding_rate'],'open_interest':r['open_interest']})
         histories[key]=hist[-96:]
         enriched.append(e)
-    return enriched,{'version':3,'updated_at':now,'markets':histories}
+    return enriched,{'version':4,'updated_at':now,'markets':histories,'signal_milestones':state.get('signal_milestones') if isinstance(state.get('signal_milestones'),dict) else {}}
 
 def _classify(markets):
     funds=[m['funding_rate'] for m in markets if m.get('funding_rate')]
@@ -130,6 +130,21 @@ def _classify(markets):
     if abs(max_pos)<0.001 and abs(min_neg)<0.001 and price_acc>0:return 'NEUTRAL_FUNDING_BREAKOUT'
     if oi_acc>=8 and price_acc>=2:return 'OI_LED_BREAKOUT'
     return 'CEX_REVIVAL'
+
+def _reference_market(markets):
+    valid=[m for m in markets if _f(m.get('price'))>0]
+    if not valid:return {}
+    return max(valid,key=lambda m:(_f(m.get('volume_24h')),_f(m.get('open_interest'))))
+
+def _milestone(now,markets,score,conf,change,price_acc,vol_acc,oi_acc,fund_abs,kind):
+    ref=_reference_market(markets)
+    return {
+        'kind':kind,'observed_at':now,'reference_exchange':ref.get('exchange'),
+        'reference_price':_f(ref.get('price')),'reference_change_24h_pct':_f(ref.get('change_24h_pct')),
+        'score':min(int(score),100),'confirmations':int(conf),'change_24h_max_pct':round(change,4),
+        'price_acceleration_max_pct':round(price_acc,4),'volume_acceleration_max_pct':round(vol_acc,4),
+        'oi_acceleration_max_pct':round(oi_acc,4),'funding_abs_max':fund_abs,
+    }
 
 def _fetch_source(name,fn):
     got=fn()
@@ -149,7 +164,7 @@ def run_cex_revival(out:Path,now:str):
                 errors.append({'exchange':name,'error':str(e)[:300]});health[name]={'ok':False,'contracts':0}
     state_path=out/'cex-state.json';prev_state=_load(state_path,{})
     rows,state=_enrich_with_history(rows,prev_state,now)
-    _write_state_lossless(state_path,state)
+    milestones=state['signal_milestones']
     groups={}
     for x in rows:
         if x['symbol'].endswith('USDT'):groups.setdefault(x['symbol'],[]).append(x)
@@ -181,11 +196,20 @@ def run_cex_revival(out:Path,now:str):
         if conf>=6:score+=6
         if max(vols,default=0)>=10_000_000:score+=5;reasons.append('large derivatives turnover')
         if dispersion>=8:score+=5;reasons.append(f'cross-exchange momentum dispersion {dispersion:.1f}pp')
+
+        ms=milestones.setdefault(sym,{})
+        snapshot=_milestone(now,markets,score,conf,change,price_acc,vol_acc,oi_acc,fund_abs,'FIRST_SEEN')
+        if 'first_seen' not in ms:ms['first_seen']=snapshot
+        anomaly=(change>=8 or price_acc>=2 or vol_acc>=8 or oi_acc>=5 or fund_abs>=0.0005 or dispersion>=8)
+        if anomaly and 'first_anomaly' not in ms:
+            ms['first_anomaly']={**snapshot,'kind':'FIRST_ANOMALY'}
         if score>=35:
-            alerts.append({'symbol':sym,'cex_revival_score':min(score,100),'archetype':_classify(markets),'reasons':reasons,'confirmations':conf,'exchanges':sorted(exs),'change_24h_max_pct':round(change,4),'price_acceleration_max_pct':round(price_acc,4),'volume_acceleration_max_pct':round(vol_acc,4),'oi_acceleration_max_pct':round(oi_acc,4),'funding_abs_max':fund_abs,'momentum_dispersion_pp':round(dispersion,3),'markets':markets})
+            if 'first_alert' not in ms:ms['first_alert']={**snapshot,'kind':'FIRST_ALERT'}
+            alerts.append({'symbol':sym,'cex_revival_score':min(score,100),'archetype':_classify(markets),'reasons':reasons,'confirmations':conf,'exchanges':sorted(exs),'change_24h_max_pct':round(change,4),'price_acceleration_max_pct':round(price_acc,4),'volume_acceleration_max_pct':round(vol_acc,4),'oi_acceleration_max_pct':round(oi_acc,4),'funding_abs_max':fund_abs,'momentum_dispersion_pp':round(dispersion,3),'milestones':ms,'markets':markets})
+    _write_state_lossless(state_path,state)
     alerts.sort(key=lambda x:(x['cex_revival_score'],x['confirmations'],x['price_acceleration_max_pct']),reverse=True)
-    payload={'version':4,'generated_at':now,'requested_sources':[x[0] for x in SOURCES],'source_health':health,'healthy_sources':sum(1 for x in health.values() if x['ok']),'contracts_seen':len(rows),'symbols_seen':len(groups),'alerts_count':len(alerts),'errors':errors,'alerts':alerts}
+    payload={'version':5,'generated_at':now,'requested_sources':[x[0] for x in SOURCES],'source_health':health,'healthy_sources':sum(1 for x in health.values() if x['ok']),'contracts_seen':len(rows),'symbols_seen':len(groups),'alerts_count':len(alerts),'milestone_method':'IMMUTABLE_FIRST_SEEN_FIRST_FEATURE_ANOMALY_FIRST_SCORE35_ALERT','errors':errors,'alerts':alerts}
     (out/'cex-revival-radar.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
-    learning={'version':2,'updated_at':now,'purpose':'learn which early CEX revival features precede verified follow-through; case studies are not counted as Wallet500 calls','features':['price_acceleration','volume24_acceleration','open_interest_acceleration','funding_divergence','cross_exchange_confirmation','momentum_dispersion'],'top_candidates':[{'symbol':x['symbol'],'score':x['cex_revival_score'],'archetype':x['archetype'],'confirmations':x['confirmations'],'price_acceleration_max_pct':x['price_acceleration_max_pct'],'volume_acceleration_max_pct':x['volume_acceleration_max_pct'],'oi_acceleration_max_pct':x['oi_acceleration_max_pct'],'funding_abs_max':x['funding_abs_max']} for x in alerts[:50]]}
+    learning={'version':3,'updated_at':now,'purpose':'learn which early CEX revival features precede verified follow-through; case studies are not counted as Wallet500 calls','features':['price_acceleration','volume24_acceleration','open_interest_acceleration','funding_divergence','cross_exchange_confirmation','momentum_dispersion'],'milestone_method':'IMMUTABLE_FIRST_SEEN_FIRST_FEATURE_ANOMALY_FIRST_SCORE35_ALERT','top_candidates':[{'symbol':x['symbol'],'score':x['cex_revival_score'],'archetype':x['archetype'],'confirmations':x['confirmations'],'price_acceleration_max_pct':x['price_acceleration_max_pct'],'volume_acceleration_max_pct':x['volume_acceleration_max_pct'],'oi_acceleration_max_pct':x['oi_acceleration_max_pct'],'funding_abs_max':x['funding_abs_max'],'milestones':x.get('milestones',{})} for x in alerts[:50]]}
     (out/'cex-learning.json').write_text(json.dumps(learning,indent=2),encoding='utf-8')
     return payload
