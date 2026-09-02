@@ -60,24 +60,68 @@ def _age_ok(*rows: dict) -> tuple[bool, int | None]:
     return age >= 180, age
 
 
+def _row_pair(row: dict) -> str | None:
+    pair = str(row.get("pair_address") or row.get("entry_pair_address") or "").strip()
+    return pair or None
+
+
+def _row_pair_exact(row: dict) -> bool:
+    return bool(
+        row.get("identity_status") == "DEX_VERIFIED"
+        or row.get("exact_pair_verified") is True
+        or row.get("dex_link_type") == "DEXSCREENER_VERIFIED_PAIR"
+        or row.get("measurement_status") == "VERIFIED_EXACT_PAIR"
+        or row.get("pair_identity_locked") is True
+        or row.get("qualification") in {"QUALIFIED", "REVIVAL_QUALIFIED"}
+    )
+
+
 def _pair_truth(*rows: dict) -> tuple[str | None, bool]:
     for row in rows:
         if not isinstance(row, dict):
             continue
-        pair = str(row.get("pair_address") or row.get("entry_pair_address") or "").strip()
-        if not pair:
-            continue
-        exact = (
-            row.get("identity_status") == "DEX_VERIFIED"
-            or row.get("exact_pair_verified") is True
-            or row.get("dex_link_type") == "DEXSCREENER_VERIFIED_PAIR"
-            or row.get("measurement_status") == "VERIFIED_EXACT_PAIR"
-            or row.get("pair_identity_locked") is True
-            or row.get("qualification") in {"QUALIFIED", "REVIVAL_QUALIFIED"}
-        )
-        if exact:
+        pair = _row_pair(row)
+        if pair and _row_pair_exact(row):
             return pair, True
     return None, False
+
+
+def _execution_liquidity_truth(*rows: dict) -> tuple[float, float | None, str | None, str | None]:
+    """Return liquidity for an exact executable pair, never token-wide TVL.
+
+    Explicit `execution_pool_liquidity_usd` emitted by the multi-provider identity
+    resolver is authoritative. Legacy exact-pair rows are accepted only as a
+    backwards-compatible fallback. `dex_total_liquidity_usd` is observability
+    metadata and is deliberately never used to pass the $50K tradability gate.
+    """
+    explicit = []
+    legacy = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        pair = _row_pair(row)
+        if not pair or not _row_pair_exact(row):
+            continue
+
+        total = _num(row.get("dex_total_liquidity_usd"), -1)
+        total_value = total if total >= 0 else None
+        execution = _num(row.get("execution_pool_liquidity_usd"), -1)
+        if execution >= 0:
+            explicit.append((execution, total_value, pair, "EXECUTION_POOL_LIQUIDITY_USD"))
+            continue
+
+        # Compatibility for exact-pair rows generated before the explicit field
+        # existed. Never look at aggregate/total liquidity here.
+        for key in ("dex_liquidity_usd", "liquidity_usd", "current_liquidity_usd"):
+            value = _num(row.get(key), -1)
+            if value >= 0:
+                legacy.append((value, total_value, pair, f"LEGACY_EXACT_PAIR:{key}"))
+                break
+
+    candidates = explicit if explicit else legacy
+    if not candidates:
+        return 0.0, None, None, None
+    return max(candidates, key=lambda x: x[0])
 
 
 def _identity_truth(*rows: dict) -> tuple[str | None, str | None, bool]:
@@ -97,18 +141,6 @@ def _identity_truth(*rows: dict) -> tuple[str | None, str | None, bool]:
         if chain and token and exact:
             return chain, token, True
     return None, None, False
-
-
-def _liquidity(*rows: dict) -> float:
-    vals = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        for key in ("liquidity_usd", "dex_liquidity_usd", "current_liquidity_usd"):
-            v = _num(row.get(key), -1)
-            if v >= 0:
-                vals.append(v)
-    return max(vals, default=0.0)
 
 
 def _price(*rows: dict) -> float | None:
@@ -213,8 +245,14 @@ def build(data_dir: Path = DATA) -> dict:
         rows = (active, precursor, waking, cex, revival)
         chain, token, exact_identity = _identity_truth(*rows)
         pair, exact_pair = _pair_truth(*rows)
+        execution_liq, total_dex_liq, execution_pair, liquidity_source = _execution_liquidity_truth(*rows)
+        # Couple the tradability gate and visible pair to the exact pool whose
+        # liquidity was measured. This prevents a thin/stale pair from masking
+        # a deeper exact-token execution pool discovered by another provider.
+        if execution_pair:
+            pair = execution_pair
+            exact_pair = True
         age_ok, age_days = _age_ok(*rows)
-        liq = _liquidity(*rows)
         lanes, lane_count = _source_score(precursor, waking, cex, active, revival)
         blocked, risk_reasons = _risk_blocked(*rows)
         precursor_status = precursor.get("status")
@@ -228,8 +266,8 @@ def build(data_dir: Path = DATA) -> dict:
             blockers.append("EXACT_DEX_PAIR_REQUIRED")
         if not age_ok:
             blockers.append("VERIFIED_MARKET_AGE_180D_REQUIRED")
-        if liq < cfg.verified_min_liquidity_usd:
-            blockers.append(f"LIQUIDITY_LT_{int(cfg.verified_min_liquidity_usd/1000)}K")
+        if execution_liq < cfg.verified_min_liquidity_usd:
+            blockers.append(f"EXECUTION_POOL_LIQUIDITY_LT_{int(cfg.verified_min_liquidity_usd/1000)}K")
         if blocked:
             blockers.extend(risk_reasons)
         if not production_pass and not precursor_pass:
@@ -251,10 +289,16 @@ def build(data_dir: Path = DATA) -> dict:
             "chain": chain,
             "token_address": token,
             "pair_address": pair,
-            "dex": _first(active.get("dex"), revival.get("dex"), cex.get("dex")),
-            "dex_url": _first(active.get("url"), revival.get("dex_url"), cex.get("dex_url")),
+            "dex": _first(cex.get("dex"), active.get("dex"), revival.get("dex")),
+            "dex_url": _first(cex.get("dex_url"), active.get("url"), revival.get("dex_url")),
             "price_usd": _price(active, precursor, waking, cex, revival),
-            "liquidity_usd": liq,
+            # `liquidity_usd` remains for dashboard compatibility, but now means
+            # the exact selected EXECUTION pool, not token-wide aggregate TVL.
+            "liquidity_usd": execution_liq,
+            "execution_pool_liquidity_usd": execution_liq,
+            "dex_total_liquidity_usd": total_dex_liq,
+            "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+            "liquidity_truth_source": liquidity_source,
             "market_age_days": age_days,
             "score": round(score, 2),
             "source_lanes": sorted(set(lanes)),
@@ -294,18 +338,20 @@ def build(data_dir: Path = DATA) -> dict:
             "actionable_research_alert": False,
         })
 
-    real_alerts.sort(key=lambda x: (x.get("score") or 0, x.get("source_lane_count") or 0, x.get("liquidity_usd") or 0), reverse=True)
+    real_alerts.sort(key=lambda x: (x.get("score") or 0, x.get("source_lane_count") or 0, x.get("execution_pool_liquidity_usd") or 0), reverse=True)
     verified_watch.sort(key=lambda x: (x.get("source_lane_count") or 0, x.get("score") or 0), reverse=True)
     identity_pending.sort(key=lambda x: (x.get("cex_score") or 0, x.get("coherent_confirmations") or 0), reverse=True)
 
     return {
-        "version": 1,
+        "version": 2,
         "generated_at": now,
-        "mode": "FAIL_CLOSED_REAL_ALERT_FEED_V1",
+        "mode": "FAIL_CLOSED_REAL_ALERT_FEED_V2_EXECUTION_POOL_LIQUIDITY",
         "truth_contract": {
             "focus": "VETERAN_COIN_REVIVAL_ONLY",
             "minimum_market_age_days": 180,
-            "minimum_liquidity_usd": cfg.verified_min_liquidity_usd,
+            "minimum_execution_pool_liquidity_usd": cfg.verified_min_liquidity_usd,
+            "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+            "dex_total_liquidity_is_informational_only": True,
             "exact_onchain_identity_required": True,
             "exact_dex_pair_required": True,
             "symbol_only_never_actionable": True,
