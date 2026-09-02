@@ -159,8 +159,8 @@ jobs:
           check_text _site/index.html 'EXTERNAL-ONLY EXPERIMENT'
           check_text _site/index.html 'id="external-only"'
           check_text _site/index.html 'W500_EXPERIMENT_RUBRIC_V1'
-          check_text _site/live/index.html '<title>Wallet500 Live</title>'
-          check_text _site/live/index.html 'Liquidity ≥ $50K'
+          check_text _site/live/index.html '<title>Wallet500 · Live Radar</title>'
+          check_text _site/live/index.html '🔥 מה קורה עכשיו · LIVE RADAR'
           check_text _site/live/index.html 'W500_EXPERIMENT_RUBRIC_V1'
           check_text _site/performance/index.html 'LIVE PRICE 5s'
           check_text _site/performance/index.html 'RESEARCH LAB — VISUAL'
@@ -202,7 +202,7 @@ jobs:
           if d.get('mode') != 'RESEARCH_ONLY_REVIVAL_SOLANA_EXPANDED_V6': raise SystemExit(f"revival expanded V6 truth mode missing: {d.get('mode')}")
           if d.get('network') != 'solana': raise SystemExit('revival network is not Solana')
           if d.get('network_filter') != 'STRICT_SOLANA_ONLY_PLATFORM_FOOTPRINT': raise SystemExit('revival base strict Solana-only footprint contract missing')
-          if d.get('asset_filter') != 'SOLANA_ONLY_PLATFORM_NON_STABLE_NON_PEGGED_ONLY': raise SystemExit('revival base strict non-pegged asset filter missing')
+          if d.get('asset_filter') != 'SOLANA_ONLY_PLATFORM_NON_STABLE_NON_PEGED_ONLY': raise SystemExit('revival base strict non-pegged asset filter missing')
           if d.get('candidate_cap') is not None: raise SystemExit('revival fixed candidate cap must be disabled')
           contract=d.get('discovery_expansion_contract') or {}
           if contract.get('version') != 'REVIVAL_DISCOVERY_ABSORPTION_EXPANSION_V2': raise SystemExit('revival discovery expansion V2 contract missing')
