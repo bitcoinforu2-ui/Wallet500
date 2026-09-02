@@ -5,12 +5,13 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .cex_identity import run as resolve_identity
+from .cex_identity import _verified_pairs, run as resolve_identity
 from .cex_identity_preflight import run as verify_age_and_identity
 from .cex_revival import run_cex_revival
 from .real_alerts import run as build_real_alerts
 
 DATA = Path("data")
+MIN_AGE_DAYS = 180
 
 
 def _load(path: Path, default):
@@ -36,78 +37,193 @@ def _retry(fn, attempts: int = 3):
     raise last
 
 
+def _base_symbol(value: object) -> str:
+    s = str(value or "").upper().replace("-", "").replace("_", "").strip()
+    if s.endswith("USDTM"):
+        return s[:-5]
+    if s.endswith("USDT"):
+        return s[:-4]
+    return s
+
+
+def _registry_rows(raw_rows: list[dict], data_dir: Path, now: datetime) -> tuple[list[dict], list[dict]]:
+    registry = _load(data_dir / "cex-identity-registry.json", {})
+    symbols = registry.get("symbols") if isinstance(registry, dict) else {}
+    symbols = symbols if isinstance(symbols, dict) else {}
+    registered, unknown = [], []
+    for row in raw_rows:
+        reg = symbols.get(_base_symbol(row.get("symbol")))
+        if not isinstance(reg, dict):
+            unknown.append(row)
+            continue
+        evidence = str(reg.get("market_age_evidence_at") or "").strip()
+        try:
+            s = evidence[:-1] + "+00:00" if evidence.endswith("Z") else evidence
+            d = datetime.fromisoformat(s)
+            if d.tzinfo is None:
+                d = d.replace(tzinfo=timezone.utc)
+            age_days = int((now - d.astimezone(timezone.utc)).total_seconds() // 86400)
+        except Exception:
+            age_days = -1
+        chain = str(reg.get("chain") or "").strip().lower()
+        token = str(reg.get("token_address") or "").strip()
+        coin_id = str(reg.get("coingecko_id") or "").strip()
+        if age_days < MIN_AGE_DAYS or not chain or not token or not coin_id:
+            unknown.append(row)
+            continue
+        registered.append({
+            **row,
+            "coingecko_id": coin_id,
+            "chain": chain,
+            "token_address": token,
+            "market_age_verified": True,
+            "market_age_min_days": age_days,
+            "market_age_evidence_at": evidence,
+            "market_age_evidence_source": reg.get("evidence_source") or "EXACT_IDENTITY_REGISTRY",
+            "cex_identity_preflight_verified": True,
+            "identity_registry_verified": True,
+            "cex_identity_preflight": {
+                "method": "EXACT_IDENTITY_REGISTRY",
+                "registry_version": registry.get("version"),
+            },
+        })
+    return registered, unknown
+
+
+def _preflight_unknown(raw_payload: dict, unknown: list[dict], data_dir: Path) -> tuple[list[dict], dict, str | None]:
+    if not unknown:
+        return [], {"accepted": 0, "rejected": 0, "status": "NOT_NEEDED_ALL_REGISTERED"}, None
+    temp = data_dir / ".cex-preflight-unknown.json"
+    _write(temp, {**raw_payload, "alerts": unknown, "alerts_count": len(unknown)})
+    try:
+        report = _retry(lambda: verify_age_and_identity(temp), attempts=3)
+        payload = _load(temp, {})
+        return list(payload.get("alerts") or []), report, None
+    except Exception as e:
+        return [], {
+            "accepted": 0,
+            "rejected": len(unknown),
+            "status": "DEGRADED_FAIL_CLOSED_PROVIDER_TRANSIENT",
+        }, f"{type(e).__name__}: {e}"[:500]
+    finally:
+        try:
+            temp.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def _apply_registry_dex_fallback(payload: dict) -> dict:
+    rows = list(payload.get("alerts") or [])
+    for i, row in enumerate(rows):
+        if row.get("identity_registry_verified") is not True or row.get("identity_status") == "DEX_VERIFIED":
+            continue
+        candidate = {
+            "chain": str(row.get("chain") or "").lower(),
+            "token_address": str(row.get("token_address") or ""),
+            "coingecko_platform": "identity-registry",
+        }
+        try:
+            pairs = _verified_pairs(candidate)
+        except Exception:
+            pairs = []
+        if not pairs:
+            rows[i] = {
+                **row,
+                "identity_status": "IDENTITY_RESOLVED_PAIR_PENDING",
+                "identity_blocker": "EXACT_DEX_PAIR_NOT_FOUND_ACROSS_PROVIDERS",
+                "actionable": False,
+            }
+            continue
+        best = max(pairs, key=lambda x: (float(x.get("liquidity_usd") or 0), float(x.get("volume_h24") or 0)))
+        rows[i] = {
+            **row,
+            "identity_status": "DEX_VERIFIED",
+            "identity_verified": True,
+            "pair_address": best.get("pair_address"),
+            "dex": best.get("dex"),
+            "dex_url": best.get("dex_url"),
+            "dex_price_usd": best.get("price_usd"),
+            "dex_liquidity_usd": best.get("liquidity_usd"),
+            "dex_volume_h1": best.get("volume_h1"),
+            "dex_volume_h24": best.get("volume_h24"),
+            "pair_created_at": best.get("pair_created_at"),
+            "pair_provider": best.get("pair_provider"),
+            "exact_token_side": best.get("exact_token_side"),
+            "identity_source": "EXACT_IDENTITY_REGISTRY_PLUS_EXACT_ADDRESS_DEX_POOL",
+            "pair_selection_rule": "HIGHEST_CURRENT_LIQUIDITY_AMONG_EXACT_TOKEN_PAIRS_ACROSS_FALLBACK_PROVIDERS",
+            "actionable": False,
+        }
+    payload["alerts"] = rows
+    payload["identity_counts"] = {
+        "dex_verified": sum(1 for x in rows if x.get("identity_status") == "DEX_VERIFIED"),
+        "pair_pending": sum(1 for x in rows if x.get("identity_status") == "IDENTITY_RESOLVED_PAIR_PENDING"),
+        "identity_pending": sum(1 for x in rows if x.get("identity_status") == "IDENTITY_PENDING"),
+    }
+    return payload
+
+
 def run(data_dir: Path = DATA) -> dict:
     """Refresh veteran CEX identity before slower research stages.
 
-    A provider outage may delay a *new* identity, but it must never erase the
-    last verified identity feed or crash the rest of Wallet500. All actionable
-    semantics remain fail-closed.
+    Exact registry identities are used first. Unknown/ambiguous symbols still go
+    through strict external verification. Provider outages can delay unknown
+    identities but can never turn symbol-only data into an actionable result.
     """
     data_dir.mkdir(parents=True, exist_ok=True)
     radar_path = data_dir / "cex-revival-radar.json"
-    previous_verified = _load(radar_path, {})
-    now = datetime.now(timezone.utc).isoformat()
+    now_dt = datetime.now(timezone.utc)
+    now = now_dt.isoformat()
     raw = run_cex_revival(data_dir, now)
+    raw_payload = _load(radar_path, {})
+    raw_rows = list(raw_payload.get("alerts") or [])
 
-    try:
-        age = _retry(lambda: verify_age_and_identity(radar_path), attempts=3)
-    except Exception as e:
-        # The raw CEX scan has no verified identity yet. Restore the previous
-        # verified snapshot rather than exposing raw symbol-only rows as truth.
-        if previous_verified and previous_verified.get("age_gate"):
-            previous_verified["fast_lane_degraded"] = {
-                "at": now,
-                "reason": f"AGE_IDENTITY_PROVIDER_TRANSIENT:{type(e).__name__}",
-                "policy": "LAST_VERIFIED_SNAPSHOT_PRESERVED_FAIL_CLOSED",
-            }
-            _write(radar_path, previous_verified)
-            real = build_real_alerts(data_dir)
-            return {
-                "status": "DEGRADED_LAST_VERIFIED_PRESERVED",
-                "generated_at": now,
-                "raw_cex_alerts_observed": raw.get("alerts_count", 0),
-                "error": f"{type(e).__name__}: {e}"[:500],
-                "real_alert_feed": real,
-            }
-        # No prior verified truth exists. Publish no CEX identity rather than a
-        # symbol-only pseudo-result, but keep the workflow alive.
-        safe = {
-            "version": 10,
-            "generated_at": now,
-            "alerts_count": 0,
-            "alerts": [],
-            "age_gate": {
-                "status": "DEGRADED_FAIL_CLOSED",
-                "minimum_market_age_days": 180,
-                "accepted": 0,
-                "rejected": raw.get("alerts_count", 0),
-                "unknown_or_unresolved_identity": "REJECT",
-            },
-            "identity_counts": {"dex_verified": 0, "pair_pending": 0, "identity_pending": 0},
-            "fast_lane_degraded": {
-                "at": now,
-                "reason": f"AGE_IDENTITY_PROVIDER_TRANSIENT:{type(e).__name__}",
-                "policy": "NO_UNVERIFIED_CEX_ALERT_EXPOSED",
-            },
-        }
-        _write(radar_path, safe)
-        real = build_real_alerts(data_dir)
-        return {
-            "status": "DEGRADED_FAIL_CLOSED",
-            "generated_at": now,
-            "raw_cex_alerts_observed": raw.get("alerts_count", 0),
-            "error": f"{type(e).__name__}: {e}"[:500],
-            "real_alert_feed": real,
-        }
+    registered, unknown = _registry_rows(raw_rows, data_dir, now_dt)
+    external_rows, ext_report, ext_error = _preflight_unknown(raw_payload, unknown, data_dir)
+    merged = registered + external_rows
+    merged.sort(key=lambda x: (float(x.get("cex_revival_score") or 0), int(x.get("coherent_confirmations") or 0)), reverse=True)
 
-    identity = _retry(lambda: resolve_identity(radar_path), attempts=3)
+    preflight_payload = {
+        **raw_payload,
+        "version": max(int(raw_payload.get("version") or 0), 9),
+        "alerts": merged,
+        "alerts_count": len(merged),
+        "raw_alerts_before_age_gate": len(raw_rows),
+        "age_gate": {
+            "status": "ENFORCED_FAIL_CLOSED" if ext_error is None else "DEGRADED_UNKNOWN_IDENTITIES_FAIL_CLOSED",
+            "minimum_market_age_days": MIN_AGE_DAYS,
+            "accepted": len(merged),
+            "rejected": max(0, len(raw_rows) - len(merged)),
+            "registered_exact_identities": len(registered),
+            "external_preflight": ext_report,
+            "unknown_or_unresolved_identity": "REJECT",
+        },
+        "generated_identity_preflight_at": now,
+    }
+    if ext_error:
+        preflight_payload["fast_lane_degraded"] = {
+            "at": now,
+            "reason": "EXTERNAL_IDENTITY_PROVIDER_TRANSIENT",
+            "detail": ext_error,
+            "policy": "REGISTERED_EXACT_IDENTITIES_KEPT;_UNKNOWN_IDENTITIES_FAIL_CLOSED",
+        }
+    _write(radar_path, preflight_payload)
+
+    # Standard resolver handles all externally verified rows. If CoinGecko's
+    # platform endpoint is unavailable, registry rows are repaired below from
+    # their exact chain+contract without trusting the symbol.
+    identity = _retry(lambda: resolve_identity(radar_path), attempts=2)
+    resolved_payload = _apply_registry_dex_fallback(_load(radar_path, {}))
+    _write(radar_path, resolved_payload)
     real = build_real_alerts(data_dir)
+
     return {
-        "status": "OK",
+        "status": "OK" if ext_error is None else "DEGRADED_UNKNOWN_IDENTITIES_FAIL_CLOSED",
         "generated_at": now,
         "raw_cex_alerts": raw.get("alerts_count", 0),
-        "age_identity_preflight": age,
-        "dex_identity": identity,
+        "registry_verified": len(registered),
+        "external_age_identity_preflight": ext_report,
+        "external_error": ext_error,
+        "dex_identity": resolved_payload.get("identity_counts", identity),
         "real_alert_feed": real,
     }
 
