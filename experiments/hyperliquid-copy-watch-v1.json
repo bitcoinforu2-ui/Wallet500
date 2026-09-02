@@ -1,0 +1,44 @@
+{
+  "version": "HYPERLIQUID_COPY_WATCH_V1",
+  "mode": "FORWARD_ONLY_TRACK_AND_SCREEN",
+  "description": "Track public Hyperliquid trader accounts and independently measure whether their fills look copyable before any real-money test.",
+  "candidates": [
+    {
+      "id": "HL-A",
+      "address": "0xda830d2d83a57cea255bcfd0cf89c3e94abde0fd",
+      "source": "PUBLIC_COPYABILITY_AUDIT_CANDIDATE"
+    },
+    {
+      "id": "HL-B",
+      "address": "0x20438cfdd36d75e185d6601697eb1973f4aee79d",
+      "source": "PUBLIC_COPYABILITY_AUDIT_CANDIDATE"
+    },
+    {
+      "id": "HL-C",
+      "address": "0xdd7a372377fc633f74ab6e20963803d52f448830",
+      "source": "PUBLIC_COPYABILITY_AUDIT_CANDIDATE"
+    }
+  ],
+  "screening": {
+    "min_history_days": 180,
+    "min_closed_fill_events": 200,
+    "min_close_win_rate_proxy_pct": 60.0,
+    "max_drawdown_pct": 20.0,
+    "require_positive_month_pnl": true,
+    "require_positive_all_time_pnl": true,
+    "max_fills_per_day_30d": 50.0,
+    "min_forward_observations_for_copyability": 20,
+    "max_forward_median_abs_slippage_bps": 20.0,
+    "max_forward_p95_abs_slippage_bps": 50.0
+  },
+  "truth_contract": {
+    "forward_only_copyability_measurement": true,
+    "public_onchain_data_only": true,
+    "no_hindsight_entry": true,
+    "no_real_money": true,
+    "no_automatic_orders": true,
+    "win_rate_is_close_fill_proxy_not_claimed_portfolio_win_rate": true,
+    "copyability_requires_forward_price_observations": true,
+    "failures_and_losing_fills_are_retained": true
+  }
+}
