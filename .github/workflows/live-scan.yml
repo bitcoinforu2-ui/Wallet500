@@ -61,6 +61,11 @@ jobs:
             echo "No fast-lane data changes"
           else
             git commit -m "data: refresh fast veteran CEX identity feed"
+            # The scanner can refresh learning-only files that are intentionally
+            # excluded from this fast publish. Discard only those uncommitted
+            # byproducts before rebasing the committed live feed.
+            git reset --hard HEAD
+            git clean -fd
             for attempt in 1 2 3; do
               git fetch origin main
               if ! git rebase origin/main; then
