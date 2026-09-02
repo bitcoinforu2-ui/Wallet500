@@ -1,0 +1,337 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+from .config import Settings
+
+DATA = Path("data")
+REAL_PRECURSOR_STATUSES = {"HIGH_CONVICTION_PRECURSOR", "PRE_BREAKOUT_CANDIDATE", "EARLY_REVIVAL_WATCH"}
+REAL_WAKING_STATUSES = {"WAKING_CONFIRMED_RESEARCH", "WAKING_STRONG_RESEARCH"}
+EVM_CHAINS = {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche", "fantom", "linea", "zksync", "mantle", "scroll", "blast"}
+
+
+def _load(path: Path, default):
+    try:
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else default
+    except Exception:
+        return default
+
+
+def _key(chain: object, token: object) -> str | None:
+    c = str(chain or "").strip().lower()
+    t = str(token or "").strip()
+    if not c or not t:
+        return None
+    if c in EVM_CHAINS:
+        t = t.lower()
+    return f"{c}:{t}"
+
+
+def _num(v, default=0.0) -> float:
+    try:
+        return float(v if v is not None else default)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _first(*values):
+    for value in values:
+        if value not in (None, "", [], {}):
+            return value
+    return None
+
+
+def _age_ok(*rows: dict) -> tuple[bool, int | None]:
+    ages = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("market_age_verified") is True:
+            try:
+                ages.append(int(row.get("market_age_min_days")))
+            except (TypeError, ValueError):
+                pass
+    if not ages:
+        return False, None
+    # The minimum verified lower bound is the conservative truth value.
+    age = min(ages)
+    return age >= 180, age
+
+
+def _pair_truth(*rows: dict) -> tuple[str | None, bool]:
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        pair = str(row.get("pair_address") or row.get("entry_pair_address") or "").strip()
+        if not pair:
+            continue
+        exact = (
+            row.get("identity_status") == "DEX_VERIFIED"
+            or row.get("exact_pair_verified") is True
+            or row.get("dex_link_type") == "DEXSCREENER_VERIFIED_PAIR"
+            or row.get("measurement_status") == "VERIFIED_EXACT_PAIR"
+            or row.get("pair_identity_locked") is True
+            or row.get("qualification") in {"QUALIFIED", "REVIVAL_QUALIFIED"}
+        )
+        if exact:
+            return pair, True
+    return None, False
+
+
+def _identity_truth(*rows: dict) -> tuple[str | None, str | None, bool]:
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        identity = row.get("identity") if isinstance(row.get("identity"), dict) else {}
+        chain = str(_first(row.get("chain"), row.get("network")) or "").strip().lower()
+        token = str(_first(row.get("token_address"), row.get("token"), row.get("mint")) or "").strip()
+        exact = (
+            row.get("identity_status") == "DEX_VERIFIED"
+            or row.get("identity_verified") is True
+            or identity.get("exact_mint_verified") is True
+            or row.get("network_verified") is True
+            or row.get("qualification") in {"QUALIFIED", "REVIVAL_QUALIFIED"}
+        )
+        if chain and token and exact:
+            return chain, token, True
+    return None, None, False
+
+
+def _liquidity(*rows: dict) -> float:
+    vals = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        for key in ("liquidity_usd", "dex_liquidity_usd", "current_liquidity_usd"):
+            v = _num(row.get(key), -1)
+            if v >= 0:
+                vals.append(v)
+    return max(vals, default=0.0)
+
+
+def _price(*rows: dict) -> float | None:
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        for key in ("price_usd", "dex_price_usd", "current_price_usd", "reference_price"):
+            v = _num(row.get(key), 0)
+            if v > 0:
+                return v
+    return None
+
+
+def _symbol(*rows: dict) -> str:
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        s = str(_first(row.get("symbol"), row.get("base_token_symbol"), row.get("name")) or "").strip()
+        if s:
+            if s.upper().endswith("USDT"):
+                s = s[:-4]
+            return s
+    return "UNKNOWN"
+
+
+def _index_rows(rows: list[dict]) -> dict[str, dict]:
+    out = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        k = _key(_first(row.get("chain"), row.get("network")), _first(row.get("token_address"), row.get("token"), row.get("mint")))
+        if k:
+            out[k] = row
+    return out
+
+
+def _source_score(precursor: dict, waking: dict, cex: dict, active: dict, revival: dict) -> tuple[list[str], int]:
+    lanes = []
+    if active and active.get("qualification") in {"QUALIFIED", "REVIVAL_QUALIFIED"}:
+        lanes.append("ACTIVE_PRODUCTION_GATE")
+    if precursor and precursor.get("status") in REAL_PRECURSOR_STATUSES:
+        lanes.append("REVIVAL_PRECURSOR")
+    if waking and waking.get("confirmation_status") in REAL_WAKING_STATUSES:
+        lanes.append("WAKING_CONFIRMATION")
+    if cex and _num(cex.get("cex_revival_score")) >= 35 and int(cex.get("coherent_confirmations") or 0) >= 2:
+        lanes.append("CEX_REVIVAL")
+    if revival and (
+        revival.get("watch_status") in {"WAKING_MARKET_ONLY", "ABSORPTION_WATCH_DISCOVERY_EXPANSION"}
+        or (revival.get("order_flow_absorption") or {}).get("signal") is True
+    ):
+        lanes.append("REVIVAL_MARKET_STRUCTURE")
+    return lanes, len(set(lanes))
+
+
+def _risk_blocked(*rows: dict) -> tuple[bool, list[str]]:
+    reasons = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        status = str(row.get("status") or row.get("qualification") or "")
+        if status in {"LATE_MOVE_DO_NOT_CHASE", "PUMP_DUMP_RISK", "FAILED_SURVIVAL"}:
+            reasons.append(status)
+        if row.get("pump_dump_blocked") is True:
+            reasons.append("PUMP_DUMP_BLOCKED")
+        if row.get("actionable_eligible") is False and status in REAL_PRECURSOR_STATUSES:
+            reasons.append("ACTIONABLE_ELIGIBILITY_FALSE")
+    return bool(reasons), sorted(set(reasons))
+
+
+def build(data_dir: Path = DATA) -> dict:
+    cfg = Settings()
+    now = datetime.now(timezone.utc).isoformat()
+    cex_payload = _load(data_dir / "cex-revival-radar.json", {})
+    precursor_payload = _load(data_dir / "revival-precursor-latest.json", {})
+    waking_payload = _load(data_dir / "waking-confirmation-latest.json", {})
+    revival_payload = _load(data_dir / "revival-1000-latest.json", {})
+    active_rows = _load(data_dir / "active-qualified-candidates.json", [])
+
+    cex_rows = list(cex_payload.get("alerts") or [])
+    precursor_rows = list(precursor_payload.get("targets") or [])
+    waking_rows = list(waking_payload.get("targets") or [])
+    revival_rows = list(revival_payload.get("coins") or [])
+    active_rows = active_rows if isinstance(active_rows, list) else []
+
+    indexes = {
+        "cex": _index_rows(cex_rows),
+        "precursor": _index_rows(precursor_rows),
+        "waking": _index_rows(waking_rows),
+        "revival": _index_rows(revival_rows),
+        "active": _index_rows(active_rows),
+    }
+    keys = set().union(*(set(x) for x in indexes.values()))
+
+    real_alerts = []
+    verified_watch = []
+    for k in keys:
+        cex = indexes["cex"].get(k) or {}
+        precursor = indexes["precursor"].get(k) or {}
+        waking = indexes["waking"].get(k) or {}
+        revival = indexes["revival"].get(k) or {}
+        active = indexes["active"].get(k) or {}
+        rows = (active, precursor, waking, cex, revival)
+        chain, token, exact_identity = _identity_truth(*rows)
+        pair, exact_pair = _pair_truth(*rows)
+        age_ok, age_days = _age_ok(*rows)
+        liq = _liquidity(*rows)
+        lanes, lane_count = _source_score(precursor, waking, cex, active, revival)
+        blocked, risk_reasons = _risk_blocked(*rows)
+        precursor_status = precursor.get("status")
+        production_pass = active.get("qualification") in {"QUALIFIED", "REVIVAL_QUALIFIED"}
+        precursor_pass = precursor_status in REAL_PRECURSOR_STATUSES
+
+        blockers = []
+        if not exact_identity:
+            blockers.append("EXACT_IDENTITY_REQUIRED")
+        if not exact_pair:
+            blockers.append("EXACT_DEX_PAIR_REQUIRED")
+        if not age_ok:
+            blockers.append("VERIFIED_MARKET_AGE_180D_REQUIRED")
+        if liq < cfg.verified_min_liquidity_usd:
+            blockers.append(f"LIQUIDITY_LT_{int(cfg.verified_min_liquidity_usd/1000)}K")
+        if blocked:
+            blockers.extend(risk_reasons)
+        if not production_pass and not precursor_pass:
+            blockers.append("NO_STRONG_DECISION_LANE")
+        if not production_pass and lane_count < 2:
+            blockers.append("INDEPENDENT_CONFIRMATION_LT_2")
+
+        score_parts = [
+            _num(precursor.get("confidence_adjusted_score")),
+            _num(precursor.get("normalized_score_available_evidence")),
+            _num(cex.get("cex_revival_score")),
+            _num(revival.get("revival_score_verified")),
+            _num(revival.get("revival_score")),
+            _num(waking.get("confirmation_score")),
+        ]
+        score = max(score_parts, default=0.0)
+        item = {
+            "symbol": _symbol(active, precursor, waking, cex, revival),
+            "chain": chain,
+            "token_address": token,
+            "pair_address": pair,
+            "dex": _first(active.get("dex"), revival.get("dex"), cex.get("dex")),
+            "dex_url": _first(active.get("url"), revival.get("dex_url"), cex.get("dex_url")),
+            "price_usd": _price(active, precursor, waking, cex, revival),
+            "liquidity_usd": liq,
+            "market_age_days": age_days,
+            "score": round(score, 2),
+            "source_lanes": sorted(set(lanes)),
+            "source_lane_count": lane_count,
+            "precursor_status": precursor_status,
+            "waking_status": waking.get("confirmation_status"),
+            "cex_score": cex.get("cex_revival_score"),
+            "cex_confirmations": cex.get("coherent_confirmations"),
+            "first_alert_at": _first((cex.get("milestones") or {}).get("first_alert", {}).get("observed_at"), precursor.get("t0", {}).get("observed_at"), active.get("qualified_at")),
+            "exact_identity_verified": exact_identity,
+            "exact_pair_verified": exact_pair,
+            "market_age_verified": age_ok,
+            "blockers": sorted(set(blockers)),
+        }
+        if not blockers:
+            item["status"] = "REAL_ALERT"
+            item["actionable_research_alert"] = True
+            real_alerts.append(item)
+        elif exact_identity and exact_pair and age_ok:
+            item["status"] = "VERIFIED_WATCH_NOT_REAL_ALERT"
+            item["actionable_research_alert"] = False
+            verified_watch.append(item)
+
+    # CEX rows that still lack exact identity remain visible, but can never be mistaken for real alerts.
+    identity_pending = []
+    for row in cex_rows:
+        if row.get("identity_status") == "DEX_VERIFIED":
+            continue
+        identity_pending.append({
+            "symbol": _symbol(row),
+            "cex_score": row.get("cex_revival_score"),
+            "market_age_days": row.get("market_age_min_days"),
+            "coherent_confirmations": row.get("coherent_confirmations"),
+            "identity_status": row.get("identity_status") or "IDENTITY_PENDING",
+            "identity_blocker": row.get("identity_blocker") or "EXACT_IDENTITY_NOT_VERIFIED",
+            "status": "IDENTITY_PENDING_NOT_ACTIONABLE",
+            "actionable_research_alert": False,
+        })
+
+    real_alerts.sort(key=lambda x: (x.get("score") or 0, x.get("source_lane_count") or 0, x.get("liquidity_usd") or 0), reverse=True)
+    verified_watch.sort(key=lambda x: (x.get("source_lane_count") or 0, x.get("score") or 0), reverse=True)
+    identity_pending.sort(key=lambda x: (x.get("cex_score") or 0, x.get("coherent_confirmations") or 0), reverse=True)
+
+    return {
+        "version": 1,
+        "generated_at": now,
+        "mode": "FAIL_CLOSED_REAL_ALERT_FEED_V1",
+        "truth_contract": {
+            "focus": "VETERAN_COIN_REVIVAL_ONLY",
+            "minimum_market_age_days": 180,
+            "minimum_liquidity_usd": cfg.verified_min_liquidity_usd,
+            "exact_onchain_identity_required": True,
+            "exact_dex_pair_required": True,
+            "symbol_only_never_actionable": True,
+            "cex_only_never_real_alert": True,
+            "production_gate_or_strong_precursor_required": True,
+            "non_production_alert_requires_min_independent_lanes": 2,
+            "late_move_or_pump_dump_never_real_alert": True,
+            "label_meaning": "REAL_ALERT means the system's strict research alert criteria are met; it is not a guarantee of profit or an instruction to buy.",
+        },
+        "counts": {
+            "real_alerts": len(real_alerts),
+            "verified_watch_not_real": len(verified_watch),
+            "identity_pending_not_actionable": len(identity_pending),
+        },
+        "latest_real_alert": real_alerts[0] if real_alerts else None,
+        "alerts": real_alerts,
+        "verified_watch": verified_watch[:50],
+        "identity_pending": identity_pending[:50],
+    }
+
+
+def run(data_dir: Path = DATA) -> dict:
+    payload = build(data_dir)
+    (data_dir / "real-alerts.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return payload["counts"]
+
+
+if __name__ == "__main__":
+    print(json.dumps(run(), ensure_ascii=False, indent=2))
