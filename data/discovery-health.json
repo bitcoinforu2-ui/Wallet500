@@ -2,19 +2,19 @@
   "version": 2,
   "mode": "DISCOVERY_V2_MULTI_SOURCE",
   "counts": {
-    "ethereum": 120,
+    "bsc": 114,
     "solana": 120,
-    "bsc": 105
+    "ethereum": 109
   },
-  "total_unique_tokens": 345,
+  "total_unique_tokens": 343,
   "effective_limits": {
-    "ethereum": 120,
+    "bsc": 300,
     "solana": 120,
-    "bsc": 300
+    "ethereum": 120
   },
   "cap_saturated": {
     "bsc": false,
-    "ethereum": true,
+    "ethereum": false,
     "solana": true
   },
   "health": {
@@ -23,9 +23,9 @@
     "solana": "HEALTHY"
   },
   "filtered_base_assets": {
-    "ethereum": 14,
+    "bsc": 6,
     "solana": 2,
-    "bsc": 6
+    "ethereum": 14
   },
   "cursor_in": {},
   "cursor_out": {
@@ -77,30 +77,41 @@
   "fresh_overlap_page_count": 5,
   "gecko_min_interval_seconds": 2.15,
   "birdeye_configured": false,
-  "dex_boosted_seen": 32,
+  "dex_boosted_seen": 30,
   "dex_boost_top_seen": 17,
   "unique_tokens_by_source": {
-    "geckoterminal:new_pools:fresh": 199,
-    "geckoterminal:new_pools:deep": 93,
-    "dexscreener:/token-profiles/latest/v1": 16,
-    "dexscreener:/token-boosts/latest/v1": 18,
+    "geckoterminal:new_pools:fresh": 164,
+    "geckoterminal:new_pools:deep": 120,
+    "dexscreener:/token-profiles/latest/v1": 15,
+    "dexscreener:/token-boosts/latest/v1": 17,
     "dexscreener:/token-boosts/top/v1": 17,
-    "dexscreener:/community-takeovers/latest/v1": 8,
-    "geckoterminal:trending_pools": 17,
-    "geckoterminal:top_pools": 16
+    "dexscreener:/community-takeovers/latest/v1": 15,
+    "geckoterminal:trending_pools": 33,
+    "geckoterminal:top_pools": 25
   },
   "cross_source_confirmation_histogram": {
-    "1": 307,
-    "2": 37,
-    "3": 1
+    "1": 280,
+    "2": 63
   },
-  "multi_source_tokens": 38,
-  "errors_count": 6,
+  "multi_source_tokens": 63,
+  "errors_count": 8,
   "recent_errors": [
     {
       "source": "birdeye:new_listing",
       "status": "UNCONFIGURED",
       "error": "BIRDEYE_API_KEY_MISSING"
+    },
+    {
+      "source": "geckoterminal:new_pools:fresh",
+      "chain": "ethereum",
+      "page": 1,
+      "error": "<HTTPError 429: 'Too Many Requests'>"
+    },
+    {
+      "source": "geckoterminal:new_pools:fresh",
+      "chain": "ethereum",
+      "page": 2,
+      "error": "<HTTPError 429: 'Too Many Requests'>"
     },
     {
       "source": "moonshot",
