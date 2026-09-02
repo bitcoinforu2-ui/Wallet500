@@ -17,10 +17,11 @@ on:
 permissions:
   contents: write
 
-# Deep research accumulates explanatory evidence but must never race the live truth
-# publisher. One shared publisher lane keeps exact-pair/state snapshots coherent.
+# This lane is isolated from high-frequency publishers so a scheduled 4h research
+# run cannot be replaced while pending. Its final publisher rebases on current main
+# and only writes deep-research/social-organic artifacts, so live truth files remain untouched.
 concurrency:
-  group: wallet500-main-data-publisher
+  group: wallet500-deep-research-cycle
   cancel-in-progress: false
 
 jobs:
