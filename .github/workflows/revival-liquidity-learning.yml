@@ -8,7 +8,10 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/revival_liquidity_learning.py'
+      - 'src/wallet500/revival_forensics_v2.py'
+      - 'src/wallet500/revival_forensics_runner.py'
       - 'tests/test_revival_liquidity_learning.py'
+      - 'tests/test_revival_forensics_v2.py'
       - '.github/workflows/revival-liquidity-learning.yml'
 
 permissions:
@@ -33,17 +36,13 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Unit tests
-        run: python -m pytest -q tests/test_revival_liquidity_learning.py
+        run: python -m pytest -q tests/test_revival_liquidity_learning.py tests/test_revival_forensics_v2.py
       - name: Run liquidity-price learning sensor
         run: |
           python - <<'PY'
           import json
           import wallet500.revival_liquidity_learning as learning
 
-          # The expanded Revival producer intentionally advanced its research
-          # contract from V4 to V6. Keep this consumer fail-closed: only the
-          # exact current research contract is accepted, and it must remain
-          # Solana-only, no-hindsight, with zero production portfolio impact.
           source = json.loads(learning.REVIVAL.read_text())
           if source.get('mode') != 'RESEARCH_ONLY_REVIVAL_SOLANA_EXPANDED_V6':
               raise SystemExit('REVIVAL_TRUTH_CONTRACT_UNAVAILABLE')
@@ -57,11 +56,14 @@ jobs:
           learning.load_revival = lambda: source
           learning.main()
           PY
-      - name: Validate research truth contract
+      - name: Run full-lifecycle Revival Forensics v2
+        run: python -m wallet500.revival_forensics_runner
+      - name: Validate research truth contracts
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
+
           p=Path('data/revival-liquidity-learning.json')
           s=Path('data/revival-liquidity-learning-state.json')
           if not p.exists() or not s.exists(): raise SystemExit('LIQUIDITY_LEARNING_OUTPUT_MISSING')
@@ -73,9 +75,32 @@ jobs:
           tc=d.get('truth_contract') or {}
           if tc.get('pair_identity')!='EXACT_REVIVAL_VERIFIED_PAIR_ONLY': raise SystemExit('LIQUIDITY_LEARNING_PAIR_IDENTITY_INVALID')
           if tc.get('price_market_cap_identity')!='TOKEN_MUST_BE_DEX_PAIR_BASE_TOKEN': raise SystemExit('LIQUIDITY_LEARNING_BASE_TOKEN_GUARD_MISSING')
+
+          fp=Path('data/revival-forensics-latest.json')
+          fs=Path('data/revival-forensics-state.json')
+          fd=Path('data/revival-forensics-dashboard.json')
+          fa=Path('data/revival-feature-analysis.json')
+          if not all(x.exists() for x in (fp,fs,fd,fa)): raise SystemExit('REVIVAL_FORENSICS_OUTPUT_MISSING')
+          f=json.loads(fp.read_text())
+          if f.get('mode')!='RESEARCH_ONLY_REVIVAL_FORENSICS_V2': raise SystemExit('REVIVAL_FORENSICS_MODE_INVALID')
+          if f.get('contract')!='REVIVAL_FORENSICS_V2': raise SystemExit('REVIVAL_FORENSICS_CONTRACT_INVALID')
+          if f.get('network')!='solana': raise SystemExit('REVIVAL_FORENSICS_NETWORK_INVALID')
+          if f.get('production_portfolio_impact')!='NONE': raise SystemExit('REVIVAL_FORENSICS_PRODUCTION_IMPACT_NOT_NONE')
+          if f.get('automatic_buy') is not False: raise SystemExit('REVIVAL_FORENSICS_AUTOMATIC_BUY_INVALID')
+          if f.get('no_hindsight') is not True: raise SystemExit('REVIVAL_FORENSICS_NO_HINDSIGHT_VIOLATION')
+          if 'NEVER_SWITCH' not in str(f.get('pair_identity_rule')): raise SystemExit('REVIVAL_FORENSICS_PAIR_LOCK_MISSING')
+          if '180' not in str(f.get('age_rule')): raise SystemExit('REVIVAL_FORENSICS_AGE_GATE_MISSING')
+          if '24H' not in str(f.get('full_lifecycle_rule')): raise SystemExit('REVIVAL_FORENSICS_LIFECYCLE_MISSING')
+          for event in f.get('events') or []:
+              t0=event.get('t0') or {}
+              if len(str(t0.get('evidence_sha256') or '')) != 64: raise SystemExit('REVIVAL_FORENSICS_EVIDENCE_HASH_INVALID')
+              if not t0.get('pair_address'): raise SystemExit('REVIVAL_FORENSICS_PAIR_ID_MISSING')
+              if t0.get('market_age_verified') is not True or int(t0.get('market_age_min_days') or 0) < 180:
+                  raise SystemExit('REVIVAL_FORENSICS_EVENT_AGE_INVALID')
           print('REVIVAL_LIQUIDITY_LEARNING_OK', d.get('counts'), d.get('learning_summary'))
+          print('REVIVAL_FORENSICS_V2_OK', f.get('counts'), f.get('wallet500_status'))
           PY
-      - name: Publish learning state and latest research
+      - name: Publish learning and forensics state
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
@@ -84,28 +109,38 @@ jobs:
           tmp="$(mktemp -d)"
           cp data/revival-liquidity-learning.json "$tmp/revival-liquidity-learning.json"
           cp data/revival-liquidity-learning-state.json "$tmp/revival-liquidity-learning-state.json"
+          cp data/revival-forensics-latest.json "$tmp/revival-forensics-latest.json"
+          cp data/revival-forensics-state.json "$tmp/revival-forensics-state.json"
+          cp data/revival-forensics-dashboard.json "$tmp/revival-forensics-dashboard.json"
+          cp data/revival-feature-analysis.json "$tmp/revival-feature-analysis.json"
 
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
             cp "$tmp/revival-liquidity-learning.json" data/revival-liquidity-learning.json
             cp "$tmp/revival-liquidity-learning-state.json" data/revival-liquidity-learning-state.json
-            git add data/revival-liquidity-learning.json data/revival-liquidity-learning-state.json
+            cp "$tmp/revival-forensics-latest.json" data/revival-forensics-latest.json
+            cp "$tmp/revival-forensics-state.json" data/revival-forensics-state.json
+            cp "$tmp/revival-forensics-dashboard.json" data/revival-forensics-dashboard.json
+            cp "$tmp/revival-feature-analysis.json" data/revival-feature-analysis.json
+            git add data/revival-liquidity-learning.json data/revival-liquidity-learning-state.json \
+              data/revival-forensics-latest.json data/revival-forensics-state.json \
+              data/revival-forensics-dashboard.json data/revival-feature-analysis.json
 
             if git diff --cached --quiet; then
-              echo 'REVIVAL_LIQUIDITY_LEARNING_NO_DATA_CHANGE'
+              echo 'REVIVAL_FORENSICS_NO_DATA_CHANGE'
               exit 0
             fi
 
-            git commit -m 'data: refresh Revival liquidity learning'
+            git commit -m 'data: refresh Revival liquidity and forensics'
             if git push origin HEAD:main; then
-              echo 'REVIVAL_LIQUIDITY_LEARNING_PUBLISH_OK'
+              echo 'REVIVAL_FORENSICS_PUBLISH_OK'
               exit 0
             fi
 
-            echo "REVIVAL_LIQUIDITY_LEARNING_PUBLISH_RETRY attempt=$attempt"
+            echo "REVIVAL_FORENSICS_PUBLISH_RETRY attempt=$attempt"
             sleep 3
           done
 
-          echo '::error::REVIVAL_LIQUIDITY_LEARNING_PUBLISH_RACE_EXHAUSTED'
+          echo '::error::REVIVAL_FORENSICS_PUBLISH_RACE_EXHAUSTED'
           exit 1
