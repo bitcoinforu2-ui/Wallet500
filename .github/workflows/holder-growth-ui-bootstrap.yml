@@ -50,12 +50,12 @@ jobs:
               rep(old,new,'holder-state')
 
               marker='function rband(v){'
-              helpers=r'''const hrow=x=>HOLDERS.get(String(x?.token_address||''))||null;
-function hcount(v){return v===null||v===undefined?'—':Number(v).toLocaleString('en-US')}
-function hdelta(row,key){if(!row||row['holder_growth_'+key+'_ready']!==true)return '<span class="mut">BUILDING</span>';let c=row['holder_growth_'+key+'_count'],p=row['holder_growth_'+key+'_pct'];return `<span class="${cls(p)}">${N(c)>=0?'+':''}${hcount(c)} · ${pc(p)}</span>`}
-function renderDogeHolders(){let h=HOLDERS.get(DOGE1_MINT);if(!h){$('dogeHolders').textContent='BUILDING';$('dogeH24').textContent='BUILDING';$('dogeH7').textContent='BUILDING';$('dogeHObs').textContent='0';$('dogeHNote').textContent='Waiting for first verified provider observation for DOGE‑1.';return}$('dogeHolders').textContent=hcount(h.holder_count);$('dogeH24').innerHTML=hdelta(h,'24h');$('dogeH7').innerHTML=hdelta(h,'7d');$('dogeHObs').textContent=h.holder_history_observations??'—';let span=N(h.holder_history_span_hours);$('dogeHNote').textContent=`Provider ${h.source||'verified holder source'} · history ${span.toFixed(1)}h · no interpolation / no retroactive backfill.`}
-async function refreshHolders(){try{let r=await fetch('../data/revival-holder-latest.json?v='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);let d=await r.json();if(d.network!=='solana'||d.no_hindsight!==true)throw Error('HOLDER_TRUTH_CONTRACT');HOLDER_META=d;HOLDERS=new Map((d.coins||[]).map(x=>[String(x.token_address||''),x]));renderDogeHolders();if(DATA)render()}catch(e){if($('dogeHNote'))$('dogeHNote').textContent='HOLDER DATA UNAVAILABLE · '+e.message}}
-'''
+              helpers="""const hrow=x=>HOLDERS.get(String(x?.token_address||''))||null;
+          function hcount(v){return v===null||v===undefined?'—':Number(v).toLocaleString('en-US')}
+          function hdelta(row,key){if(!row||row['holder_growth_'+key+'_ready']!==true)return '<span class=\"mut\">BUILDING</span>';let c=row['holder_growth_'+key+'_count'],p=row['holder_growth_'+key+'_pct'];return `<span class=\"${cls(p)}\">${N(c)>=0?'+':''}${hcount(c)} · ${pc(p)}</span>`}
+          function renderDogeHolders(){let h=HOLDERS.get(DOGE1_MINT);if(!h){$('dogeHolders').textContent='BUILDING';$('dogeH24').textContent='BUILDING';$('dogeH7').textContent='BUILDING';$('dogeHObs').textContent='0';$('dogeHNote').textContent='Waiting for first verified provider observation for DOGE‑1.';return}$('dogeHolders').textContent=hcount(h.holder_count);$('dogeH24').innerHTML=hdelta(h,'24h');$('dogeH7').innerHTML=hdelta(h,'7d');$('dogeHObs').textContent=h.holder_history_observations??'—';let span=N(h.holder_history_span_hours);$('dogeHNote').textContent=`Provider ${h.source||'verified holder source'} · history ${span.toFixed(1)}h · no interpolation / no retroactive backfill.`}
+          async function refreshHolders(){try{let r=await fetch('../data/revival-holder-latest.json?v='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);let d=await r.json();if(d.network!=='solana'||d.no_hindsight!==true)throw Error('HOLDER_TRUTH_CONTRACT');HOLDER_META=d;HOLDERS=new Map((d.coins||[]).map(x=>[String(x.token_address||''),x]));renderDogeHolders();if(DATA)render()}catch(e){if($('dogeHNote'))$('dogeHNote').textContent='HOLDER DATA UNAVAILABLE · '+e.message}}
+          """
               rep(marker,helpers+marker,'holder-helpers')
 
               old="<td class=\"${cls(x.change_30d_pct)}\">${x.change_30d_pct==null?'—':pc(x.change_30d_pct)}</td><td><span class=\"score ${rs>=65?'green':rs>=50?'yellow':'mut'}\">"
