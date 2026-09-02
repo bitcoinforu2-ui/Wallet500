@@ -1,0 +1,120 @@
+name: Wallet500 Autonomous Deep Research
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '13 */4 * * *'
+
+permissions:
+  contents: write
+
+# Deep research accumulates explanatory evidence but must never race the live truth
+# publisher. One shared publisher lane keeps exact-pair/state snapshots coherent.
+concurrency:
+  group: wallet500-main-data-publisher
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+
+      - name: Verify social and deep-research truth rules
+        run: >-
+          python -m pytest -q
+          tests/test_social_organic_acceleration.py
+          tests/test_deep_research_cycle.py
+
+      - name: Refresh organic social layer from immutable social evidence
+        run: python -m wallet500.social_organic_acceleration
+
+      - name: Run autonomous exact-token deep research
+        env:
+          DEEP_RESEARCH_BUDGET: '12'
+          BIRDEYE_API_KEY: ${{ secrets.BIRDEYE_API_KEY }}
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: python -m wallet500.deep_research_cycle
+
+      - name: Validate deep research truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+          from wallet500.revival_1000 import looks_like_solana_address
+
+          p=Path('data/deep-research-dossiers.json')
+          s=Path('data/deep-research-state.json')
+          l=Path('data/deep-research-ledger.json')
+          for f in (p,s,l):
+              if not f.exists() or f.stat().st_size == 0:
+                  raise SystemExit('DEEP_RESEARCH_OUTPUT_MISSING:'+str(f))
+          d=json.loads(p.read_text())
+          st=json.loads(s.read_text())
+          led=json.loads(l.read_text())
+          if d.get('mode')!='RESEARCH_ONLY_AUTONOMOUS_DEEP_RESEARCH_V1': raise SystemExit('DEEP_RESEARCH_MODE_INVALID')
+          if d.get('contract')!='AUTONOMOUS_DEEP_RESEARCH_V1': raise SystemExit('DEEP_RESEARCH_CONTRACT_INVALID')
+          if d.get('network')!='solana' or d.get('production_portfolio_impact')!='NONE': raise SystemExit('DEEP_RESEARCH_PRODUCTION_CONTRACT_INVALID')
+          if d.get('no_hindsight') is not True or int(d.get('cadence_hours') or 0)!=4: raise SystemExit('DEEP_RESEARCH_TIMING_CONTRACT_INVALID')
+          if led.get('mode')!='IMMUTABLE_AUTONOMOUS_DEEP_RESEARCH_LEDGER_V1': raise SystemExit('DEEP_RESEARCH_LEDGER_INVALID')
+          allowed={'RISK_DIVERGENCE','CATALYST_ORGANIC_CONVERGENCE','VERIFIED_CATALYST_CONTEXT','ORGANIC_ATTENTION_ACCELERATING','MARKET_STRUCTURE_STRENGTHENING','NO_NEW_CONTEXT'}
+          generated=datetime.fromisoformat(str(d.get('generated_at')).replace('Z','+00:00'))
+          if generated.tzinfo is None: generated=generated.replace(tzinfo=timezone.utc)
+          if generated > datetime.now(timezone.utc)+timedelta(minutes=2): raise SystemExit('DEEP_RESEARCH_FUTURE_TIMESTAMP')
+          for x in d.get('dossiers') or []:
+              if not looks_like_solana_address(str(x.get('token_address') or '')): raise SystemExit('DEEP_RESEARCH_TOKEN_INVALID')
+              if not looks_like_solana_address(str(x.get('pair_address') or '')): raise SystemExit('DEEP_RESEARCH_PAIR_INVALID')
+              if x.get('research_state') not in allowed: raise SystemExit('DEEP_RESEARCH_STATE_INVALID')
+              score=float(x.get('context_confidence_score') or 0)
+              if not 0 <= score <= 100: raise SystemExit('DEEP_RESEARCH_SCORE_RANGE_INVALID')
+              if x.get('production_portfolio_impact')!='NONE' or x.get('no_hindsight') is not True: raise SystemExit('DEEP_RESEARCH_ROW_CONTRACT_INVALID')
+              organic=x.get('organic_social') or {}
+              if organic and organic.get('rule')!='SOCIAL_MENTIONS_NEQ_ORGANIC_SOCIAL_ACCELERATION': raise SystemExit('DEEP_RESEARCH_ORGANIC_RULE_INVALID')
+          print('AUTONOMOUS_DEEP_RESEARCH_V1_OK', len(d.get('dossiers') or []), 'ledger', led.get('events_count'))
+          PY
+
+      - name: Publish accumulated deep research
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-research-bot'
+          git config user.email 'wallet500-research-bot@users.noreply.github.com'
+
+          tmp="$(mktemp -d)"
+          for f in social-organic-acceleration.json deep-research-dossiers.json deep-research-state.json deep-research-ledger.json; do
+            cp "data/$f" "$tmp/$f"
+          done
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            for f in social-organic-acceleration.json deep-research-dossiers.json deep-research-state.json deep-research-ledger.json; do
+              cp "$tmp/$f" "data/$f"
+            done
+            git add data/social-organic-acceleration.json data/deep-research-dossiers.json data/deep-research-state.json data/deep-research-ledger.json
+            if git diff --cached --quiet; then
+              echo 'DEEP_RESEARCH_NO_DATA_CHANGE'
+              exit 0
+            fi
+            git commit -m 'data: refresh four-hour autonomous deep research'
+            if git push origin HEAD:main; then
+              echo 'DEEP_RESEARCH_PUBLISH_OK'
+              exit 0
+            fi
+            echo "DEEP_RESEARCH_PUBLISH_RETRY attempt=$attempt"
+            sleep 3
+          done
+          echo '::error::DEEP_RESEARCH_PUBLISH_RACE_EXHAUSTED'
+          exit 1
