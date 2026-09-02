@@ -1,0 +1,186 @@
+name: Wallet500 Revival Smart Money Registry
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/revival_prewaking_wallet_evidence.py'
+      - 'src/wallet500/revival_wallet_registry.py'
+      - 'tests/test_revival_wallet_registry.py'
+      - '.github/workflows/revival-smart-money-registry.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-revival-smart-money-registry
+  cancel-in-progress: false
+
+jobs:
+  registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Unit tests
+        run: |
+          python -m pytest -q \
+            tests/test_revival_wallet_evidence.py \
+            tests/test_revival_wallet_registry.py
+      - name: Start PRE-WAKING exact-pair wallet evidence
+        env:
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+          REVIVAL_PREWAKING_MAX_TARGETS: '6'
+          REVIVAL_PREWAKING_MAX_SIGNATURES: '60'
+        run: |
+          if [ -z "${SOLANA_RPC_URL:-}" ]; then
+            export SOLANA_RPC_URL='https://solana-rpc.publicnode.com'
+            echo 'Using verified public Solana RPC fallback'
+          fi
+          python -m wallet500.revival_prewaking_wallet_evidence
+      - name: Build time-safe Historical Wallet Registry
+        run: python -m wallet500.revival_wallet_registry
+      - name: Validate Smart Money truth contracts
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime
+          from pathlib import Path
+
+          pp=Path('data/revival-prewaking-wallet-evidence.json')
+          ps=Path('data/revival-prewaking-wallet-evidence-state.json')
+          rp=Path('data/revival-wallet-registry.json')
+          rs=Path('data/revival-wallet-registry-state.json')
+          if not all(p.exists() for p in (pp,ps,rp,rs)):
+              raise SystemExit('REVIVAL_SMART_MONEY_OUTPUT_MISSING')
+
+          pre=json.loads(pp.read_text())
+          if pre.get('version')!='REVIVAL_PREWAKING_WALLET_EVIDENCE_V1':
+              raise SystemExit('PREWAKING_VERSION_INVALID')
+          if pre.get('mode')!='RESEARCH_ONLY_PREWAKING_EXACT_PAIR_WALLET_EVIDENCE':
+              raise SystemExit('PREWAKING_MODE_INVALID')
+          if pre.get('network')!='solana': raise SystemExit('PREWAKING_NETWORK_INVALID')
+          if pre.get('production_portfolio_impact')!='NONE': raise SystemExit('PREWAKING_PRODUCTION_IMPACT_INVALID')
+          if pre.get('automatic_buy') is not False: raise SystemExit('PREWAKING_AUTOMATIC_BUY_INVALID')
+          sel=pre.get('selection_policy') or {}
+          if sel.get('status_required')!='DEEP_WATCH': raise SystemExit('PREWAKING_STATUS_POLICY_INVALID')
+          if sel.get('exact_pair_required') is not True: raise SystemExit('PREWAKING_PAIR_POLICY_INVALID')
+          if int(sel.get('market_age_verified_min_days') or 0) < 180: raise SystemExit('PREWAKING_AGE_POLICY_INVALID')
+          if sel.get('future_data_used') is not False: raise SystemExit('PREWAKING_FUTURE_DATA_POLICY_INVALID')
+          if int(pre.get('targets') or 0) > int(sel.get('max_targets') or 0): raise SystemExit('PREWAKING_TARGET_CAP_BREACH')
+          for row in pre.get('tokens') or []:
+              if row.get('target_reason')!='PRE_WAKING_DEEP_WATCH': raise SystemExit('PREWAKING_TARGET_REASON_INVALID')
+              if not row.get('exact_pair'): raise SystemExit('PREWAKING_PAIR_MISSING')
+              if (row.get('coverage') or {}).get('eligible_as_forensics_t0_wallet_evidence') is not False:
+                  raise SystemExit('PREWAKING_PREMATURE_T0_CLAIM')
+              tiers=row.get('smart_money_tiers') or {}
+              if int(tiers.get('elite') or 0) or int(tiers.get('strong') or 0):
+                  raise SystemExit('PREWAKING_FALSE_SMART_MONEY_TIER')
+
+          reg=json.loads(rp.read_text())
+          if reg.get('version')!='REVIVAL_WALLET_REGISTRY_V1': raise SystemExit('REGISTRY_VERSION_INVALID')
+          if reg.get('mode')!='RESEARCH_ONLY_TIME_SAFE_SMART_MONEY_REGISTRY': raise SystemExit('REGISTRY_MODE_INVALID')
+          if reg.get('network')!='solana': raise SystemExit('REGISTRY_NETWORK_INVALID')
+          if reg.get('production_portfolio_impact')!='NONE': raise SystemExit('REGISTRY_PRODUCTION_IMPACT_INVALID')
+          if reg.get('automatic_buy') is not False: raise SystemExit('REGISTRY_AUTOMATIC_BUY_INVALID')
+          truth=reg.get('truth_contract') or {}
+          if truth.get('wallet_identity')!='SIGNED_TARGET_TOKEN_OWNER_DELTA_ONLY': raise SystemExit('REGISTRY_WALLET_IDENTITY_INVALID')
+          if truth.get('pair_identity')!='EXACT_PAIR_ONLY': raise SystemExit('REGISTRY_PAIR_IDENTITY_INVALID')
+          if truth.get('tier_input')!='COMPLETED_PRE_WAKING_VERIFIED_BUY_EXPOSURES_ONLY': raise SystemExit('REGISTRY_TIER_INPUT_INVALID')
+          if truth.get('as_of_t0_guard') is not True: raise SystemExit('REGISTRY_ASOF_GUARD_MISSING')
+          if truth.get('raw_overlap_never_implies_smart_money') is not True: raise SystemExit('REGISTRY_OVERLAP_GUARD_MISSING')
+
+          min_hist=(reg.get('policy') or {}).get('minimum_history') or {}
+          min_exp=int(min_hist.get('completed_pre_waking_buy_exposures') or 0)
+          min_tokens=int(min_hist.get('distinct_tokens') or 0)
+          if min_exp < 5 or min_tokens < 3: raise SystemExit('REGISTRY_HISTORY_GATE_TOO_WEAK')
+
+          for wallet in reg.get('wallets') or []:
+              score=wallet.get('tier_current') or {}
+              tier=score.get('tier')
+              exp=int(score.get('completed_pre_waking_buy_exposures') or 0)
+              toks=int(score.get('distinct_completed_tokens') or 0)
+              if tier in {'ELITE','STRONG','WATCH'} and (exp < min_exp or toks < min_tokens):
+                  raise SystemExit('REGISTRY_PREMATURE_TIER')
+              if tier=='PENDING_HISTORY' and (int((reg.get('counts') or {}).get('elite') or 0)<0):
+                  raise SystemExit('REGISTRY_COUNT_INVALID')
+
+          for bridge in reg.get('event_bridge') or []:
+              t0=bridge.get('waking_t0')
+              if not t0: raise SystemExit('REGISTRY_BRIDGE_T0_MISSING')
+              t0dt=datetime.fromisoformat(str(t0).replace('Z','+00:00'))
+              for wallet in bridge.get('wallets') or []:
+                  score=wallet.get('tier_as_of_event_t0') or {}
+                  if score.get('as_of') != str(t0): raise SystemExit('REGISTRY_BRIDGE_ASOF_MISMATCH')
+                  if wallet.get('eligible_to_influence_event') is True:
+                      if wallet.get('pre_waking_verified_buy') is not True:
+                          raise SystemExit('REGISTRY_INFLUENCE_WITHOUT_PREBUY')
+                      if score.get('tier') not in {'ELITE','STRONG'}:
+                          raise SystemExit('REGISTRY_INFLUENCE_WITHOUT_QUALIFIED_TIER')
+
+          state=json.loads(rs.read_text())
+          for exposure in (state.get('completed_exposures') or {}).values():
+              c=exposure.get('completed_at'); t=exposure.get('waking_t0')
+              if not c or not t: raise SystemExit('REGISTRY_EXPOSURE_TIME_MISSING')
+              cdt=datetime.fromisoformat(str(c).replace('Z','+00:00'))
+              tdt=datetime.fromisoformat(str(t).replace('Z','+00:00'))
+              if cdt < tdt: raise SystemExit('REGISTRY_OUTCOME_COMPLETED_BEFORE_T0')
+              if exposure.get('signal_side')!='BUY': raise SystemExit('REGISTRY_NONBUY_TIER_EXPOSURE')
+              if exposure.get('eligible_for_future_tiers') is not True: raise SystemExit('REGISTRY_EXPOSURE_NOT_FUTURE_ONLY')
+
+          print('PREWAKING_WALLET_EVIDENCE_OK', pre.get('targets'))
+          print('REVIVAL_WALLET_REGISTRY_OK', reg.get('counts'))
+          PY
+      - name: Publish PRE-WAKING evidence and registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+
+          tmp="$(mktemp -d)"
+          cp data/revival-prewaking-wallet-evidence.json "$tmp/revival-prewaking-wallet-evidence.json"
+          cp data/revival-prewaking-wallet-evidence-state.json "$tmp/revival-prewaking-wallet-evidence-state.json"
+          cp data/revival-wallet-registry.json "$tmp/revival-wallet-registry.json"
+          cp data/revival-wallet-registry-state.json "$tmp/revival-wallet-registry-state.json"
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/revival-prewaking-wallet-evidence.json" data/revival-prewaking-wallet-evidence.json
+            cp "$tmp/revival-prewaking-wallet-evidence-state.json" data/revival-prewaking-wallet-evidence-state.json
+            cp "$tmp/revival-wallet-registry.json" data/revival-wallet-registry.json
+            cp "$tmp/revival-wallet-registry-state.json" data/revival-wallet-registry-state.json
+            git add \
+              data/revival-prewaking-wallet-evidence.json \
+              data/revival-prewaking-wallet-evidence-state.json \
+              data/revival-wallet-registry.json \
+              data/revival-wallet-registry-state.json
+
+            if git diff --cached --quiet; then
+              echo 'REVIVAL_SMART_MONEY_NO_DATA_CHANGE'
+              exit 0
+            fi
+
+            git commit -m 'data: refresh Revival PRE-WAKING wallet registry'
+            if git push origin HEAD:main; then
+              echo 'REVIVAL_SMART_MONEY_PUBLISH_OK'
+              exit 0
+            fi
+
+            echo "REVIVAL_SMART_MONEY_PUBLISH_RETRY attempt=$attempt"
+            sleep 3
+          done
+
+          echo '::error::REVIVAL_SMART_MONEY_PUBLISH_RACE_EXHAUSTED'
+          exit 1
