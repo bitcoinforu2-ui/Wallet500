@@ -90,6 +90,28 @@ jobs:
         run: python -m wallet500.scheduler_telemetry
       - name: Validate primary live lane and learning integrity
         run: python -m wallet500.strict_validation
+      - name: Prepare immutable publish evidence
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          payload={
+            'version':1,
+            'created_at':datetime.now(timezone.utc).isoformat(),
+            'status':'READY_TO_PUBLISH',
+            'strict_validation':'PASS',
+            'source_sha':os.environ.get('SOURCE_SHA'),
+            'run_id':os.environ.get('RUN_ID'),
+            'run_attempt':os.environ.get('RUN_ATTEMPT'),
+            'proof_rule':'IF_THIS_FILE_IS_VISIBLE_ON_MAIN_THE_VALIDATED_DATA_COMMIT_WAS_PUSHED_SUCCESSFULLY'
+          }
+          Path('data/publish-evidence.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
+          PY
       - name: Publish verified scan data
         run: |
           git config user.name "github-actions[bot]"
