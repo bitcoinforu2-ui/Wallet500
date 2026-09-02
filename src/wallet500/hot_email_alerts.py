@@ -8,7 +8,8 @@ from email.message import EmailMessage
 from pathlib import Path
 
 HOT_MIN_SCORE = 75
-HOT_MIN_CONFIRMATIONS = 2
+MIN_MARKET_AGE_DAYS = 180
+MIN_LIQUIDITY_USD = 50_000.0
 DEFAULT_RECIPIENT = "bitcoinforu2@gmail.com"
 
 
@@ -25,27 +26,38 @@ def _write(path: Path, payload) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
+def _num(value, default=0.0) -> float:
+    try:
+        return float(value if value is not None else default)
+    except (TypeError, ValueError):
+        return float(default)
+
+
 def _is_hot(row: dict) -> bool:
-    score = float(row.get("cex_revival_score") or row.get("score") or 0)
-    confirmations = int(row.get("confirmations") or 0)
-    return score >= HOT_MIN_SCORE and confirmations >= HOT_MIN_CONFIRMATIONS
+    """Email is a production-adjacent notification surface: fail closed.
 
-
-def _best_market(row: dict) -> dict:
-    markets = [m for m in (row.get("markets") or []) if isinstance(m, dict)]
-    if not markets:
-        return {}
-    return max(markets, key=lambda m: float(m.get("volume_24h") or 0))
+    It consumes only unified REAL ALERT rows and independently rechecks veteran
+    age, exact identity/pair and liquidity so a malformed upstream row cannot
+    become a HOT email from CEX symbol/score alone.
+    """
+    return (
+        row.get("status") == "REAL_ALERT"
+        and row.get("actionable_research_alert") is True
+        and row.get("exact_identity_verified") is True
+        and row.get("exact_pair_verified") is True
+        and row.get("market_age_verified") is True
+        and int(row.get("market_age_days") or 0) >= MIN_MARKET_AGE_DAYS
+        and _num(row.get("liquidity_usd")) >= MIN_LIQUIDITY_USD
+        and _num(row.get("score")) >= HOT_MIN_SCORE
+    )
 
 
 def _exact_dex_identity(row: dict) -> dict:
     token = str(row.get("token_address") or row.get("token") or row.get("mint") or "").strip()
     pair = str(row.get("pair_address") or "").strip()
-    locked = str(row.get("locked_pair_address") or "").strip()
     dex = str(row.get("dex") or "").strip()
-    url = str(row.get("url") or row.get("dexscreener_url") or "").strip()
-    locked_ok = bool(pair and locked and pair.lower() == locked.lower() and row.get("pair_identity_locked") is True)
-    verified = bool(token and locked_ok and dex)
+    url = str(row.get("dex_url") or row.get("url") or row.get("dexscreener_url") or "").strip()
+    verified = bool(token and pair and row.get("exact_identity_verified") is True and row.get("exact_pair_verified") is True)
     return {
         "verified": verified,
         "token_address": token or None,
@@ -55,57 +67,42 @@ def _exact_dex_identity(row: dict) -> dict:
     }
 
 
-def _milestone_time(row: dict, key: str) -> str:
-    milestone = (row.get("milestones") or {}).get(key) or {}
-    return str(milestone.get("observed_at") or "n/a")
-
-
 def _fingerprint(row: dict) -> str:
-    symbol = str(row.get("symbol") or "UNKNOWN")
-    first_alert = _milestone_time(row, "first_alert")
-    return f"{symbol}:{first_alert}"
+    chain = str(row.get("chain") or "UNKNOWN").lower()
+    token = str(row.get("token_address") or "UNKNOWN").lower()
+    pair = str(row.get("pair_address") or "UNKNOWN").lower()
+    first_alert = str(row.get("first_alert_at") or "n/a")
+    return f"{chain}:{token}:{pair}:{first_alert}"
 
 
 def _build_message(row: dict, recipient: str, sender: str) -> EmailMessage:
     symbol = str(row.get("symbol") or "UNKNOWN")
-    score = float(row.get("cex_revival_score") or row.get("score") or 0)
-    confirmations = int(row.get("confirmations") or 0)
-    market = _best_market(row)
+    score = _num(row.get("score"))
     identity = _exact_dex_identity(row)
-    status = "EXACT DEX VERIFIED" if identity["verified"] else "DEX IDENTITY UNRESOLVED — RESEARCH ONLY"
-    subject = f"🔥 Wallet500 HOT: {symbol} · {score:.0f}/100"
-    reasons = "\n".join(f"- {x}" for x in (row.get("reasons") or [])[:6]) or "- Active HOT signal"
-    exchanges = ", ".join(row.get("exchanges") or []) or "n/a"
-    body = f"""Wallet500 HOT alert
+    subject = f"🔥 Wallet500 REAL HOT: {symbol} · {score:.0f}/100"
+    lanes = ", ".join(row.get("source_lanes") or []) or "n/a"
+    blockers = ", ".join(row.get("blockers") or []) or "none"
+    body = f"""Wallet500 strict veteran-token REAL ALERT
 
 Symbol: {symbol}
 Score: {score:.0f}/100
-Confirmations: {confirmations}
-Archetype: {row.get('archetype') or 'n/a'}
-Status: {status}
-
-Current CEX reference
-Exchange: {market.get('exchange') or 'n/a'}
-Price: {market.get('price') if market.get('price') is not None else 'n/a'}
-24h change: {row.get('change_24h_max_pct') if row.get('change_24h_max_pct') is not None else 'n/a'}%
-Volume 24h: {market.get('volume_24h') if market.get('volume_24h') is not None else 'n/a'}
-Exchanges: {exchanges}
-
-Detection timeline
-FIRST SEEN: {_milestone_time(row, 'first_seen')}
-FIRST ANOMALY: {_milestone_time(row, 'first_anomaly')}
-FIRST ALERT: {_milestone_time(row, 'first_alert')}
+Status: REAL ALERT — RESEARCH ONLY
+Market age: ≥{int(row.get('market_age_days') or 0)} days ✅
+Liquidity: ${_num(row.get('liquidity_usd')):,.2f}
+Independent lanes: {int(row.get('source_lane_count') or 0)}
+Sources: {lanes}
+Blockers: {blockers}
+First alert: {row.get('first_alert_at') or 'n/a'}
 
 Exact DEX identity
+Chain: {row.get('chain') or 'n/a'}
 Token / Contract / Mint: {identity['token_address'] or 'NOT VERIFIED'}
 Exact Pair: {identity['pair_address'] or 'NOT VERIFIED'}
-DEX: {identity['dex'] or 'NOT VERIFIED'}
-DexScreener: {identity['dexscreener_url'] or 'NOT VERIFIED'}
+DEX: {identity['dex'] or 'n/a'}
+DEX URL: {identity['dexscreener_url'] or 'n/a'}
+Price reference: {row.get('price_usd') if row.get('price_usd') is not None else 'n/a'}
 
-Why HOT
-{reasons}
-
-IMPORTANT: If exact DEX identity is NOT VERIFIED, Wallet500 has not proven which on-chain token/pair corresponds to the CEX symbol. Do not infer or trade from symbol matching alone.
+This email is emitted only from data/real-alerts.json after exact identity, exact pair, verified market age >=180d and liquidity >=$50K are independently rechecked. It is research output, not a guarantee of profit or an automatic trade instruction.
 
 Verified Intelligence. The Pure Truth.
 """
@@ -119,8 +116,8 @@ Verified Intelligence. The Pure Truth.
 
 def run() -> dict:
     out = Path(os.getenv("WALLET500_OUTPUT_DIR", "data"))
-    radar = _load(out / "cex-revival-radar.json", {})
-    alerts = radar.get("alerts") if isinstance(radar, dict) else []
+    feed = _load(out / "real-alerts.json", {})
+    alerts = feed.get("alerts") if isinstance(feed, dict) else []
     if not isinstance(alerts, list):
         alerts = []
 
@@ -172,11 +169,20 @@ def run() -> dict:
         sent = dict(list(sent.items())[-5000:])
     _write(state_path, {"updated_at": now, "sent": sent})
     report = {
-        "version": 1,
+        "version": 2,
         "updated_at": now,
         "recipient": recipient,
         "configured": configured,
-        "hot_rule": {"min_score": HOT_MIN_SCORE, "min_confirmations": HOT_MIN_CONFIRMATIONS},
+        "source": "real-alerts.json",
+        "hot_rule": {
+            "min_score": HOT_MIN_SCORE,
+            "market_age_verified": True,
+            "minimum_market_age_days": MIN_MARKET_AGE_DAYS,
+            "minimum_liquidity_usd": MIN_LIQUIDITY_USD,
+            "exact_identity_required": True,
+            "exact_pair_required": True,
+            "real_alert_status_required": True,
+        },
         "hot_count": len(hot),
         "delivered_count": len(delivered),
         "skipped_count": len(skipped),
@@ -184,7 +190,7 @@ def run() -> dict:
         "delivered": delivered,
         "skipped": skipped,
         "errors": errors,
-        "identity_policy": "NEVER_INFER_DEX_TOKEN_OR_PAIR_FROM_SYMBOL_ONLY",
+        "identity_policy": "NEVER_EMAIL_FROM_CEX_SYMBOL_OR_SCORE_ALONE",
     }
     _write(out / "hot-email-alert-report.json", report)
     print(json.dumps(report, indent=2))
