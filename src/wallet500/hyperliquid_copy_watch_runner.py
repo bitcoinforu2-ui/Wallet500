@@ -18,11 +18,11 @@ def _series(history: Any) -> dict[int, float]:
 
 
 def trading_drawdown_proxy_pct(account_history: Any, pnl_history: Any) -> float | None:
-    """Trading drawdown proxy that is less distorted by deposits/withdrawals.
+    """Cash-flow-resistant trading drawdown proxy.
 
-    Hyperliquid accountValueHistory can jump because of cash flows. We therefore measure the
-    peak-to-trough decline in cumulative trading PnL and normalize that decline by the largest
-    positive account value observed up to the PnL peak. This is deliberately labelled a proxy,
+    Account value is distorted by deposits/withdrawals, so the numerator is the largest
+    peak-to-trough decline in cumulative trading PnL. The denominator is the largest positive
+    account value observed in the same history window. This is intentionally labelled a proxy,
     not a broker-reported max drawdown.
     """
     av = _series(account_history)
@@ -30,22 +30,19 @@ def trading_drawdown_proxy_pct(account_history: Any, pnl_history: Any) -> float 
     common = sorted(set(av) & set(pnl))
     if len(common) < 2:
         return None
+    capital_base = max((av[t] for t in common if av[t] > 0), default=0.0)
+    if capital_base <= 0:
+        return None
 
-    max_capital_so_far = 0.0
     peak_pnl: float | None = None
-    peak_capital = 0.0
-    worst = 0.0
+    worst_pnl_drop = 0.0
     for ts in common:
-        capital = av[ts]
         p = pnl[ts]
-        if capital > 0:
-            max_capital_so_far = max(max_capital_so_far, capital)
         if peak_pnl is None or p > peak_pnl:
             peak_pnl = p
-            peak_capital = max(max_capital_so_far, capital, 1.0)
-        if peak_pnl is not None and peak_capital > 0:
-            worst = max(worst, max(0.0, peak_pnl - p) / peak_capital * 100.0)
-    return worst
+        if peak_pnl is not None:
+            worst_pnl_drop = max(worst_pnl_drop, max(0.0, peak_pnl - p))
+    return worst_pnl_drop / capital_base * 100.0
 
 
 def run() -> dict[str, Any]:
@@ -64,7 +61,7 @@ def run() -> dict[str, Any]:
             )
             row["raw_account_value_drawdown_pct"] = row.get("max_drawdown_pct")
             row["max_drawdown_pct"] = None if dd is None else round(dd, 2)
-            row["drawdown_method"] = "PNL_PEAK_TO_TROUGH_NORMALIZED_BY_PEAK_CAPITAL_PROXY"
+            row["drawdown_method"] = "PNL_DRAWDOWN_DIVIDED_BY_MAX_ACCOUNT_VALUE_PROXY"
             decision, blockers = engine._decision(row, cfg)
             row["decision"] = decision
             row["blockers"] = blockers
@@ -77,15 +74,19 @@ def run() -> dict[str, Any]:
             )
 
     ranking.sort(
-        key=lambda x: (x.get("decision") == "COPYABLE_CANDIDATE", x.get("decision") == "HISTORICAL_SHORTLIST_FORWARD_VALIDATION", x.get("score") or 0),
+        key=lambda x: (
+            x.get("decision") == "COPYABLE_CANDIDATE",
+            x.get("decision") == "HISTORICAL_SHORTLIST_FORWARD_VALIDATION",
+            x.get("score") or 0,
+        ),
         reverse=True,
     )
     summary["copyable_candidates"] = sum(1 for r in ranking if r.get("decision") == "COPYABLE_CANDIDATE")
     summary["historical_shortlist"] = sum(1 for r in ranking if r.get("decision") == "HISTORICAL_SHORTLIST_FORWARD_VALIDATION")
     summary["watch_only"] = sum(1 for r in ranking if r.get("decision") == "WATCH")
     summary["drawdown_policy"] = {
-        "method": "PNL_PEAK_TO_TROUGH_NORMALIZED_BY_PEAK_CAPITAL_PROXY",
-        "reason": "Account value alone is distorted by deposits and withdrawals; Wallet500 uses cumulative trading PnL for the drawdown numerator.",
+        "method": "PNL_DRAWDOWN_DIVIDED_BY_MAX_ACCOUNT_VALUE_PROXY",
+        "reason": "Account value alone is distorted by deposits and withdrawals; Wallet500 uses cumulative trading PnL for the drawdown numerator and the maximum account value in the same history as the capital scale.",
         "broker_reported_mdd_claimed": False,
     }
     engine._write(engine.SUMMARY, summary)
