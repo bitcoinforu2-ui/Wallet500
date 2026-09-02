@@ -11,9 +11,11 @@ on:
       - 'src/wallet500/revival_absorption_signal.py'
       - 'src/wallet500/revival_discovery_expansion.py'
       - 'src/wallet500/revival_discovery_expansion_v3.py'
+      - 'src/wallet500/mature_age_gate.py'
       - 'src/wallet500/paid_visibility_lab.py'
       - 'tests/test_revival_1000.py'
       - 'tests/test_revival_absorption_signal.py'
+      - 'tests/test_mature_age_gate.py'
       - 'tests/test_paid_visibility_lab.py'
       - '.github/workflows/revival-1000.yml'
       - 'dashboard-revival1000.html'
@@ -40,7 +42,7 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Unit tests
-        run: python -m pytest -q tests/test_revival_1000.py tests/test_revival_absorption_signal.py tests/test_paid_visibility_lab.py
+        run: python -m pytest -q tests/test_revival_1000.py tests/test_revival_absorption_signal.py tests/test_mature_age_gate.py tests/test_paid_visibility_lab.py
       - name: Migrate base Revival state to strict Solana identity
         run: |
           python - <<'PY'
@@ -63,6 +65,10 @@ jobs:
         run: python -m wallet500.revival_absorption_signal
       - name: Expand strict and pre-move absorption candidates across known Solana universe
         run: python -m wallet500.revival_discovery_expansion_v3
+      - name: Enforce verified 180-day mature-coin hard gate
+        env:
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: python -m wallet500.mature_age_gate --revival
       - name: Validate expanded truth contract
         run: |
           python - <<'PY'
@@ -73,11 +79,14 @@ jobs:
           if d.get('mode')!='RESEARCH_ONLY_REVIVAL_SOLANA_EXPANDED_V6': raise SystemExit('REVIVAL_EXPANDED_V6_MODE_MISSING')
           if d.get('network')!='solana' or d.get('production_portfolio_impact')!='NONE': raise SystemExit('REVIVAL_SAFETY_LABEL_INVALID')
           if d.get('no_hindsight') is not True or d.get('candidate_cap') is not None: raise SystemExit('REVIVAL_TRUTH_OR_CAP_VIOLATION')
+          age_gate=d.get('age_gate') or {}
+          if age_gate.get('status')!='ENFORCED_FAIL_CLOSED' or int(age_gate.get('minimum_market_age_days') or 0)!=180: raise SystemExit('REVIVAL_180D_AGE_GATE_MISSING')
           contract=d.get('discovery_expansion_contract') or {}
           if contract.get('version')!='REVIVAL_DISCOVERY_ABSORPTION_EXPANSION_V2': raise SystemExit('DISCOVERY_EXPANSION_V2_CONTRACT_MISSING')
           if contract.get('fixed_candidate_cap') is not None or contract.get('production_portfolio_impact')!='NONE': raise SystemExit('DISCOVERY_EXPANSION_SAFETY_INVALID')
           coins=d.get('coins') or []
           if len(coins)<100: raise SystemExit('REVIVAL_UNIVERSE_TOO_SMALL')
+          if any(x.get('market_age_verified') is not True or int(x.get('market_age_min_days') or 0)<180 for x in coins): raise SystemExit('REVIVAL_UNDER_180_OR_UNVERIFIED_AGE_PRESENT')
           if any(x.get('network')!='solana' or x.get('network_verified') is not True for x in coins): raise SystemExit('NON_VERIFIED_SOLANA_PRESENT')
           if any(not looks_like_solana_address(x.get('token_address')) for x in coins): raise SystemExit('INVALID_SOLANA_ADDRESS')
           if any(x.get('pre_alpha_eligible') for x in coins): raise SystemExit('RESEARCH_LAYER_PROMOTED_PRE_ALPHA')
@@ -102,6 +111,7 @@ jobs:
           strict=sum(1 for x in coins if (x.get('order_flow_absorption') or {}).get('signal') is True)
           candidates=sum(1 for x in coins if x.get('absorption_candidate_proxy') is True)
           if counts.get('universe')!=len(coins) or counts.get('dex_verified_pairs')!=verified: raise SystemExit('AGGREGATE_COUNT_MISMATCH')
+          if counts.get('age_verified_180d_plus')!=len(coins): raise SystemExit('AGE_COUNT_MISMATCH')
           if counts.get('absorption_proxy_watch')!=strict or counts.get('absorption_candidate_proxy_watch')!=candidates: raise SystemExit('ABSORPTION_COUNT_MISMATCH')
           if counts.get('absorption_discovery_expansion_added')!=expansion: raise SystemExit('EXPANSION_COUNT_MISMATCH')
           if counts.get('absorption_discovery_strict_added')!=strict_expansion: raise SystemExit('STRICT_EXPANSION_COUNT_MISMATCH')
