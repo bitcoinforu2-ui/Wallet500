@@ -225,7 +225,13 @@ def _select_targets(queue_payload: dict, budget: int) -> list[dict]:
             continue
         seen.add(token)
         rows.append(row)
-    rows.sort(key=lambda x: (_n(x.get("risk_score"), 999) or 999, -(_n(x.get("hybrid_score_verified_normalized"), 0) or 0)))
+
+    def priority(row: dict):
+        risk = _n(row.get("risk_score"))
+        score = _n(row.get("hybrid_score_verified_normalized"))
+        return (999.0 if risk is None else risk, -(0.0 if score is None else score))
+
+    rows.sort(key=priority)
     return rows[:max(1, budget)]
 
 
