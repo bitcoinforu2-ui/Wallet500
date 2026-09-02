@@ -12,7 +12,7 @@ from urllib.request import Request, urlopen
 from .market_data import token_pairs
 
 DATA = Path("data")
-UA = {"User-Agent": "Wallet500/1.9", "Accept": "application/json"}
+UA = {"User-Agent": "Wallet500/2.0", "Accept": "application/json"}
 DEX_SEARCH = "https://api.dexscreener.com/latest/dex/search?q="
 GT_BASE = "https://api.geckoterminal.com/api/v2"
 CG_LIST_WITH_PLATFORMS = "https://api.coingecko.com/api/v3/coins/list?include_platform=true"
@@ -110,7 +110,10 @@ def _platform_catalog(coin_ids: set[str], attempts: int = 3) -> tuple[dict[str, 
             for row in payload if isinstance(payload, list) else []:
                 cid = str(row.get("id") or "").strip()
                 if cid in coin_ids:
-                    out[cid] = _platform_rows(row.get("platforms") if isinstance(row, dict) else {}, "COINGECKO_PLATFORM_CATALOG")
+                    out[cid] = _platform_rows(
+                        row.get("platforms") if isinstance(row, dict) else {},
+                        "COINGECKO_PLATFORM_CATALOG",
+                    )
             return out, None
         except Exception as e:
             last = e
@@ -233,11 +236,15 @@ def _geckoterminal_pairs(candidate: dict) -> list[dict]:
     if not network:
         return []
     token = candidate["token_address"]
-    url = f"{GT_BASE}/networks/{quote(network, safe='')}/tokens/{quote(token, safe='')}/pools?page=1&include=base_token,quote_token,dex"
+    url = (
+        f"{GT_BASE}/networks/{quote(network, safe='')}/tokens/"
+        f"{quote(token, safe='')}/pools?page=1&include=base_token,quote_token,dex"
+    )
     try:
         payload = _get_json(url)
     except Exception:
         return []
+
     included: dict[str, str] = {}
     dex_names: dict[str, str] = {}
     for item in (payload or {}).get("included") or []:
@@ -249,6 +256,7 @@ def _geckoterminal_pairs(candidate: dict) -> list[dict]:
                 included[iid] = address
         elif item.get("type") == "dex":
             dex_names[iid] = str(attrs.get("name") or iid)
+
     out = []
     for item in (payload or {}).get("data") or []:
         if item.get("type") != "pool":
@@ -284,7 +292,9 @@ def _geckoterminal_pairs(candidate: dict) -> list[dict]:
             "pair_address": pair_address,
             "dex": dex_names.get(dex_id) or dex_id or "geckoterminal",
             "dex_url": f"https://www.geckoterminal.com/{network}/pools/{pair_address}",
-            "price_usd": _float(attrs.get("base_token_price_usd") if token_is_base else attrs.get("quote_token_price_usd")),
+            "price_usd": _float(
+                attrs.get("base_token_price_usd") if token_is_base else attrs.get("quote_token_price_usd")
+            ),
             "liquidity_usd": _float(attrs.get("reserve_in_usd")),
             "volume_h1": _float(volume.get("h1")),
             "volume_h24": _float(volume.get("h24")),
@@ -295,25 +305,107 @@ def _geckoterminal_pairs(candidate: dict) -> list[dict]:
     return out
 
 
-def _verified_pairs(candidate: dict) -> list[dict]:
-    pairs = _dexscreener_token_pairs(candidate)
-    if not pairs:
-        pairs = _dexscreener_search_pairs(candidate)
-    if not pairs:
-        pairs = _geckoterminal_pairs(candidate)
-    unique = {}
-    for row in pairs:
-        key = (str(row.get("chain") or "").lower(), str(row.get("pair_address") or "").lower())
+def _dedupe_pairs(rows: list[dict]) -> list[dict]:
+    unique: dict[tuple[str, str], dict] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        key = (
+            str(row.get("chain") or "").lower(),
+            str(row.get("pair_address") or "").lower(),
+        )
+        if not all(key):
+            continue
         old = unique.get(key)
-        if old is None or (_float(row.get("liquidity_usd")), _float(row.get("volume_h24"))) > (_float(old.get("liquidity_usd")), _float(old.get("volume_h24"))):
+        if old is None or (
+            _float(row.get("liquidity_usd")),
+            _float(row.get("volume_h24")),
+        ) > (
+            _float(old.get("liquidity_usd")),
+            _float(old.get("volume_h24")),
+        ):
             unique[key] = row
     return list(unique.values())
 
 
-def resolve_one(alert: dict, catalog: dict[str, list[dict]] | None = None, registry: dict | None = None, *, allow_single_lookup: bool = True) -> dict:
+def _verified_pairs(candidate: dict) -> list[dict]:
+    """Collect the exact token's pools across providers, not just the first provider that answers.
+
+    DexScreener can legitimately omit a pool family that GeckoTerminal sees (for example
+    a newer AMM implementation). A thin pool must therefore never mask a deeper exact-token
+    pool on the same chain. Symbol-only matches are still forbidden.
+    """
+    pairs: list[dict] = []
+    try:
+        primary = _dexscreener_token_pairs(candidate)
+    except Exception:
+        primary = []
+    pairs.extend(primary)
+
+    # Address search is a fallback for DexScreener token-pair coverage, but GT is
+    # an independent enrichment source and is always queried.
+    if not primary:
+        try:
+            pairs.extend(_dexscreener_search_pairs(candidate))
+        except Exception:
+            pass
+    try:
+        pairs.extend(_geckoterminal_pairs(candidate))
+    except Exception:
+        pass
+    return _dedupe_pairs(pairs)
+
+
+def _pool_universe(pairs: list[dict], best: dict) -> dict:
+    selected = [
+        row
+        for row in _dedupe_pairs(pairs)
+        if str(row.get("chain") or "").lower() == str(best.get("chain") or "").lower()
+        and _addr_eq(row.get("token_address"), best.get("token_address"))
+    ]
+    selected.sort(
+        key=lambda x: (_float(x.get("liquidity_usd")), _float(x.get("volume_h24"))),
+        reverse=True,
+    )
+    total = sum(_float(x.get("liquidity_usd")) for x in selected)
+    top = selected[:5]
+    return {
+        "execution_pool_liquidity_usd": round(_float(best.get("liquidity_usd")), 2),
+        "dex_total_liquidity_usd": round(total, 2),
+        "dex_pool_count": len(selected),
+        "dex_tradable_pool_count_50k": sum(1 for x in selected if _float(x.get("liquidity_usd")) >= 50_000),
+        "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
+        "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+        "liquidity_provider_coverage": sorted({str(x.get("pair_provider") or "UNKNOWN") for x in selected}),
+        "dex_liquidity_pools_top5": [
+            {
+                "pair_address": x.get("pair_address"),
+                "dex": x.get("dex"),
+                "liquidity_usd": round(_float(x.get("liquidity_usd")), 2),
+                "volume_h24": round(_float(x.get("volume_h24")), 2),
+                "provider": x.get("pair_provider"),
+                "url": x.get("dex_url"),
+            }
+            for x in top
+        ],
+    }
+
+
+def resolve_one(
+    alert: dict,
+    catalog: dict[str, list[dict]] | None = None,
+    registry: dict | None = None,
+    *,
+    allow_single_lookup: bool = True,
+) -> dict:
     coin_id = str(alert.get("coingecko_id") or "").strip()
     if not coin_id:
-        return {**alert, "identity_status": "IDENTITY_PENDING", "identity_blocker": "COINGECKO_ID_MISSING", "actionable": False}
+        return {
+            **alert,
+            "identity_status": "IDENTITY_PENDING",
+            "identity_blocker": "COINGECKO_ID_MISSING",
+            "actionable": False,
+        }
 
     candidates = list((catalog or {}).get(coin_id) or [])
     if not candidates:
@@ -322,11 +414,21 @@ def resolve_one(alert: dict, catalog: dict[str, list[dict]] | None = None, regis
         try:
             candidates = _coin_platforms(coin_id)
         except Exception as e:
-            return {**alert, "identity_status": "IDENTITY_PENDING", "identity_blocker": f"COINGECKO_PLATFORM_LOOKUP_FAILED:{type(e).__name__}", "actionable": False}
+            return {
+                **alert,
+                "identity_status": "IDENTITY_PENDING",
+                "identity_blocker": f"COINGECKO_PLATFORM_LOOKUP_FAILED:{type(e).__name__}",
+                "actionable": False,
+            }
     if not candidates:
-        return {**alert, "identity_status": "IDENTITY_PENDING", "identity_blocker": "NO_EXACT_ONCHAIN_PLATFORM_IDENTITY", "actionable": False}
+        return {
+            **alert,
+            "identity_status": "IDENTITY_PENDING",
+            "identity_blocker": "NO_EXACT_ONCHAIN_PLATFORM_IDENTITY",
+            "actionable": False,
+        }
 
-    pairs = []
+    pairs: list[dict] = []
     with ThreadPoolExecutor(max_workers=min(4, len(candidates))) as pool:
         futures = [pool.submit(_verified_pairs, c) for c in candidates]
         for fut in as_completed(futures):
@@ -334,17 +436,27 @@ def resolve_one(alert: dict, catalog: dict[str, list[dict]] | None = None, regis
                 pairs.extend(fut.result())
             except Exception:
                 pass
+    pairs = _dedupe_pairs(pairs)
+
     if not pairs:
         return {
             **alert,
             "identity_status": "IDENTITY_RESOLVED_PAIR_PENDING" if len(candidates) == 1 else "IDENTITY_PENDING",
             "identity_blocker": "EXACT_DEX_PAIR_NOT_FOUND_ACROSS_PROVIDERS",
             "identity_candidates": candidates,
-            "identity_providers_tried": ["DEXSCREENER_TOKEN_PAIRS", "DEXSCREENER_EXACT_ADDRESS_SEARCH", "GECKOTERMINAL_EXACT_TOKEN_POOLS"],
+            "identity_providers_tried": [
+                "DEXSCREENER_TOKEN_PAIRS",
+                "DEXSCREENER_EXACT_ADDRESS_SEARCH",
+                "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+            ],
             "actionable": False,
         }
 
-    best = max(pairs, key=lambda x: (_float(x.get("liquidity_usd")), _float(x.get("volume_h24"))))
+    best = max(
+        pairs,
+        key=lambda x: (_float(x.get("liquidity_usd")), _float(x.get("volume_h24"))),
+    )
+    liquidity = _pool_universe(pairs, best)
     candidate_source = best.get("identity_candidate_source") or "COINGECKO_EXACT_ID_PLATFORM"
     return {
         **alert,
@@ -356,14 +468,17 @@ def resolve_one(alert: dict, catalog: dict[str, list[dict]] | None = None, regis
         "dex": best.get("dex"),
         "dex_url": best.get("dex_url"),
         "dex_price_usd": best.get("price_usd"),
-        "dex_liquidity_usd": best.get("liquidity_usd"),
+        # Backward compatible field: this is deliberately the selected execution pool,
+        # never an arbitrary first pool and never the aggregate token TVL.
+        "dex_liquidity_usd": liquidity["execution_pool_liquidity_usd"],
         "dex_volume_h1": best.get("volume_h1"),
         "dex_volume_h24": best.get("volume_h24"),
         "pair_created_at": best.get("pair_created_at"),
         "pair_provider": best.get("pair_provider"),
         "exact_token_side": best.get("exact_token_side"),
         "identity_source": f"{candidate_source}_PLUS_EXACT_ADDRESS_DEX_POOL",
-        "pair_selection_rule": "HIGHEST_CURRENT_LIQUIDITY_AMONG_EXACT_TOKEN_PAIRS_ACROSS_FALLBACK_PROVIDERS",
+        "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
+        **liquidity,
         "actionable": False,
     }
 
@@ -373,7 +488,11 @@ def run(path: Path = DATA / "cex-revival-radar.json") -> dict:
         raise SystemExit("CEX_REVIVAL_RADAR_MISSING")
     payload = json.loads(path.read_text(encoding="utf-8"))
     alerts = list(payload.get("alerts") or [])
-    coin_ids = {str(x.get("coingecko_id") or "").strip() for x in alerts if str(x.get("coingecko_id") or "").strip()}
+    coin_ids = {
+        str(x.get("coingecko_id") or "").strip()
+        for x in alerts
+        if str(x.get("coingecko_id") or "").strip()
+    }
     catalog, catalog_error = _platform_catalog(coin_ids)
     registry = _load_registry(path.parent / "cex-identity-registry.json")
 
@@ -388,10 +507,15 @@ def run(path: Path = DATA / "cex-revival-radar.json") -> dict:
             try:
                 by_index[idx] = fut.result()
             except Exception as e:
-                by_index[idx] = {**alerts[idx], "identity_status": "IDENTITY_PENDING", "identity_blocker": f"RESOLUTION_FAILED:{type(e).__name__}", "actionable": False}
+                by_index[idx] = {
+                    **alerts[idx],
+                    "identity_status": "IDENTITY_PENDING",
+                    "identity_blocker": f"RESOLUTION_FAILED:{type(e).__name__}",
+                    "actionable": False,
+                }
     resolved = [by_index[i] for i in range(len(alerts))]
 
-    payload["version"] = max(int(payload.get("version") or 0), 11)
+    payload["version"] = max(int(payload.get("version") or 0), 12)
     payload["generated_identity_at"] = datetime.now(timezone.utc).isoformat()
     payload["identity_contract"] = {
         "symbol_only_actionable": False,
@@ -399,7 +523,19 @@ def run(path: Path = DATA / "cex-revival-radar.json") -> dict:
         "exact_onchain_address_required": True,
         "exact_dex_pair_required": True,
         "platform_resolution": "ONE_BATCH_COINGECKO_COINS_LIST_INCLUDE_PLATFORM_THEN_EXACT_REGISTRY_CGID_FALLBACK",
-        "providers": ["COINGECKO_PLATFORM_CATALOG", "EXACT_IDENTITY_REGISTRY_CGID_MATCH", "DEXSCREENER_TOKEN_PAIRS", "DEXSCREENER_EXACT_ADDRESS_SEARCH", "GECKOTERMINAL_EXACT_TOKEN_POOLS"],
+        "providers": [
+            "COINGECKO_PLATFORM_CATALOG",
+            "EXACT_IDENTITY_REGISTRY_CGID_MATCH",
+            "DEXSCREENER_TOKEN_PAIRS",
+            "DEXSCREENER_EXACT_ADDRESS_SEARCH",
+            "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+        ],
+        "dex_pool_resolution": "MULTI_PROVIDER_EXACT_TOKEN_AGGREGATION_THEN_DEEPEST_EXECUTION_POOL",
+        "liquidity_fields": {
+            "dex_liquidity_usd": "SELECTED_EXECUTION_POOL_LIQUIDITY",
+            "execution_pool_liquidity_usd": "SELECTED_EXECUTION_POOL_LIQUIDITY",
+            "dex_total_liquidity_usd": "SUM_OF_DEDUPED_EXACT_TOKEN_POOLS_ON_SELECTED_CHAIN",
+        },
         "provider_fallback_never_allows_symbol_only_match": True,
         "cex_identity_verified_is_not_a_buy_signal": True,
     }
