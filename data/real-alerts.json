@@ -1,11 +1,13 @@
 {
-  "version": 1,
-  "generated_at": "2026-09-02T13:42:11.609068+00:00",
-  "mode": "FAIL_CLOSED_REAL_ALERT_FEED_V1",
+  "version": 2,
+  "generated_at": "2026-09-02T14:10:21.058975+00:00",
+  "mode": "FAIL_CLOSED_REAL_ALERT_FEED_V2_EXECUTION_POOL_LIQUIDITY",
   "truth_contract": {
     "focus": "VETERAN_COIN_REVIVAL_ONLY",
     "minimum_market_age_days": 180,
-    "minimum_liquidity_usd": 50000.0,
+    "minimum_execution_pool_liquidity_usd": 50000.0,
+    "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+    "dex_total_liquidity_is_informational_only": true,
     "exact_onchain_identity_required": true,
     "exact_dex_pair_required": true,
     "symbol_only_never_actionable": true,
@@ -32,6 +34,10 @@
       "dex_url": "https://dexscreener.com/bsc/0x82ed13117144344b39e5ec74d614d54465897a24",
       "price_usd": 0.5454,
       "liquidity_usd": 8738.5,
+      "execution_pool_liquidity_usd": 8738.5,
+      "dex_total_liquidity_usd": null,
+      "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+      "liquidity_truth_source": "LEGACY_EXACT_PAIR:dex_liquidity_usd",
       "market_age_days": 300,
       "score": 93.0,
       "source_lanes": [
@@ -47,8 +53,8 @@
       "exact_pair_verified": true,
       "market_age_verified": true,
       "blockers": [
+        "EXECUTION_POOL_LIQUIDITY_LT_50K",
         "INDEPENDENT_CONFIRMATION_LT_2",
-        "LIQUIDITY_LT_50K",
         "NO_STRONG_DECISION_LANE"
       ],
       "status": "VERIFIED_WATCH_NOT_REAL_ALERT",
