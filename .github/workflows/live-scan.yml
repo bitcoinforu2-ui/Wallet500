@@ -95,6 +95,13 @@ jobs:
         run: python -m wallet500.evidence_capture
       - name: Send gated Telegram alerts
         run: python -m wallet500.telegram_alerts
+      - name: Send HOT email alerts
+        continue-on-error: true
+        env:
+          HOT_ALERT_EMAIL_TO: bitcoinforu2@gmail.com
+          HOT_ALERT_SMTP_USER: bitcoinforu2@gmail.com
+          HOT_ALERT_SMTP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python -m wallet500.hot_email_alerts
       - name: Assess explicit system health
         run: python -m wallet500.system_health
       - name: Record scheduler telemetry
