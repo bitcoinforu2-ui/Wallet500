@@ -1,0 +1,95 @@
+name: Wallet500 Holder Growth UI Bootstrap
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/holder-growth-ui-bootstrap.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-main-data-publisher
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Add holder growth UI
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('dashboard-revival1000.html')
+          s=p.read_text(encoding='utf-8')
+
+          def rep(old,new,label,count=1):
+              global s
+              if old not in s:
+                  raise SystemExit(f'HOLDER_UI_MARKER_MISSING:{label}')
+              s=s.replace(old,new,count)
+
+          if 'Holders 24h' not in s:
+              rep('.table{width:100%;border-collapse:collapse;min-width:1850px;', '.table{width:100%;border-collapse:collapse;min-width:2150px;', 'table-width')
+
+              old='''<div class="candidateGrid"><div class="candidateCard strict"><div class="cTop"><div class="cSym">DOGE‑1</div><span class="badge">RESEARCH ONLY</span></div><div class="why">MINT DpBzjtgG...tvfhm · EXACT PAIR VERIFIED · PAPER ONLY · OFFICIAL CATALYST NOT VERIFIED · PRODUCTION GATES UNCHANGED</div></div></div></div>'''
+              new='''<div class="candidateGrid"><div class="candidateCard strict"><div class="cTop"><div class="cSym">DOGE‑1</div><span class="badge">RESEARCH ONLY</span></div><div class="why">MINT DpBzjtgG...tvfhm · EXACT PAIR VERIFIED · PAPER ONLY · OFFICIAL CATALYST NOT VERIFIED · PRODUCTION GATES UNCHANGED</div></div><div class="candidateCard"><div class="cTop"><div class="cSym">HOLDER GROWTH</div><span class="badge strict">FORWARD VERIFIED</span></div><div class="cMetrics"><div class="cm"><b id="dogeHolders">BUILDING</b><span>HOLDERS NOW</span></div><div class="cm"><b id="dogeH24">BUILDING</b><span>Δ 24H</span></div><div class="cm"><b id="dogeH7">BUILDING</b><span>Δ 7D</span></div><div class="cm"><b id="dogeHObs">0</b><span>VERIFIED OBS</span></div></div><div class="why" id="dogeHNote">No retroactive holder history. 24h/7d appear only after verified observation coverage exists.</div></div></div></div>'''
+              rep(old,new,'doge-holder-card')
+
+              rep('<th>30d</th><th>Revival</th>', '<th>30d</th><th>Holders</th><th>Holders 24h</th><th>Holders 7d</th><th>Revival</th>', 'holder-columns')
+
+              old="let DATA=null,LIVE=new Map(),HIST=new Map(),LIVE_AT=0,liveBusy=false,bgCursor=0,LAST_VISIBLE=[];const LP=window.Wallet500LivePrice;"
+              new="let DATA=null,LIVE=new Map(),HIST=new Map(),HOLDERS=new Map(),HOLDER_META=null,LIVE_AT=0,liveBusy=false,bgCursor=0,LAST_VISIBLE=[];const LP=window.Wallet500LivePrice,DOGE1_MINT='DpBzjtgGLF7QA9Ug3eUVGbnqa6j3jvYBn1XuQuktvfhm';"
+              rep(old,new,'holder-state')
+
+              marker='function rband(v){'
+              helpers=r'''const hrow=x=>HOLDERS.get(String(x?.token_address||''))||null;
+function hcount(v){return v===null||v===undefined?'—':Number(v).toLocaleString('en-US')}
+function hdelta(row,key){if(!row||row['holder_growth_'+key+'_ready']!==true)return '<span class="mut">BUILDING</span>';let c=row['holder_growth_'+key+'_count'],p=row['holder_growth_'+key+'_pct'];return `<span class="${cls(p)}">${N(c)>=0?'+':''}${hcount(c)} · ${pc(p)}</span>`}
+function renderDogeHolders(){let h=HOLDERS.get(DOGE1_MINT);if(!h){$('dogeHolders').textContent='BUILDING';$('dogeH24').textContent='BUILDING';$('dogeH7').textContent='BUILDING';$('dogeHObs').textContent='0';$('dogeHNote').textContent='Waiting for first verified provider observation for DOGE‑1.';return}$('dogeHolders').textContent=hcount(h.holder_count);$('dogeH24').innerHTML=hdelta(h,'24h');$('dogeH7').innerHTML=hdelta(h,'7d');$('dogeHObs').textContent=h.holder_history_observations??'—';let span=N(h.holder_history_span_hours);$('dogeHNote').textContent=`Provider ${h.source||'verified holder source'} · history ${span.toFixed(1)}h · no interpolation / no retroactive backfill.`}
+async function refreshHolders(){try{let r=await fetch('../data/revival-holder-latest.json?v='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);let d=await r.json();if(d.network!=='solana'||d.no_hindsight!==true)throw Error('HOLDER_TRUTH_CONTRACT');HOLDER_META=d;HOLDERS=new Map((d.coins||[]).map(x=>[String(x.token_address||''),x]));renderDogeHolders();if(DATA)render()}catch(e){if($('dogeHNote'))$('dogeHNote').textContent='HOLDER DATA UNAVAILABLE · '+e.message}}
+'''
+              rep(marker,helpers+marker,'holder-helpers')
+
+              old="<td class=\"${cls(x.change_30d_pct)}\">${x.change_30d_pct==null?'—':pc(x.change_30d_pct)}</td><td><span class=\"score ${rs>=65?'green':rs>=50?'yellow':'mut'}\">"
+              new="<td class=\"${cls(x.change_30d_pct)}\">${x.change_30d_pct==null?'—':pc(x.change_30d_pct)}</td><td>${hcount(hrow(x)?.holder_count)}</td><td>${hdelta(hrow(x),'24h')}</td><td>${hdelta(hrow(x),'7d')}</td><td><span class=\"score ${rs>=65?'green':rs>=50?'yellow':'mut'}\">"
+              rep(old,new,'holder-row')
+
+              s=s.replace('colspan="21"','colspan="24"')
+              rep('render();liveMeta();refreshLive()', 'render();liveMeta();refreshLive();refreshHolders()', 'holder-main-load')
+              rep('setInterval(refreshLive,LP?LP.intervalMs:5000);setInterval(main,60000);setInterval(liveMeta,1000);', 'setInterval(refreshLive,LP?LP.intervalMs:5000);setInterval(refreshHolders,60000);setInterval(main,60000);setInterval(liveMeta,1000);', 'holder-refresh-interval')
+
+          p.write_text(s,encoding='utf-8')
+          print('HOLDER_GROWTH_UI_PATCH_OK')
+          PY
+      - name: Verify patch
+        run: |
+          set -euo pipefail
+          grep -Fq 'Holders 24h' dashboard-revival1000.html
+          grep -Fq 'Holders 7d' dashboard-revival1000.html
+          grep -Fq 'revival-holder-latest.json' dashboard-revival1000.html
+          grep -Fq 'dogeH24' dashboard-revival1000.html
+          grep -Fq 'dogeH7' dashboard-revival1000.html
+          echo HOLDER_GROWTH_UI_VERIFY_OK
+      - name: Publish UI patch
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          git add dashboard-revival1000.html
+          if git diff --cached --quiet; then echo HOLDER_GROWTH_UI_NO_CHANGE; exit 0; fi
+          git commit -m 'ui: show holder growth 24h and 7d on Revival'
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then echo HOLDER_GROWTH_UI_PUBLISH_OK; exit 0; fi
+            git fetch origin main
+            git rebase origin/main
+            sleep 2
+          done
+          exit 1
