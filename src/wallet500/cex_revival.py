@@ -136,14 +136,33 @@ def _reference_market(markets):
     if not valid:return {}
     return max(valid,key=lambda m:(_f(m.get('volume_24h')),_f(m.get('open_interest'))))
 
-def _milestone(now,markets,score,conf,change,price_acc,vol_acc,oi_acc,fund_abs,kind):
-    ref=_reference_market(markets)
+def _market_signal(m):
+    change=_f(m.get('change_24h_pct'));price_acc=_f(m.get('price_delta_pct'));vol_acc=_f(m.get('volume24_delta_pct'));oi_acc=_f(m.get('oi_delta_pct'));fund_abs=abs(_f(m.get('funding_rate')));vol=_f(m.get('volume_24h'))
+    score=0;reasons=[];hits=[]
+    if change>=8:score+=10;hits.append('MOMENTUM');reasons.append(f'24h momentum {change:.1f}%')
+    if change>=20:score+=10
+    if change>=50:score+=5
+    if price_acc>=2:score+=15;hits.append('PRICE_ACCEL');reasons.append(f'price acceleration {price_acc:.2f}%/scan')
+    if price_acc>=5:score+=10
+    if vol_acc>=8:score+=12;hits.append('VOLUME_ACCEL');reasons.append(f'volume acceleration {vol_acc:.1f}%/scan')
+    if vol_acc>=25:score+=8
+    if oi_acc>=5:score+=15;hits.append('OI_ACCEL');reasons.append(f'OI acceleration {oi_acc:.1f}%/scan')
+    if oi_acc>=15:score+=10
+    if fund_abs>=0.0005:score+=8;hits.append('FUNDING_DIVERGENCE');reasons.append(f'funding divergence {fund_abs*100:.3f}%')
+    if fund_abs>=0.003:score+=8
+    if vol>=10_000_000:score+=5;reasons.append('large derivatives turnover')
+    return {'exchange':m.get('exchange'),'score':score,'hits':hits,'hit_count':len(hits),'reasons':reasons,'change':change,'price_acc':price_acc,'vol_acc':vol_acc,'oi_acc':oi_acc,'fund_abs':fund_abs}
+
+def _milestone(now,markets,score,conf,change,price_acc,vol_acc,oi_acc,fund_abs,kind,coherence=None):
+    ref=_reference_market(markets);coherence=coherence or {}
     return {
         'kind':kind,'observed_at':now,'reference_exchange':ref.get('exchange'),
         'reference_price':_f(ref.get('price')),'reference_change_24h_pct':_f(ref.get('change_24h_pct')),
         'score':min(int(score),100),'confirmations':int(conf),'change_24h_max_pct':round(change,4),
         'price_acceleration_max_pct':round(price_acc,4),'volume_acceleration_max_pct':round(vol_acc,4),
         'oi_acceleration_max_pct':round(oi_acc,4),'funding_abs_max':fund_abs,
+        'coherent_exchange':coherence.get('exchange'),'coherent_feature_hits':coherence.get('hit_count',0),
+        'coherent_confirmations':coherence.get('confirmations',0),'dispersion_status':coherence.get('dispersion_status'),
     }
 
 def _fetch_source(name,fn):
@@ -173,43 +192,47 @@ def run_cex_revival(out:Path,now:str):
         exs={m['exchange'] for m in markets};conf=len(exs)
         changes=[m['change_24h_pct'] for m in markets if m['change_24h_pct']]
         funds=[m['funding_rate'] for m in markets if m['funding_rate']]
-        vols=[m['volume_24h'] for m in markets if m['volume_24h']]
         price_acc=max([m.get('price_delta_pct',0) for m in markets],default=0)
         vol_acc=max([m.get('volume24_delta_pct',0) for m in markets],default=0)
         oi_acc=max([m.get('oi_delta_pct',0) for m in markets],default=0)
         fund_abs=max([abs(x) for x in funds],default=0);change=max(changes,default=0)
         dispersion=(max(changes)-min(changes)) if len(changes)>=2 else 0
-        score=0;reasons=[]
-        if change>=8:score+=10;reasons.append(f'24h momentum {change:.1f}%')
-        if change>=20:score+=10
-        if change>=50:score+=5
-        if price_acc>=2:score+=15;reasons.append(f'price acceleration {price_acc:.2f}%/scan')
-        if price_acc>=5:score+=10
-        if vol_acc>=8:score+=12;reasons.append(f'volume acceleration {vol_acc:.1f}%/scan')
-        if vol_acc>=25:score+=8
-        if oi_acc>=5:score+=15;reasons.append(f'OI acceleration {oi_acc:.1f}%/scan')
-        if oi_acc>=15:score+=10
-        if fund_abs>=0.0005:score+=8;reasons.append(f'funding divergence {fund_abs*100:.3f}%')
-        if fund_abs>=0.003:score+=8
-        if conf>=2:score+=8;reasons.append(f'{conf} exchange confirmation')
-        if conf>=4:score+=8
-        if conf>=6:score+=6
-        if max(vols,default=0)>=10_000_000:score+=5;reasons.append('large derivatives turnover')
-        if dispersion>=8:score+=5;reasons.append(f'cross-exchange momentum dispersion {dispersion:.1f}pp')
+
+        local=[_market_signal(m) for m in markets]
+        best=max(local,key=lambda x:(x['score'],x['hit_count']),default={'score':0,'hit_count':0,'reasons':[],'exchange':None})
+        # Cross-exchange confirmation is earned only when another venue has a real
+        # anomaly feature of its own. This prevents maxima from unrelated venues
+        # being stitched into a synthetic "Frankenstein" signal.
+        coherent=[x for x in local if x['hit_count']>0]
+        coherent_conf=len({x['exchange'] for x in coherent if x.get('exchange')})
+        score=int(best.get('score',0));reasons=list(best.get('reasons') or [])
+        if coherent_conf>=2:score+=8;reasons.append(f'{coherent_conf} coherent exchange confirmation')
+        if coherent_conf>=4:score+=8
+        if coherent_conf>=6:score+=6
+
+        if dispersion>=25:
+            score-=8;dispersion_status='EXTREME_DISLOCATION_VERIFY';reasons.append(f'extreme cross-exchange dislocation {dispersion:.1f}pp')
+        elif dispersion>=8:
+            dispersion_status='ELEVATED_DISPERSION_VERIFY';reasons.append(f'elevated cross-exchange dispersion {dispersion:.1f}pp')
+        else:
+            dispersion_status='COHERENT_RANGE'
+            if coherent_conf>=2 and len(changes)>=2:score+=3;reasons.append('cross-exchange momentum agreement')
+        score=max(0,score)
+        coherence={'exchange':best.get('exchange'),'hit_count':best.get('hit_count',0),'confirmations':coherent_conf,'dispersion_status':dispersion_status}
 
         ms=milestones.setdefault(sym,{})
-        snapshot=_milestone(now,markets,score,conf,change,price_acc,vol_acc,oi_acc,fund_abs,'FIRST_SEEN')
+        snapshot=_milestone(now,markets,score,conf,change,price_acc,vol_acc,oi_acc,fund_abs,'FIRST_SEEN',coherence)
         if 'first_seen' not in ms:ms['first_seen']=snapshot
-        anomaly=(change>=8 or price_acc>=2 or vol_acc>=8 or oi_acc>=5 or fund_abs>=0.0005 or dispersion>=8)
+        anomaly=bool(best.get('hit_count'))
         if anomaly and 'first_anomaly' not in ms:
             ms['first_anomaly']={**snapshot,'kind':'FIRST_ANOMALY'}
         if score>=35:
             if 'first_alert' not in ms:ms['first_alert']={**snapshot,'kind':'FIRST_ALERT'}
-            alerts.append({'symbol':sym,'cex_revival_score':min(score,100),'archetype':_classify(markets),'reasons':reasons,'confirmations':conf,'exchanges':sorted(exs),'change_24h_max_pct':round(change,4),'price_acceleration_max_pct':round(price_acc,4),'volume_acceleration_max_pct':round(vol_acc,4),'oi_acceleration_max_pct':round(oi_acc,4),'funding_abs_max':fund_abs,'momentum_dispersion_pp':round(dispersion,3),'milestones':ms,'markets':markets})
+            alerts.append({'symbol':sym,'cex_revival_score':min(score,100),'archetype':_classify(markets),'reasons':reasons,'confirmations':conf,'coherent_confirmations':coherent_conf,'coherent_exchange':best.get('exchange'),'coherent_feature_hits':best.get('hits',[]),'dispersion_status':dispersion_status,'exchanges':sorted(exs),'change_24h_max_pct':round(change,4),'price_acceleration_max_pct':round(price_acc,4),'volume_acceleration_max_pct':round(vol_acc,4),'oi_acceleration_max_pct':round(oi_acc,4),'funding_abs_max':fund_abs,'momentum_dispersion_pp':round(dispersion,3),'milestones':ms,'markets':markets})
     _write_state_lossless(state_path,state)
-    alerts.sort(key=lambda x:(x['cex_revival_score'],x['confirmations'],x['price_acceleration_max_pct']),reverse=True)
-    payload={'version':5,'generated_at':now,'requested_sources':[x[0] for x in SOURCES],'source_health':health,'healthy_sources':sum(1 for x in health.values() if x['ok']),'contracts_seen':len(rows),'symbols_seen':len(groups),'alerts_count':len(alerts),'milestone_method':'IMMUTABLE_FIRST_SEEN_FIRST_FEATURE_ANOMALY_FIRST_SCORE35_ALERT','errors':errors,'alerts':alerts}
+    alerts.sort(key=lambda x:(x['cex_revival_score'],x['coherent_confirmations'],x['confirmations']),reverse=True)
+    payload={'version':6,'generated_at':now,'requested_sources':[x[0] for x in SOURCES],'source_health':health,'healthy_sources':sum(1 for x in health.values() if x['ok']),'contracts_seen':len(rows),'symbols_seen':len(groups),'alerts_count':len(alerts),'scoring_method':'SINGLE_VENUE_FEATURE_COHERENCE_PLUS_REAL_CROSS_VENUE_CONFIRMATION','dispersion_policy':'NO_BONUS_FOR_DISPERSION;_GE25PP_PENALIZED_AND_FLAGGED_FOR_VERIFICATION','milestone_method':'IMMUTABLE_FIRST_SEEN_FIRST_FEATURE_ANOMALY_FIRST_SCORE35_ALERT','errors':errors,'alerts':alerts}
     (out/'cex-revival-radar.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
-    learning={'version':3,'updated_at':now,'purpose':'learn which early CEX revival features precede verified follow-through; case studies are not counted as Wallet500 calls','features':['price_acceleration','volume24_acceleration','open_interest_acceleration','funding_divergence','cross_exchange_confirmation','momentum_dispersion'],'milestone_method':'IMMUTABLE_FIRST_SEEN_FIRST_FEATURE_ANOMALY_FIRST_SCORE35_ALERT','top_candidates':[{'symbol':x['symbol'],'score':x['cex_revival_score'],'archetype':x['archetype'],'confirmations':x['confirmations'],'price_acceleration_max_pct':x['price_acceleration_max_pct'],'volume_acceleration_max_pct':x['volume_acceleration_max_pct'],'oi_acceleration_max_pct':x['oi_acceleration_max_pct'],'funding_abs_max':x['funding_abs_max'],'milestones':x.get('milestones',{})} for x in alerts[:50]]}
+    learning={'version':4,'updated_at':now,'purpose':'learn which early CEX revival features precede verified follow-through; case studies are not counted as Wallet500 calls','features':['same_exchange_feature_coherence','price_acceleration','volume24_acceleration','open_interest_acceleration','funding_divergence','real_cross_exchange_confirmation','momentum_dispersion_as_verification_risk'],'scoring_method':'SINGLE_VENUE_FEATURE_COHERENCE_PLUS_REAL_CROSS_VENUE_CONFIRMATION','milestone_method':'IMMUTABLE_FIRST_SEEN_FIRST_FEATURE_ANOMALY_FIRST_SCORE35_ALERT','top_candidates':[{'symbol':x['symbol'],'score':x['cex_revival_score'],'archetype':x['archetype'],'confirmations':x['confirmations'],'coherent_confirmations':x['coherent_confirmations'],'coherent_exchange':x['coherent_exchange'],'coherent_feature_hits':x['coherent_feature_hits'],'dispersion_status':x['dispersion_status'],'price_acceleration_max_pct':x['price_acceleration_max_pct'],'volume_acceleration_max_pct':x['volume_acceleration_max_pct'],'oi_acceleration_max_pct':x['oi_acceleration_max_pct'],'funding_abs_max':x['funding_abs_max'],'milestones':x.get('milestones',{})} for x in alerts[:50]]}
     (out/'cex-learning.json').write_text(json.dumps(learning,indent=2),encoding='utf-8')
     return payload
