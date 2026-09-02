@@ -1,0 +1,79 @@
+name: Wallet500 Hyperliquid Copy Watch
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'experiments/hyperliquid-copy-watch-v1.json'
+      - 'src/wallet500/hyperliquid_copy_watch.py'
+      - 'tests/test_hyperliquid_copy_watch.py'
+      - '.github/workflows/hyperliquid-copy-watch.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hyperliquid-copy-watch
+  cancel-in-progress: false
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test copy-watch truth rules
+        run: |
+          pip install -e . pytest
+          python -m pytest -q tests/test_hyperliquid_copy_watch.py
+      - name: Track public Hyperliquid traders
+        run: python -m wallet500.hyperliquid_copy_watch
+      - name: Validate research-only output
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          s=Path('data/hyperliquid-copy-watch-summary.json')
+          l=Path('data/hyperliquid-copy-watch-ledger.json')
+          if not s.exists() or not l.exists(): raise SystemExit('HL_COPY_OUTPUT_MISSING')
+          d=json.loads(s.read_text())
+          if d.get('version')!='HYPERLIQUID_COPY_WATCH_V1': raise SystemExit('HL_COPY_VERSION_INVALID')
+          if d.get('mode')!='FORWARD_ONLY_TRACK_AND_SCREEN': raise SystemExit('HL_COPY_MODE_INVALID')
+          if d.get('recommend_real_money_now') is not False: raise SystemExit('HL_COPY_MUST_NOT_AUTO_RECOMMEND_MONEY')
+          truth=d.get('truth_contract') or {}
+          required=['forward_only_copyability_measurement','public_onchain_data_only','no_hindsight_entry','no_real_money','no_automatic_orders','copyability_requires_forward_price_observations','failures_and_losing_fills_are_retained']
+          if any(truth.get(x) is not True for x in required): raise SystemExit('HL_COPY_TRUTH_CONTRACT_INVALID')
+          for r in d.get('ranking') or []:
+              if r.get('decision')=='COPYABLE_CANDIDATE':
+                  if int(r.get('forward_copy_observations') or 0) < int((d.get('screening') or {}).get('min_forward_observations_for_copyability') or 20):
+                      raise SystemExit('HL_COPY_CANDIDATE_WITHOUT_FORWARD_SAMPLE')
+          print('HL_COPY_WATCH_OK', d.get('candidates_scored'), d.get('copyable_candidates'))
+          PY
+      - name: Publish forward-only screening ledger
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-hl-copy-bot'
+          git config user.email 'wallet500-hl-copy-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          cp data/hyperliquid-copy-watch-summary.json "$tmp/summary.json"
+          cp data/hyperliquid-copy-watch-ledger.json "$tmp/ledger.json"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/summary.json" data/hyperliquid-copy-watch-summary.json
+            cp "$tmp/ledger.json" data/hyperliquid-copy-watch-ledger.json
+            git add data/hyperliquid-copy-watch-summary.json data/hyperliquid-copy-watch-ledger.json
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'research: refresh Hyperliquid copy watch'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 3
+          done
+          exit 1
