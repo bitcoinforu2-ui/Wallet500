@@ -9,6 +9,7 @@ on:
     paths:
       - 'experiments/hyperliquid-copy-watch-v1.json'
       - 'src/wallet500/hyperliquid_copy_watch.py'
+      - 'src/wallet500/hyperliquid_copy_watch_runner.py'
       - 'tests/test_hyperliquid_copy_watch.py'
       - '.github/workflows/hyperliquid-copy-watch.yml'
 
@@ -35,7 +36,7 @@ jobs:
           pip install -e . pytest
           python -m pytest -q tests/test_hyperliquid_copy_watch.py
       - name: Track public Hyperliquid traders
-        run: python -m wallet500.hyperliquid_copy_watch
+        run: python -m wallet500.hyperliquid_copy_watch_runner
       - name: Validate research-only output
         run: |
           python - <<'PY'
@@ -51,6 +52,7 @@ jobs:
           truth=d.get('truth_contract') or {}
           required=['forward_only_copyability_measurement','public_onchain_data_only','no_hindsight_entry','no_real_money','no_automatic_orders','copyability_requires_forward_price_observations','failures_and_losing_fills_are_retained']
           if any(truth.get(x) is not True for x in required): raise SystemExit('HL_COPY_TRUTH_CONTRACT_INVALID')
+          if (d.get('drawdown_policy') or {}).get('broker_reported_mdd_claimed') is not False: raise SystemExit('HL_COPY_DRAWDOWN_LABEL_INVALID')
           for r in d.get('ranking') or []:
               if r.get('decision')=='COPYABLE_CANDIDATE':
                   if int(r.get('forward_copy_observations') or 0) < int((d.get('screening') or {}).get('min_forward_observations_for_copyability') or 20):
