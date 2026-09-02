@@ -18,10 +18,22 @@ def _write(path: Path, payload) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding='utf-8')
 
 
-def _token_key(row: dict) -> str:
-    chain=str(row.get('chain') or 'unknown').lower(); token=str(row.get('token') or row.get('mint') or row.get('token_address') or '')
-    if chain in {'ethereum','bsc','bnb','eth'}: token=token.lower()
-    return f'{chain}:{token}'
+def _norm_addr(value: object) -> str:
+    return str(value or '').strip().lower()
+
+
+def _pair_key(row: dict) -> str:
+    chain=str(row.get('chain') or 'unknown').lower()
+    token=str(row.get('token') or row.get('mint') or row.get('token_address') or '')
+    pair=str(row.get('pair_address') or '')
+    if chain in {'ethereum','bsc','bnb','eth'}:
+        token=token.lower(); pair=pair.lower()
+    return f'{chain}:{token}:{pair}'
+
+
+def _exact_pair_locked(row: dict) -> bool:
+    pair=_norm_addr(row.get('pair_address')); locked=_norm_addr(row.get('locked_pair_address'))
+    return bool(pair and locked and pair==locked and row.get('pair_identity_locked') is True)
 
 
 def _fmt_money(v) -> str:
@@ -38,6 +50,7 @@ def _tier(row: dict) -> str | None:
     if row.get('qualification')!='QUALIFIED': return None
     if row.get('live_survival_gate')!='ACTIVE': return None
     if row.get('pump_dump_blocked'): return None
+    if not _exact_pair_locked(row): return None
     if row.get('holder_cluster_production_status')!='PASS': return None
     if row.get('holder_cluster_verification_complete') is not True: return None
     score=float(row.get('anomaly_score') or 0); liquidity=float(row.get('live_liquidity_usd') or row.get('liquidity_usd') or 0); volume=float(row.get('live_volume_h1') or row.get('volume_h1') or 0); activity=int(row.get('live_activity_h1') or 0); risk=str(row.get('pump_dump_risk_level') or '').upper()
@@ -48,8 +61,8 @@ def _tier(row: dict) -> str | None:
 
 
 def _message(row: dict, tier: str) -> str:
-    chain=str(row.get('chain') or 'unknown').upper().replace('BSC','BNB'); token=str(row.get('token') or row.get('mint') or row.get('token_address') or 'unknown'); score=float(row.get('anomaly_score') or 0); risk=str(row.get('pump_dump_risk_level') or 'n/a').upper(); liquidity=row.get('live_liquidity_usd') or row.get('liquidity_usd'); volume=row.get('live_volume_h1') or row.get('volume_h1'); buys=int(row.get('buys_h1') or 0); sells=int(row.get('sells_h1') or 0); price=row.get('price_usd'); age=row.get('pair_age_minutes'); title='🔥 HIGH CONVICTION' if tier=='HIGH_CONVICTION' else '🚨 VERIFIED LIVE'; age_text=f'{float(age):.0f}m' if age is not None else 'n/a'; dex_url=row.get('url') or ''
-    lines=[f'{title} — WALLET500',chain,f'Token: {token}',f'Score: {score:.0f}/100',f'Price: {_fmt_money(price)}',f'Liquidity: {_fmt_money(liquidity)} ✅ min $50K',f'Volume 1H: {_fmt_money(volume)}',f'Buys/Sells 1H: {buys}/{sells}',f'Age: {age_text}',f'Pump/Dump Risk: {risk}','Holder/Cluster evidence: COMPLETE PASS','Discovery snapshot locked: YES','Verified Intelligence. The Pure Truth.']
+    chain=str(row.get('chain') or 'unknown').upper().replace('BSC','BNB'); token=str(row.get('token') or row.get('mint') or row.get('token_address') or 'unknown'); pair=str(row.get('pair_address') or 'unknown'); dex=str(row.get('dex') or 'unknown'); score=float(row.get('anomaly_score') or 0); risk=str(row.get('pump_dump_risk_level') or 'n/a').upper(); liquidity=row.get('live_liquidity_usd') or row.get('liquidity_usd'); volume=row.get('live_volume_h1') or row.get('volume_h1'); buys=int(row.get('buys_h1') or 0); sells=int(row.get('sells_h1') or 0); price=row.get('price_usd'); age=row.get('pair_age_minutes'); title='🔥 HIGH CONVICTION' if tier=='HIGH_CONVICTION' else '🚨 VERIFIED LIVE'; age_text=f'{float(age):.0f}m' if age is not None else 'n/a'; dex_url=row.get('url') or ''; pair_checked=row.get('survival_checked_at') or row.get('holder_cluster_checked_at') or 'n/a'
+    lines=[f'{title} — WALLET500',chain,f'Token: {token}',f'Pair: {pair}',f'DEX: {dex}',f'Pair identity: EXACT LOCK ✅',f'Pair checked: {pair_checked}',f'Score: {score:.0f}/100',f'Price: {_fmt_money(price)}',f'Liquidity: {_fmt_money(liquidity)} ✅ min $50K',f'Volume 1H: {_fmt_money(volume)}',f'Buys/Sells 1H: {buys}/{sells}',f'Age: {age_text}',f'Pump/Dump Risk: {risk}','Holder/Cluster evidence: COMPLETE PASS','Discovery snapshot locked: YES','Verified Intelligence. The Pure Truth.']
     if dex_url: lines.append(f'DexScreener: {dex_url}')
     return '\n'.join(lines)
 
@@ -69,14 +82,14 @@ def run() -> dict:
     for row in candidates:
         tier=_tier(row)
         if not tier: continue
-        key=_token_key(row); fingerprint=f"{tier}:{row.get('qualified_at') or row.get('observed_at') or ''}"; eligible.append({'key':key,'tier':tier})
+        key=_pair_key(row); fingerprint=f"{tier}:{row.get('qualified_at') or row.get('observed_at') or ''}:{_norm_addr(row.get('locked_pair_address'))}"; eligible.append({'key':key,'tier':tier,'pair_address':row.get('pair_address')})
         if sent.get(key,{}).get('fingerprint')==fingerprint: continue
         if not configured: continue
         try:
-            _send(bot_token,chat_id,_message(row,tier)); sent[key]={'fingerprint':fingerprint,'tier':tier,'sent_at':now}; delivered.append({'key':key,'tier':tier})
+            _send(bot_token,chat_id,_message(row,tier)); sent[key]={'fingerprint':fingerprint,'tier':tier,'pair_address':row.get('pair_address'),'sent_at':now}; delivered.append({'key':key,'tier':tier,'pair_address':row.get('pair_address')})
         except Exception as exc: errors.append({'key':key,'error':f'{type(exc).__name__}: {exc}'[:300]})
     if len(sent)>5000: sent=dict(sorted(sent.items(),key=lambda kv:kv[1].get('sent_at',''),reverse=True)[:5000])
-    report={'version':4,'updated_at':now,'configured':configured,'candidate_count':len(candidates),'eligible_count':len(eligible),'delivered_count':len(delivered),'error_count':len(errors),'eligible':eligible,'delivered':delivered,'errors':errors,'policy':{'source':source_name,'requires':['qualification=QUALIFIED','live_survival_gate=ACTIVE','pump_dump_blocked=false','holder_cluster_production_status=PASS','holder_cluster_verification_complete=true','liquidity>=50000','volume_h1>=15000','activity_h1>=50','risk not HIGH/CRITICAL'],'high_conviction':'score>=90, liquidity>=50000, volume_h1>=30000, risk=LOW','dedupe':'one alert per qualification fingerprint'}}
+    report={'version':5,'updated_at':now,'configured':configured,'candidate_count':len(candidates),'eligible_count':len(eligible),'delivered_count':len(delivered),'error_count':len(errors),'eligible':eligible,'delivered':delivered,'errors':errors,'policy':{'source':source_name,'requires':['qualification=QUALIFIED','live_survival_gate=ACTIVE','pump_dump_blocked=false','pair_identity_locked=true','pair_address=locked_pair_address','holder_cluster_production_status=PASS','holder_cluster_verification_complete=true','liquidity>=50000','volume_h1>=15000','activity_h1>=50','risk not HIGH/CRITICAL'],'high_conviction':'score>=90, liquidity>=50000, volume_h1>=30000, risk=LOW','dedupe':'one alert per chain+token+exact_pair qualification fingerprint'}}
     _write(state_path,{'updated_at':now,'sent':sent}); _write(out/'telegram-alert-report.json',report); print(json.dumps(report,indent=2)); return report
 
 
