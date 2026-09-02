@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#05090d">
+<title>Wallet500 · Revival Smart Money</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#05090d;color:#eafcff;font-family:Arial,sans-serif}.wrap{max-width:1200px;margin:auto;padding:10px}.top{position:sticky;top:0;z-index:5;background:#08131a;border:1px solid #174a5a;padding:13px}.brand{font-size:20px;font-weight:900;color:#30e6ff}.sub{font-size:11px;color:#8eabb5;margin-top:5px;line-height:1.5}.truth{font:10px monospace;color:#63f3b2;direction:ltr;margin-top:7px;white-space:normal}.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin:9px 0}.k{border:1px solid #173540;background:#071118;padding:10px}.lab{font-size:9px;color:#7f9da7}.num{font-size:22px;font-weight:900;margin-top:5px;direction:ltr}.green{color:#56efaa}.yellow{color:#ffd65a}.cyan{color:#30e6ff}.red{color:#ff7b86}.mut{color:#7f9da7}.panel{border:1px solid #173540;background:#071118;margin:8px 0}.head{padding:10px;border-bottom:1px solid #173540;font-weight:900;color:#83d9e7}.body{padding:9px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:7px}.card{border:1px solid #23424d;background:#08131a;padding:9px}.wallet{font:11px monospace;direction:ltr;word-break:break-all}.row{display:flex;justify-content:space-between;gap:8px;border-top:1px solid #122a33;padding-top:5px;margin-top:5px;font-size:11px}.tag{display:inline-block;border:1px solid #305560;border-radius:999px;padding:3px 6px;font-size:9px;font-weight:800}.tier-ELITE{color:#56efaa;border-color:#2f6958}.tier-STRONG{color:#30e6ff;border-color:#24556a}.tier-WATCH{color:#ffd65a;border-color:#6b5b22}.tier-PENDING_HISTORY{color:#8eabb5}.pre{direction:ltr}.notice{border:1px solid #5c4f1e;background:#171407;color:#ffe499;padding:9px;line-height:1.5;margin:8px 0}.tablebox{overflow:auto}.table{width:100%;border-collapse:collapse;min-width:850px;direction:ltr}.table th,.table td{padding:7px;border-bottom:1px solid #102a33;text-align:right;white-space:nowrap;font-size:10px}.table th{color:#83d9e7;background:#0a1820}.foot{text-align:center;color:#78939d;padding:10px;font-size:10px}.link{color:#38dfff;text-decoration:none}@media(max-width:800px){.kpis{grid-template-columns:repeat(3,1fr)}}@media(max-width:520px){.kpis{grid-template-columns:1fr 1fr}.brand{font-size:17px}.wrap{padding:5px}.top{position:relative}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+<div class="brand">WALLET500 · REVIVAL SMART MONEY</div>
+<div class="sub">PRE‑WAKING wallet evidence → Cross‑Token Registry → Time‑Safe Historical Tiering</div>
+<div class="truth">SIGNED TOKEN OWNER DELTA ONLY · EXACT PAIR ONLY · NO HINDSIGHT · TIER AS-OF T0 · RESEARCH ONLY · NO AUTOMATIC BUY</div>
+</header>
+<section class="kpis">
+<div class="k"><div class="lab">PRE‑WAKING TARGETS</div><div id="preTargets" class="num cyan">—</div></div>
+<div class="k"><div class="lab">REGISTRY WALLETS</div><div id="wallets" class="num">—</div></div>
+<div class="k"><div class="lab">CROSS‑TOKEN WALLETS</div><div id="cross" class="num yellow">—</div></div>
+<div class="k"><div class="lab">ELITE</div><div id="elite" class="num green">—</div></div>
+<div class="k"><div class="lab">STRONG</div><div id="strong" class="num cyan">—</div></div>
+<div class="k"><div class="lab">PENDING HISTORY</div><div id="pending" class="num">—</div></div>
+</section>
+<div class="notice"><b>כלל אמת:</b> ארנק שמופיע בכמה מטבעות אינו Smart Money. Tier מתקבל רק אחרי היסטוריית BUY לפני WAKING עם תוצאות 24h שהושלמו, ורק תוצאות שהיו ידועות לפני T0 של האירוע הבא יכולות להשפיע עליו.</div>
+<section class="panel"><div class="head">PRE‑WAKING LIVE WATCH</div><div id="preGrid" class="body grid"></div></section>
+<section class="panel"><div class="head">TOP CROSS‑TOKEN WALLETS</div><div id="walletGrid" class="body grid"></div></section>
+<section class="panel"><div class="head">EVENT BRIDGE · SMART MONEY AS‑OF T0</div><div class="body tablebox"><table class="table"><thead><tr><th>Event</th><th>Coin</th><th>T0</th><th>Wallets seen</th><th>Qualified pre‑WAKING buyers</th><th>Pair</th></tr></thead><tbody id="events"></tbody></table></div></section>
+<div id="meta" class="foot">טוען נתוני אמת…</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
+function short(s,n=8){s=String(s||'');return s?`${s.slice(0,n)}…${s.slice(-5)}`:'—'}
+function tierClass(t){return 'tier-'+String(t||'PENDING_HISTORY')}
+async function get(path){const r=await fetch(path+'?v='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error(path+' '+r.status);return r.json()}
+function preCard(x){const c=x.coverage||{},h=x.windows?.h1||{};return `<div class="card"><div><b>${esc(x.symbol||short(x.token_address))}</b> <span class="tag">${esc(x.status||'—')}</span></div><div class="row"><span>Score</span><b>${esc(x.prewaking_rank_score??'—')}</b></div><div class="row"><span>Wallets since monitor</span><b>${esc(c.tracked_wallets_since_monitor_t0??0)}</b></div><div class="row"><span>Resolved swaps 1h</span><b>${esc(h.resolved_swaps??0)}</b></div><div class="row"><span>Net accumulators 1h</span><b>${esc(h.net_accumulating_wallets??0)}</b></div><div class="row"><span>Started</span><span class="pre">${esc(x.monitor_started_at||'—')}</span></div><div class="row"><span>Pair</span><span class="wallet">${esc(short(x.exact_pair,10))}</span></div></div>`}
+function walletCard(x){const t=x.tier_current||{};return `<div class="card"><div class="wallet">${esc(x.wallet)}</div><div style="margin-top:6px"><span class="tag ${tierClass(t.tier)}">${esc(t.tier||'PENDING_HISTORY')}</span></div><div class="row"><span>Observed tokens</span><b>${esc(x.observed_distinct_tokens??0)}</b></div><div class="row"><span>Verified events</span><b>${esc(x.verified_events??0)}</b></div><div class="row"><span>BUY / SELL</span><b>${esc(x.verified_buys??0)} / ${esc(x.verified_sells??0)}</b></div><div class="row"><span>Completed pre‑WAKING BUY exposures</span><b>${esc(t.completed_pre_waking_buy_exposures??0)}</b></div><div class="row"><span>X2+ hit rate</span><b>${t.x2_plus_hit_rate==null?'—':esc((100*t.x2_plus_hit_rate).toFixed(1)+'%')}</b></div><div class="row"><span>Last seen</span><span class="pre">${esc(x.last_seen_at||'—')}</span></div></div>`}
+async function load(){try{const [pre,reg]=await Promise.all([get('./revival-prewaking-wallet-evidence.json'),get('./revival-wallet-registry.json')]);const c=reg.counts||{};$('preTargets').textContent=pre.targets??0;$('wallets').textContent=c.wallets_registry??0;$('cross').textContent=c.cross_token_wallets??0;$('elite').textContent=c.elite??0;$('strong').textContent=c.strong??0;$('pending').textContent=c.pending_history??0;$('preGrid').innerHTML=(pre.tokens||[]).map(preCard).join('')||'<span class="mut">אין מטרות פעילות כרגע</span>';$('walletGrid').innerHTML=(reg.top_cross_token_wallets||[]).map(walletCard).join('')||'<span class="mut">עדיין אין overlap חוצה מטבעות</span>';$('events').innerHTML=(reg.event_bridge||[]).map(e=>`<tr><td>${esc(short(e.event_id,12))}</td><td>${esc(e.symbol||short(e.token_address))}</td><td>${esc(e.waking_t0||'—')}</td><td>${esc(e.verified_wallets_seen??0)}</td><td>${esc(e.historically_qualified_pre_waking_buyers??0)}</td><td class="wallet">${esc(short(e.pair_address,10))}</td></tr>`).join('')||'<tr><td colspan="6" class="mut">אין אירועי bridge להצגה</td></tr>';$('meta').textContent=`Registry ${reg.generated_at||'—'} · PRE-WAKING ${pre.generated_at||'—'} · ${reg.policy?.version||'—'}`;}catch(e){$('meta').innerHTML='<span class="red">DATA ERROR: '+esc(e.message)+'</span>'}}
+load();setInterval(load,15000);
+</script>
+</body></html>
