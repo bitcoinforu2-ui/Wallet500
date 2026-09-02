@@ -23,6 +23,27 @@ def test_tier_stays_pending_without_minimum_history():
     assert score["completed_pre_waking_buy_exposures"] == 2
 
 
+def test_raw_cross_token_overlap_never_creates_tier_by_itself():
+    pre = {
+        "tokens": {
+            "A": {
+                "pair_address": "PA",
+                "monitor_started_at": 1,
+                "events": [{"t": 10, "sig": "SA", "w": "W", "side": "BUY", "token_delta": 1}],
+            },
+            "B": {
+                "pair_address": "PB",
+                "monitor_started_at": 1,
+                "events": [{"t": 11, "sig": "SB", "w": "W", "side": "BUY", "token_delta": 1}],
+            },
+        }
+    }
+    merged = registry.merged_evidence_by_token(pre, {})
+    raw = registry._raw_wallet_stats(merged)["W"]
+    assert len(raw["observed_tokens"]) == 2
+    assert registry.tier_from_exposures([])["tier"] == "PENDING_HISTORY"
+
+
 def test_strong_and_elite_require_real_completed_cross_token_history():
     strong_rows = [
         exposure(f"e{i}", f"t{i%3}", "REVIVAL_X2" if i < 3 else "NO_REVIVAL_24H", f"2026-01-0{i+1}T01:00:00+00:00")
