@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "mode": "RESEARCH_ADVISORY_ONLY",
+  "production_change_allowed": false,
+  "production_thresholds_modified": false,
+  "hard_rules": [
+    "LIQUIDITY_GTE_50K_EXACT_EXECUTION_POOL",
+    "EXACT_PAIR_IDENTITY",
+    "HOLDER_CLUSTER_FAIL_CLOSED",
+    "IMMUTABLE_TRACK_RECORD",
+    "NO_HINDSIGHT",
+    "PAPER_ONLY"
+  ],
+  "decision_states": {
+    "REJECT": 0,
+    "MORE_DATA": 3,
+    "SHADOW_TEST": 0,
+    "APPROVED_CANDIDATE": 0
+  },
+  "proposals": [
+    {
+      "hypothesis_id": "FILTER_FN::LIVE_SURVIVAL_FAILED",
+      "source_research_ids": [
+        "filter-tuning-advisor"
+      ],
+      "feature_or_rule": "LIVE_SURVIVAL_FAILED",
+      "proposal_type": "FALSE_NEGATIVE_RESEARCH",
+      "sample_size": 456,
+      "positive_cases": 29,
+      "baseline_rate_pct": 6.3596,
+      "candidate_rate_pct": null,
+      "lift_pct": null,
+      "forward_only_evidence_count": 0,
+      "lookahead_check": "PASS",
+      "safety_regression_check": "PASS",
+      "hard_rule_change_allowed": false,
+      "recommendation": "MORE_DATA",
+      "decision_note": "Measure a recovery/recheck feature in shadow; do not lower the hard production gate."
+    },
+    {
+      "hypothesis_id": "CASE::CYBERLEEK",
+      "source_research_ids": [
+        "case-study-cyberleek"
+      ],
+      "feature_or_rule": "CASE_STUDY_PATTERN",
+      "proposal_type": "CASE_STUDY_HYPOTHESIS",
+      "sample_size": 1,
+      "positive_cases": 0,
+      "baseline_rate_pct": null,
+      "candidate_rate_pct": null,
+      "lift_pct": null,
+      "forward_only_evidence_count": 0,
+      "lookahead_check": "PASS",
+      "safety_regression_check": "PASS",
+      "hard_rule_change_allowed": false,
+      "recommendation": "MORE_DATA",
+      "decision_note": "Convert repeated case-study pattern into a measurable cohort feature before any filter change.",
+      "research_questions": []
+    },
+    {
+      "hypothesis_id": "CASE::DOGE-1",
+      "source_research_ids": [
+        "case-study-doge-1"
+      ],
+      "feature_or_rule": "CEX_NET_OUTFLOW,INDEPENDENT_WITHDRAWAL_WALLET_COUNT,COMMON_NON_CEX_FUNDER_SCORE,ACCUMULATION_ACCELERATION,CROSS_ENTITY_CONFIRMATION,KNOWN_CUSTODIAN_BRIDGE_EXCLUSION",
+      "proposal_type": "CASE_STUDY_HYPOTHESIS",
+      "sample_size": 1,
+      "positive_cases": 0,
+      "baseline_rate_pct": null,
+      "candidate_rate_pct": null,
+      "lift_pct": null,
+      "forward_only_evidence_count": 1,
+      "lookahead_check": "PASS",
+      "safety_regression_check": "PASS",
+      "hard_rule_change_allowed": false,
+      "recommendation": "MORE_DATA",
+      "decision_note": "Convert repeated case-study pattern into a measurable cohort feature before any filter change.",
+      "research_questions": [
+        "After removing known CEX, router, LP and custody bridge nodes, does the large holder cluster remain materially connected?",
+        "What percentage of circulating supply is held by non-custodial connected wallets after entity-neutral normalization?",
+        "Do multiple independent wallets withdraw DOGE-1 from CEX entities within correlated forward time windows?",
+        "Are candidate wallets independently funded, or do they share non-CEX first-funder/common-funder relationships?",
+        "Do accumulation, holder growth and net CEX outflow precede price/volume revival on the exact pair?"
+      ]
+    }
+  ],
+  "next_human_decision": [],
+  "source_health": {
+    "filter_advisor_loaded": true,
+    "rejected_outcomes_loaded": true,
+    "case_studies_loaded": 2
+  },
+  "generated_at": "2026-09-02T22:17:21.303683+00:00"
+}
