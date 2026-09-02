@@ -12,10 +12,10 @@ from .real_alerts import run as build_real_alerts
 
 DATA = Path("data")
 MIN_AGE_DAYS = 180
-# Active production policy: Wallet500 is now 100% veteran-token revival.
-# The approved hard minimum is 180 verified market-trading days; unknown or
-# ambiguous age remains fail-closed and can never become actionable.
-APPROVED_PRODUCTION_MIN_AGE_DAYS = 180
+# Production truth may only move after strong quantitative evidence. The
+# currently available mature-pool study is RESEARCH_ONLY / NOT_A_STRATEGY_BACKTEST,
+# so the last evidence-approved production baseline remains seven days.
+APPROVED_PRODUCTION_MIN_AGE_DAYS = 7
 
 
 def _load(path: Path, default):
@@ -173,6 +173,10 @@ def run(data_dir: Path = DATA) -> dict:
     through strict external verification. Provider outages can delay unknown
     identities but can never turn symbol-only data into an actionable result.
     """
+    # Do not let an unapproved research threshold become production truth. At the
+    # same time, a governance mismatch must not freeze the unrelated DEX truth lane.
+    # Quarantine CEX actionable output to an empty fail-closed set, rebuild the
+    # unified alert feed, and allow the rest of the validated live scan to proceed.
     if MIN_AGE_DAYS != APPROVED_PRODUCTION_MIN_AGE_DAYS:
         data_dir.mkdir(parents=True, exist_ok=True)
         radar_path = data_dir / "cex-revival-radar.json"
@@ -193,8 +197,14 @@ def run(data_dir: Path = DATA) -> dict:
                 "rejected": len(previous_alerts),
                 "unknown_or_unresolved_identity": "REJECT",
                 "production_change_allowed": False,
+                "policy": "RESEARCH_THRESHOLD_MUST_NOT_BECOME_PRODUCTION_TRUTH_WITHOUT_STRONG_NUMERICAL_EVIDENCE",
             },
             "generated_identity_preflight_at": now,
+            "fast_lane_degraded": {
+                "at": now,
+                "reason": "UNAPPROVED_PRODUCTION_MARKET_AGE_THRESHOLD",
+                "policy": "CEX_ACTIONABLE_OUTPUT_QUARANTINED_FAIL_CLOSED;_UNRELATED_LIVE_TRUTH_LANE_CONTINUES",
+            },
         }
         _write(radar_path, blocked_payload)
         real = build_real_alerts(data_dir)
@@ -231,7 +241,6 @@ def run(data_dir: Path = DATA) -> dict:
         "age_gate": {
             "status": "ENFORCED_FAIL_CLOSED" if ext_error is None else "DEGRADED_UNKNOWN_IDENTITIES_FAIL_CLOSED",
             "minimum_market_age_days": MIN_AGE_DAYS,
-            "approved_production_minimum_market_age_days": APPROVED_PRODUCTION_MIN_AGE_DAYS,
             "accepted": len(merged),
             "rejected": max(0, len(raw_rows) - len(merged)),
             "registered_exact_identities": len(registered),
