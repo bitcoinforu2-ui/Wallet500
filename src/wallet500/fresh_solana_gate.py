@@ -3,6 +3,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 MIN_LIVE_LIQUIDITY_USD = 50_000.0
+FRESH_PAIR_WINDOW_MINUTES = 120.0
+MIN_PAIR_AGE_FOR_ACTIVE_MINUTES = 45.0
+MIN_VERIFIED_OBSERVATION_SPAN_MINUTES = 10.0
 
 
 def _load(path: Path, default):
@@ -85,7 +88,13 @@ def _verified_survival(candidate: dict, outcomes: dict) -> tuple[bool, list[str]
 
 
 def evaluate(candidate: dict, outcomes: dict, now: datetime | None = None) -> dict:
-    """Universal survival gate plus stricter very-fresh Solana checks."""
+    """Universal survival gate plus universal fresh-pair confirmation.
+
+    The old implementation applied the age/observation hold only to Solana.
+    That allowed a brand-new BSC/EVM pair to become ACTIVE on its first spike.
+    Freshness confirmation is now chain-agnostic. Solana keeps its additional
+    extreme-buy-skew rule, but every chain must survive the same 45m/10m hold.
+    """
     now = now or datetime.now(timezone.utc)
     chain = candidate.get("chain")
     token = candidate.get("token") or candidate.get("mint") or ""
@@ -97,6 +106,8 @@ def evaluate(candidate: dict, outcomes: dict, now: datetime | None = None) -> di
         **metrics,
         "live_survival_gate": "ACTIVE" if survives else "FAILED",
         "live_survival_reasons": ["PASSED_UNIVERSAL_LIVE_SURVIVAL_GATE"] if survives else live_reasons,
+        "fresh_pair_gate": "NOT_APPLICABLE",
+        "fresh_pair_reasons": [],
         "fresh_solana_gate": "NOT_APPLICABLE",
         "fresh_solana_reasons": [],
         "pair_age_minutes": None,
@@ -107,7 +118,7 @@ def evaluate(candidate: dict, outcomes: dict, now: datetime | None = None) -> di
     if not survives:
         return result
 
-    if chain != "solana" or not pair_ms:
+    if not pair_ms:
         return result
 
     try:
@@ -117,7 +128,12 @@ def evaluate(candidate: dict, outcomes: dict, now: datetime | None = None) -> di
         return result
     result["pair_age_minutes"] = round(pair_age, 2)
 
-    if pair_age >= 120:
+    if pair_age >= FRESH_PAIR_WINDOW_MINUTES:
+        result["fresh_pair_gate"] = "ACTIVE"
+        result["fresh_pair_reasons"] = ["PAIR_AGE_GE_120M"]
+        if chain == "solana":
+            result["fresh_solana_gate"] = "ACTIVE"
+            result["fresh_solana_reasons"] = ["PASSED_FRESH_SOLANA_SURVIVAL_GATE"]
         return result
 
     rec = ((outcomes or {}).get("tokens") or {}).get(_key(chain, token), {}) or {}
@@ -131,7 +147,9 @@ def evaluate(candidate: dict, outcomes: dict, now: datetime | None = None) -> di
     tx = buys + sells
     ratio = buys / max(sells, 1)
 
-    if pair_age < 60 and liq < MIN_LIVE_LIQUIDITY_USD and tx >= 500 and ratio >= 6.0:
+    # Solana-specific manipulation pattern stays intact; the freshness hold below
+    # is universal and protects BSC/Ethereum/new chains as well.
+    if chain == "solana" and pair_age < 60 and liq < MIN_LIVE_LIQUIDITY_USD and tx >= 500 and ratio >= 6.0:
         hard_fail.append("EXTREME_BUY_SKEW_THIN_FRESH_LIQUIDITY")
 
     if history:
@@ -158,29 +176,39 @@ def evaluate(candidate: dict, outcomes: dict, now: datetime | None = None) -> di
             hard_fail.append("FRESH_PEAK_DRAWDOWN_GT_25PCT")
 
     if hard_fail:
-        result["fresh_solana_gate"] = "FAILED"
-        result["fresh_solana_reasons"] = hard_fail + reasons
+        result["fresh_pair_gate"] = "FAILED"
+        result["fresh_pair_reasons"] = hard_fail + reasons
+        if chain == "solana":
+            result["fresh_solana_gate"] = "FAILED"
+            result["fresh_solana_reasons"] = hard_fail + reasons
         result["live_survival_gate"] = "FAILED"
         result["live_survival_reasons"] = hard_fail + reasons
         return result
 
-    if pair_age < 45:
+    if pair_age < MIN_PAIR_AGE_FOR_ACTIVE_MINUTES:
         reasons.append("PAIR_AGE_LT_45M")
     if len(history) < 2:
         reasons.append("NEED_2_VERIFIED_OBSERVATIONS")
-    if result["observation_span_minutes"] < 10:
+    if result["observation_span_minutes"] < MIN_VERIFIED_OBSERVATION_SPAN_MINUTES:
         reasons.append("OBSERVATION_SPAN_LT_10M")
     if ratio < 1.10 and sells >= 50:
         reasons.append("BUYER_PRESSURE_NOT_SURVIVING")
 
     if reasons:
-        result["fresh_solana_gate"] = "PENDING"
-        result["fresh_solana_reasons"] = list(dict.fromkeys(reasons))
+        reasons = list(dict.fromkeys(reasons))
+        result["fresh_pair_gate"] = "PENDING"
+        result["fresh_pair_reasons"] = reasons
+        if chain == "solana":
+            result["fresh_solana_gate"] = "PENDING"
+            result["fresh_solana_reasons"] = reasons
         result["live_survival_gate"] = "PENDING"
-        result["live_survival_reasons"] = list(dict.fromkeys(reasons))
+        result["live_survival_reasons"] = reasons
     else:
-        result["fresh_solana_gate"] = "ACTIVE"
-        result["fresh_solana_reasons"] = ["PASSED_FRESH_SOLANA_SURVIVAL_GATE"]
+        result["fresh_pair_gate"] = "ACTIVE"
+        result["fresh_pair_reasons"] = ["PASSED_UNIVERSAL_FRESH_PAIR_CONFIRMATION"]
+        if chain == "solana":
+            result["fresh_solana_gate"] = "ACTIVE"
+            result["fresh_solana_reasons"] = ["PASSED_FRESH_SOLANA_SURVIVAL_GATE"]
     return result
 
 
@@ -224,9 +252,9 @@ def apply(output_dir: str = "data") -> dict:
     _write(out / "fresh-solana-survival.json", evaluations)
     _write(out / "fresh-solana-pending.json", [x for x in pending if x.get("chain") == "solana"])
     _write(out / "fresh-solana-failed.json", [x for x in failed if x.get("chain") == "solana"])
-    _write(out / "active-qualified-candidates.json", active)
-    _write(out / "live-survival-failed.json", failed)
     _write(out / "live-survival-pending.json", pending)
+    _write(out / "live-survival-failed.json", failed)
+    _write(out / "active-qualified-candidates.json", active)
     _write(out / "watchlist.json", filtered_watch)
     _write(out / "historical-review-queue.json", review)
 
@@ -247,11 +275,21 @@ def apply(output_dir: str = "data") -> dict:
             "min_activity_h1": 50,
             "pump_reversal_h1_pct": 120,
             "pump_reversal_m5_pct": -15,
+            "fresh_pair_rule": "ALL_CHAINS_PENDING_UNTIL_45M_AND_10M_VERIFIED_OBSERVATION_SPAN",
+        }
+        summary["fresh_pair_policy"] = {
+            "chains": "ALL",
+            "max_special_lane_age_minutes": int(FRESH_PAIR_WINDOW_MINUTES),
+            "min_pair_age_for_active_minutes": int(MIN_PAIR_AGE_FOR_ACTIVE_MINUTES),
+            "min_verified_observation_span_minutes": int(MIN_VERIFIED_OBSERVATION_SPAN_MINUTES),
+            "min_liquidity_usd": int(MIN_LIVE_LIQUIDITY_USD),
+            "min_liquidity_retention": 0.70,
+            "max_peak_drawdown_pct": -25,
         }
         summary["fresh_solana_policy"] = {
-            "max_special_lane_age_minutes": 120,
-            "min_pair_age_for_active_minutes": 45,
-            "min_verified_observation_span_minutes": 10,
+            "max_special_lane_age_minutes": int(FRESH_PAIR_WINDOW_MINUTES),
+            "min_pair_age_for_active_minutes": int(MIN_PAIR_AGE_FOR_ACTIVE_MINUTES),
+            "min_verified_observation_span_minutes": int(MIN_VERIFIED_OBSERVATION_SPAN_MINUTES),
             "min_fresh_liquidity_usd": int(MIN_LIVE_LIQUIDITY_USD),
             "min_liquidity_retention": 0.70,
             "max_peak_drawdown_pct": -25,
