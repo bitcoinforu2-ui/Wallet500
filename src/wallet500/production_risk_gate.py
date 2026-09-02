@@ -29,11 +29,21 @@ def _f(row, *names):
         except Exception: pass
     return 0.0
 
+def _current_execution_liquidity(candidate):
+    """Liquidity used for the $50K gate.
+
+    Prefer the explicit deepest exact-token execution-pool measurement emitted by
+    the identity resolver. `dex_total_liquidity_usd` is intentionally excluded:
+    aggregate token TVL is useful context but cannot make an individually thin
+    executable pool tradable.
+    """
+    return _f(candidate, 'execution_pool_liquidity_usd', 'live_liquidity_usd', 'liquidity_usd', 'dex_liquidity_usd')
+
 def _history_metrics(candidate, outcomes):
-    rec=((outcomes or {}).get('tokens') or {}).get(_key(candidate.get('chain'),candidate.get('token') or candidate.get('mint') or ''),{}) or {}
+    rec=((outcomes or {}).get('tokens') or {}).get(_key(candidate.get('chain'),candidate.get('token') or candidate.get('mint') or candidate.get('token_address') or ''),{}) or {}
     history=rec.get('history') if isinstance(rec.get('history'),list) else []
-    ls=[_f(x,'liquidity_usd') for x in history if _f(x,'liquidity_usd')>0]
-    current=_f(candidate,'live_liquidity_usd','liquidity_usd')
+    ls=[_f(x,'execution_pool_liquidity_usd','liquidity_usd') for x in history if _f(x,'execution_pool_liquidity_usd','liquidity_usd')>0]
+    current=_current_execution_liquidity(candidate)
     previous=ls[-2] if len(ls)>=2 else (ls[-1] if ls else 0.0)
     peak=max(ls+([current] if current>0 else []),default=0.0)
     return {'current':current,'previous':previous,'peak':peak,'history_points':len(history)}
@@ -67,7 +77,7 @@ def _pre_rug_signature(candidate,current,previous):
 
 def evaluate(candidate,outcomes):
     m=_history_metrics(candidate,outcomes); current,previous,peak=m['current'],m['previous'],m['peak']; critical=[]; reasons=[]
-    if current<MIN_TRADABLE_LIQUIDITY_USD: critical.append('LIVE_LIQUIDITY_BELOW_50K_HARD_BLOCK')
+    if current<MIN_TRADABLE_LIQUIDITY_USD: critical.append('EXECUTION_POOL_LIQUIDITY_BELOW_50K_HARD_BLOCK')
     if previous>=MIN_TRADABLE_LIQUIDITY_USD and current>0:
         rp=current/previous
         if rp<=MAX_LIQUIDITY_DROP_FROM_PREV: critical.append('LIQUIDITY_EVACUATION_GT_55PCT_ONE_OBSERVATION')
@@ -83,18 +93,18 @@ def evaluate(candidate,outcomes):
     elif sig['exit_warning']: reasons.append('PRE_RUG_COMPOSITE_EXIT_WARNING')
     critical.extend(conc['critical']); reasons.extend(sig['signals']); reasons.extend(conc['signals'])
     blocked=bool(critical)
-    return {**candidate,'production_risk_gate':'BLOCKED' if blocked else ('CAUTION' if reasons else 'PASS'),'production_risk_blocked':blocked,'production_risk_critical':list(dict.fromkeys(critical)),'production_risk_reasons':list(dict.fromkeys(critical+reasons)),'production_live_liquidity_usd':current,'production_previous_liquidity_usd':previous or None,'production_peak_observed_liquidity_usd':peak or None,'production_liquidity_retention_from_peak':round(retention_peak,6) if retention_peak is not None else None,'production_history_points':m['history_points'],'pre_rug_danger_score':sig['danger_score'],'pre_rug_exit_warning':sig['exit_warning'],'pre_rug_turnover_h1':round(sig['turnover_h1'],6),'pre_rug_sell_buy_ratio_h1':round(sig['sell_buy_ratio_h1'],6),'pre_rug_signals':sig['signals'],'lp_removal_protection_verified':sig['lp_verified'],'liquidity_drain_holder_cluster_verified':conc['verified'],'liquidity_drain_insider_linked_supply_pct':conc['insider_pct'],'liquidity_drain_top10_supply_pct':conc['top10_pct'],'liquidity_drain_signals':conc['signals']+conc['critical']}
+    return {**candidate,'production_risk_gate':'BLOCKED' if blocked else ('CAUTION' if reasons else 'PASS'),'production_risk_blocked':blocked,'production_risk_critical':list(dict.fromkeys(critical)),'production_risk_reasons':list(dict.fromkeys(critical+reasons)),'production_live_liquidity_usd':current,'production_execution_pool_liquidity_usd':current,'production_liquidity_gate_metric':'EXECUTION_POOL_LIQUIDITY_USD','production_dex_total_liquidity_usd':candidate.get('dex_total_liquidity_usd'),'production_previous_liquidity_usd':previous or None,'production_peak_observed_liquidity_usd':peak or None,'production_liquidity_retention_from_peak':round(retention_peak,6) if retention_peak is not None else None,'production_history_points':m['history_points'],'pre_rug_danger_score':sig['danger_score'],'pre_rug_exit_warning':sig['exit_warning'],'pre_rug_turnover_h1':round(sig['turnover_h1'],6),'pre_rug_sell_buy_ratio_h1':round(sig['sell_buy_ratio_h1'],6),'pre_rug_signals':sig['signals'],'lp_removal_protection_verified':sig['lp_verified'],'liquidity_drain_holder_cluster_verified':conc['verified'],'liquidity_drain_insider_linked_supply_pct':conc['insider_pct'],'liquidity_drain_top10_supply_pct':conc['top10_pct'],'liquidity_drain_signals':conc['signals']+conc['critical']}
 
 def apply(output_dir='data'):
     out=Path(output_dir); outcomes=_load(out/'outcome-tracker.json',{}); active=_load(out/'active-qualified-candidates.json',[]); watch=_load(out/'watchlist.json',[]); existing=_load(out/'pump-dump-risk.json',[]); summary=_load(out/'run-summary.json',{})
     evaluations=[evaluate(x,outcomes) for x in active]; passed=[x for x in evaluations if not x.get('production_risk_blocked')]; blocked=[x for x in evaluations if x.get('production_risk_blocked')]
-    passed_keys={(_key(x.get('chain'),x.get('token') or x.get('mint') or '')) for x in passed}
-    filtered=[x for x in watch if x.get('watch_source')!='QUALIFIED_ANOMALY' or _key(x.get('chain'),x.get('token') or x.get('mint') or '') in passed_keys]
+    passed_keys={(_key(x.get('chain'),x.get('token') or x.get('mint') or x.get('token_address') or '')) for x in passed}
+    filtered=[x for x in watch if x.get('watch_source')!='QUALIFIED_ANOMALY' or _key(x.get('chain'),x.get('token') or x.get('mint') or x.get('token_address') or '') in passed_keys]
     merged={}
     for x in (existing if isinstance(existing,list) else [])+blocked:
-        if x.get('chain') and (x.get('token') or x.get('mint')): merged[_key(x.get('chain'),x.get('token') or x.get('mint'))]=x
+        if x.get('chain') and (x.get('token') or x.get('mint') or x.get('token_address')): merged[_key(x.get('chain'),x.get('token') or x.get('mint') or x.get('token_address') or '')]=x
     _write(out/'active-qualified-candidates.json',passed); _write(out/'watchlist.json',filtered); _write(out/'production-risk-evaluations.json',evaluations); _write(out/'production-risk-blocked.json',blocked); _write(out/'pump-dump-risk.json',list(merged.values()))
     if isinstance(summary,dict):
-        summary['production_risk_gate']={'min_live_liquidity_usd':50000,'active_before_gate':len(active),'active_after_gate':len(passed),'blocked_now':len(blocked),'exit_warnings_now':sum(bool(x.get('pre_rug_exit_warning')) for x in evaluations),'hard_rule':'CURRENT_LIQUIDITY_MUST_REMAIN_GE_50K','evacuation_rule':'LOSS_OF_EXECUTABLE_LIQUIDITY_OVERRIDES PRICE VOLUME BUYS AND ANOMALY SCORE','lp_rule':'LP LOCK ONLY PROTECTS AGAINST LP REMOVAL; IT DOES NOT PROTECT QUOTE-SIDE LIQUIDITY FROM INSIDER/HOLDER DUMP DRAIN','drain_rule':'HOLDER/CLUSTER CONCENTRATION IS A SEPARATE REQUIRED DRAIN-RISK CONTROL; >=35% LINKED INSIDER OR >=70% TOP10 IS HARD BLOCK WHEN VERIFIED DATA IS PRESENT.'}; summary['active_qualified']=len(passed); summary['watchlist']=len(filtered); _write(out/'run-summary.json',summary)
+        summary['production_risk_gate']={'min_execution_pool_liquidity_usd':50000,'liquidity_gate_metric':'EXECUTION_POOL_LIQUIDITY_USD','dex_total_liquidity_is_informational_only':True,'active_before_gate':len(active),'active_after_gate':len(passed),'blocked_now':len(blocked),'exit_warnings_now':sum(bool(x.get('pre_rug_exit_warning')) for x in evaluations),'hard_rule':'DEEPEST_VERIFIED_EXACT_TOKEN_EXECUTION_POOL_MUST_REMAIN_GE_50K','evacuation_rule':'LOSS_OF_EXECUTABLE_LIQUIDITY_OVERRIDES PRICE VOLUME BUYS AND ANOMALY SCORE','lp_rule':'LP LOCK ONLY PROTECTS AGAINST LP REMOVAL; IT DOES NOT PROTECT QUOTE-SIDE LIQUIDITY FROM INSIDER/HOLDER DUMP DRAIN','drain_rule':'HOLDER/CLUSTER CONCENTRATION IS A SEPARATE REQUIRED DRAIN-RISK CONTROL; >=35% LINKED INSIDER OR >=70% TOP10 IS HARD BLOCK WHEN VERIFIED DATA IS PRESENT.'}; summary['active_qualified']=len(passed); summary['watchlist']=len(filtered); _write(out/'run-summary.json',summary)
     result={'active_before_gate':len(active),'active_after_gate':len(passed),'blocked_now':len(blocked),'watchlist':len(filtered)}; print(json.dumps(result,indent=2)); return result
 if __name__=='__main__': apply()
