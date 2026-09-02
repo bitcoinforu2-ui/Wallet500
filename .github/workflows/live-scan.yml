@@ -55,33 +55,42 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/cex-revival-radar.json data/cex-learning.json data/real-alerts.json || true
-          git add data/cex-state.json data/cex-state.json.gz 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "No fast-lane data changes"
+          # A concurrent research/data writer can legitimately move main while this
+          # scan is running. Never rebase a generated fast-feed commit over newer
+          # versions of the same truth files: that creates content conflicts and can
+          # abort the entire live scan. If main moved, keep the generated files in
+          # this workspace for downstream validation and simply skip the stale early
+          # publish. The final verified publisher remains fail-closed.
+          git fetch origin main
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+            echo "Fast publish skipped safely: main moved during scan; retaining local fast-lane outputs for full validation"
           else
-            git commit -m "data: refresh fast veteran CEX identity feed"
-            # The scanner can refresh learning-only files that are intentionally
-            # excluded from this fast publish. Discard only those uncommitted
-            # byproducts before rebasing the committed live feed.
-            git reset --hard HEAD
-            git clean -fd
-            for attempt in 1 2 3; do
-              git fetch origin main
-              if ! git rebase origin/main; then
-                git rebase --abort || true
-                echo "Fast publish stopped fail-closed: rebase conflict"
-                exit 1
-              fi
-              if git push origin HEAD:main; then
-                break
-              fi
-              if [ "$attempt" -eq 3 ]; then
-                echo "Fast publish failed after 3 attempts"
-                exit 1
-              fi
-              sleep $((attempt * 2))
-            done
+            git add data/cex-revival-radar.json data/cex-learning.json data/real-alerts.json || true
+            git add data/cex-state.json data/cex-state.json.gz 2>/dev/null || true
+            if git diff --cached --quiet; then
+              echo "No fast-lane data changes"
+            else
+              git commit -m "data: refresh fast veteran CEX identity feed"
+              for attempt in 1 2 3; do
+                if git push origin HEAD:main; then
+                  break
+                fi
+                # Do not merge/rebase generated truth files after a push race.
+                # A newer main is authoritative; retain local outputs for the full
+                # validation lane and let the final publisher resolve freshness.
+                git fetch origin main
+                if [ "$(git rev-parse HEAD^)" != "$(git rev-parse origin/main)" ]; then
+                  echo "Fast publish superseded by newer main; continuing without overwriting newer truth data"
+                  git reset --soft HEAD^
+                  break
+                fi
+                if [ "$attempt" -eq 3 ]; then
+                  echo "Fast publish failed after 3 attempts"
+                  exit 1
+                fi
+                sleep $((attempt * 2))
+              done
+            fi
           fi
 
       - name: Ingest 6h external signal cohort
