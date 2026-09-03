@@ -20,22 +20,30 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
-      - name: Validate DOGE1 report
+        with:
+          fetch-depth: 0
+
+      - name: Validate DOGE1 canonical report
         run: |
           set -euo pipefail
           test -s data/doge1-hourly-report.json
           python - <<'PY'
           import json
-          from pathlib import Path
-          p=json.loads(Path('data/doge1-hourly-report.json').read_text(encoding='utf-8'))
+          p=json.load(open('data/doge1-hourly-report.json',encoding='utf-8'))
           expected='DpBzjtgGLF7QA9Ug3eUVGbnqa6j3jvYBn1XuQuktvfhm'
-          token=p.get('token') or {}
-          if token.get('contract_address') != expected:
+          if (p.get('token') or {}).get('contract_address') != expected:
               raise SystemExit('DOGE1 exact CA mismatch')
           if not p.get('observed_at'):
               raise SystemExit('DOGE1 report missing observed_at')
           PY
-      - name: Wait until report is published on Wallet500 Pages
+
+      - name: Load latest published onchain evidence from main
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:data/doge1-whale-current.json > /tmp/doge1-whale-current.json 2>/dev/null || true
+
+      - name: Wait until canonical report is published on Wallet500 Pages
         env:
           SITE_URL: https://bitcoinforu2-ui.github.io/Wallet500/data/doge1-hourly-report.json
         run: |
@@ -48,107 +56,140 @@ jobs:
           for attempt in $(seq 1 30); do
             REMOTE_TS="$(curl -fsSL --max-time 10 "${SITE_URL}?v=${GITHUB_RUN_ID}-${attempt}" | python -c 'import json,sys; print(json.load(sys.stdin).get("observed_at", ""))' 2>/dev/null || true)"
             if [ "$REMOTE_TS" = "$LOCAL_TS" ]; then
-              echo "Published DOGE1 snapshot confirmed on site: $REMOTE_TS"
               exit 0
             fi
-            echo "Waiting for Pages publish (${attempt}/30): local=$LOCAL_TS remote=${REMOTE_TS:-missing}"
             sleep 20
           done
-          echo "DOGE1 report did not appear on Pages within 10 minutes"
+          echo 'Canonical DOGE1 report not published within 10 minutes'
           exit 1
-      - name: Send compact hourly DOGE1 intelligence to Telegram
+
+      - name: Send freshness-gated DOGE1 intelligence to Telegram
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SITE_URL: https://bitcoinforu2-ui.github.io/Wallet500/data/doge1-hourly-report.json
+          CA: DpBzjtgGLF7QA9Ug3eUVGbnqa6j3jvYBn1XuQuktvfhm
+          PAIR: 2fckuYXUrwbA9LHKMP1az5DTFstFrRjqqbBstz7yvVXL
         run: |
           set -euo pipefail
           python - <<'PY'
           import json, os, urllib.parse, urllib.request
+          from datetime import datetime, timezone
           from pathlib import Path
 
-          p=json.loads(Path('data/doge1-hourly-report.json').read_text(encoding='utf-8'))
-          pair=p.get('exact_pair') or {}; holders=p.get('holders') or {}; whales=p.get('whales') or {}; social=p.get('social') or {}
-          def v(x): return '—' if x is None or x=='' else str(x)
+          CA=os.environ['CA']; PAIR=os.environ['PAIR']
+          canonical=json.load(open('data/doge1-hourly-report.json',encoding='utf-8'))
+
+          def parse_ts(s):
+              try: return datetime.fromisoformat(str(s).replace('Z','+00:00'))
+              except: return None
+          def age_minutes(ts):
+              d=parse_ts(ts)
+              return None if not d else (datetime.now(timezone.utc)-d).total_seconds()/60
           def money(x):
               try: n=float(x)
-              except Exception: return '—'
-              if abs(n)>=1_000_000: return f'${n/1_000_000:.2f}M'
-              if abs(n)>=1_000: return f'${n/1_000:.1f}K'
-              if abs(n)>=1: return f'${n:.4f}'
+              except: return '—'
+              if abs(n)>=1_000_000:return f'${n/1_000_000:.2f}M'
+              if abs(n)>=1_000:return f'${n/1_000:.1f}K'
+              if abs(n)>=1:return f'${n:.4f}'
               return f'${n:.8f}'.rstrip('0').rstrip('.')
           def pct(x):
-              try: return f'{float(x):+.1f}%'
-              except Exception: return '—'
+              try:return f'{float(x):+.1f}%'
+              except:return '—'
+          def val(x): return '—' if x is None or x=='' else str(x)
           def items(x): return x if isinstance(x,list) else ([] if not x else [x])
 
-          whale_events=items(whales.get('events'))
-          notable=items(social.get('notable_mentions'))
-          news=items(p.get('news'))
-          listings=items(p.get('listings'))
-          changes=items(p.get('changes_since_previous'))
-          game=p.get('game_changer')
+          # Market truth is fetched at Telegram send time from the hard-locked exact pair.
+          market=None; market_error=None
+          try:
+              u=f'https://api.geckoterminal.com/api/v2/networks/solana/pools/{PAIR}'
+              req=urllib.request.Request(u,headers={'accept':'application/json','user-agent':'Wallet500-DOGE1/1.0'})
+              with urllib.request.urlopen(req,timeout=20) as r: raw=json.load(r)
+              a=((raw.get('data') or {}).get('attributes') or {})
+              rel=((raw.get('data') or {}).get('relationships') or {})
+              base=((rel.get('base_token') or {}).get('data') or {}).get('id','')
+              quote=((rel.get('quote_token') or {}).get('data') or {}).get('id','')
+              if CA not in (base,quote) and not base.endswith('_'+CA) and not quote.endswith('_'+CA):
+                  raise ValueError(f'exact CA not present in exact pair relationships: {base} / {quote}')
+              tx=a.get('transactions') or {}; pc=a.get('price_change_percentage') or {}; vol=a.get('volume_usd') or {}
+              h1=tx.get('h1') or {}
+              market={
+                'price':a.get('base_token_price_usd'),
+                'liq':a.get('reserve_in_usd'),
+                'v1':vol.get('h1'),'v24':vol.get('h24'),
+                'buys1':h1.get('buys'),'sells1':h1.get('sells'),
+                'p1':pc.get('h1'),'p6':pc.get('h6'),'p24':pc.get('h24'),
+                'observed_at':datetime.now(timezone.utc).isoformat()
+              }
+              if market['price'] is None or market['liq'] is None: raise ValueError('missing price/liquidity')
+          except Exception as e:
+              market_error=str(e)[:160]
 
-          # Compact decision-oriented summary. Missing evidence is shown once, not as raw JSON/status dumps.
-          coverage=str(whales.get('coverage') or '').upper()
-          whale_txt=f'{len(whale_events)} אירועים'
-          if not coverage or 'INSUFFICIENT' in coverage:
-              whale_txt += ' · כיסוי חסר'
-          holder_txt=f"{v(holders.get('count'))} (1H {v(holders.get('delta_1h'))} | 24H {v(holders.get('delta_24h'))})"
+          # Onchain truth is allowed only when a fresh exact-mint snapshot exists.
+          onchain=None; onchain_age=None
+          op=Path('/tmp/doge1-whale-current.json')
+          if op.exists() and op.stat().st_size:
+              try:
+                  q=json.loads(op.read_text())
+                  onchain_age=age_minutes(q.get('observed_at'))
+                  if q.get('mint')==CA and onchain_age is not None and -2 <= onchain_age <= 90:
+                      onchain=q
+              except Exception: pass
+
+          social=canonical.get('social') or {}; game=canonical.get('game_changer')
+          report_age=age_minutes(canonical.get('observed_at'))
           social_status=str(social.get('status') or '')
           social_txt='אין האצה אורגנית מאומתת' if ('NO_VERIFIED' in social_status or not social_status) else social_status[:90]
-
-          material=[]
-          for x in changes:
-              if isinstance(x,dict):
-                  if x.get('price_change_vs_previous_snapshot_pct') is not None:
-                      material.append('מחיר מול שעה קודמת '+pct(x.get('price_change_vs_previous_snapshot_pct')))
-                  if x.get('liquidity_change_vs_previous_snapshot_pct') is not None:
-                      material.append('נזילות '+pct(x.get('liquidity_change_vs_previous_snapshot_pct')))
-                  if x.get('volume_24h_change_vs_previous_snapshot_pct') is not None:
-                      material.append('ווליום 24H '+pct(x.get('volume_24h_change_vs_previous_snapshot_pct')))
-              elif str(x) not in ('NO_MATERIAL_CHANGE',''):
-                  material.append(str(x)[:120])
-          material=material[:3]
-
-          game_status='אין Game Changer מאומת'
+          game_txt='אין Game Changer מאומת'
           if isinstance(game,dict):
               st=str(game.get('status') or '')
-              if st and 'NO_VERIFIED' not in st:
-                  game_status='⚠️ '+st[:100]
-          elif game and 'NO_VERIFIED' not in str(game):
-              game_status='⚠️ '+str(game)[:100]
+              if st and 'NO_VERIFIED' not in st: game_txt='⚠️ '+st[:100]
+          elif game and 'NO_VERIFIED' not in str(game): game_txt='⚠️ '+str(game)[:100]
 
-          lines=[
-              '🛰 DOGE-1 | עדכון שעתי',
-              f"💰 {money(pair.get('price_usd'))} | 1H {pct(pair.get('price_change_h1_pct'))} | 6H {pct(pair.get('price_change_h6_pct'))} | 24H {pct(pair.get('price_change_24h_pct'))}",
-              f"💧 נזילות {money(pair.get('liquidity_usd'))} | Vol 1H {money(pair.get('volume_h1'))} | 24H {money(pair.get('volume_24h'))}",
-              f"🟢/🔴 קניות/מכירות 1H: {v(pair.get('buys_h1'))}/{v(pair.get('sells_h1'))}",
-              f"👥 Holders: {holder_txt}",
-              f"🐋 Whales ≥{v(whales.get('threshold_supply_pct'))}%: {whale_txt}",
-              f"📣 Social: {social_txt}",
-              f"🎯 {game_status}",
-          ]
-          if material:
-              lines.append('📊 מול שעה קודמת: ' + ' | '.join(material))
+          lines=['🛰 DOGE-1 | עדכון שעתי · FRESHNESS GATED']
+          if market:
+              lines += [
+                f"💰 {money(market['price'])} | 1H {pct(market['p1'])} | 6H {pct(market['p6'])} | 24H {pct(market['p24'])}",
+                f"💧 נזילות {money(market['liq'])} | Vol 1H {money(market['v1'])} | 24H {money(market['v24'])}",
+                f"🟢/🔴 קניות/מכירות 1H: {val(market['buys1'])}/{val(market['sells1'])}",
+                '✅ Market: exact pair fetched at send time'
+              ]
           else:
-              lines.append('📊 מול שעה קודמת: אין שינוי מהותי מאומת')
-          if notable:
-              lines.append('👤 KOL: ' + ' | '.join(str(x)[:100] for x in notable[:2]))
-          if news:
-              lines.append('📰 חדשות: ' + ' | '.join(str(x)[:110] for x in news[:2]))
-          if listings:
-              lines.append('🏦 Listing: ' + ' | '.join(str(x)[:110] for x in listings[:2]))
-          lines.append('🔒 חדשות משימת DOGE-1 ≠ endorsement לטוקן בלי CA/קישור רשמי.')
-          lines.append(f"🔗 {os.environ['SITE_URL']}")
+              lines.append('⚠️ Market: NO LIVE EXACT-PAIR DATA — לא מציג מחיר ישן כעדכני')
 
-          text='\n'.join(lines)[:1800]
+          if onchain:
+              hd=onchain.get('holder_deltas') or {}
+              hc=onchain.get('holders')
+              lines.append(f"👥 Holders on-chain: {val(hc)} | 1H {val(hd.get('h1'))} | 6H {val(hd.get('h6'))} | 24H {val(hd.get('h24'))}")
+              flows=items(onchain.get('flows_vs_previous_hour'))
+              sell=sum(1 for x in flows if isinstance(x,dict) and x.get('direction')=='SELL_OR_OUTFLOW')
+              buy=sum(1 for x in flows if isinstance(x,dict) and x.get('direction')=='BUY_OR_INFLOW')
+              lines.append(f"🐋 ≥0.1%: {len(onchain.get('whales') or [])} top token-accounts tracked | inflow {buy} / outflow {sell}")
+              lines.append(f"✅ On-chain snapshot age: {onchain_age:.0f}m")
+          else:
+              lines.append('⚠️ Holders/Whales: NO FRESH ON-CHAIN SNAPSHOT — לא מנחש 0 ולא משאיר מספר ישן')
+
+          lines.append(f'📣 Social: {social_txt}')
+          lines.append(f'🎯 {game_txt}')
+          if report_age is not None and report_age>90:
+              lines.append(f'⚠️ Research/news snapshot age: {report_age:.0f}m')
+          for label,key in [('👤 KOL','notable_mentions')]:
+              xs=items(social.get(key))[:2]
+              if xs: lines.append(label+': '+' | '.join(str(x)[:100] for x in xs))
+          news=items(canonical.get('news'))[:2]
+          if news: lines.append('📰 חדשות: '+' | '.join(str(x)[:105] for x in news))
+          listings=items(canonical.get('listings'))[:2]
+          if listings: lines.append('🏦 Listing: '+' | '.join(str(x)[:105] for x in listings))
+          lines.append('🔒 חדשות משימת DOGE-1 ≠ endorsement לטוקן בלי CA/קישור רשמי.')
+          lines.append('🔗 '+os.environ['SITE_URL'])
+
+          text='\n'.join(lines)[:1900]
           bot=os.environ.get('TELEGRAM_BOT_TOKEN','').strip(); chat=os.environ.get('TELEGRAM_CHAT_ID','').strip()
           if not bot or not chat: raise SystemExit('Telegram secrets are not configured')
-          url=f'https://api.telegram.org/bot{bot}/sendMessage'
           data=urllib.parse.urlencode({'chat_id':chat,'text':text,'disable_web_page_preview':'true'}).encode()
-          req=urllib.request.Request(url,data=data,method='POST')
+          req=urllib.request.Request(f'https://api.telegram.org/bot{bot}/sendMessage',data=data,method='POST')
           with urllib.request.urlopen(req,timeout=20) as r:
               if not 200 <= r.status < 300: raise SystemExit(f'Telegram HTTP {r.status}')
-          print('Compact DOGE1 Telegram report delivered')
+          print('Freshness-gated DOGE1 Telegram report delivered')
+          if market_error: print('market_error:',market_error)
           PY
