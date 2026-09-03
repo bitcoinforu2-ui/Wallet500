@@ -14,9 +14,10 @@ on:
 permissions:
   contents: write
 
+# Research-only lane: keep it independent from the high-frequency publisher queue.
 concurrency:
-  group: wallet500-main-data-publisher
-  cancel-in-progress: false
+  group: wallet500-holder-concentration-shadow
+  cancel-in-progress: true
 
 jobs:
   scan:
