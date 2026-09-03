@@ -236,22 +236,17 @@ jobs:
 
           echo "Validated snapshot contains $(wc -l < "$PATHS_FILE") paths"
 
+          # Never require main to be quiet before publishing. This repository has
+          # independent research publishers that legitimately move main frequently;
+          # a quiet-window precondition can starve a fully validated live snapshot.
+          # Each attempt instead starts from the latest main and uses a normal
+          # fast-forward push. A race is rejected by GitHub and retried from the new
+          # head, so there is still no force-push, merge, or rebase of truth data.
           MAX_ATTEMPTS=20
-          QUIET_SECONDS=3
           for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
-            echo "Publish attempt ${attempt}/${MAX_ATTEMPTS}: waiting for stable main"
-            git fetch origin main
-            BASE_SHA="$(git rev-parse origin/main)"
-            sleep "$QUIET_SECONDS"
+            echo "Publish attempt ${attempt}/${MAX_ATTEMPTS}: overlaying validated snapshot on latest main"
             git fetch origin main
             STABLE_SHA="$(git rev-parse origin/main)"
-
-            if [ "$BASE_SHA" != "$STABLE_SHA" ]; then
-              echo "Main changed during quiet-window probe; retrying without touching validated snapshot"
-              delay=$(( attempt < 6 ? attempt : 6 ))
-              sleep "$delay"
-              continue
-            fi
 
             git reset --hard "$STABLE_SHA"
             while IFS= read -r path; do
@@ -273,7 +268,7 @@ jobs:
               exit 0
             fi
 
-            echo "Main moved after stability probe; rebuilding on newest main without force or rebase"
+            echo "Main moved during push; rebuilding on newest main without force or rebase"
             delay=$(( attempt < 6 ? attempt : 6 ))
             sleep "$delay"
           done
