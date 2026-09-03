@@ -1,0 +1,47 @@
+name: Wallet500 Telegram Alert Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  telegram-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send Telegram test message
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
+            echo '::error::TELEGRAM_BOT_TOKEN secret is missing'
+            exit 1
+          fi
+          if [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
+            echo '::error::TELEGRAM_CHAT_ID secret is missing'
+            exit 1
+          fi
+          python - <<'PY'
+          import json, os, urllib.parse, urllib.request
+          token=os.environ['TELEGRAM_BOT_TOKEN'].strip()
+          chat_id=os.environ['TELEGRAM_CHAT_ID'].strip()
+          text='✅ Wallet500 TEST\nTelegram Winner DNA alerts are connected successfully.\nResearch alerts only — no automatic BUY.'
+          payload=urllib.parse.urlencode({'chat_id':chat_id,'text':text,'disable_web_page_preview':'true'}).encode()
+          req=urllib.request.Request(
+              f'https://api.telegram.org/bot{token}/sendMessage',
+              data=payload,
+              headers={'Content-Type':'application/x-www-form-urlencoded','User-Agent':'Wallet500/1.0'},
+              method='POST',
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=15) as r:
+                  body=json.loads(r.read().decode('utf-8'))
+          except Exception as e:
+              raise SystemExit(f'TELEGRAM_TEST_HTTP_FAILED: {type(e).__name__}: {e}')
+          if body.get('ok') is not True:
+              raise SystemExit('TELEGRAM_TEST_API_FAILED: '+str(body.get('description') or body))
+          result=body.get('result') or {}
+          print('TELEGRAM_TEST_SENT_OK', {'message_id':result.get('message_id'),'chat_id':(result.get('chat') or {}).get('id')})
+          PY
