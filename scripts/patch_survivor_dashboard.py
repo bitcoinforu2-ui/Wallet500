@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# One-shot idempotent patcher for the main operational dashboard.
 p=Path('index.html')
 s=p.read_text(encoding='utf-8')
 
