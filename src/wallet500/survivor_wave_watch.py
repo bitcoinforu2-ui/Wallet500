@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,6 +44,26 @@ def http_json(url: str, timeout: int = 12):
         return json.loads(r.read().decode("utf-8"))
 
 
+def telegram_send(text: str) -> tuple[bool, str]:
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    if not token or not chat_id:
+        return False, "TELEGRAM_SECRETS_MISSING"
+    payload = urllib.parse.urlencode({"chat_id": chat_id, "text": text, "disable_web_page_preview": "true"}).encode()
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data=payload,
+        headers={"User-Agent": "Wallet500/1.0", "Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=12) as r:
+            body = json.loads(r.read().decode("utf-8"))
+        return bool(body.get("ok")), "OK" if body.get("ok") else str(body.get("description") or "TELEGRAM_API_ERROR")
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}"
+
+
 def pair_snapshot(chain: str, pair: str):
     chain_id = {"bsc": "bsc", "solana": "solana", "ethereum": "ethereum"}.get(norm(chain), norm(chain))
     try:
@@ -52,14 +73,13 @@ def pair_snapshot(chain: str, pair: str):
         if not exact:
             return None, "PAIR_NOT_RETURNED"
         return exact, None
-    except Exception as e:  # network evidence gap must never be guessed
+    except Exception as e:
         return None, f"{type(e).__name__}: {e}"
 
 
 def holder_index():
-    # Reuse Wallet500's own point-in-time holder tracker; do not mix vendors.
     d = load(DATA / "revival-holder-latest.json", {})
-    rows = d.get("tokens") or d.get("rows") or d.get("items") or []
+    rows = d.get("coins") or d.get("tokens") or d.get("rows") or d.get("items") or []
     if isinstance(rows, dict):
         rows = list(rows.values())
     out = {}
@@ -85,11 +105,10 @@ def organic_index():
     d = load(DATA / "social-organic-acceleration.json", {})
     out = {}
     for x in d.get("tokens") or []:
-        if not isinstance(x, dict):
-            continue
-        token = x.get("contract") or x.get("token_address") or x.get("mint")
-        if token:
-            out[norm(token)] = x
+        if isinstance(x, dict):
+            token = x.get("contract") or x.get("token_address") or x.get("mint")
+            if token:
+                out[norm(token)] = x
     return out
 
 
@@ -109,11 +128,10 @@ def listing_index():
     if isinstance(rows, dict):
         rows = list(rows.values())
     for x in rows if isinstance(rows, list) else []:
-        if not isinstance(x, dict):
-            continue
-        token = x.get("token") or x.get("token_address") or x.get("mint") or x.get("address")
-        if token:
-            out.setdefault(norm(token), []).append(x)
+        if isinstance(x, dict):
+            token = x.get("token") or x.get("token_address") or x.get("mint") or x.get("address")
+            if token:
+                out.setdefault(norm(token), []).append(x)
     return out
 
 
@@ -142,6 +160,41 @@ def wave_state(price_change_h1, price_change_h6, vol_h1, liq, buys_h1, sells_h1,
     return min(score, 100), status, reasons, turnover, buy_ratio
 
 
+def dna_match(turnover, buy_ratio, wave_status, reasons):
+    if turnover is not None and buy_ratio is not None and turnover >= 0.75 and buy_ratio >= 1.25:
+        return "HIGH", ["TURNOVER>=0.75", "BUY_SELL_RATIO>=1.25"]
+    medium = False
+    hits = []
+    if turnover is not None and turnover >= 0.25:
+        medium = True; hits.append("TURNOVER>=0.25")
+    if buy_ratio is not None and buy_ratio >= 1.25:
+        medium = True; hits.append("BUY_SELL_RATIO>=1.25")
+    if medium and wave_status in {"EARLY_REACCELERATION", "WAVE_BUILDING"} and len(reasons) >= 2:
+        return "MEDIUM", hits
+    return "LOW", hits
+
+
+def format_alert(row: dict, previous_level: str | None) -> str:
+    transition = "FIRST DNA MATCH" if not previous_level or previous_level == "LOW" else f"UPGRADE FROM {previous_level}"
+    return (
+        "🚨 Wallet500 WINNER DNA ALERT\n"
+        f"{transition}\n"
+        f"Chain: {row.get('chain')}\n"
+        f"Token: {row.get('token')}\n"
+        f"Pair: {row.get('pair_address')}\n"
+        f"DNA: {row.get('winner_dna_match')}\n"
+        f"Wave: {row.get('wave_status')} | score {row.get('wave_score')}\n"
+        f"Liquidity: ${float(row.get('liquidity_usd') or 0):,.0f}\n"
+        f"Vol 1H: ${float(row.get('volume_h1_usd') or 0):,.0f}\n"
+        f"Turnover 1H: {row.get('turnover_h1')}\n"
+        f"Buy/Sell 1H: {row.get('buy_sell_ratio_h1')}\n"
+        f"Holders Δ: {row.get('holder_delta_since_prior_hourly_snapshot')}\n"
+        f"DNA hits: {', '.join(row.get('winner_dna_hits') or []) or 'n/a'}\n"
+        f"Reasons: {', '.join(row.get('wave_reasons') or []) or 'n/a'}\n"
+        "Research alert only — no automatic BUY."
+    )
+
+
 def main():
     study = load(STUDY, {})
     prev = load(STATE, {"tokens": {}})
@@ -155,6 +208,7 @@ def main():
     results = []
     state_tokens = {}
     errors = []
+    telegram_events = []
 
     for w in winner_rows:
         token = w.get("token")
@@ -176,7 +230,8 @@ def main():
         h1_tx = txns.get("h1") or {}
         h = holders.get(norm(token), {})
         holder_count = h.get("holders")
-        prev_count = (prev_tokens.get(norm(token)) or {}).get("holders")
+        prev_row = prev_tokens.get(norm(token)) or {}
+        prev_count = prev_row.get("holders")
         holder_delta = holder_count - prev_count if holder_count is not None and prev_count is not None else None
         org = organic.get(norm(token), {})
         org_score = f(org.get("organic_acceleration_score"))
@@ -186,6 +241,7 @@ def main():
             f(changes.get("h1")), f(changes.get("h6")), f(volume.get("h1")), liq,
             f(h1_tx.get("buys")), f(h1_tx.get("sells")), holder_delta, org_score, kol_groups,
         )
+        dna_level, dna_hits = dna_match(turnover, buy_ratio, status, reasons)
         row = {
             "chain": chain,
             "token": token,
@@ -215,15 +271,32 @@ def main():
             "wave_score": score,
             "wave_status": status,
             "wave_reasons": reasons,
+            "winner_dna_match": dna_level,
+            "winner_dna_hits": dna_hits,
             "dex_url": snap.get("url"),
         }
         results.append(row)
-        state_tokens[norm(token)] = {"holders": holder_count, "price_usd": row["price_usd"], "liquidity_usd": liq}
+
+        previous_level = str(prev_row.get("winner_dna_match") or "LOW")
+        should_alert = dna_level == "HIGH" and previous_level != "HIGH"
+        if dna_level == "MEDIUM" and previous_level == "LOW" and status in {"EARLY_REACCELERATION", "WAVE_BUILDING"} and len(reasons) >= 2:
+            should_alert = True
+        if should_alert:
+            ok, telegram_status = telegram_send(format_alert(row, previous_level))
+            telegram_events.append({"token": token, "dna": dna_level, "sent": ok, "status": telegram_status})
+
+        state_tokens[norm(token)] = {
+            "holders": holder_count,
+            "price_usd": row["price_usd"],
+            "liquidity_usd": liq,
+            "winner_dna_match": dna_level,
+            "wave_status": status,
+        }
 
     results.sort(key=lambda x: (x.get("wave_score") or 0, x.get("source_return_24h_pct") or 0), reverse=True)
     generated = now_iso()
     payload = {
-        "version": 1,
+        "version": 2,
         "generated_at": generated,
         "mode": "HOURLY_WINNER_SURVIVOR_WAVE_WATCH_V1",
         "research_only": True,
@@ -234,13 +307,16 @@ def main():
         "source_winner_n": len(winner_rows),
         "survivor_n": len(results),
         "wave_building_n": sum(1 for x in results if x.get("wave_status") == "WAVE_BUILDING"),
-        "note": "Survivor means the same exact pair is still retrievable with >=$50K liquidity now. Holder/social/KOL/listing fields are included only when timestamp-safe Wallet500 sources exist; missing evidence is never imputed.",
+        "dna_high_n": sum(1 for x in results if x.get("winner_dna_match") == "HIGH"),
+        "dna_medium_n": sum(1 for x in results if x.get("winner_dna_match") == "MEDIUM"),
+        "telegram_events": telegram_events,
+        "note": "Research-only Winner DNA alerting. HIGH requires strong turnover + buy pressure; MEDIUM requires partial DNA plus active wave confirmation. Missing holder/social evidence is never imputed.",
         "tokens": results,
         "errors": errors[:50],
     }
     OUT.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
     STATE.write_text(json.dumps({"generated_at": generated, "tokens": state_tokens}, indent=2, ensure_ascii=False) + "\n")
-    print(json.dumps({"survivor_n": payload["survivor_n"], "wave_building_n": payload["wave_building_n"], "errors": len(errors)}, indent=2))
+    print(json.dumps({"survivor_n": payload["survivor_n"], "wave_building_n": payload["wave_building_n"], "dna_high_n": payload["dna_high_n"], "dna_medium_n": payload["dna_medium_n"], "telegram_events": telegram_events, "errors": len(errors)}, indent=2))
 
 
 if __name__ == "__main__":
