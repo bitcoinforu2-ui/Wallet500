@@ -15,10 +15,12 @@ on:
 permissions:
   contents: write
 
+# Keep one paid-attention research run active without sharing GitHub's single
+# pending concurrency slot with unrelated main publishers. The publish step
+# below remains race-safe via reset/retry and never weakens production gates.
 concurrency:
-  group: wallet500-main-data-publisher
+  group: wallet500-paid-attention-watch
   cancel-in-progress: false
-  queue: max
 
 jobs:
   research-watch:
