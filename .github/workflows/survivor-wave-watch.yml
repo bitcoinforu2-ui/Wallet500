@@ -32,10 +32,7 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e .
-      - name: Run exact-pair survivor watch + Telegram DNA alerts
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - name: Run exact-pair survivor watch
         run: python -m wallet500.survivor_wave_watch
       - name: Validate truth contract
         run: |
@@ -51,9 +48,7 @@ jobs:
           for x in d.get('tokens') or []:
               if float(x.get('liquidity_usd') or 0) < float(d.get('liquidity_survival_floor_usd') or 50000):
                   raise SystemExit('SURVIVOR_BELOW_LIQUIDITY_FLOOR')
-              if x.get('winner_dna_match') not in {'LOW','MEDIUM','HIGH'}:
-                  raise SystemExit('DNA_LEVEL_INVALID')
-          print('SURVIVOR_WAVE_WATCH_OK', d.get('survivor_n'), d.get('wave_building_n'), d.get('dna_high_n'), d.get('dna_medium_n'))
+          print('SURVIVOR_WAVE_WATCH_OK', d.get('survivor_n'), d.get('wave_building_n'))
           PY
       - name: Publish hourly survivor state
         shell: bash
