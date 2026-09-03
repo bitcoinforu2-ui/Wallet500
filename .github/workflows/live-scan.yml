@@ -20,7 +20,8 @@ permissions:
 
 # Keep Live Scan from being starved by unrelated publishers. Overlapping writes
 # remain fail-closed: the fast publisher skips stale work when main moves, while
-# the final verified publisher fetches/rebases and aborts on any data conflict.
+# the final verified publisher rebases its validated output snapshot onto the
+# latest main without rebasing generated-data commits.
 concurrency:
   group: wallet500-live-scan-publisher
   cancel-in-progress: false
@@ -206,28 +207,66 @@ jobs:
           PY
       - name: Publish verified scan data
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/
-          if git diff --cached --quiet; then
-            echo "No data changes"
-          else
-            git commit -m "data: refresh verified live scan"
-            for attempt in 1 2 3; do
-              echo "Publish attempt ${attempt}/3"
-              git fetch origin main
-              if ! git rebase origin/main; then
-                git rebase --abort || true
-                echo "Publish stopped fail-closed: data rebase conflict"
-                exit 1
-              fi
-              if git push origin HEAD:main; then
-                exit 0
-              fi
-              if [ "$attempt" -eq 3 ]; then
-                echo "Publish failed after 3 race-safe attempts"
-                exit 1
-              fi
-              sleep $((attempt * 2))
-            done
+
+          # Freeze exactly the outputs produced/changed by THIS validated run before
+          # touching main. This avoids rebasing a generated-data commit, the source
+          # of repeated JSON conflicts when research bots move main concurrently.
+          SNAPSHOT_DIR="$(mktemp -d)"
+          FILES_DIR="$SNAPSHOT_DIR/files"
+          PATHS_FILE="$SNAPSHOT_DIR/paths.txt"
+          mkdir -p "$FILES_DIR"
+          {
+            git diff --name-only HEAD -- data/
+            git ls-files --others --exclude-standard -- data/
+          } | awk 'NF' | sort -u > "$PATHS_FILE"
+
+          if [ ! -s "$PATHS_FILE" ]; then
+            echo "No validated data changes"
+            exit 0
           fi
+
+          while IFS= read -r path; do
+            if [ -f "$path" ]; then
+              mkdir -p "$FILES_DIR/$(dirname "$path")"
+              cp -p "$path" "$FILES_DIR/$path"
+            fi
+          done < "$PATHS_FILE"
+
+          echo "Validated snapshot contains $(wc -l < "$PATHS_FILE") paths"
+
+          # Retry against the latest main. Each attempt starts from a clean latest
+          # main and reapplies only this run's validated output files. Unrelated
+          # research files changed by concurrent writers are therefore preserved.
+          for attempt in 1 2 3 4 5; do
+            echo "Publish attempt ${attempt}/5"
+            git fetch origin main
+            git reset --hard origin/main
+
+            while IFS= read -r path; do
+              if [ -f "$FILES_DIR/$path" ]; then
+                mkdir -p "$(dirname "$path")"
+                cp -p "$FILES_DIR/$path" "$path"
+                git add -- "$path"
+              fi
+            done < "$PATHS_FILE"
+
+            if git diff --cached --quiet; then
+              echo "Latest main already contains this validated snapshot"
+              exit 0
+            fi
+
+            git commit -m "data: refresh verified live scan"
+            if git push origin HEAD:main; then
+              echo "Validated snapshot published successfully"
+              exit 0
+            fi
+
+            echo "Main moved during push; rebuilding validated snapshot on latest main"
+            sleep $((attempt * 2))
+          done
+
+          echo "Publish failed after 5 race-safe snapshot attempts"
+          exit 1
