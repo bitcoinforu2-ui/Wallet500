@@ -10,15 +10,17 @@ jobs:
   connect:
     runs-on: ubuntu-latest
     steps:
-      - name: Validate bot and discover private chat
+      - name: Validate bot and Telegram alert destination
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import json, os, sys, urllib.request, urllib.error
 
           token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+          configured_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
           if not token:
               print("::error::TELEGRAM_BOT_TOKEN is missing")
               sys.exit(1)
@@ -46,29 +48,32 @@ jobs:
           me = call("getMe")
           print(f"Bot authenticated: @{me.get('username','unknown')}")
 
-          updates = call("getUpdates")
-          candidates = []
-          for u in updates:
-              msg = u.get("message") or u.get("edited_message") or u.get("channel_post")
-              if not msg:
-                  continue
-              chat = msg.get("chat") or {}
-              if chat.get("type") != "private" or "id" not in chat:
-                  continue
-              candidates.append((u.get("update_id", 0), chat["id"]))
+          chat_id = configured_chat_id
+          source = "repository secret"
+          if not chat_id:
+              updates = call("getUpdates")
+              candidates = []
+              for u in updates:
+                  msg = u.get("message") or u.get("edited_message") or u.get("channel_post")
+                  if not msg:
+                      continue
+                  chat = msg.get("chat") or {}
+                  if chat.get("type") != "private" or "id" not in chat:
+                      continue
+                  candidates.append((u.get("update_id", 0), str(chat["id"])))
+              if not candidates:
+                  print("::error::TELEGRAM_CHAT_ID is missing and no private chat update was found")
+                  sys.exit(1)
+              _, chat_id = max(candidates)
+              source = "latest private update"
 
-          if not candidates:
-              print("::error::No private chat update found. Open the bot in Telegram, send /start and a fresh message such as Wallet500 CONNECT, then run this workflow again.")
-              sys.exit(1)
-
-          _, chat_id = max(candidates)
-          text = "✅ Wallet500 Telegram connection verified. Alerts channel is reachable."
+          text = "✅ Wallet500 production Telegram route verified. TELEGRAM_CHAT_ID is working."
           sent = call("sendMessage", {"chat_id": chat_id, "text": text})
           if not sent.get("message_id"):
-              print("::error::Telegram did not confirm the test message")
+              print("::error::Telegram did not confirm the route test message")
               sys.exit(1)
 
-          # Do not print the chat ID to logs. It is only used in-memory for this verification.
-          print("Telegram connection test: PASS")
-          print("Next: save TELEGRAM_CHAT_ID as a repository secret before enabling production alerts.")
+          # Never print the chat ID itself.
+          print(f"Telegram destination source: {source}")
+          print("Telegram production route test: PASS")
           PY
