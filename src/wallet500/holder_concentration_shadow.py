@@ -128,6 +128,39 @@ def sanitize_distribution(distribution: dict | None) -> dict | None:
     }
 
 
+def sanitize_holder_shadow(holders: dict | None) -> dict | None:
+    if not isinstance(holders, dict) or holders.get("available") is not True or holders.get("verified") is not True:
+        return None
+    if str(holders.get("source") or "") != "RUGCHECK_EXACT_MINT_PUBLIC_REPORT":
+        return None
+    metrics = holders.get("metrics") or {}
+    count = metrics.get("holder_count")
+    if count is None:
+        return None
+    return {
+        "source": holders.get("source"),
+        "observed_at": holders.get("observed_at"),
+        "holder_count_shadow": int(count),
+        "previous_holder_count_shadow": metrics.get("previous_holder_count"),
+        "holder_change_since_previous_scan_pct_shadow": metrics.get("holder_change_pct"),
+        "semantics": "THIRD_PARTY_CACHED_HOLDER_COUNT_SHADOW_NOT_TRUSTED_GROWTH",
+        "growth_signal_eligible": False,
+        "hybrid_score_impact": "NONE",
+        "limitations": list(holders.get("limitations") or []),
+    }
+
+
+def _rugcheck_state(old: dict) -> dict:
+    count = old.get("holder_count_shadow")
+    observed = old.get("holder_shadow_observed_at") or old.get("observed_at")
+    out = {}
+    if count is not None:
+        out["rugcheck_holder_count"] = int(count)
+    if observed:
+        out["rugcheck_observed_at"] = observed
+    return out
+
+
 def build() -> dict:
     hybrid = load(HYBRID, {})
     if hybrid.get("mode") != "RESEARCH_ONLY_HYBRID_TOKEN_PROFILE_V1" or hybrid.get("contract") != "HYBRID_TOKEN_PROFILE_V1":
@@ -142,12 +175,17 @@ def build() -> dict:
     observed_at = now_iso()
     scan_status = []
     verified_this_run = 0
+    holder_shadow_this_run = 0
 
     for item in selected:
         profile = item["profile"]
         mint = item["token_address"]
-        _holders_raw, distribution, _state, status = scan_rugcheck(mint, {}, observed_at)
+        old = dict(rows.get(mint) or {})
+        holders_raw, distribution, _state, status = scan_rugcheck(mint, _rugcheck_state(old), observed_at)
         safe = sanitize_distribution(distribution)
+        holder_shadow = sanitize_holder_shadow(holders_raw)
+        if holder_shadow is not None:
+            holder_shadow_this_run += 1
         scan_status.append(
             {
                 "token_address": mint,
@@ -155,10 +193,10 @@ def build() -> dict:
                 "priority_reason": item["priority_reason"],
                 "status": status.get("status"),
                 "verified_concentration": safe is not None,
+                "holder_count_shadow_available": holder_shadow is not None,
             }
         )
-        if safe is None:
-            old = dict(rows.get(mint) or {})
+        if safe is None and holder_shadow is None:
             if old:
                 old["latest_scan_status"] = status.get("status") or "UNAVAILABLE"
                 old["latest_scan_attempt_at"] = observed_at
@@ -166,8 +204,8 @@ def build() -> dict:
                 rows[mint] = old
             continue
 
-        verified_this_run += 1
-        rows[mint] = {
+        base = {
+            **old,
             "network": NETWORK,
             "token_address": mint,
             "symbol": profile.get("symbol"),
@@ -178,9 +216,16 @@ def build() -> dict:
             "priority_reason": item["priority_reason"],
             "latest_scan_status": status.get("status") or "OK",
             "latest_scan_attempt_at": observed_at,
-            "retained_from_previous_verified_observation": False,
-            **safe,
+            "retained_from_previous_verified_observation": safe is None,
         }
+        if holder_shadow is not None:
+            base.update(holder_shadow)
+            base["holder_shadow_observed_at"] = observed_at
+        if safe is not None:
+            verified_this_run += 1
+            base.update(safe)
+            base["retained_from_previous_verified_observation"] = False
+        rows[mint] = base
 
     active_mints = {str(p.get("token_address") or "") for p in (hybrid.get("profiles") or [])}
     rows = {mint: row for mint, row in rows.items() if mint in active_mints}
@@ -195,6 +240,7 @@ def build() -> dict:
     )
     total_verified = sum(x.get("verified") is True for x in ordered)
     retained = sum(x.get("retained_from_previous_verified_observation") is True for x in ordered)
+    holder_shadow_total = sum(x.get("holder_count_shadow") is not None for x in ordered)
     payload = {
         "version": 1,
         "mode": MODE,
@@ -208,12 +254,15 @@ def build() -> dict:
             "RugCheck top-holder rows are token-account concentration, not verified owner-cluster concentration",
             "LP, burn, CEX and market-maker exclusions are not inferred",
             "concentration may add research risk but is never an independent positive signal family",
-            "RugCheck holder total is not used for holder growth or holder-count baselines",
+            "RugCheck holder total is displayed only as a cached third-party shadow and is not trusted 1h/6h/24h/7d growth",
+            "holder-count shadow changes never change Hybrid score or create a positive signal family",
             "missing scans retain the last verified concentration row but are explicitly marked retained",
         ],
         "budget": budget,
         "selected_this_run": len(selected),
         "verified_this_run": verified_this_run,
+        "holder_shadow_this_run": holder_shadow_this_run,
+        "holder_shadow_total_rows": holder_shadow_total,
         "retained_verified_rows": retained,
         "total_verified_rows": total_verified,
         "scan_status": scan_status,
@@ -238,7 +287,8 @@ def main() -> None:
             {
                 "mode": payload.get("mode"),
                 "selected": payload.get("selected_this_run"),
-                "verified": payload.get("verified_this_run"),
+                "verified_concentration": payload.get("verified_this_run"),
+                "holder_shadow": payload.get("holder_shadow_this_run"),
                 "total_verified": payload.get("total_verified_rows"),
             },
             ensure_ascii=False,
