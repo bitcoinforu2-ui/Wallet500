@@ -212,7 +212,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           # Freeze exactly the outputs produced/changed by THIS validated run before
-          # touching main. Never rebase generated truth commits and never force-push.
+          # touching main. Never merge/rebase generated truth commits or force-push.
           SNAPSHOT_DIR="$(mktemp -d)"
           FILES_DIR="$SNAPSHOT_DIR/files"
           PATHS_FILE="$SNAPSHOT_DIR/paths.txt"
@@ -236,41 +236,46 @@ jobs:
 
           echo "Validated snapshot contains $(wc -l < "$PATHS_FILE") paths"
 
-          # Never require main to be quiet before publishing. This repository has
-          # independent research publishers that legitimately move main frequently;
-          # a quiet-window precondition can starve a fully validated live snapshot.
-          # Each attempt instead starts from the latest main and uses a normal
-          # fast-forward push. A race is rejected by GitHub and retried from the new
-          # head, so there is still no force-push, merge, or rebase of truth data.
+          # Build each candidate commit directly on the latest main tree using a
+          # temporary Git index. This makes the race window only fetch+tree+push,
+          # instead of reset/copy/add/commit for every retry. The resulting commit is
+          # still an ordinary single-parent fast-forward child of the latest main.
+          # GitHub rejects a race; we then rebuild on the new head. No force, merge,
+          # rebase, or partial per-file API writes are used.
           MAX_ATTEMPTS=20
           for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
-            echo "Publish attempt ${attempt}/${MAX_ATTEMPTS}: overlaying validated snapshot on latest main"
+            echo "Publish attempt ${attempt}/${MAX_ATTEMPTS}: building atomic validated commit on latest main"
             git fetch origin main
-            STABLE_SHA="$(git rev-parse origin/main)"
+            BASE_SHA="$(git rev-parse origin/main)"
+            INDEX_FILE="$SNAPSHOT_DIR/index"
+            rm -f "$INDEX_FILE"
+            export GIT_INDEX_FILE="$INDEX_FILE"
+            git read-tree "$BASE_SHA"
 
-            git reset --hard "$STABLE_SHA"
             while IFS= read -r path; do
               if [ -f "$FILES_DIR/$path" ]; then
-                mkdir -p "$(dirname "$path")"
-                cp -p "$FILES_DIR/$path" "$path"
-                git add -- "$path"
+                blob="$(git hash-object -w "$FILES_DIR/$path")"
+                git update-index --add --cacheinfo 100644 "$blob" "$path"
+              else
+                git update-index --force-remove -- "$path" 2>/dev/null || true
               fi
             done < "$PATHS_FILE"
 
-            if git diff --cached --quiet; then
+            NEW_TREE="$(git write-tree)"
+            BASE_TREE="$(git rev-parse "${BASE_SHA}^{tree}")"
+            if [ "$NEW_TREE" = "$BASE_TREE" ]; then
               echo "Latest main already contains this validated snapshot"
               exit 0
             fi
 
-            git commit -m "data: refresh verified live scan"
-            if git push origin HEAD:main; then
-              echo "Validated snapshot published successfully"
+            NEW_COMMIT="$(printf '%s\n' 'data: refresh verified live scan' | git commit-tree "$NEW_TREE" -p "$BASE_SHA")"
+            if git push origin "$NEW_COMMIT:refs/heads/main"; then
+              echo "Validated snapshot published successfully: $NEW_COMMIT"
               exit 0
             fi
 
-            echo "Main moved during push; rebuilding on newest main without force or rebase"
-            delay=$(( attempt < 6 ? attempt : 6 ))
-            sleep "$delay"
+            echo "Main moved during atomic push; rebuilding on newest main"
+            sleep 1
           done
 
           echo "Publish failed after ${MAX_ATTEMPTS} bounded race-safe attempts"
