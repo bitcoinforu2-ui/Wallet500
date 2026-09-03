@@ -10,6 +10,7 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'experiments/**'
+      - 'scripts/**'
       - 'pyproject.toml'
       - '.github/workflows/live-scan.yml'
       - 'data/manual-watchlist.json'
@@ -79,9 +80,6 @@ jobs:
                 if git push origin HEAD:main; then
                   break
                 fi
-                # Do not merge/rebase generated truth files after a push race.
-                # A newer main is authoritative; retain local outputs for the full
-                # validation lane and let the final publisher resolve freshness.
                 git fetch origin main
                 if [ "$(git rev-parse HEAD^)" != "$(git rev-parse origin/main)" ]; then
                   echo "Fast publish superseded by newer main; continuing without overwriting newer truth data"
@@ -178,6 +176,16 @@ jobs:
       - name: Record scheduler telemetry
         continue-on-error: true
         run: python -m wallet500.scheduler_telemetry
+
+      # Storage-only compaction: every token/call and summary remains in the live
+      # tracker. Only old observation rows are moved verbatim to immutable gzip
+      # shards. Keep at least 24 recent rows/token; risk logic needs only the last 2.
+      - name: Archive cold outcome history and bound live publish files
+        env:
+          WALLET500_OUTCOME_HOT_HISTORY: '24'
+          WALLET500_OUTCOME_MAX_LIVE_BYTES: '73400320'
+        run: python scripts/compact_outcome_history.py
+
       - name: Validate primary live lane and learning integrity
         run: python -m wallet500.strict_validation
       - name: Build canonical production operator status
