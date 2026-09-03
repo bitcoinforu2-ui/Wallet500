@@ -1,0 +1,73 @@
+name: Wallet500 Winner Separator Research
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/winner_separator.py'
+      - 'tests/test_winner_separator.py'
+      - '.github/workflows/winner-separator.yml'
+      - 'data/winner-dna-study.json'
+      - 'data/social-catalyst-ledger.json'
+      - 'data/kol-revival-convergence-ledger.json'
+      - 'data/global-listing-ledger.json'
+  schedule:
+    - cron: '37 3 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-winner-separator
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Verify no-hindsight guards
+        run: python -m pytest -q tests/test_winner_separator.py
+      - name: Run separator study
+        run: python -m wallet500.winner_separator
+      - name: Validate research-only contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/winner-separator-study.json')
+          if not p.exists(): raise SystemExit('WINNER_SEPARATOR_OUTPUT_MISSING')
+          d=json.loads(p.read_text())
+          if d.get('method')!='WINNER_SEPARATOR_NO_HINDSIGHT_V1': raise SystemExit('METHOD_INVALID')
+          if d.get('production_change') is not False: raise SystemExit('PRODUCTION_MUTATION_FORBIDDEN')
+          if d.get('production_thresholds_modified') is not False: raise SystemExit('THRESHOLD_MUTATION_FORBIDDEN')
+          if d.get('exact_pair_identity_preserved') is not True: raise SystemExit('PAIR_IDENTITY_INVALID')
+          print('WINNER_SEPARATOR_RESEARCH_OK', d.get('cohort'))
+          PY
+      - name: Publish research artifact
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-research-bot'
+          git config user.email 'wallet500-research-bot@users.noreply.github.com'
+          cp data/winner-separator-study.json /tmp/winner-separator-study.json
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp /tmp/winner-separator-study.json data/winner-separator-study.json
+            git add data/winner-separator-study.json
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'data: refresh no-hindsight winner separator study'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 3
+          done
+          exit 1
