@@ -18,10 +18,9 @@ on:
 permissions:
   contents: write
 
-# Keep Live Scan from being starved by unrelated publishers. Overlapping writes
-# remain fail-closed: the fast publisher skips stale work when main moves, while
-# the final verified publisher reapplies its validated output snapshot onto the
-# latest main without rebasing generated-data commits.
+# The long Live Scan performs collection and validation only. Its final verified
+# data state is handed off as an immutable artifact to the short serialized
+# Wallet500 Verified Snapshot Publisher, removing the long-running main race.
 concurrency:
   group: wallet500-live-scan-publisher
   cancel-in-progress: false
@@ -205,76 +204,70 @@ jobs:
           }
           Path('data/publish-evidence.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
           PY
-      - name: Publish verified scan data
+
+      - name: Build immutable verified publish artifact
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -rf .publish-snapshot
+          mkdir -p .publish-snapshot/files
+          python - <<'PY'
+          import hashlib, json, os, shutil, subprocess
+          from datetime import datetime, timezone
+          from pathlib import Path, PurePosixPath
 
-          # Freeze the validated run by content-addressing every changed output once.
-          # Retries reuse immutable blob IDs, so large files are never copied/rehashed
-          # after a main race. Deletions are recorded explicitly in the manifest.
-          SNAPSHOT_DIR="$(mktemp -d)"
-          PATHS_FILE="$SNAPSHOT_DIR/paths.txt"
-          MANIFEST="$SNAPSHOT_DIR/blobs.tsv"
-          {
-            git diff --name-only HEAD -- data/
-            git ls-files --others --exclude-standard -- data/
-          } | awk 'NF' | sort -u > "$PATHS_FILE"
+          root=Path('.publish-snapshot')
+          files_root=root/'files'
+          def lines(args):
+              out=subprocess.check_output(args,text=True)
+              return [x.strip() for x in out.splitlines() if x.strip()]
 
-          if [ ! -s "$PATHS_FILE" ]; then
-            echo "No validated data changes"
-            exit 0
-          fi
+          changed=lines(['git','diff','--name-only','HEAD','--','data/'])
+          untracked=lines(['git','ls-files','--others','--exclude-standard','--','data/'])
+          paths=sorted(set(changed+untracked))
+          if 'data/publish-evidence.json' not in paths:
+              raise SystemExit('Fresh publish evidence is missing from verified snapshot')
+          if not paths:
+              raise SystemExit('Verified scan produced no publishable data paths')
 
-          : > "$MANIFEST"
-          while IFS= read -r path; do
-            if [ -f "$path" ]; then
-              blob="$(git hash-object -w "$path")"
-              printf 'F\t%s\t%s\n' "$blob" "$path" >> "$MANIFEST"
-            else
-              printf 'D\t-\t%s\n' "$path" >> "$MANIFEST"
-            fi
-          done < "$PATHS_FILE"
-          echo "Validated immutable manifest contains $(wc -l < "$MANIFEST") paths"
+          items=[]
+          for raw in paths:
+              pp=PurePosixPath(raw)
+              if not raw.startswith('data/') or pp.is_absolute() or '..' in pp.parts:
+                  raise SystemExit(f'Unsafe generated data path: {raw!r}')
+              src=Path(raw)
+              if src.is_file():
+                  dst=files_root/src
+                  dst.parent.mkdir(parents=True,exist_ok=True)
+                  shutil.copy2(src,dst)
+                  digest=hashlib.sha256(dst.read_bytes()).hexdigest()
+                  items.append({'path':raw,'kind':'file','sha256':digest})
+              elif not src.exists():
+                  items.append({'path':raw,'kind':'delete','sha256':None})
+              else:
+                  raise SystemExit(f'Unsupported generated path type: {raw}')
 
-          # Each retry now performs only fetch -> tree overlay -> fast-forward push.
-          # GitHub rejects a stale parent; we rebuild the same immutable blob manifest
-          # on the newest main. No force, merge, rebase, hindsight, or partial writes.
-          MAX_ATTEMPTS=20
-          for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
-            echo "Publish attempt ${attempt}/${MAX_ATTEMPTS}: atomic validated commit on latest main"
-            git fetch origin main
-            BASE_SHA="$(git rev-parse origin/main)"
-            INDEX_FILE="$SNAPSHOT_DIR/index"
-            rm -f "$INDEX_FILE"
-            export GIT_INDEX_FILE="$INDEX_FILE"
-            git read-tree "$BASE_SHA"
+          manifest={
+              'version':1,
+              'created_at':datetime.now(timezone.utc).isoformat(),
+              'source_run_id':str(os.environ['RUN_ID']),
+              'source_run_attempt':str(os.environ['RUN_ATTEMPT']),
+              'source_sha':str(os.environ['SOURCE_SHA']),
+              'strict_validation':'PASS',
+              'scope':'data/',
+              'items':items,
+          }
+          (root/'manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
+          print(f'Immutable verified artifact prepared with {len(items)} data paths')
+          PY
 
-            while IFS=$'\t' read -r kind blob path; do
-              if [ "$kind" = "F" ]; then
-                git update-index --add --cacheinfo 100644 "$blob" "$path"
-              else
-                git update-index --force-remove -- "$path" 2>/dev/null || true
-              fi
-            done < "$MANIFEST"
-
-            NEW_TREE="$(git write-tree)"
-            BASE_TREE="$(git rev-parse "${BASE_SHA}^{tree}")"
-            if [ "$NEW_TREE" = "$BASE_TREE" ]; then
-              echo "Latest main already contains this validated snapshot"
-              exit 0
-            fi
-
-            NEW_COMMIT="$(printf '%s\n' 'data: refresh verified live scan' | git commit-tree "$NEW_TREE" -p "$BASE_SHA")"
-            if git push origin "$NEW_COMMIT:refs/heads/main"; then
-              echo "Validated snapshot published successfully: $NEW_COMMIT"
-              exit 0
-            fi
-
-            echo "Main moved during atomic push; rebuilding on newest main"
-            sleep 1
-          done
-
-          echo "Publish failed after ${MAX_ATTEMPTS} bounded race-safe attempts"
-          exit 1
+      - name: Upload verified snapshot handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: wallet500-verified-snapshot
+          path: .publish-snapshot
+          if-no-files-found: error
+          retention-days: 2
