@@ -18,12 +18,11 @@ on:
 permissions:
   contents: write
 
-# Serialize the live truth publisher with workflows that write overlapping data
-# (notably Waking/Precursor -> real-alerts.json). This prevents validated live
-# snapshots from failing their final fail-closed rebase because another publisher
-# moved the same truth files during the scan.
+# Keep Live Scan from being starved by unrelated publishers. Overlapping writes
+# remain fail-closed: the fast publisher skips stale work when main moves, while
+# the final verified publisher fetches/rebases and aborts on any data conflict.
 concurrency:
-  group: wallet500-main-data-publisher
+  group: wallet500-live-scan-publisher
   cancel-in-progress: false
 
 jobs:
@@ -124,7 +123,6 @@ jobs:
         env:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: python -m wallet500.cex_fast_lane
-
       - name: Apply universal live survival gate
         run: python -m wallet500.fresh_solana_gate
       - name: Revalidate immutable exact pairs
