@@ -17,6 +17,7 @@ CONTRACT = "HYBRID_TOKEN_PROFILE_V1"
 NETWORK = "solana"
 ALPHA = 0.25
 MIN_BASELINE_OBSERVATIONS = 3
+MIN_IGNITION_VOLUME_24H_USD = 10_000.0
 
 CHANNEL_WEIGHTS = {
     "market": 30.0,
@@ -280,10 +281,12 @@ def build_profile(coin: dict, token_state: dict | None, external_row: dict | Non
     observations_before = int(token_state.get("observations") or 0)
     ext_strong = sum(1 for x in EXTERNAL_CHANNELS if x in strong)
     baseline_ready = observations_before >= MIN_BASELINE_OBSERVATIONS or ext_strong >= 2
+    volume_24h_usd = _n(coin.get("volume_24h_usd"), 0.0) or 0.0
+    absolute_volume_ready = volume_24h_usd >= MIN_IGNITION_VOLUME_24H_USD
 
     if risk >= 50:
         status = "RISK_DISTRIBUTION"
-    elif baseline_ready and normalized >= 70 and raw >= 35 and len(strong) >= 2 and risk < 35:
+    elif baseline_ready and absolute_volume_ready and normalized >= 70 and raw >= 35 and len(strong) >= 2 and risk < 35:
         status = "HYBRID_IGNITION"
     elif normalized >= 55 and raw >= 25 and len(strong) >= 1:
         status = "ABNORMAL_ACTIVITY"
@@ -317,6 +320,11 @@ def build_profile(coin: dict, token_state: dict | None, external_row: dict | Non
         "strong_channels": strong,
         "baseline_observations_before": observations_before,
         "baseline_ready": baseline_ready,
+        "promotion_gates": {
+            "min_ignition_volume_24h_usd": MIN_IGNITION_VOLUME_24H_USD,
+            "volume_24h_usd": round(volume_24h_usd, 2),
+            "absolute_volume_ready": absolute_volume_ready,
+        },
         "channels": channels,
         "market_context": {
             "price_usd": coin.get("price_usd"),
@@ -400,9 +408,11 @@ def run() -> dict:
             "future-dated external evidence is rejected",
             "holders/wallet/social/news data is scored only when contract_match=true and verified=true",
             "missing evidence gets zero weight and is never invented",
+            "HYBRID_IGNITION requires at least $10,000 absolute 24h volume; lower-volume tokens remain visible for research",
         ],
         "channel_weights": CHANNEL_WEIGHTS,
         "baseline": {"method": "EWMA", "alpha": ALPHA, "minimum_previous_observations": MIN_BASELINE_OBSERVATIONS},
+        "promotion_gates": {"min_ignition_volume_24h_usd": MIN_IGNITION_VOLUME_24H_USD},
         "counts": counts,
         "profiles": profiles,
     }
