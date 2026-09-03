@@ -31,7 +31,7 @@ jobs:
 
           base = f"https://api.telegram.org/bot{token}"
 
-          def call(method, payload=None):
+          def raw_call(method, payload=None):
               data = None
               headers = {}
               if payload is not None:
@@ -40,9 +40,14 @@ jobs:
               req = urllib.request.Request(f"{base}/{method}", data=data, headers=headers)
               try:
                   with urllib.request.urlopen(req, timeout=20) as r:
-                      body = json.load(r)
+                      return json.load(r), None
               except urllib.error.HTTPError as e:
-                  print(f"::error::Telegram API HTTP {e.code} during {method}")
+                  return None, e.code
+
+          def call(method, payload=None):
+              body, status = raw_call(method, payload)
+              if status is not None:
+                  print(f"::error::Telegram API HTTP {status} during {method}")
                   sys.exit(1)
               if not body.get("ok"):
                   print(f"::error::Telegram API rejected {method}: {body.get('description','unknown error')}")
@@ -52,9 +57,7 @@ jobs:
           me = call("getMe")
           print(f"Bot authenticated: @{me.get('username','unknown')}")
 
-          chat_id = configured_chat_id
-          source = "repository secret"
-          if not chat_id:
+          def latest_private_chat():
               updates = call("getUpdates")
               candidates = []
               for u in updates:
@@ -65,19 +68,37 @@ jobs:
                   if chat.get("type") != "private" or "id" not in chat:
                       continue
                   candidates.append((u.get("update_id", 0), str(chat["id"])))
-              if not candidates:
-                  print("::error::TELEGRAM_CHAT_ID is missing and no private chat update was found")
-                  sys.exit(1)
-              _, chat_id = max(candidates)
-              source = "latest private update"
+              return max(candidates)[1] if candidates else None
 
-          text = "✅ Wallet500 production Telegram route verified. TELEGRAM_CHAT_ID is working."
-          sent = call("sendMessage", {"chat_id": chat_id, "text": text})
-          if not sent.get("message_id"):
-              print("::error::Telegram did not confirm the route test message")
+          if configured_chat_id:
+              body, status = raw_call("sendMessage", {
+                  "chat_id": configured_chat_id,
+                  "text": "✅ Wallet500 production Telegram route verified. TELEGRAM_CHAT_ID is working."
+              })
+              if status is None and body and body.get("ok"):
+                  print("Telegram destination source: repository secret")
+                  print("Telegram production route test: PASS")
+                  sys.exit(0)
+              print("Configured TELEGRAM_CHAT_ID was rejected; attempting safe private-chat recovery.")
+
+          chat_id = latest_private_chat()
+          if not chat_id:
+              print("::error::Could not recover a private Telegram chat. Send /start and a fresh message to the bot, then run again.")
               sys.exit(1)
 
-          # Never print the chat ID itself.
-          print(f"Telegram destination source: {source}")
-          print("Telegram production route test: PASS")
+          recovery_text = (
+              "⚠️ Wallet500 found that the saved TELEGRAM_CHAT_ID is not valid.\n"
+              "Your correct TELEGRAM_CHAT_ID is:\n"
+              f"{chat_id}\n\n"
+              "Copy this exact number into the GitHub repository secret TELEGRAM_CHAT_ID."
+          )
+          sent = call("sendMessage", {"chat_id": chat_id, "text": recovery_text})
+          if not sent.get("message_id"):
+              print("::error::Telegram did not confirm the recovery message")
+              sys.exit(1)
+
+          # Do not print the recovered chat ID to GitHub logs.
+          print("Recovery message sent to the verified private chat.")
+          print("::error::Update TELEGRAM_CHAT_ID with the number sent by the bot, then rerun this workflow.")
+          sys.exit(1)
           PY
