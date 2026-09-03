@@ -1,4 +1,4 @@
-name: DOGE1 Whale 0.1pct Ledger
+name: DOGE1 Holder + Whale Onchain Ledger
 
 on:
   schedule:
@@ -15,12 +15,12 @@ concurrency:
 jobs:
   snapshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Build timestamp-safe whale snapshot
+      - name: Build timestamp-safe holder and whale snapshot
         env:
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
           CA: DpBzjtgGLF7QA9Ug3eUVGbnqa6j3jvYBn1XuQuktvfhm
@@ -30,70 +30,78 @@ jobs:
           import json, os, urllib.request
           from datetime import datetime, timezone
           from pathlib import Path
-
-          rpc=os.environ.get('SOLANA_RPC_URL','').strip()
-          if not rpc:
-              raise SystemExit('Fail closed: SOLANA_RPC_URL secret required for whale ledger')
-          mint=os.environ['CA']
-          def rpc_call(method,params):
-              body=json.dumps({'jsonrpc':'2.0','id':1,'method':method,'params':params}).encode()
-              req=urllib.request.Request(rpc,data=body,headers={'content-type':'application/json'},method='POST')
-              with urllib.request.urlopen(req,timeout=30) as r: out=json.load(r)
-              if out.get('error'): raise SystemExit(f'RPC {method} failed: {out["error"]}')
-              return out.get('result')
-
-          supply=rpc_call('getTokenSupply',[mint,{'commitment':'confirmed'}])
-          val=(supply or {}).get('value') or {}
-          amount=int(val.get('amount') or 0); decimals=int(val.get('decimals') or 0)
-          if amount<=0: raise SystemExit('Fail closed: invalid token supply')
-          largest=rpc_call('getTokenLargestAccounts',[mint,{'commitment':'confirmed'}]) or {}
-          accounts=largest.get('value') or []
-          threshold_raw=amount*0.001
-          whales=[]
-          for a in accounts:
+          rpc=os.environ.get('SOLANA_RPC_URL','').strip(); mint=os.environ['CA']
+          if not rpc: raise SystemExit('Fail closed: SOLANA_RPC_URL secret required')
+          def call(method,params):
+              b=json.dumps({'jsonrpc':'2.0','id':1,'method':method,'params':params}).encode()
+              q=urllib.request.Request(rpc,data=b,headers={'content-type':'application/json'},method='POST')
+              with urllib.request.urlopen(q,timeout=45) as r:o=json.load(r)
+              if o.get('error'): raise SystemExit(f'RPC {method}: {o["error"]}')
+              return o.get('result')
+          sv=(call('getTokenSupply',[mint,{'commitment':'confirmed'}]) or {}).get('value') or {}
+          supply=int(sv.get('amount') or 0); decimals=int(sv.get('decimals') or 0)
+          if supply<=0: raise SystemExit('Fail closed: invalid supply')
+          # Canonical holder count: all token accounts for this mint with positive balance.
+          # jsonParsed is used so zero-balance token accounts are excluded instead of counting account objects blindly.
+          accts=call('getProgramAccounts',['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',{'commitment':'confirmed','encoding':'jsonParsed','filters':[{'dataSize':165},{'memcmp':{'offset':0,'bytes':mint}}]}]) or []
+          holder_count=0
+          for a in accts:
+              try:
+                  amt=int(a['account']['data']['parsed']['info']['tokenAmount']['amount'])
+                  if amt>0: holder_count+=1
+              except: pass
+          if holder_count<=0: raise SystemExit('Fail closed: holder count unavailable')
+          largest=(call('getTokenLargestAccounts',[mint,{'commitment':'confirmed'}]) or {}).get('value') or []
+          threshold=supply*0.001; whales=[]
+          for a in largest:
               raw=int(a.get('amount') or 0)
-              if raw < threshold_raw: continue
-              whales.append({'token_account':a.get('address'),'raw_balance':str(raw),'balance':raw/(10**decimals),'supply_pct':round(raw/amount*100,6)})
-          whales.sort(key=lambda x:x['raw_balance'],reverse=True)
-          now=datetime.now(timezone.utc).isoformat()
-          current={'observed_at':now,'mint':mint,'threshold_supply_pct':0.1,'supply_raw':str(amount),'decimals':decimals,'whales':whales,'coverage':'SOLANA_RPC_CONFIRMED_TOP_TOKEN_ACCOUNTS'}
-          hist=Path('data/doge1-whale-ledger.json')
-          ledger={'version':1,'mint':mint,'threshold_supply_pct':0.1,'snapshots':[]}
+              if raw>=threshold: whales.append({'token_account':a.get('address'),'raw_balance':str(raw),'balance':raw/(10**decimals),'supply_pct':round(raw/supply*100,6)})
+          whales.sort(key=lambda x:int(x['raw_balance']),reverse=True)
+          now=datetime.now(timezone.utc).isoformat(); hist=Path('data/doge1-whale-ledger.json')
+          ledger={'version':2,'mint':mint,'threshold_supply_pct':0.1,'snapshots':[]}
           if hist.exists():
               try: ledger=json.loads(hist.read_text())
               except: pass
           snaps=ledger.get('snapshots') if isinstance(ledger.get('snapshots'),list) else []
-          snaps.append(current); snaps=snaps[-168:]
-          ledger.update({'version':1,'mint':mint,'threshold_supply_pct':0.1,'updated_at':now,'snapshots':snaps})
-          # Compare exact token accounts against the previous hourly snapshot.
+          current={'observed_at':now,'mint':mint,'holders':holder_count,'supply_raw':str(supply),'decimals':decimals,'threshold_supply_pct':0.1,'whales':whales,'coverage':'SOLANA_RPC_CONFIRMED_ONCHAIN'}
+          # 1h/6h/24h holder deltas use the closest prior timestamp at-or-before each horizon.
+          from datetime import datetime as DT
+          def dt(s):
+              try:return DT.fromisoformat(s.replace('Z','+00:00'))
+              except:return None
+          nowdt=dt(now)
+          def holder_delta(hours):
+              target=nowdt.timestamp()-hours*3600; best=None
+              for s in snaps:
+                  t=dt(s.get('observed_at',''))
+                  if t and t.timestamp()<=target and s.get('holders') is not None:
+                      if best is None or t.timestamp()>best[0]: best=(t.timestamp(),int(s['holders']))
+              return holder_count-best[1] if best else None
+          current['holder_deltas']={'h1':holder_delta(1),'h6':holder_delta(6),'h24':holder_delta(24)}
           flows=[]
-          if len(snaps)>=2:
-              old={x['token_account']:int(x['raw_balance']) for x in snaps[-2].get('whales',[])}
-              new={x['token_account']:int(x['raw_balance']) for x in whales}
-              for acct in sorted(set(old)|set(new)):
+          if snaps:
+              old={x['token_account']:int(x['raw_balance']) for x in snaps[-1].get('whales',[])}; new={x['token_account']:int(x['raw_balance']) for x in whales}
+              for acct in set(old)|set(new):
                   d=new.get(acct,0)-old.get(acct,0)
-                  if d:
-                      flows.append({'token_account':acct,'delta_tokens':d/(10**decimals),'delta_supply_pct':round(d/amount*100,6),'direction':'BUY_OR_INFLOW' if d>0 else 'SELL_OR_OUTFLOW'})
+                  if d: flows.append({'token_account':acct,'delta_tokens':d/(10**decimals),'delta_supply_pct':round(d/supply*100,6),'direction':'BUY_OR_INFLOW' if d>0 else 'SELL_OR_OUTFLOW'})
           current['flows_vs_previous_hour']=sorted(flows,key=lambda x:abs(x['delta_supply_pct']),reverse=True)
+          snaps.append(current); snaps=snaps[-168:]
+          ledger.update({'version':2,'updated_at':now,'snapshots':snaps})
           Path('data').mkdir(exist_ok=True)
           hist.write_text(json.dumps(ledger,ensure_ascii=False,indent=2)+'\n')
           Path('data/doge1-whale-current.json').write_text(json.dumps(current,ensure_ascii=False,indent=2)+'\n')
-          print(f'whales >=0.1%: {len(whales)}; changed accounts: {len(flows)}')
+          print(f'holders={holder_count} whales>=0.1%={len(whales)}')
           PY
       - name: Publish ledger safely
         run: |
           set -euo pipefail
-          D="$(mktemp -d)"
-          cp data/doge1-whale-ledger.json data/doge1-whale-current.json "$D/"
-          git config user.name wallet500-bot
-          git config user.email wallet500-bot@users.noreply.github.com
+          D="$(mktemp -d)"; cp data/doge1-whale-ledger.json data/doge1-whale-current.json "$D/"
+          git config user.name wallet500-bot; git config user.email wallet500-bot@users.noreply.github.com
           for attempt in $(seq 1 12); do
-            git fetch origin main
-            git reset --hard origin/main
-            cp "$D/doge1-whale-ledger.json" data/
-            cp "$D/doge1-whale-current.json" data/
+            git fetch origin main; git reset --hard origin/main
+            cp "$D/doge1-whale-ledger.json" data/; cp "$D/doge1-whale-current.json" data/
             git add data/doge1-whale-ledger.json data/doge1-whale-current.json
-            git commit -m 'data: refresh DOGE1 whale ledger' || exit 0
+            git commit -m 'data: refresh DOGE1 holder and whale ledger' || exit 0
             if git push origin HEAD:main; then exit 0; fi
             sleep $(( attempt < 5 ? attempt : 5 ))
           done
