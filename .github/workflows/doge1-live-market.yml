@@ -1,0 +1,95 @@
+name: DOGE1 Exact-Pair Live Market
+
+on:
+  schedule:
+    - cron: '2,17,32,47 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: doge1-exact-pair-live-market
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch and verify exact-pair live market
+        env:
+          CA: DpBzjtgGLF7QA9Ug3eUVGbnqa6j3jvYBn1XuQuktvfhm
+          PAIR: 2fckuYXUrwbA9LHKMP1az5DTFstFrRjqqbBstz7yvVXL
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, urllib.request
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          ca=os.environ['CA']; pair=os.environ['PAIR']
+          url=f'https://api.geckoterminal.com/api/v2/networks/solana/pools/{pair}'
+          req=urllib.request.Request(url,headers={'accept':'application/json','user-agent':'Wallet500/1.0'})
+          with urllib.request.urlopen(req,timeout=20) as r:
+              raw=json.load(r)
+          a=((raw.get('data') or {}).get('attributes') or {})
+          tx=a.get('transactions') or {}; vol=a.get('volume_usd') or {}; pc=a.get('price_change_percentage') or {}
+          now=datetime.now(timezone.utc).isoformat()
+          def num(x):
+              try:return float(x)
+              except:return None
+          def count(side):
+              x=tx.get('h1') or {}
+              try:return int(x.get(side))
+              except:return None
+          out={
+            'version':1,'observed_at':now,'token':{'symbol':'DOGE-1','chain':'solana','contract_address':ca},
+            'exact_pair':{'pair_address':pair,'dex':'Meteora DAMM V2','price_usd':num(a.get('base_token_price_usd')),
+              'liquidity_usd':num(a.get('reserve_in_usd')),'volume_h1':num(vol.get('h1')),'volume_24h':num(vol.get('h24')),
+              'buys_h1':count('buys'),'sells_h1':count('sells'),'price_change_h1_pct':num(pc.get('h1')),
+              'price_change_h6_pct':num(pc.get('h6')),'price_change_24h_pct':num(pc.get('h24'))},
+            'source':{'name':'GeckoTerminal API','url':url},'freshness':{'status':'LIVE','max_age_minutes':30}
+          }
+          if out['exact_pair']['price_usd'] is None or out['exact_pair']['liquidity_usd'] is None:
+              raise SystemExit('Fail closed: exact-pair live price/liquidity missing')
+          prev={}
+          pp=Path('data/doge1-live-market.json')
+          if pp.exists():
+              try: prev=json.loads(pp.read_text())
+              except: prev={}
+          old=(prev.get('exact_pair') or {})
+          def delta(new,oldv):
+              try:return round((float(new)/float(oldv)-1)*100,4) if float(oldv)!=0 else None
+              except:return None
+          out['changes_since_previous_live']={
+            'price_pct':delta(out['exact_pair']['price_usd'],old.get('price_usd')),
+            'liquidity_pct':delta(out['exact_pair']['liquidity_usd'],old.get('liquidity_usd')),
+            'volume_24h_pct':delta(out['exact_pair']['volume_24h'],old.get('volume_24h'))}
+          Path('data').mkdir(exist_ok=True)
+          pp.write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Publish live snapshot without overwriting unrelated writers
+        run: |
+          set -euo pipefail
+          SNAP="$(mktemp)"
+          cp data/doge1-live-market.json "$SNAP"
+          git config user.name wallet500-bot
+          git config user.email wallet500-bot@users.noreply.github.com
+          for attempt in $(seq 1 12); do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$SNAP" data/doge1-live-market.json
+            git add data/doge1-live-market.json
+            git commit -m "data: refresh DOGE1 exact-pair live market" || exit 0
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $(( attempt < 5 ? attempt : 5 ))
+          done
+          echo 'Fail closed: could not publish DOGE1 live snapshot after bounded retries'
+          exit 1
