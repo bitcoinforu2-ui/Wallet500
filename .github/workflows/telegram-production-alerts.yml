@@ -1,0 +1,68 @@
+name: Wallet500 Production Telegram Alerts
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Wallet500 Multi-Chain Live Scan"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/telegram-production-alerts.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-production-telegram-alerts
+  cancel-in-progress: false
+
+jobs:
+  deliver:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install and verify Telegram truth contracts
+        run: |
+          pip install -e . pytest
+          python -m pytest -q tests/test_telegram_exact_pair.py tests/test_real_alerts.py
+      - name: Deliver only gated Wallet500 production alerts
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          WALLET500_ALERT_INPUT: active-qualified-candidates.json
+        run: python -m wallet500.telegram_alerts
+      - name: Persist Telegram dedupe state and delivery report
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          cp data/telegram-alert-state.json "$tmp/state.json"
+          cp data/telegram-alert-report.json "$tmp/report.json"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/state.json" data/telegram-alert-state.json
+            cp "$tmp/report.json" data/telegram-alert-report.json
+            git add data/telegram-alert-state.json data/telegram-alert-report.json
+            if git diff --cached --quiet; then
+              echo 'No Telegram state changes to publish'
+              exit 0
+            fi
+            git commit -m 'telegram: persist production alert delivery state'
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep 3
+          done
+          echo 'Telegram state publish failed after retries'
+          exit 1
