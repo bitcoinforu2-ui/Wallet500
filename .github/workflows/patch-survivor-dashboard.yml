@@ -1,0 +1,41 @@
+name: Wallet500 Patch Survivor Dashboard
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/patch_survivor_dashboard.py'
+      - '.github/workflows/patch-survivor-dashboard.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Patch main dashboard
+        run: python scripts/patch_survivor_dashboard.py
+      - name: Validate dashboard markers
+        run: |
+          grep -Fq 'id="survivor-wave-watch"' index.html
+          grep -Fq 'function loadSurvivors()' index.html
+          grep -Fq 'loadSurvivors();' index.html
+      - name: Publish dashboard patch
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-dashboard-bot'
+          git config user.email 'wallet500-dashboard-bot@users.noreply.github.com'
+          git add index.html
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'dashboard: add survivor wave watch beside DOGE1'
+          git push origin HEAD:main
