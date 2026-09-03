@@ -1,4 +1,4 @@
-from wallet500.holder_concentration_shadow import sanitize_distribution, select_candidates
+from wallet500.holder_concentration_shadow import sanitize_distribution, sanitize_holder_shadow, select_candidates
 
 TOKEN_A = "11111111111111111111111111111111"
 TOKEN_B = "22222222222222222222222222222222"
@@ -77,3 +77,27 @@ def test_distribution_is_risk_only_and_keeps_token_account_semantics():
 def test_distribution_rejects_unverified_or_wrong_source():
     assert sanitize_distribution({"verified": False, "contract_match": True}) is None
     assert sanitize_distribution({"verified": True, "contract_match": True, "source": "OTHER", "metrics": {"top1_pct": 1, "top10_pct": 2}}) is None
+
+
+def test_holder_count_shadow_is_explicitly_non_scoring():
+    holders = {
+        "available": True,
+        "verified": True,
+        "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+        "observed_at": "2026-09-04T00:00:00+00:00",
+        "metrics": {
+            "holder_count": 18000,
+            "previous_holder_count": 17900,
+            "holder_change_pct": 0.5587,
+        },
+        "limitations": ["third-party holder count may be cached"],
+    }
+    out = sanitize_holder_shadow(holders)
+    assert out["holder_count_shadow"] == 18000
+    assert out["growth_signal_eligible"] is False
+    assert out["hybrid_score_impact"] == "NONE"
+    assert out["semantics"] == "THIRD_PARTY_CACHED_HOLDER_COUNT_SHADOW_NOT_TRUSTED_GROWTH"
+
+
+def test_holder_shadow_rejects_wrong_source():
+    assert sanitize_holder_shadow({"available": True, "verified": True, "source": "OTHER", "metrics": {"holder_count": 1}}) is None
