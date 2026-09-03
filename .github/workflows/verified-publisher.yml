@@ -1,0 +1,147 @@
+name: Wallet500 Verified Snapshot Publisher
+
+on:
+  workflow_run:
+    workflows: ["Wallet500 Multi-Chain Live Scan"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: write
+
+# This lane is deliberately short and serialized. The long scan never needs to
+# win a main-branch race again; it hands off one immutable validated artifact.
+concurrency:
+  group: wallet500-verified-snapshot-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download immutable verified snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: wallet500-verified-snapshot
+          path: ${{ runner.temp }}/wallet500-verified-snapshot
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Validate handoff manifest
+        env:
+          SNAPSHOT_DIR: ${{ runner.temp }}/wallet500-verified-snapshot
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path, PurePosixPath
+
+          root=Path(os.environ['SNAPSHOT_DIR']).resolve()
+          manifest_path=root/'manifest.json'
+          if not manifest_path.is_file():
+              raise SystemExit('Missing verified snapshot manifest')
+          manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
+          if manifest.get('version') != 1:
+              raise SystemExit('Unsupported verified snapshot manifest version')
+          if str(manifest.get('source_run_id')) != str(os.environ['SOURCE_RUN_ID']):
+              raise SystemExit('Snapshot source run mismatch')
+          if str(manifest.get('source_sha')) != str(os.environ['SOURCE_SHA']):
+              raise SystemExit('Snapshot source SHA mismatch')
+          items=manifest.get('items')
+          if not isinstance(items,list) or not items:
+              raise SystemExit('Verified snapshot contains no data paths')
+
+          seen=set()
+          for item in items:
+              if not isinstance(item,dict):
+                  raise SystemExit('Malformed snapshot item')
+              path=str(item.get('path') or '')
+              kind=item.get('kind')
+              pp=PurePosixPath(path)
+              if not path.startswith('data/') or pp.is_absolute() or '..' in pp.parts:
+                  raise SystemExit(f'Unsafe snapshot path: {path!r}')
+              if path in seen:
+                  raise SystemExit(f'Duplicate snapshot path: {path}')
+              seen.add(path)
+              target=(root/'files'/path).resolve()
+              files_root=(root/'files').resolve()
+              if files_root not in target.parents:
+                  raise SystemExit(f'Path escaped snapshot root: {path}')
+              if kind == 'file':
+                  if not target.is_file():
+                      raise SystemExit(f'Missing snapshot file: {path}')
+                  digest=hashlib.sha256(target.read_bytes()).hexdigest()
+                  if digest != item.get('sha256'):
+                      raise SystemExit(f'SHA256 mismatch: {path}')
+              elif kind == 'delete':
+                  if target.exists():
+                      raise SystemExit(f'Delete item unexpectedly contains file: {path}')
+              else:
+                  raise SystemExit(f'Invalid snapshot item kind for {path}: {kind!r}')
+          print(f'Validated immutable handoff: {len(items)} data paths')
+          PY
+
+      - name: Publish verified snapshot atomically on latest main
+        env:
+          SNAPSHOT_DIR: ${{ runner.temp }}/wallet500-verified-snapshot
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Artifact lives outside the checkout. Every retry starts from the newest
+          # authoritative main and reapplies only the validated data/ paths.
+          MAX_ATTEMPTS=20
+          for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+            echo "Publisher attempt ${attempt}/${MAX_ATTEMPTS} for source run ${SOURCE_RUN_ID}"
+            git fetch origin main
+            git reset --hard origin/main
+            git clean -fd
+
+            python - <<'PY'
+          import json, os, shutil
+          from pathlib import Path
+
+          root=Path(os.environ['SNAPSHOT_DIR'])
+          repo=Path.cwd()
+          manifest=json.loads((root/'manifest.json').read_text(encoding='utf-8'))
+          for item in manifest['items']:
+              rel=Path(item['path'])
+              dst=repo/rel
+              if item['kind'] == 'file':
+                  src=root/'files'/rel
+                  dst.parent.mkdir(parents=True,exist_ok=True)
+                  shutil.copy2(src,dst)
+              else:
+                  if dst.is_file() or dst.is_symlink():
+                      dst.unlink()
+                  elif dst.is_dir():
+                      shutil.rmtree(dst)
+          PY
+
+            git add -A -- data/
+            if git diff --cached --quiet; then
+              echo "Latest main already contains verified snapshot for source run ${SOURCE_RUN_ID}"
+              exit 0
+            fi
+            git commit -m "data: publish verified live scan ${SOURCE_RUN_ID}"
+            if git push origin HEAD:main; then
+              echo "Verified snapshot published successfully from source run ${SOURCE_RUN_ID}"
+              exit 0
+            fi
+            echo "Main moved during short publisher attempt; retrying on newest main"
+            sleep 1
+          done
+
+          echo "Verified snapshot publisher failed after ${MAX_ATTEMPTS} bounded attempts"
+          exit 1
