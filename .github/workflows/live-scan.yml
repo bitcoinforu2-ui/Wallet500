@@ -20,7 +20,7 @@ permissions:
 
 # Keep Live Scan from being starved by unrelated publishers. Overlapping writes
 # remain fail-closed: the fast publisher skips stale work when main moves, while
-# the final verified publisher rebases its validated output snapshot onto the
+# the final verified publisher reapplies its validated output snapshot onto the
 # latest main without rebasing generated-data commits.
 concurrency:
   group: wallet500-live-scan-publisher
@@ -29,7 +29,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -212,8 +212,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           # Freeze exactly the outputs produced/changed by THIS validated run before
-          # touching main. This avoids rebasing a generated-data commit, the source
-          # of repeated JSON conflicts when research bots move main concurrently.
+          # touching main. Never rebase generated truth commits and never force-push.
           SNAPSHOT_DIR="$(mktemp -d)"
           FILES_DIR="$SNAPSHOT_DIR/files"
           PATHS_FILE="$SNAPSHOT_DIR/paths.txt"
@@ -237,14 +236,24 @@ jobs:
 
           echo "Validated snapshot contains $(wc -l < "$PATHS_FILE") paths"
 
-          # Retry against the latest main. Each attempt starts from a clean latest
-          # main and reapplies only this run's validated output files. Unrelated
-          # research files changed by concurrent writers are therefore preserved.
-          for attempt in 1 2 3 4 5; do
-            echo "Publish attempt ${attempt}/5"
+          MAX_ATTEMPTS=20
+          QUIET_SECONDS=3
+          for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+            echo "Publish attempt ${attempt}/${MAX_ATTEMPTS}: waiting for stable main"
             git fetch origin main
-            git reset --hard origin/main
+            BASE_SHA="$(git rev-parse origin/main)"
+            sleep "$QUIET_SECONDS"
+            git fetch origin main
+            STABLE_SHA="$(git rev-parse origin/main)"
 
+            if [ "$BASE_SHA" != "$STABLE_SHA" ]; then
+              echo "Main changed during quiet-window probe; retrying without touching validated snapshot"
+              delay=$(( attempt < 6 ? attempt : 6 ))
+              sleep "$delay"
+              continue
+            fi
+
+            git reset --hard "$STABLE_SHA"
             while IFS= read -r path; do
               if [ -f "$FILES_DIR/$path" ]; then
                 mkdir -p "$(dirname "$path")"
@@ -264,9 +273,10 @@ jobs:
               exit 0
             fi
 
-            echo "Main moved during push; rebuilding validated snapshot on latest main"
-            sleep $((attempt * 2))
+            echo "Main moved after stability probe; rebuilding on newest main without force or rebase"
+            delay=$(( attempt < 6 ? attempt : 6 ))
+            sleep "$delay"
           done
 
-          echo "Publish failed after 5 race-safe snapshot attempts"
+          echo "Publish failed after ${MAX_ATTEMPTS} bounded race-safe attempts"
           exit 1
