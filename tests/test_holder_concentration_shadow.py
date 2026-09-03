@@ -43,6 +43,12 @@ def test_ignition_below_10k_does_not_get_ignition_priority():
     assert out[0]["priority_reason"] == "ROTATION_RESEARCH"
 
 
+def test_unverified_pair_is_excluded_from_concentration_scan():
+    row = profile(TOKEN_A, PAIR_A, "HYBRID_IGNITION", 20_000, 90)
+    row["identity"]["exact_pair_verified"] = False
+    assert select_candidates([row], 10) == []
+
+
 def test_distribution_is_risk_only_and_keeps_token_account_semantics():
     dist = {
         "verified": True,
