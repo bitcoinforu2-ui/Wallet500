@@ -1,0 +1,74 @@
+name: Wallet500 Telegram Connect
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  connect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate bot and discover private chat
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, sys, urllib.request, urllib.error
+
+          token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+          if not token:
+              print("::error::TELEGRAM_BOT_TOKEN is missing")
+              sys.exit(1)
+
+          base = f"https://api.telegram.org/bot{token}"
+
+          def call(method, payload=None):
+              data = None
+              headers = {}
+              if payload is not None:
+                  data = json.dumps(payload).encode()
+                  headers["Content-Type"] = "application/json"
+              req = urllib.request.Request(f"{base}/{method}", data=data, headers=headers)
+              try:
+                  with urllib.request.urlopen(req, timeout=20) as r:
+                      body = json.load(r)
+              except urllib.error.HTTPError as e:
+                  print(f"::error::Telegram API HTTP {e.code} during {method}")
+                  sys.exit(1)
+              if not body.get("ok"):
+                  print(f"::error::Telegram API rejected {method}: {body.get('description','unknown error')}")
+                  sys.exit(1)
+              return body["result"]
+
+          me = call("getMe")
+          print(f"Bot authenticated: @{me.get('username','unknown')}")
+
+          updates = call("getUpdates")
+          candidates = []
+          for u in updates:
+              msg = u.get("message") or u.get("edited_message") or u.get("channel_post")
+              if not msg:
+                  continue
+              chat = msg.get("chat") or {}
+              if chat.get("type") != "private" or "id" not in chat:
+                  continue
+              candidates.append((u.get("update_id", 0), chat["id"]))
+
+          if not candidates:
+              print("::error::No private chat update found. Open the bot in Telegram, send /start and a fresh message such as Wallet500 CONNECT, then run this workflow again.")
+              sys.exit(1)
+
+          _, chat_id = max(candidates)
+          text = "✅ Wallet500 Telegram connection verified. Alerts channel is reachable."
+          sent = call("sendMessage", {"chat_id": chat_id, "text": text})
+          if not sent.get("message_id"):
+              print("::error::Telegram did not confirm the test message")
+              sys.exit(1)
+
+          # Do not print the chat ID to logs. It is only used in-memory for this verification.
+          print("Telegram connection test: PASS")
+          print("Next: save TELEGRAM_CHAT_ID as a repository secret before enabling production alerts.")
+          PY
