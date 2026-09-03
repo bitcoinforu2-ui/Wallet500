@@ -8,12 +8,12 @@ on:
 permissions:
   contents: write
 
-# Research output still writes generated data to main, so it must share the
-# non-cancelling publisher lock with every other main data writer.
+# Keep only one forensics run active at a time. Do not share a repository-wide
+# pending slot: GitHub concurrency keeps at most one pending run per group and
+# can cancel older pending runs even when cancel-in-progress is false.
 concurrency:
-  group: wallet500-main-data-publisher
+  group: wallet500-wallet-forensics
   cancel-in-progress: false
-  queue: max
 
 jobs:
   forensics:
