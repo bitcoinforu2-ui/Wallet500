@@ -1,0 +1,78 @@
+name: Wallet500 Alpha Robustness Audit
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Wallet500 Alpha Matched Controls"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/alpha_robustness.py'
+      - 'tests/test_alpha_robustness.py'
+      - '.github/workflows/alpha-robustness.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-alpha-robustness
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test proof-only safety contract
+        run: |
+          pip install -e . pytest
+          python -m pytest -q tests/test_alpha_robustness.py
+      - name: Build robustness audit
+        run: python -m wallet500.alpha_robustness
+      - name: Validate zero discovery impact
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/alpha-robustness-audit.json')
+          if not p.exists(): raise SystemExit('ALPHA_ROBUSTNESS_OUTPUT_MISSING')
+          report=json.loads(p.read_text())
+          safety=report.get('safety_contract') or {}
+          if report.get('mode')!='ALPHA_ROBUSTNESS_AUDIT_V1': raise SystemExit('ALPHA_ROBUSTNESS_MODE_INVALID')
+          required_false=(
+              'changes_discovery_funnel','changes_signal_enrollment','changes_candidate_qualification',
+              'changes_production_gate','changes_telegram_alerts','can_block_or_drop_candidate',
+              'can_block_or_drop_signal','changes_primary_alpha_proof_status'
+          )
+          if safety.get('proof_audit_only') is not True: raise SystemExit('ALPHA_ROBUSTNESS_NOT_PROOF_ONLY')
+          for key in required_false:
+              if safety.get(key) is not False: raise SystemExit(f'ALPHA_ROBUSTNESS_SAFETY_FAIL:{key}')
+          print('ALPHA_ROBUSTNESS_SAFE', report.get('primary_robustness_status'))
+          PY
+      - name: Publish audit report only
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          cp data/alpha-robustness-audit.json "$tmp/report.json"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/report.json" data/alpha-robustness-audit.json
+            git add data/alpha-robustness-audit.json
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'alpha: refresh robustness audit'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 3
+          done
+          exit 1
