@@ -14,12 +14,12 @@ permissions:
   contents: write
 
 # This workflow updates manual-watchlist.json, which is also consumed and may be
-# rewritten by the primary Live truth pipeline. Serialize it with the other
-# main-data publishers so a validated Live run cannot fail publication on a
-# concurrent writer race. Keep cancel-in-progress false: truth writers must
-# finish or fail closed, never be interrupted mid-publish.
+# rewritten by the primary Live truth pipeline. Serialize both writers on the
+# same concurrency group so validated Live publication cannot race this feed.
+# Keep cancel-in-progress false: truth writers must finish or fail closed, never
+# be interrupted mid-publish.
 concurrency:
-  group: wallet500-main-data-publisher
+  group: wallet500-live-scan-publisher
   cancel-in-progress: false
 
 jobs:
