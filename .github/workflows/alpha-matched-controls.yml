@@ -1,0 +1,78 @@
+name: Wallet500 Alpha Matched Controls
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Wallet500 Forward Alpha Proof"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/alpha_matched_controls.py'
+      - 'tests/test_alpha_matched_controls.py'
+      - '.github/workflows/alpha-matched-controls.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-alpha-matched-controls
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test isolated matched-control safety contract
+        run: |
+          pip install -e . pytest
+          python -m pytest -q tests/test_alpha_matched_controls.py
+      - name: Build secondary matched-control diagnostic
+        run: python -m wallet500.alpha_matched_controls
+      - name: Validate zero production impact
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/alpha-matched-controls.json')
+          s=Path('data/alpha-matched-control-state.json')
+          if not p.exists() or not s.exists(): raise SystemExit('MATCHED_ALPHA_OUTPUT_MISSING')
+          report=json.loads(p.read_text())
+          safety=report.get('safety_contract') or {}
+          if report.get('mode')!='ALPHA_MATCHED_CONTROLS_DIAGNOSTIC_V1': raise SystemExit('MATCHED_ALPHA_MODE_INVALID')
+          if safety.get('secondary_diagnostic_only') is not True: raise SystemExit('MATCHED_ALPHA_NOT_SECONDARY')
+          if safety.get('changes_signal_enrollment') is not False: raise SystemExit('MATCHED_ALPHA_SIGNAL_MUTATION')
+          if safety.get('changes_candidate_qualification') is not False: raise SystemExit('MATCHED_ALPHA_QUALIFICATION_MUTATION')
+          if safety.get('changes_production_gate') is not False: raise SystemExit('MATCHED_ALPHA_PRODUCTION_MUTATION')
+          if safety.get('can_block_or_drop_signal') is not False: raise SystemExit('MATCHED_ALPHA_CAN_DROP_SIGNAL')
+          print('MATCHED_ALPHA_DIAGNOSTIC_SAFE', report.get('matched_signal_count'), report.get('unmatched_signal_count'))
+          PY
+      - name: Publish diagnostic state only
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          cp data/alpha-matched-controls.json "$tmp/report.json"
+          cp data/alpha-matched-control-state.json "$tmp/state.json"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/report.json" data/alpha-matched-controls.json
+            cp "$tmp/state.json" data/alpha-matched-control-state.json
+            git add data/alpha-matched-controls.json data/alpha-matched-control-state.json
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'alpha: refresh matched-control diagnostics'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 3
+          done
+          exit 1
