@@ -49,7 +49,7 @@ jobs:
           d=json.loads(p.read_text())
           if d.get('source')!='active-qualified-candidates.json': raise SystemExit('FATAL: forensics did not inspect the active pre-production lane')
           if d.get('lane')!='PRE_PRODUCTION_EVIDENCE_GATHERING' or d.get('production_authorization') is not False: raise SystemExit('FATAL: forensics lane could authorize production')
-          if d.get('method')!='VERIFIED_POOL_TRANSACTION_SIGNERS': raise SystemExit('FATAL: unverified wallet method')
+          if d.get('method')!='VERIFIED_EXACT_PAIR_TRANSACTION_SIGNERS': raise SystemExit('FATAL: unverified wallet method')
           print('WALLET FORENSICS:',d.get('active_candidates_seen',0),'active candidates',d.get('solana_candidates_scanned',0),'Solana pools',d.get('verified_wallet_candidates',0),'verified wallets')
           PY
       - name: Publish wallet-forensics data only
