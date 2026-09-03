@@ -145,80 +145,85 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Never move verified truth backwards if an even newer verified run is
-          # already visible on main. GitHub run IDs are monotonically increasing.
-          current_run="$(python - <<'PY'
-          import json
-          from pathlib import Path
-          p=Path('data/publish-evidence.json')
-          try:
-              print(int(json.loads(p.read_text(encoding='utf-8')).get('run_id') or 0))
-          except Exception:
-              print(0)
-          PY
-          )"
-          if [ "$current_run" -gt "$SOURCE_RUN_ID" ]; then
-            echo "Refusing stale verified snapshot $SOURCE_RUN_ID; main already has newer verified run $current_run"
-            exit 0
-          fi
-
-          MAX_ATTEMPTS=20
-          for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
-            echo "Publisher attempt ${attempt}/${MAX_ATTEMPTS} for source run ${SOURCE_RUN_ID}"
-            git fetch origin main
-            git reset --hard origin/main
-            git clean -fd
-
-            # Repeat the monotonicity guard after each race/reset.
-            current_run="$(python - <<'PY'
-          import json
-          from pathlib import Path
-          p=Path('data/publish-evidence.json')
-          try:
-              print(int(json.loads(p.read_text(encoding='utf-8')).get('run_id') or 0))
-          except Exception:
-              print(0)
-          PY
-            )"
-            if [ "$current_run" -gt "$SOURCE_RUN_ID" ]; then
-              echo "Newer verified run $current_run won the race; refusing stale run $SOURCE_RUN_ID"
-              exit 0
-            fi
-
-            python - <<'PY'
-          import json, os, shutil
+          # Hash the immutable snapshot exactly once. Every race retry below only
+          # overlays these already-created blobs onto the newest main tree and
+          # creates a tiny tree+commit. This keeps the fail-closed fast-forward
+          # semantics while removing repeated hashing/copying of large truth files.
+          python - <<'PY'
+          import json, os, subprocess, tempfile, time
           from pathlib import Path
 
-          root=Path(os.environ['SNAPSHOT_DIR'])
-          repo=Path.cwd()
+          root=Path(os.environ['SNAPSHOT_DIR']).resolve()
           manifest=json.loads((root/'manifest.json').read_text(encoding='utf-8'))
+          source_run=int(os.environ['SOURCE_RUN_ID'])
+
+          def git(*args, env=None, input_text=None, check=True):
+              p=subprocess.run(
+                  ['git',*args], text=True, input=input_text,
+                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                  env=env, check=False)
+              if check and p.returncode:
+                  raise SystemExit(f"git {' '.join(args)} failed: {p.stderr.strip()}")
+              return p
+
+          blobs={}
           for item in manifest['items']:
-              rel=Path(item['path'])
-              dst=repo/rel
-              if item['kind'] == 'file':
-                  src=root/'files'/rel
-                  dst.parent.mkdir(parents=True,exist_ok=True)
-                  shutil.copy2(src,dst)
-              else:
-                  if dst.is_file() or dst.is_symlink():
-                      dst.unlink()
-                  elif dst.is_dir():
-                      shutil.rmtree(dst)
+              if item['kind']!='file':
+                  continue
+              rel=item['path']
+              src=root/'files'/rel
+              p=git('hash-object','-w',str(src))
+              blobs[rel]=p.stdout.strip()
+          print(f'Prepared {len(blobs)} immutable Git blobs once for bounded retries')
+
+          def published_run(parent):
+              p=git('show',f'{parent}:data/publish-evidence.json',check=False)
+              if p.returncode:
+                  return 0
+              try:
+                  return int(json.loads(p.stdout).get('run_id') or 0)
+              except Exception:
+                  return 0
+
+          max_attempts=40
+          for attempt in range(1,max_attempts+1):
+              print(f'Publisher attempt {attempt}/{max_attempts} for source run {source_run}',flush=True)
+              git('fetch','origin','main')
+              parent=git('rev-parse','origin/main').stdout.strip()
+              current=published_run(parent)
+              if current>source_run:
+                  print(f'Refusing stale verified snapshot {source_run}; main already has newer verified run {current}')
+                  raise SystemExit(0)
+
+              index_path=Path(tempfile.gettempdir())/f'wallet500-publish-{os.getpid()}.index'
+              try:
+                  index_path.unlink(missing_ok=True)
+                  env=os.environ.copy()
+                  env['GIT_INDEX_FILE']=str(index_path)
+                  git('read-tree',parent,env=env)
+                  for item in manifest['items']:
+                      rel=item['path']
+                      if item['kind']=='file':
+                          git('update-index','--add','--cacheinfo',f'100644,{blobs[rel]},{rel}',env=env)
+                      else:
+                          git('update-index','--force-remove','--',rel,env=env)
+                  tree=git('write-tree',env=env).stdout.strip()
+              finally:
+                  index_path.unlink(missing_ok=True)
+
+              parent_tree=git('rev-parse',f'{parent}^{{tree}}').stdout.strip()
+              if tree==parent_tree:
+                  print(f'Latest main already contains verified snapshot for source run {source_run}')
+                  raise SystemExit(0)
+
+              commit=git('commit-tree',tree,'-p',parent,
+                         input_text=f'data: publish verified live scan {source_run}\n').stdout.strip()
+              pushed=git('push','origin',f'{commit}:refs/heads/main',check=False)
+              if pushed.returncode==0:
+                  print(f'Verified snapshot published successfully from source run {source_run}')
+                  raise SystemExit(0)
+              print('Main moved during atomic publisher attempt; retrying on newest main',flush=True)
+              time.sleep(0.15)
+
+          raise SystemExit(f'Verified snapshot publisher failed after {max_attempts} bounded attempts')
           PY
-
-            git add -A -- data/
-            if git diff --cached --quiet; then
-              echo "Latest main already contains verified snapshot for source run ${SOURCE_RUN_ID}"
-              exit 0
-            fi
-            git commit -m "data: publish verified live scan ${SOURCE_RUN_ID}"
-            if git push origin HEAD:main; then
-              echo "Verified snapshot published successfully from source run ${SOURCE_RUN_ID}"
-              exit 0
-            fi
-            echo "Main moved during short publisher attempt; retrying on newest main"
-            sleep 1
-          done
-
-          echo "Verified snapshot publisher failed after ${MAX_ATTEMPTS} bounded attempts"
-          exit 1
