@@ -9,10 +9,11 @@ on:
 permissions:
   contents: write
 
-# Serialize with the primary truth publisher. This analysis never races or overwrites
-# a live-scan data publish and never mutates the raw social evidence ledger.
+# Keep this derived analysis on its own pending slot. The publish step already rebases
+# against main and retries pushes, so sharing a concurrency group only causes pending
+# runs to be replaced without adding truth protection.
 concurrency:
-  group: wallet500-main-data-publisher
+  group: wallet500-organic-social-acceleration
   cancel-in-progress: false
 
 jobs:
