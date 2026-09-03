@@ -1,0 +1,90 @@
+name: Wallet500 Holder Concentration Shadow
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '22,52 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/holder_concentration_shadow.py'
+      - 'tests/test_holder_concentration_shadow.py'
+      - '.github/workflows/holder-concentration-shadow.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-main-data-publisher
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Verify concentration shadow truth rules
+        run: python -m pytest -q tests/test_holder_concentration_shadow.py
+      - name: Scan priority exact-mint holder concentration
+        env:
+          HOLDER_CONCENTRATION_BUDGET: '16'
+        run: python -m wallet500.holder_concentration_shadow
+      - name: Validate concentration shadow contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from wallet500.revival_1000 import looks_like_solana_address
+
+          p=Path('data/holder-concentration-shadow.json')
+          s=Path('data/holder-concentration-shadow-state.json')
+          if not p.exists() or not p.stat().st_size or not s.exists() or not s.stat().st_size:
+              raise SystemExit('HOLDER_CONCENTRATION_SHADOW_OUTPUT_MISSING')
+          d=json.loads(p.read_text())
+          if d.get('mode')!='RESEARCH_ONLY_HOLDER_CONCENTRATION_SHADOW_V1':
+              raise SystemExit('HOLDER_CONCENTRATION_SHADOW_MODE_INVALID')
+          if d.get('network')!='solana' or d.get('production_portfolio_impact')!='NONE' or d.get('no_hindsight') is not True:
+              raise SystemExit('HOLDER_CONCENTRATION_SHADOW_TRUTH_INVALID')
+          if int(d.get('selected_this_run') or 0) > int(d.get('budget') or 0):
+              raise SystemExit('HOLDER_CONCENTRATION_SHADOW_BUDGET_BROKEN')
+          for row in d.get('rows') or []:
+              if not looks_like_solana_address(str(row.get('token_address') or '')):
+                  raise SystemExit('HOLDER_CONCENTRATION_SHADOW_MINT_INVALID')
+              if row.get('verified') is not True or row.get('contract_match') is not True:
+                  raise SystemExit('HOLDER_CONCENTRATION_SHADOW_UNVERIFIED_ROW')
+              if row.get('positive_signal_eligible') is not False or row.get('hybrid_score_impact')!='NONE':
+                  raise SystemExit('HOLDER_CONCENTRATION_SHADOW_POSITIVE_SIGNAL_LEAK')
+              if row.get('semantics')!='TOP_TOKEN_ACCOUNT_CONCENTRATION_NOT_OWNER_CLUSTER_CONCENTRATION':
+                  raise SystemExit('HOLDER_CONCENTRATION_SHADOW_SEMANTICS_INVALID')
+          print('HOLDER_CONCENTRATION_SHADOW_OK', {'selected':d.get('selected_this_run'),'verified':d.get('verified_this_run'),'total':d.get('total_verified_rows')})
+          PY
+      - name: Publish concentration shadow state
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-holder-shadow-bot'
+          git config user.email 'wallet500-holder-shadow-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          cp data/holder-concentration-shadow.json "$tmp/latest.json"
+          cp data/holder-concentration-shadow-state.json "$tmp/state.json"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/latest.json" data/holder-concentration-shadow.json
+            cp "$tmp/state.json" data/holder-concentration-shadow-state.json
+            git add data/holder-concentration-shadow.json data/holder-concentration-shadow-state.json
+            if git diff --cached --quiet; then echo 'HOLDER_CONCENTRATION_SHADOW_NO_CHANGE'; exit 0; fi
+            git commit -m 'data: refresh holder concentration shadow'
+            if git push origin HEAD:main; then echo 'HOLDER_CONCENTRATION_SHADOW_PUBLISH_OK'; exit 0; fi
+            echo "HOLDER_CONCENTRATION_SHADOW_RETRY attempt=$attempt"
+            sleep 3
+          done
+          echo '::error::HOLDER_CONCENTRATION_SHADOW_PUBLISH_RACE_EXHAUSTED'
+          exit 1
