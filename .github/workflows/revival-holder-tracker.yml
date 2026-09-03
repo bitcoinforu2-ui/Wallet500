@@ -8,6 +8,8 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/revival_holder_tracker.py'
+      - 'src/wallet500/holder_truth_guard.py'
+      - 'tests/test_holder_truth_guard.py'
       - '.github/workflows/revival-holder-tracker.yml'
 
 permissions:
@@ -32,11 +34,15 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install
-        run: pip install -e .
-      - name: Track verified holder T0 and growth
+        run: pip install -e . pytest
+      - name: Verify holder truth guard
+        run: python -m pytest -q tests/test_holder_truth_guard.py
+      - name: Track raw holder evidence
         env:
           REVIVAL_HOLDER_BATCH: '30'
         run: python -m wallet500.revival_holder_tracker
+      - name: Fail closed unsafe holder-count semantics
+        run: python -m wallet500.holder_truth_guard
       - name: Validate holder truth contract
         run: |
           python - <<'PY'
@@ -44,17 +50,26 @@ jobs:
           from pathlib import Path
           p=Path('data/revival-holder-latest.json')
           s=Path('data/revival-holder-state.json')
-          if not p.exists() or not s.exists(): raise SystemExit('REVIVAL_HOLDER_OUTPUT_MISSING')
+          g=Path('data/holder-truth-status.json')
+          if not p.exists() or not s.exists() or not g.exists(): raise SystemExit('REVIVAL_HOLDER_OUTPUT_MISSING')
           d=json.loads(p.read_text())
+          guard=json.loads(g.read_text())
           if d.get('mode')!='RESEARCH_ONLY_REVIVAL_HOLDER_TRACKER_V1': raise SystemExit('REVIVAL_HOLDER_MODE_INVALID')
           if d.get('network')!='solana' or d.get('production_portfolio_impact')!='NONE' or d.get('no_hindsight') is not True: raise SystemExit('REVIVAL_HOLDER_TRUTH_INVALID')
           if 'NEVER FABRICATE RETROACTIVE HOLDER COUNT' not in str(d.get('truth_rule')): raise SystemExit('REVIVAL_HOLDER_NO_RETROACTIVE_RULE_MISSING')
+          if d.get('growth_fail_closed') is not True: raise SystemExit('REVIVAL_HOLDER_FAIL_CLOSED_MISSING')
+          if guard.get('mode')!='HOLDER_TRUTH_FAIL_CLOSED_V1': raise SystemExit('HOLDER_TRUTH_GUARD_INVALID')
           for x in d.get('coins') or []:
-              if x.get('first_holder_count') is None or x.get('holder_count') is None: raise SystemExit('REVIVAL_HOLDER_NULL_COUNT')
-              if int(x['holder_growth_count']) != int(x['holder_count'])-int(x['first_holder_count']): raise SystemExit('REVIVAL_HOLDER_DELTA_MISMATCH')
-          print('REVIVAL_HOLDER_TRACKER_V1_OK', {'covered':d.get('covered'),'universe':d.get('universe'),'success':d.get('successful_this_run')})
+              if x.get('source')=='RUGCHECK_EXACT_MINT_PUBLIC_REPORT':
+                  if x.get('holder_truth_status')!='QUARANTINED_PROVIDER_SEMANTICS': raise SystemExit('RUGCHECK_NOT_QUARANTINED')
+                  if x.get('holder_count') is not None: raise SystemExit('RUGCHECK_COUNT_EXPOSED_AS_TRUTH')
+                  if x.get('growth_eligible') is not False: raise SystemExit('RUGCHECK_GROWTH_STILL_ELIGIBLE')
+                  if x.get('holder_growth_24h_ready') is not False or x.get('holder_growth_7d_ready') is not False: raise SystemExit('RUGCHECK_HORIZON_GROWTH_STILL_READY')
+              elif x.get('holder_count') is not None and x.get('first_holder_count') is not None and x.get('holder_growth_count') is not None:
+                  if int(x['holder_growth_count']) != int(x['holder_count'])-int(x['first_holder_count']): raise SystemExit('REVIVAL_HOLDER_DELTA_MISMATCH')
+          print('REVIVAL_HOLDER_FAIL_CLOSED_OK', {'covered':d.get('covered'),'universe':d.get('universe'),'quarantined':guard.get('quarantined')})
           PY
-      - name: Publish holder tracker state
+      - name: Publish guarded holder tracker state
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
@@ -62,14 +77,16 @@ jobs:
           tmp="$(mktemp -d)"
           cp data/revival-holder-latest.json "$tmp/latest.json"
           cp data/revival-holder-state.json "$tmp/state.json"
+          cp data/holder-truth-status.json "$tmp/guard.json"
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
             cp "$tmp/latest.json" data/revival-holder-latest.json
             cp "$tmp/state.json" data/revival-holder-state.json
-            git add data/revival-holder-latest.json data/revival-holder-state.json
+            cp "$tmp/guard.json" data/holder-truth-status.json
+            git add data/revival-holder-latest.json data/revival-holder-state.json data/holder-truth-status.json
             if git diff --cached --quiet; then echo 'REVIVAL_HOLDER_NO_CHANGE'; exit 0; fi
-            git commit -m 'data: refresh Revival holder tracker'
+            git commit -m 'data: refresh guarded Revival holder tracker'
             if git push origin HEAD:main; then echo 'REVIVAL_HOLDER_PUBLISH_OK'; exit 0; fi
             echo "REVIVAL_HOLDER_PUBLISH_RETRY attempt=$attempt"
             sleep 3
