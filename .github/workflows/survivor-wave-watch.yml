@@ -1,0 +1,73 @@
+name: Wallet500 Survivor Wave Watch
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/survivor_wave_watch.py'
+      - '.github/workflows/survivor-wave-watch.yml'
+      - 'data/winner-separator-study.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-survivor-wave-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e .
+      - name: Run exact-pair survivor watch
+        run: python -m wallet500.survivor_wave_watch
+      - name: Validate truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/survivor-wave-watch.json')
+          if not p.exists(): raise SystemExit('SURVIVOR_WATCH_OUTPUT_MISSING')
+          d=json.loads(p.read_text())
+          if d.get('mode')!='HOURLY_WINNER_SURVIVOR_WAVE_WATCH_V1': raise SystemExit('MODE_INVALID')
+          if d.get('research_only') is not True or d.get('automatic_buy') is not False: raise SystemExit('PRODUCTION_CONTRACT_INVALID')
+          if d.get('exact_pair_only') is not True: raise SystemExit('PAIR_CONTRACT_INVALID')
+          for x in d.get('tokens') or []:
+              if float(x.get('liquidity_usd') or 0) < float(d.get('liquidity_survival_floor_usd') or 50000):
+                  raise SystemExit('SURVIVOR_BELOW_LIQUIDITY_FLOOR')
+          print('SURVIVOR_WAVE_WATCH_OK', d.get('survivor_n'), d.get('wave_building_n'))
+          PY
+      - name: Publish hourly survivor state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-survivor-bot'
+          git config user.email 'wallet500-survivor-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          cp data/survivor-wave-watch.json "$tmp/survivor-wave-watch.json"
+          cp data/survivor-wave-watch-state.json "$tmp/survivor-wave-watch-state.json"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/survivor-wave-watch.json" data/survivor-wave-watch.json
+            cp "$tmp/survivor-wave-watch-state.json" data/survivor-wave-watch-state.json
+            git add data/survivor-wave-watch.json data/survivor-wave-watch-state.json
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'data: refresh hourly survivor wave watch'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 3
+          done
+          exit 1
