@@ -211,12 +211,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Freeze exactly the outputs produced/changed by THIS validated run before
-          # touching main. Never merge/rebase generated truth commits or force-push.
+          # Freeze the validated run by content-addressing every changed output once.
+          # Retries reuse immutable blob IDs, so large files are never copied/rehashed
+          # after a main race. Deletions are recorded explicitly in the manifest.
           SNAPSHOT_DIR="$(mktemp -d)"
-          FILES_DIR="$SNAPSHOT_DIR/files"
           PATHS_FILE="$SNAPSHOT_DIR/paths.txt"
-          mkdir -p "$FILES_DIR"
+          MANIFEST="$SNAPSHOT_DIR/blobs.tsv"
           {
             git diff --name-only HEAD -- data/
             git ls-files --others --exclude-standard -- data/
@@ -227,24 +227,23 @@ jobs:
             exit 0
           fi
 
+          : > "$MANIFEST"
           while IFS= read -r path; do
             if [ -f "$path" ]; then
-              mkdir -p "$FILES_DIR/$(dirname "$path")"
-              cp -p "$path" "$FILES_DIR/$path"
+              blob="$(git hash-object -w "$path")"
+              printf 'F\t%s\t%s\n' "$blob" "$path" >> "$MANIFEST"
+            else
+              printf 'D\t-\t%s\n' "$path" >> "$MANIFEST"
             fi
           done < "$PATHS_FILE"
+          echo "Validated immutable manifest contains $(wc -l < "$MANIFEST") paths"
 
-          echo "Validated snapshot contains $(wc -l < "$PATHS_FILE") paths"
-
-          # Build each candidate commit directly on the latest main tree using a
-          # temporary Git index. This makes the race window only fetch+tree+push,
-          # instead of reset/copy/add/commit for every retry. The resulting commit is
-          # still an ordinary single-parent fast-forward child of the latest main.
-          # GitHub rejects a race; we then rebuild on the new head. No force, merge,
-          # rebase, or partial per-file API writes are used.
+          # Each retry now performs only fetch -> tree overlay -> fast-forward push.
+          # GitHub rejects a stale parent; we rebuild the same immutable blob manifest
+          # on the newest main. No force, merge, rebase, hindsight, or partial writes.
           MAX_ATTEMPTS=20
           for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
-            echo "Publish attempt ${attempt}/${MAX_ATTEMPTS}: building atomic validated commit on latest main"
+            echo "Publish attempt ${attempt}/${MAX_ATTEMPTS}: atomic validated commit on latest main"
             git fetch origin main
             BASE_SHA="$(git rev-parse origin/main)"
             INDEX_FILE="$SNAPSHOT_DIR/index"
@@ -252,14 +251,13 @@ jobs:
             export GIT_INDEX_FILE="$INDEX_FILE"
             git read-tree "$BASE_SHA"
 
-            while IFS= read -r path; do
-              if [ -f "$FILES_DIR/$path" ]; then
-                blob="$(git hash-object -w "$FILES_DIR/$path")"
+            while IFS=$'\t' read -r kind blob path; do
+              if [ "$kind" = "F" ]; then
                 git update-index --add --cacheinfo 100644 "$blob" "$path"
               else
                 git update-index --force-remove -- "$path" 2>/dev/null || true
               fi
-            done < "$PATHS_FILE"
+            done < "$MANIFEST"
 
             NEW_TREE="$(git write-tree)"
             BASE_TREE="$(git rev-parse "${BASE_SHA}^{tree}")"
