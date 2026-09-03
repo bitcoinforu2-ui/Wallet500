@@ -1,0 +1,79 @@
+name: Wallet500 Forward Alpha Proof
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - "Wallet500 Multi-Chain Live Scan"
+      - "Wallet500 Survivor Reawakening Shadow"
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/alpha_proof.py'
+      - 'tests/test_alpha_proof.py'
+      - '.github/workflows/alpha-proof.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-forward-alpha-proof
+  cancel-in-progress: false
+
+jobs:
+  prove:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install and test forward proof contract
+        run: |
+          pip install -e . pytest
+          python -m pytest -q tests/test_alpha_proof.py
+      - name: Update forward-only alpha proof
+        run: python -m wallet500.alpha_proof
+      - name: Validate no-hindsight proof output
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/alpha-proof-report.json')
+          l=Path('data/alpha-proof-ledger.json')
+          if not p.exists() or not l.exists(): raise SystemExit('ALPHA_PROOF_OUTPUT_MISSING')
+          report=json.loads(p.read_text())
+          ledger=json.loads(l.read_text())
+          if report.get('mode')!='FORWARD_ONLY_ALPHA_PROOF_V1': raise SystemExit('ALPHA_PROOF_MODE_INVALID')
+          if ledger.get('mode')!='FORWARD_ONLY_ALPHA_PROOF_V1': raise SystemExit('ALPHA_LEDGER_MODE_INVALID')
+          if report.get('activation_at')!=ledger.get('activation_at'): raise SystemExit('ALPHA_ACTIVATION_MISMATCH')
+          if report.get('formal_proof_rule')!='ONLY EVENTS WHOSE IMMUTABLE EVENT TIME IS AT/AFTER ACTIVATION ARE COUNTED': raise SystemExit('ALPHA_NO_HINDSIGHT_CONTRACT_INVALID')
+          print('FORWARD_ALPHA_PROOF_V1_OK', report.get('primary_proof_status'), report.get('formal_signal_count'), report.get('formal_control_count'))
+          PY
+      - name: Publish immutable alpha proof state
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          cp data/alpha-proof-ledger.json "$tmp/ledger.json"
+          cp data/alpha-proof-report.json "$tmp/report.json"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/ledger.json" data/alpha-proof-ledger.json
+            cp "$tmp/report.json" data/alpha-proof-report.json
+            git add data/alpha-proof-ledger.json data/alpha-proof-report.json
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'alpha: refresh forward proof evidence'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 3
+          done
+          echo 'Alpha proof publish failed after retries'
+          exit 1
