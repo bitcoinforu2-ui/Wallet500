@@ -1,0 +1,134 @@
+name: DOGE1 Hourly Telegram Relay
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'data/doge1-hourly-report.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: doge1-hourly-telegram
+  cancel-in-progress: false
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate DOGE1 report
+        run: |
+          set -euo pipefail
+          test -s data/doge1-hourly-report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('data/doge1-hourly-report.json').read_text(encoding='utf-8'))
+          expected='DpBzjtgGLF7QA9Ug3eUVGbnqa6j3jvYBn1XuQuktvfhm'
+          token=p.get('token') or {}
+          if token.get('contract_address') != expected:
+              raise SystemExit('DOGE1 exact CA mismatch')
+          if not p.get('observed_at'):
+              raise SystemExit('DOGE1 report missing observed_at')
+          PY
+      - name: Wait until report is published on Wallet500 Pages
+        env:
+          SITE_URL: https://bitcoinforu2-ui.github.io/Wallet500/data/doge1-hourly-report.json
+        run: |
+          set -euo pipefail
+          LOCAL_TS="$(python - <<'PY'
+          import json
+          print(json.load(open('data/doge1-hourly-report.json',encoding='utf-8'))['observed_at'])
+          PY
+          )"
+          for attempt in $(seq 1 30); do
+            REMOTE_TS="$(curl -fsSL --max-time 10 "${SITE_URL}?v=${GITHUB_RUN_ID}-${attempt}" | python -c 'import json,sys; print(json.load(sys.stdin).get("observed_at", ""))' 2>/dev/null || true)"
+            if [ "$REMOTE_TS" = "$LOCAL_TS" ]; then
+              echo "Published DOGE1 snapshot confirmed on site: $REMOTE_TS"
+              exit 0
+            fi
+            echo "Waiting for Pages publish (${attempt}/30): local=$LOCAL_TS remote=${REMOTE_TS:-missing}"
+            sleep 20
+          done
+          echo "DOGE1 report did not appear on Pages within 10 minutes"
+          exit 1
+      - name: Send hourly DOGE1 report to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SITE_URL: https://bitcoinforu2-ui.github.io/Wallet500/data/doge1-hourly-report.json
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, urllib.parse, urllib.request
+          from pathlib import Path
+
+          p=json.loads(Path('data/doge1-hourly-report.json').read_text(encoding='utf-8'))
+          token=p.get('token') or {}; pair=p.get('exact_pair') or {}; holders=p.get('holders') or {}; whales=p.get('whales') or {}; social=p.get('social') or {}
+          def v(x): return 'n/a' if x is None or x=='' else str(x)
+          def money(x):
+              try:
+                  n=float(x)
+              except Exception:
+                  return 'n/a'
+              if abs(n)>=1_000_000: return f'${n/1_000_000:.2f}M'
+              if abs(n)>=1_000: return f'${n/1_000:.1f}K'
+              if abs(n)>=1: return f'${n:.4f}'
+              return f'${n:.8f}'.rstrip('0').rstrip('.')
+          changes=p.get('changes_since_previous')
+          if not isinstance(changes,list): changes=[changes] if changes else ['NO_MATERIAL_CHANGE']
+          changes=[str(x) for x in changes if x is not None][:8] or ['NO_MATERIAL_CHANGE']
+          whale_events=whales.get('events')
+          if not isinstance(whale_events,list): whale_events=[]
+          notable=social.get('notable_mentions')
+          if not isinstance(notable,list): notable=[]
+          news=p.get('news'); news=news if isinstance(news,list) else ([] if not news else [news])
+          listings=p.get('listings'); listings=listings if isinstance(listings,list) else ([] if not listings else [listings])
+          game=p.get('game_changer')
+          lines=[
+              '🛰 DOGE-1 · דוח שעתי Wallet500',
+              f"זמן: {v(p.get('observed_at'))}",
+              f"CA: {token.get('contract_address')}",
+              f"Exact pair: {v(pair.get('pair_address'))} · {v(pair.get('dex'))}",
+              f"מחיר: {money(pair.get('price_usd'))}",
+              f"נזילות: {money(pair.get('liquidity_usd'))}",
+              f"Volume 1H / 24H: {money(pair.get('volume_h1'))} / {money(pair.get('volume_24h'))}",
+              f"Buys/Sells 1H: {v(pair.get('buys_h1'))}/{v(pair.get('sells_h1'))}",
+              f"שינוי 1H/6H/24H: {v(pair.get('price_change_h1_pct'))}% / {v(pair.get('price_change_h6_pct'))}% / {v(pair.get('price_change_24h_pct'))}%",
+              f"Holders: {v(holders.get('count'))} · Δ1H {v(holders.get('delta_1h'))} · Δ24H {v(holders.get('delta_24h'))}",
+              f"Whales ≥{v(whales.get('threshold_supply_pct'))}%: {len(whale_events)} events · coverage {v(whales.get('coverage'))}",
+              f"Social organic: {v(social.get('status'))} · acceleration {v(social.get('organic_acceleration'))}",
+              'שינויים מהשעה הקודמת:',
+          ]
+          lines += [f'• {x}' for x in changes]
+          if notable:
+              lines.append('משפיענים/KOL:')
+              lines += [f'• {str(x)[:220]}' for x in notable[:4]]
+          if news:
+              lines.append('חדשות:')
+              lines += [f'• {str(x)[:220]}' for x in news[:4]]
+          if listings:
+              lines.append('Listings/Pre-listing:')
+              lines += [f'• {str(x)[:220]}' for x in listings[:4]]
+          if game:
+              lines.append(f'Game Changer: {str(game)[:500]}')
+          lines += [
+              'הפרדה קשיחה: חדשות משימת DOGE-1 ≠ endorsement של הטוקן ללא CA/קישור מפורש.',
+              f"אתר: {os.environ['SITE_URL']}",
+          ]
+          text='\n'.join(lines)[:3900]
+          bot=os.environ.get('TELEGRAM_BOT_TOKEN','').strip(); chat=os.environ.get('TELEGRAM_CHAT_ID','').strip()
+          if not bot or not chat:
+              raise SystemExit('Telegram secrets are not configured')
+          url=f'https://api.telegram.org/bot{bot}/sendMessage'
+          data=urllib.parse.urlencode({'chat_id':chat,'text':text,'disable_web_page_preview':'true'}).encode()
+          req=urllib.request.Request(url,data=data,method='POST')
+          with urllib.request.urlopen(req,timeout=20) as r:
+              if not 200 <= r.status < 300:
+                  raise SystemExit(f'Telegram HTTP {r.status}')
+          print('DOGE1 Telegram report delivered')
+          PY
