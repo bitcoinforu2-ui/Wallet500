@@ -46,6 +46,8 @@ def main() -> int:
     core = (ROOT / "dashboard-live-price-core.js").read_text(encoding="utf-8")
     truth = (ROOT / "dashboard-truth-overlap.js").read_text(encoding="utf-8")
     live_html = (ROOT / "dashboard-live.html").read_text(encoding="utf-8")
+    v2_source = (ROOT / "src/wallet500/revival_pre_t0_evidence_v2.py").read_text(encoding="utf-8")
+    pre_workflow = (ROOT / ".github/workflows/revival-pre-t0-evidence.yml").read_text(encoding="utf-8")
 
     # Dashboard wiring / compatibility.
     if "dashboard-live-price.js" not in html:
@@ -54,9 +56,7 @@ def main() -> int:
         add("CRITICAL", "TRUTH_LOADER_INCOMPLETE", "Shared loader does not synchronously chain core + truth layer")
     if "Wallet500LivePrice" not in core:
         add("CRITICAL", "LIVE_PRICE_CORE_LOST", "Preserved live-price core no longer exposes Wallet500LivePrice")
-    for required in (
-        "revival-pre-t0-evidence.json", "real-alerts.json", "revival-holder-latest.json", "waking-pre-t0-confirmation.json"
-    ):
+    for required in ("revival-pre-t0-evidence.json", "real-alerts.json", "revival-holder-latest.json", "waking-pre-t0-confirmation.json"):
         if required not in truth:
             add("CRITICAL", "TRUTH_SOURCE_MISSING", f"Dashboard truth layer is not wired to {required}")
     if "BUILDING / UNVERIFIED" not in truth or "holderVerified" not in truth:
@@ -68,22 +68,38 @@ def main() -> int:
     if "real-alerts.json" not in live_html:
         add("CRITICAL", "LIVE_ALERT_SOURCE_MISSING", "Live dashboard is not wired to real-alerts.json")
 
-    # PRE-T0 immutable identity integrity.
+    # PRE-T0 integrity: on PR prove the repair exists and is wired. On main require
+    # the published ledger itself to be canonical after V2 has had a chance to run.
     seen: dict[str, dict] = {}
     for row in ledger.get("records") or []:
         rid = str(row.get("record_id") or "")
         if not rid:
             add("CRITICAL", "PRET0_RECORD_ID_MISSING", "Immutable PRE-T0 record has no ID")
             continue
-        prior = seen.get(rid)
-        if prior is not None:
+        if rid in seen and not args.structural_only:
             add("CRITICAL", "PRET0_RECORD_ID_DUPLICATE", "Immutable PRE-T0 record ID is duplicated", record_id=rid)
         seen[rid] = row
-    integrity = ledger.get("integrity") or {}
-    if integrity.get("unique_record_ids") is not True:
-        add("CRITICAL", "PRET0_INTEGRITY_MARKER_MISSING", "PRE-T0 ledger is not marked as canonical unique-ID state")
-    if integrity.get("conflicting_same_id_policy") != "FAIL_CLOSED":
-        add("CRITICAL", "PRET0_COLLISION_GUARD_MISSING", "PRE-T0 conflicting same-ID collision is not fail-closed")
+
+    if args.structural_only:
+        for needle, code in (
+            ("PRE_T0_V2_RECORD_ID_COLLISION", "PRET0_V2_COLLISION_GUARD_MISSING"),
+            ("KEEP_EARLIEST_EXACT_KEY_HASH_IDENTITY", "PRET0_V2_CANON_POLICY_MISSING"),
+            ("identity_repeat_is_not_new_observation", "PRET0_V2_IDENTITY_SEMANTICS_MISSING"),
+        ):
+            if needle not in v2_source:
+                add("CRITICAL", code, f"PRE-T0 V2 repair source is missing {needle}")
+        if "python -m wallet500.revival_pre_t0_evidence_v2" not in pre_workflow:
+            add("CRITICAL", "PRET0_V2_WORKFLOW_NOT_WIRED", "PRE-T0 workflow does not execute the V2 repair")
+        if "tests/test_revival_pre_t0_evidence_v2.py" not in pre_workflow:
+            add("CRITICAL", "PRET0_V2_TEST_NOT_WIRED", "PRE-T0 workflow does not run the V2 integrity tests")
+    else:
+        integrity = ledger.get("integrity") or {}
+        if integrity.get("unique_record_ids") is not True:
+            add("CRITICAL", "PRET0_INTEGRITY_MARKER_MISSING", "PRE-T0 ledger is not marked as canonical unique-ID state")
+        if integrity.get("conflicting_same_id_policy") != "FAIL_CLOSED":
+            add("CRITICAL", "PRET0_COLLISION_GUARD_MISSING", "PRE-T0 conflicting same-ID collision is not fail-closed")
+        if (pre.get("integrity") or {}).get("record_ids_unique") is not True:
+            add("CRITICAL", "PRET0_LATEST_INTEGRITY_MISSING", "Latest PRE-T0 snapshot lacks unique-ID integrity state")
 
     # Safety / no-hindsight contract.
     for name, payload in (("pre", pre), ("waking", waking), ("revival", revival)):
@@ -92,12 +108,10 @@ def main() -> int:
     if pre.get("automatic_buy") is not False:
         add("CRITICAL", "PRET0_AUTOBUY_GUARD_LOST", "PRE-T0 automatic_buy is not false")
 
-    # Production feed must remain strict; research cannot fabricate a REAL alert.
     real_alerts = real.get("alerts") or []
     if any(x.get("automatic_buy") is True for x in real_alerts if isinstance(x, dict)):
         add("CRITICAL", "REAL_ALERT_AUTOBUY_UNEXPECTED", "Real alert feed contains automatic-buy behavior")
 
-    # Runtime freshness overlap is intentionally skipped on PR structural checks.
     if not args.structural_only:
         now = datetime.now(timezone.utc)
         times = {k: dt(v.get("generated_at")) for k, v in (("real", real), ("pre", pre), ("waking", waking), ("revival", revival))}
