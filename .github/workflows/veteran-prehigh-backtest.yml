@@ -1,0 +1,70 @@
+name: Wallet500 Veteran PRE-HIGH Backtest
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/veteran_prehigh_backtest.py'
+      - '.github/workflows/veteran-prehigh-backtest.yml'
+      - 'data/winner-separator-study.json'
+      - 'data/survivor-wave-watch.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-veteran-prehigh-backtest
+  cancel-in-progress: true
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e .
+      - name: Run veteran PRE-HIGH no-hindsight backtest
+        run: python -m wallet500.veteran_prehigh_backtest
+      - name: Validate truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/veteran-prehigh-backtest.json')
+          if not p.exists(): raise SystemExit('VETERAN_PREHIGH_OUTPUT_MISSING')
+          d=json.loads(p.read_text())
+          if d.get('mode')!='VETERAN_PREHIGH_NO_HINDSIGHT_BACKTEST_V1': raise SystemExit('MODE_INVALID')
+          if d.get('production_change') is not False or d.get('automatic_buy') is not False: raise SystemExit('PRODUCTION_CONTRACT_INVALID')
+          c=d.get('truth_contract') or {}
+          if c.get('veteran_market_age_min_days') != 180.0: raise SystemExit('VETERAN_AGE_RULE_INVALID')
+          if c.get('exact_pair_required') is not True or c.get('no_hindsight') is not True: raise SystemExit('TRUTH_CONTRACT_INVALID')
+          if d.get('recommendation') not in {'SHADOW_CANDIDATE_ONLY_NO_PRODUCTION_CHANGE','INSUFFICIENT_VETERAN_HIGH_SAMPLE_NO_THRESHOLD_PROMOTION'}:
+              raise SystemExit('RECOMMENDATION_INVALID')
+          print('VETERAN_PREHIGH_BACKTEST_OK', d.get('cohort'), d.get('recommendation'))
+          PY
+      - name: Publish research output
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-research-bot'
+          git config user.email 'wallet500-research-bot@users.noreply.github.com'
+          cp data/veteran-prehigh-backtest.json /tmp/veteran-prehigh-backtest.json
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp /tmp/veteran-prehigh-backtest.json data/veteran-prehigh-backtest.json
+            git add data/veteran-prehigh-backtest.json
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'research: refresh veteran PRE-HIGH backtest'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 3
+          done
+          exit 1
