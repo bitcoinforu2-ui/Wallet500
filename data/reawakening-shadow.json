@@ -2,12 +2,14 @@
   "version": 2,
   "mode": "RESEARCH_ONLY_SURVIVOR_REAWAKENING_V2",
   "contract": "FALSE_NEGATIVE_RECOVERY_RECHECK_V2",
-  "generated_at": "2026-09-04T08:10:16.712198+00:00",
+  "generated_at": "2026-09-04T08:15:12.269014+00:00",
+  "v2_started_at": "2026-09-04T08:10:16.712198+00:00",
   "production_portfolio_impact": "NONE",
   "production_gate_changed": false,
   "automatic_buy": false,
   "no_hindsight": true,
   "source_ledger": "rejected-candidate-ledger.json",
+  "primary_recheck_source": "outcome-tracker.json exact-pair history",
   "selection_rule": {
     "first_reject_source": "LIVE_SURVIVAL_FAILED",
     "required_reasons": [
@@ -30,7 +32,8 @@
     "confirmation_span_minutes_gte": 15.0,
     "liquidity_retention_gte": 0.9,
     "price_non_falling": true,
-    "exact_pair_locked": true
+    "exact_pair_locked": true,
+    "observations_must_be_after_v2_started_at": true
   },
   "shadow_activity_hypothesis": {
     "volume_h1_gte_usd": 43000.0,
@@ -45,17 +48,20 @@
     "the original rejection is immutable and is never removed retroactively",
     "only LIVE_SURVIVAL_FAILED liquidity-only rejects that already passed other quality checks enter V2",
     "verified deep loss and fast/parabolic reversal reasons are hard-excluded",
-    "every trigger uses only observations after the original rejection timestamp",
+    "historical outcome rows at or before v2_started_at are never eligible to create a V2 forward trigger",
     "the exact pair must remain identical and liquidity must be back above the unchanged $50K hard floor",
-    "two qualifying observations spanning at least 15 minutes are required",
+    "two or more qualifying observations spanning at least 15 minutes are required",
     "V2 is research-only and cannot create BUY, QUALIFIED, or production portfolio impact",
     "legacy V1 trigger history is preserved separately and does not qualify as V2 evidence"
   ],
   "counts": {
     "rejected_ledger_records": 926,
     "eligible_liquidity_only_rejects": 388,
-    "market_matches_now": 0,
-    "observations_added_this_run": 0,
+    "outcome_tracker_records": 33099,
+    "outcome_tracker_matches": 365,
+    "forward_tracker_rows_after_v2_start": 0,
+    "fallback_market_matches_now": 0,
+    "fallback_observations_added_this_run": 0,
     "shadow_triggers_v2": 0,
     "legacy_v1_triggers_preserved": 4
   },
