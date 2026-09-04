@@ -48,7 +48,6 @@ def grade_strict_flow(flow: dict) -> dict:
     h6 = n(flow.get("price_change_h6_pct"))
     h1 = n(flow.get("price_change_h1_pct"))
 
-    # 1) Meaningful sell-count dominance, but not an extreme sell imbalance.
     if 1.10 <= ratio <= 1.50:
         imbalance = 20
     elif 1.0 < ratio < 1.10 or 1.50 < ratio <= 1.75:
@@ -58,7 +57,6 @@ def grade_strict_flow(flow: dict) -> dict:
     else:
         imbalance = 0
 
-    # 2) Exact-pair liquidity depth.
     if liquidity >= 1_000_000:
         liquidity_points = 20
     elif liquidity >= 250_000:
@@ -70,7 +68,6 @@ def grade_strict_flow(flow: dict) -> dict:
     else:
         liquidity_points = 0
 
-    # 3) Turnover: 24h pair volume relative to exact-pair liquidity.
     if turnover >= 1.0:
         turnover_points = 20
     elif turnover >= 0.50:
@@ -84,7 +81,6 @@ def grade_strict_flow(flow: dict) -> dict:
     else:
         turnover_points = 0
 
-    # 4) Transaction-count participation.
     if txns >= 2_000:
         activity = 20
     elif txns >= 500:
@@ -96,7 +92,6 @@ def grade_strict_flow(flow: dict) -> dict:
     else:
         activity = 0
 
-    # 5) Momentum persistence across 24h / 6h / 1h.
     momentum = 0
     if h24 >= 20:
         momentum += 10
@@ -121,9 +116,9 @@ def grade_strict_flow(flow: dict) -> dict:
         "momentum_persistence": momentum,
     }
     score = min(100, sum(components.values()))
-    if score >= 80:
+    if score >= 90:
         level, grade = 3, "STRICT-3"
-    elif score >= 60:
+    elif score >= 65:
         level, grade = 2, "STRICT-2"
     else:
         level, grade = 1, "STRICT-1"
@@ -173,9 +168,9 @@ def apply_strict_strength(payload: dict) -> dict:
         "scope": "GREEN_STRICT_DISCOVERY_EXPANSION_ONLY",
         "eligibility_rule": "MUST_ALREADY_PASS_ALL_STRICT_ABSORPTION_CONDITIONS",
         "levels": {
-            "STRICT-1": "strength_score_below_60",
-            "STRICT-2": "strength_score_60_to_79",
-            "STRICT-3": "strength_score_80_to_100",
+            "STRICT-1": "strength_score_below_65",
+            "STRICT-2": "strength_score_65_to_89",
+            "STRICT-3": "strength_score_90_to_100",
         },
         "score_components": "SELL_IMBALANCE_QUALITY_20 + LIQUIDITY_DEPTH_20 + TURNOVER_20 + TX_ACTIVITY_20 + MOMENTUM_PERSISTENCE_20",
         "pre_alpha_promotion": "FORBIDDEN",
