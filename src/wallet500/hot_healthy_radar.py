@@ -5,11 +5,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
 
+from .market_data import _pair_to_snapshot, pair_lookup, token_pairs
+
 DATA = Path('data')
 OUT = DATA / 'hot-healthy-radar.json'
 MIN_LIQ = 50000.0
 MIN_VOL = 15000.0
 MIN_TX = 50
+MIN_MARKET_AGE_DAYS = 180
+EVM_CHAINS = {'ethereum', 'eth', 'bsc', 'bnb', 'base', 'arbitrum', 'polygon', 'optimism', 'avalanche'}
 
 
 def _load(path, default):
@@ -35,8 +39,13 @@ def _i(v, default=0):
         return default
 
 
-def _same(a, b):
-    return str(a or '').lower() == str(b or '').lower()
+def _norm(chain, value):
+    value = str(value or '')
+    return value.lower() if str(chain or '').lower() in EVM_CHAINS else value
+
+
+def _same(chain, a, b):
+    return bool(a and b) and _norm(chain, a) == _norm(chain, b)
 
 
 def _is_stable_or_wrapped(r):
@@ -45,14 +54,25 @@ def _is_stable_or_wrapped(r):
     return any(x in text for x in banned)
 
 
+def _created_ms(value):
+    try:
+        value = float(value)
+        if value <= 0:
+            return None
+        return value * 1000.0 if value < 10_000_000_000 else value
+    except (TypeError, ValueError):
+        return None
+
+
 def _exact_history(r):
+    chain = r.get('chain')
     pair = r.get('entry_pair_address')
     out = []
     for h in r.get('history') or []:
         if not isinstance(h, dict):
             continue
         hp = h.get('pair_address')
-        if hp and not _same(hp, pair):
+        if hp and not _same(chain, hp, pair):
             continue
         px = _f(h.get('price_usd'))
         liq = _f(h.get('liquidity_usd'))
@@ -62,30 +82,123 @@ def _exact_history(r):
     return out
 
 
-def _score(r):
+def _preeligible(r):
+    """Cheap historical prefilter only; never sufficient for ranking."""
+    chain = r.get('chain')
+    pair = r.get('entry_pair_address')
+    token = r.get('token')
+    if not chain or not token or not pair:
+        return False
     hist = _exact_history(r)
     if not hist:
-        return None
+        return False
     last = hist[-1]
-    price = _f(r.get('current_price_usd')) or _f(last.get('price_usd'))
-    liq = _f(last.get('liquidity_usd'))
-    vol = _f(last.get('volume_h1'))
-    buys = _i(last.get('buys_h1'))
-    sells = _i(last.get('sells_h1'))
+    tx = _i(last.get('buys_h1')) + _i(last.get('sells_h1'))
+    return (
+        _f(last.get('price_usd')) > 0
+        and _f(last.get('liquidity_usd')) >= MIN_LIQ
+        and _f(last.get('volume_h1')) >= MIN_VOL
+        and tx >= MIN_TX
+    )
+
+
+def _live_exact_pair_truth(r):
+    """Return a fresh, identity-proven live snapshot plus veteran-age proof.
+
+    Historical outcome marks are never allowed to stand in for current market
+    truth. Solana addresses remain case-sensitive. The veteran rule is based on
+    the oldest currently discoverable pair that proves the exact token is one
+    side of the pair; the selected execution pair itself may be newer.
+    """
+    chain = str(r.get('chain') or '')
+    token = str(r.get('token') or '')
+    pair = str(r.get('entry_pair_address') or '')
+    if not chain or not token or not pair:
+        return None, 'MISSING_CHAIN_TOKEN_OR_PAIR'
+
+    pairs = token_pairs(chain, token)
+    if not pairs:
+        return None, 'LIVE_TOKEN_PAIRS_UNAVAILABLE'
+
+    now_ms = datetime.now(timezone.utc).timestamp() * 1000.0
+    oldest_ms = None
+    exact_raw = None
+    for p in pairs:
+        if not isinstance(p, dict):
+            continue
+        base = (p.get('baseToken') or {}).get('address')
+        quote = (p.get('quoteToken') or {}).get('address')
+        if not (_same(chain, token, base) or _same(chain, token, quote)):
+            continue
+        created = _created_ms(p.get('pairCreatedAt'))
+        if created is not None and (oldest_ms is None or created < oldest_ms):
+            oldest_ms = created
+        if _same(chain, p.get('pairAddress'), pair):
+            exact_raw = p
+
+    if oldest_ms is None:
+        return None, 'VETERAN_AGE_UNVERIFIED'
+    age_days = (now_ms - oldest_ms) / 86_400_000.0
+    if age_days < MIN_MARKET_AGE_DAYS:
+        return None, f'UNDER_{MIN_MARKET_AGE_DAYS}D_MARKET_AGE'
+
+    if exact_raw is None:
+        exact_raw = pair_lookup(chain, pair)
+    live = _pair_to_snapshot(chain, token, exact_raw)
+    if not live or not _same(chain, live.get('pair_address'), pair):
+        return None, 'LIVE_EXACT_PAIR_OR_TOKEN_IDENTITY_UNVERIFIED'
+    if not live.get('token_identity_verified'):
+        return None, 'LIVE_TOKEN_IDENTITY_UNVERIFIED'
+
+    liq = _f(live.get('liquidity_usd'))
+    vol = _f(live.get('volume_h1'))
+    buys = _i(live.get('buys_h1'))
+    sells = _i(live.get('sells_h1'))
+    tx = buys + sells
+    if liq < MIN_LIQ:
+        return None, 'LIVE_LIQUIDITY_BELOW_50K'
+    if vol < MIN_VOL:
+        return None, 'LIVE_VOLUME_H1_BELOW_15K'
+    if tx < MIN_TX:
+        return None, 'LIVE_TXNS_H1_BELOW_50'
+
+    live = dict(live)
+    live['market_age_days'] = round(age_days, 2)
+    live['veteran_age_verified'] = True
+    return live, None
+
+
+def _score(r, live):
+    hist = _exact_history(r)
+    if not hist or not isinstance(live, dict):
+        return None
+
+    price = _f(live.get('price_usd'))
+    liq = _f(live.get('liquidity_usd'))
+    vol = _f(live.get('volume_h1'))
+    buys = _i(live.get('buys_h1'))
+    sells = _i(live.get('sells_h1'))
     tx = buys + sells
     if price <= 0 or liq < MIN_LIQ or vol < MIN_VOL or tx < MIN_TX:
         return None
 
-    # Require current exact-pair verification. This radar must never create a
-    # tradability claim from a different pool.
-    if r.get('measurement_status') != 'VERIFIED_EXACT_PAIR':
-        return None
-    if not _same(r.get('current_pair_address'), r.get('entry_pair_address')):
+    chain = r.get('chain')
+    if not _same(chain, live.get('pair_address'), r.get('entry_pair_address')):
         return None
 
-    recent = hist[-4:]
-    liqs = [_f(x.get('liquidity_usd')) for x in recent if _f(x.get('liquidity_usd')) > 0]
-    prior_liq = median(liqs[:-1]) if len(liqs) > 1 else liq
+    # Historical marks provide the pre-move baseline; the final mark is always
+    # a fresh live exact-pair observation, never a stale tracker value.
+    prior = hist[-3:]
+    recent = prior + [{
+        'price_usd': price,
+        'liquidity_usd': liq,
+        'volume_h1': vol,
+        'buys_h1': buys,
+        'sells_h1': sells,
+        'pair_address': live.get('pair_address'),
+    }]
+    liqs = [_f(x.get('liquidity_usd')) for x in prior if _f(x.get('liquidity_usd')) > 0]
+    prior_liq = median(liqs) if liqs else liq
     liq_retention = liq / prior_liq if prior_liq > 0 else 1.0
 
     total = max(1, tx)
@@ -93,15 +206,14 @@ def _score(r):
     buy_sell_ratio = buys / max(1, sells)
     turnover = vol / liq if liq > 0 else 99.0
 
-    prev_price = _f(recent[-2].get('price_usd')) if len(recent) > 1 else price
+    prev_price = _f(prior[-1].get('price_usd')) if prior else price
     short_momentum = ((price / prev_price) - 1.0) * 100 if prev_price > 0 else 0.0
     discovery = _f(r.get('entry_price_usd'))
     runup = ((price / discovery) - 1.0) * 100 if discovery > 0 else None
 
     score = 0.0
-    reasons = []
+    reasons = ['LIVE_EXACT_PAIR_REVERIFIED', 'VETERAN_AGE_VERIFIED']
 
-    # Liquidity survival: largest weight. Hot without surviving liquidity is not healthy.
     if liq_retention >= 1.00:
         score += 30; reasons.append('LIQUIDITY_STABLE_OR_GROWING')
     elif liq_retention >= 0.95:
@@ -111,7 +223,6 @@ def _score(r):
     elif liq_retention >= 0.80:
         score += 10
 
-    # Buy pressure rewards demand, but not alone.
     if buy_share >= 0.58:
         score += 24; reasons.append('STRONG_BUY_PRESSURE')
     elif buy_share >= 0.53:
@@ -121,7 +232,6 @@ def _score(r):
     else:
         score += 5
 
-    # Healthy heat: activity relative to pool size. Extreme turnover is penalized.
     if 0.10 <= turnover <= 0.75:
         score += 20; reasons.append('HEALTHY_TURNOVER')
     elif 0.05 <= turnover <= 1.25:
@@ -131,7 +241,6 @@ def _score(r):
     else:
         score += 2; reasons.append('OVERHEATED_TURNOVER')
 
-    # Prefer early controlled momentum over chasing a vertical move.
     if 0 <= short_momentum <= 8:
         score += 16; reasons.append('CONTROLLED_POSITIVE_MOMENTUM')
     elif -3 <= short_momentum < 0:
@@ -141,7 +250,6 @@ def _score(r):
     else:
         score += 3
 
-    # Anti-chase context. Missing run-up is neutral rather than rewarded.
     if runup is not None:
         if runup <= 10:
             score += 10; reasons.append('EARLY_NOT_CHASED')
@@ -152,7 +260,7 @@ def _score(r):
         else:
             score -= 8; reasons.append('CHASE_RISK')
 
-    # One mark cannot prove survival/retention. Keep it visible, but never call it HOT_HEALTHY.
+    # At least one historical exact-pair mark plus the fresh live mark is needed.
     has_survival_proof = len(recent) >= 2
     if not has_survival_proof:
         reasons.append('INSUFFICIENT_SURVIVAL_HISTORY')
@@ -171,7 +279,8 @@ def _score(r):
         'chain': r.get('chain'),
         'token': r.get('token'),
         'pair_address': r.get('entry_pair_address'),
-        'dex': r.get('entry_dex'),
+        'dex': live.get('dex') or r.get('entry_dex'),
+        'dex_url': live.get('url'),
         'score': round(score, 2),
         'label': label,
         'price_usd': price,
@@ -186,10 +295,14 @@ def _score(r):
         'turnover_h1': round(turnover, 4),
         'short_momentum_pct': round(short_momentum, 4),
         'runup_since_discovery_pct': round(runup, 4) if runup is not None else None,
+        'market_age_days': live.get('market_age_days'),
+        'veteran_age_verified': True,
+        'live_token_identity_verified': True,
+        'target_token_side': live.get('target_token_side'),
         'survival_marks': len(recent),
         'anti_chase_ok': anti_chase_ok,
         'reasons': reasons,
-        'history_marks_used': len(recent),
+        'history_marks_used': len(prior),
     }
 
 
@@ -197,32 +310,71 @@ def run():
     tracker = _load(DATA / 'outcome-tracker.json', {})
     records = tracker.get('tokens') if isinstance(tracker, dict) else {}
     rows = []
+    quarantine = []
+    preeligible = 0
     if isinstance(records, dict):
         for r in records.values():
-            if not isinstance(r, dict) or _is_stable_or_wrapped(r):
+            if not isinstance(r, dict) or _is_stable_or_wrapped(r) or not _preeligible(r):
                 continue
-            z = _score(r)
+            preeligible += 1
+            live, reason = _live_exact_pair_truth(r)
+            if not live:
+                quarantine.append({
+                    'chain': r.get('chain'),
+                    'token': r.get('token'),
+                    'pair_address': r.get('entry_pair_address'),
+                    'reason': reason,
+                })
+                continue
+            z = _score(r, live)
             if z:
                 rows.append(z)
+            else:
+                quarantine.append({
+                    'chain': r.get('chain'),
+                    'token': r.get('token'),
+                    'pair_address': r.get('entry_pair_address'),
+                    'reason': 'LIVE_SCORE_REJECTED',
+                })
+
     rows.sort(key=lambda x: (x['score'], x['liquidity_retention'], x['buy_share']), reverse=True)
     hot = [x for x in rows if x['label'] == 'HOT_HEALTHY']
     watch = [x for x in rows if x['label'] == 'HEALTHY_WATCH']
     payload = {
         'updated_at': datetime.now(timezone.utc).isoformat(),
-        'method': 'HOT_HEALTHY_EARLY_RADAR_V2',
+        'method': 'HOT_HEALTHY_EARLY_RADAR_V3_LIVE_VETERAN_TRUTH',
         'production_change': False,
-        'hard_rules_preserved': {'liquidity_min_usd': MIN_LIQ, 'volume_h1_min_usd': MIN_VOL, 'txns_h1_min': MIN_TX, 'exact_pair_required': True},
-        'hot_healthy_rules': {'min_score': 78, 'min_exact_pair_marks': 2, 'max_runup_since_discovery_pct': 25.0, 'min_liquidity_retention': 0.90, 'min_buy_share': 0.50, 'max_turnover_h1': 2.0},
-        'scored_exact_pair_candidates': len(rows),
+        'hard_rules_preserved': {
+            'liquidity_min_usd': MIN_LIQ,
+            'volume_h1_min_usd': MIN_VOL,
+            'txns_h1_min': MIN_TX,
+            'exact_pair_required': True,
+            'live_exact_pair_recheck_required': True,
+            'token_identity_required': True,
+            'veteran_market_age_min_days': MIN_MARKET_AGE_DAYS,
+            'solana_address_case_sensitive': True,
+        },
+        'hot_healthy_rules': {
+            'min_score': 78,
+            'min_exact_pair_marks_including_live': 2,
+            'max_runup_since_discovery_pct': 25.0,
+            'min_liquidity_retention': 0.90,
+            'min_buy_share': 0.50,
+            'max_turnover_h1': 2.0,
+        },
+        'historical_preeligible_candidates': preeligible,
+        'scored_live_verified_candidates': len(rows),
+        'quarantined_fail_closed_count': len(quarantine),
         'hot_healthy_count': len(hot),
         'healthy_watch_count': len(watch),
         'hot_healthy': hot[:50],
         'healthy_watch': watch[:100],
         'top_ranked': rows[:100],
-        'note': 'Research/radar ranking only. HOT_HEALTHY requires exact pair, base market gate, >=2 exact-pair marks, <=25% same-pair run-up since discovery, liquidity retention, balanced-positive buy pressure and non-overheated turnover. It does not bypass LP/ownership/cluster verification or create a production tradability claim.'
+        'quarantined_fail_closed': quarantine[:200],
+        'note': 'Research/radar ranking only. V3 rechecks the exact pair live, proves target-token identity/side, requires current $50K/$15K/50 activity gates, and requires >=180-day veteran-market proof before ranking. Historical outcome marks are baseline evidence only and can never substitute for current market truth. It does not bypass LP/ownership/cluster verification or create a production tradability claim.'
     }
     OUT.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + '\n')
-    print(json.dumps({k: payload[k] for k in ('scored_exact_pair_candidates','hot_healthy_count','healthy_watch_count')}, indent=2))
+    print(json.dumps({k: payload[k] for k in ('historical_preeligible_candidates','scored_live_verified_candidates','quarantined_fail_closed_count','hot_healthy_count','healthy_watch_count')}, indent=2))
     return payload
 
 
