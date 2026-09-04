@@ -1,0 +1,39 @@
+name: Wallet500 Engine Dashboard Overlap
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wallet500-engine-dashboard-overlap
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Engine ↔ Dashboard overlap audit
+        run: |
+          python tools/check_engine_dashboard_overlap.py > overlap-audit.json
+          cat overlap-audit.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path('overlap-audit.json').read_text())
+          print('ENGINE_DASHBOARD_OVERLAP', data['counts'])
+          for row in data['findings']:
+              sev=row['severity']
+              marker='error' if sev=='CRITICAL' else 'warning' if sev=='WARN' else 'notice'
+              print(f"::{marker} title={row['code']}::{row['message']}")
+          PY
+      - name: Strict contract gate
+        run: python tools/check_engine_dashboard_overlap.py --strict
