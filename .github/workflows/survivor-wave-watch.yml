@@ -8,8 +8,10 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/survivor_wave_watch.py'
+      - 'src/wallet500/survivor_veteran_gate.py'
       - '.github/workflows/survivor-wave-watch.yml'
       - 'data/winner-separator-study.json'
+      - 'data/hot-healthy-radar.json'
 
 permissions:
   contents: write
@@ -34,6 +36,8 @@ jobs:
         run: pip install -e .
       - name: Run exact-pair survivor watch
         run: python -m wallet500.survivor_wave_watch
+      - name: Apply veteran-only alert gate
+        run: python -m wallet500.survivor_veteran_gate
       - name: Validate truth contract
         run: |
           python - <<'PY'
@@ -45,10 +49,22 @@ jobs:
           if d.get('mode')!='HOURLY_WINNER_SURVIVOR_WAVE_WATCH_V1': raise SystemExit('MODE_INVALID')
           if d.get('research_only') is not True or d.get('automatic_buy') is not False: raise SystemExit('PRODUCTION_CONTRACT_INVALID')
           if d.get('exact_pair_only') is not True: raise SystemExit('PAIR_CONTRACT_INVALID')
+          contract=d.get('veteran_truth_contract') or {}
+          if contract.get('focus')!='VETERAN_COIN_REVIVAL_ONLY': raise SystemExit('VETERAN_FOCUS_INVALID')
+          if float(contract.get('minimum_market_age_days') or 0) < 180: raise SystemExit('VETERAN_AGE_FLOOR_INVALID')
+          if contract.get('unknown_age_policy')!='FAIL_CLOSED_NO_ALERT': raise SystemExit('VETERAN_FAIL_CLOSED_INVALID')
+          eligible={}
           for x in d.get('tokens') or []:
               if float(x.get('liquidity_usd') or 0) < float(d.get('liquidity_survival_floor_usd') or 50000):
                   raise SystemExit('SURVIVOR_BELOW_LIQUIDITY_FLOOR')
-          print('SURVIVOR_WAVE_WATCH_OK', d.get('survivor_n'), d.get('wave_building_n'))
+              token=str(x.get('token') or '').lower()
+              eligible[token]=bool(x.get('veteran_alert_eligible'))
+              if x.get('veteran_alert_eligible') and x.get('veteran_age_status')!='VERIFIED_180D_PLUS':
+                  raise SystemExit('ACTIONABLE_WITHOUT_VERIFIED_VETERAN_AGE')
+          for event in d.get('telegram_events') or []:
+              if not eligible.get(str(event.get('token') or '').lower(), False):
+                  raise SystemExit('NON_VETERAN_TELEGRAM_EVENT_LEAK')
+          print('SURVIVOR_WAVE_WATCH_OK', d.get('survivor_n'), d.get('actionable_veteran_signal_n'), d.get('suppressed_non_veteran_or_unverified_signal_n'))
           PY
       - name: Publish hourly survivor state
         shell: bash
