@@ -80,8 +80,9 @@ def _canonicalize_ledger(data_dir: str | Path) -> dict:
         "last_duplicate_identities_removed": removed,
         "canonical_records_total": len(by_id),
     })
-    if removed:
-        _write(path, ledger)
+    # Persist the integrity contract even when there was nothing to remove. This is
+    # required for the first V2 run over an already-unique legacy ledger.
+    _write(path, ledger)
     return {"removed": removed, "records_total": len(by_id), "records_by_id": by_id}
 
 
