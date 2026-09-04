@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,7 @@ OUTPUT = DATA / "revival-funnel-diagnostics.json"
 
 def _load(path: Path, default: Any) -> Any:
     try:
-        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else default
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() and path.stat().st_size else default
     except Exception:
         return default
 
@@ -31,6 +32,7 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
     revival = _load(data_dir / "revival-1000-latest.json", {})
     precursor = _load(data_dir / "revival-precursor-latest.json", {})
     wallets = _load(data_dir / "revival-prewaking-wallet-evidence.json", {})
+    envelope = _load(data_dir / "candidate-evidence-envelope.json", {})
     reawakening = _load(data_dir / "reawakening-shadow.json", {})
     alpha = _load(data_dir / "alpha-proof-report.json", {})
     active = _load(data_dir / "active-qualified-candidates.json", [])
@@ -38,6 +40,7 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
 
     revival_counts = _dict(revival.get("counts"))
     precursor_counts = _dict(precursor.get("counts"))
+    envelope_counts = _dict(envelope.get("counts"))
     reawakening_counts = _dict(reawakening.get("counts"))
     age_gate = _dict(revival.get("age_gate"))
     active_age_counts = _dict(active_age)
@@ -60,7 +63,7 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
 
     revival_coins = revival.get("coins") if isinstance(revival, dict) else []
     revival_coins = revival_coins if isinstance(revival_coins, list) else []
-    research_pending = sum(
+    legacy_research_pending = sum(
         1
         for row in revival_coins
         if isinstance(row, dict)
@@ -68,13 +71,22 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
         and bool(row.get("pre_alpha_blocker"))
     )
 
+    envelope_rows = envelope.get("candidates") if isinstance(envelope, dict) else []
+    envelope_rows = envelope_rows if isinstance(envelope_rows, list) else []
+    blocker_counts = Counter()
+    for row in envelope_rows:
+        if not isinstance(row, dict):
+            continue
+        for code in row.get("blockers") or []:
+            blocker_counts[str(code)] += 1
+
     blockers: list[dict[str, Any]] = []
-    if research_pending:
+    for code, count in blocker_counts.most_common(8):
         blockers.append({
-            "code": "REVIVAL_RESEARCH_EVIDENCE_PENDING_NOT_FAILED",
-            "count": research_pending,
-            "classification": "MISSING_EVIDENCE",
-            "detail": "Research rows remain non-actionable while holder/cluster/smart-money/fundamental evidence is unverified.",
+            "code": code,
+            "count": count,
+            "classification": "EVIDENCE_OR_TRUTH_BLOCKER",
+            "detail": "Counted from the canonical Candidate Evidence Envelope; missing evidence is not treated as failure.",
         })
 
     insufficient = _num(precursor_counts.get("INSUFFICIENT_PRECURSOR_EVIDENCE"))
@@ -99,7 +111,6 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
             "code": "REAWAKENING_FORWARD_TRACKER_EMPTY_AFTER_ACTIVATION",
             "count": eligible_reawakening,
             "classification": "DATA_FLOW_BLOCKER",
-            "detail": "Eligible historical rejects exist, but no post-activation forward tracker observations are available to create V2 triggers.",
         })
 
     raw_active = _num(active_age_counts.get("raw_active_before_age_governance"))
@@ -108,24 +119,24 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
             "code": "NO_ACTIVE_QUALIFIED_BEFORE_AGE_GOVERNANCE",
             "count": 0,
             "classification": "UPSTREAM_QUALIFICATION_EMPTY",
-            "detail": "The active-qualified lane is empty before its age gate, so age governance is not the current blocker.",
+            "detail": "Legacy active-qualified is empty; Evidence Envelope is reported separately and does not silently become production authority.",
         })
 
     active_count = len(active) if isinstance(active, list) else 0
     return {
-        "version": 1,
-        "mode": "REVIVAL_FUNNEL_DIAGNOSTICS_V1",
+        "version": 2,
+        "mode": "REVIVAL_FUNNEL_DIAGNOSTICS_V2_EVIDENCE_PROMOTION",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "production_change": False,
         "production_portfolio_impact": "NONE",
         "cohort_warning": (
-            "Solana Revival/Precursor and Reawakening recovery are parallel research lanes. "
-            "Counts must not be interpreted as one continuous conversion funnel unless exact identities are linked."
+            "Revival, Precursor, Evidence Envelope, Reawakening and legacy Active Qualification are distinct lanes. "
+            "Only exact token/pair identity links may be compared."
         ),
         "lanes": {
             "solana_veteran_revival": {
                 "source_generated_at": revival.get("generated_at") if isinstance(revival, dict) else None,
-                "minimum_market_age_days": _num(age_gate.get("minimum_market_age_days")),
+                "minimum_market_age_days": _num(age_gate.get("minimum_market_age_days")) or 180,
                 "age_gate_status": age_gate.get("status"),
                 "universe": _num(revival_counts.get("universe")),
                 "age_verified_180d_plus": _num(revival_counts.get("age_verified_180d_plus")),
@@ -133,8 +144,23 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
                 "waking_market_only": _num(revival_counts.get("waking_market_only")),
                 "absorption_proxy_watch": _num(revival_counts.get("absorption_proxy_watch")),
                 "absorption_candidate_proxy_watch": _num(revival_counts.get("absorption_candidate_proxy_watch")),
-                "research_pre_alpha_eligible": _num(revival_counts.get("pre_alpha")),
-                "research_evidence_pending": research_pending,
+                "legacy_pre_alpha_eligible": _num(revival_counts.get("pre_alpha")),
+                "legacy_research_pending": legacy_research_pending,
+            },
+            "evidence_promotion": {
+                "source_generated_at": envelope.get("generated_at") if isinstance(envelope, dict) else None,
+                "universe_with_exact_pair": _num(envelope_counts.get("universe_with_exact_pair")),
+                "evidence_ready": _num(envelope_counts.get("evidence_ready")),
+                "verified_watch": _num(envelope_counts.get("verified_watch")),
+                "deep_watch": _num(envelope_counts.get("deep_watch")),
+                "blocked_truth": _num(envelope_counts.get("blocked_truth")),
+                "verified_holder_lane": _num(envelope_counts.get("with_verified_holder_growth_lane")),
+                "positive_holder_growth": _num(envelope_counts.get("with_positive_holder_growth")),
+                "verified_wallet_lane": _num(envelope_counts.get("with_verified_wallet_lane")),
+                "positive_wallet_accumulation": _num(envelope_counts.get("with_positive_wallet_accumulation")),
+                "positive_smart_money": _num(envelope_counts.get("with_positive_smart_money")),
+                "positive_cex": _num(envelope_counts.get("with_positive_cex")),
+                "production_effect": False,
             },
             "precursor": {
                 "source_generated_at": precursor.get("generated_at") if isinstance(precursor, dict) else None,
@@ -177,9 +203,11 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
         "blockers": blockers,
         "truth_rules": [
             "MISSING_EVIDENCE_IS_NOT_FAILURE",
+            "EVIDENCE_READY_IS_RESEARCH_PROMOTION_NOT_BUY_SIGNAL",
+            "CONCENTRATION_IS_RISK_CONTEXT_ONLY",
+            "STALE_EVIDENCE_NEVER_COUNTS_POSITIVE",
             "PARALLEL_LANES_ARE_NOT_FAKE_CONVERSION_STAGES",
-            "AGE_GATE_IS_NOT_BLAMED_WHEN_RAW_ACTIVE_IS_ZERO",
-            "NO_PRODUCTION_THRESHOLD_IS_CHANGED_BY_THIS_REPORT",
+            "VETERAN_180D_IS_PROJECT_SCOPE_NOT_ALPHA_THRESHOLD",
         ],
     }
 

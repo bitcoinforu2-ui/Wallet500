@@ -14,7 +14,7 @@ EVM_CHAINS = {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "ava
 
 def _load(path: Path, default):
     try:
-        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else default
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() and path.stat().st_size else default
     except Exception:
         return default
 
@@ -53,22 +53,34 @@ def _age_ok(*rows: dict) -> tuple[bool, int | None]:
                 ages.append(int(row.get("market_age_min_days")))
             except (TypeError, ValueError):
                 pass
+        truth = row.get("truth") if isinstance(row.get("truth"), dict) else {}
+        if truth.get("market_age_verified_180d_plus") is True:
+            try:
+                ages.append(int(truth.get("market_age_days")))
+            except (TypeError, ValueError):
+                pass
     if not ages:
         return False, None
-    # The minimum verified lower bound is the conservative truth value.
     age = min(ages)
     return age >= 180, age
 
 
 def _row_pair(row: dict) -> str | None:
-    pair = str(row.get("pair_address") or row.get("entry_pair_address") or "").strip()
+    pair = str(
+        row.get("pair_address")
+        or row.get("entry_pair_address")
+        or row.get("dex_pair_address")
+        or ""
+    ).strip()
     return pair or None
 
 
 def _row_pair_exact(row: dict) -> bool:
+    truth = row.get("truth") if isinstance(row.get("truth"), dict) else {}
     return bool(
         row.get("identity_status") == "DEX_VERIFIED"
         or row.get("exact_pair_verified") is True
+        or truth.get("exact_pair_verified") is True
         or row.get("dex_link_type") == "DEXSCREENER_VERIFIED_PAIR"
         or row.get("measurement_status") == "VERIFIED_EXACT_PAIR"
         or row.get("pair_identity_locked") is True
@@ -87,13 +99,7 @@ def _pair_truth(*rows: dict) -> tuple[str | None, bool]:
 
 
 def _execution_liquidity_truth(*rows: dict) -> tuple[float, float | None, str | None, str | None]:
-    """Return liquidity for an exact executable pair, never token-wide TVL.
-
-    Explicit `execution_pool_liquidity_usd` emitted by the multi-provider identity
-    resolver is authoritative. Legacy exact-pair rows are accepted only as a
-    backwards-compatible fallback. `dex_total_liquidity_usd` is observability
-    metadata and is deliberately never used to pass the $50K tradability gate.
-    """
+    """Return liquidity for an exact executable pair, never token-wide TVL."""
     explicit = []
     legacy = []
     for row in rows:
@@ -106,13 +112,15 @@ def _execution_liquidity_truth(*rows: dict) -> tuple[float, float | None, str | 
         total = _num(row.get("dex_total_liquidity_usd"), -1)
         total_value = total if total >= 0 else None
         execution = _num(row.get("execution_pool_liquidity_usd"), -1)
+        if execution < 0:
+            truth = row.get("truth") if isinstance(row.get("truth"), dict) else {}
+            execution = _num(truth.get("execution_pool_liquidity_usd"), -1)
         if execution >= 0:
             explicit.append((execution, total_value, pair, "EXECUTION_POOL_LIQUIDITY_USD"))
             continue
 
-        # Compatibility for exact-pair rows generated before the explicit field
-        # existed. Never look at aggregate/total liquidity here.
-        for key in ("dex_liquidity_usd", "liquidity_usd", "current_liquidity_usd"):
+        # Exact-pair compatibility fields only. Aggregate token liquidity is never used.
+        for key in ("dex_pair_liquidity_usd", "dex_liquidity_usd", "liquidity_usd", "current_liquidity_usd"):
             value = _num(row.get(key), -1)
             if value >= 0:
                 legacy.append((value, total_value, pair, f"LEGACY_EXACT_PAIR:{key}"))
@@ -129,12 +137,14 @@ def _identity_truth(*rows: dict) -> tuple[str | None, str | None, bool]:
         if not isinstance(row, dict):
             continue
         identity = row.get("identity") if isinstance(row.get("identity"), dict) else {}
+        truth = row.get("truth") if isinstance(row.get("truth"), dict) else {}
         chain = str(_first(row.get("chain"), row.get("network")) or "").strip().lower()
         token = str(_first(row.get("token_address"), row.get("token"), row.get("mint")) or "").strip()
         exact = (
             row.get("identity_status") == "DEX_VERIFIED"
             or row.get("identity_verified") is True
             or identity.get("exact_mint_verified") is True
+            or truth.get("exact_identity_verified") is True
             or row.get("network_verified") is True
             or row.get("qualification") in {"QUALIFIED", "REVIVAL_QUALIFIED"}
         )
@@ -147,8 +157,15 @@ def _price(*rows: dict) -> float | None:
     for row in rows:
         if not isinstance(row, dict):
             continue
-        for key in ("price_usd", "dex_price_usd", "current_price_usd", "reference_price"):
-            v = _num(row.get(key), 0)
+        market = row.get("market") if isinstance(row.get("market"), dict) else {}
+        for value in (
+            row.get("price_usd"),
+            row.get("dex_price_usd"),
+            row.get("current_price_usd"),
+            row.get("reference_price"),
+            market.get("price_usd"),
+        ):
+            v = _num(value, 0)
             if v > 0:
                 return v
     return None
@@ -171,7 +188,10 @@ def _index_rows(rows: list[dict]) -> dict[str, dict]:
     for row in rows:
         if not isinstance(row, dict):
             continue
-        k = _key(_first(row.get("chain"), row.get("network")), _first(row.get("token_address"), row.get("token"), row.get("mint")))
+        k = _key(
+            _first(row.get("chain"), row.get("network")),
+            _first(row.get("token_address"), row.get("token"), row.get("mint")),
+        )
         if k:
             out[k] = row
     return out
@@ -201,8 +221,9 @@ def _risk_blocked(*rows: dict) -> tuple[bool, list[str]]:
         if not isinstance(row, dict):
             continue
         status = str(row.get("status") or row.get("qualification") or "")
-        if status in {"LATE_MOVE_DO_NOT_CHASE", "PUMP_DUMP_RISK", "FAILED_SURVIVAL"}:
-            reasons.append(status)
+        if status in {"LATE_MOVE_DO_NOT_CHASE", "PUMP_DUMP_RISK", "FAILED_SURVIVAL", "BLOCKED_TRUTH"}:
+            if status != "BLOCKED_TRUTH" or row.get("production_effect") is not False:
+                reasons.append(status)
         if row.get("pump_dump_blocked") is True:
             reasons.append("PUMP_DUMP_BLOCKED")
         if row.get("actionable_eligible") is False and status in REAL_PRECURSOR_STATUSES:
@@ -217,12 +238,14 @@ def build(data_dir: Path = DATA) -> dict:
     precursor_payload = _load(data_dir / "revival-precursor-latest.json", {})
     waking_payload = _load(data_dir / "waking-confirmation-latest.json", {})
     revival_payload = _load(data_dir / "revival-1000-latest.json", {})
+    envelope_payload = _load(data_dir / "candidate-evidence-envelope.json", {})
     active_rows = _load(data_dir / "active-qualified-candidates.json", [])
 
     cex_rows = list(cex_payload.get("alerts") or [])
     precursor_rows = list(precursor_payload.get("targets") or [])
     waking_rows = list(waking_payload.get("targets") or [])
     revival_rows = list(revival_payload.get("coins") or [])
+    envelope_rows = list(envelope_payload.get("candidates") or [])
     active_rows = active_rows if isinstance(active_rows, list) else []
 
     indexes = {
@@ -230,9 +253,10 @@ def build(data_dir: Path = DATA) -> dict:
         "precursor": _index_rows(precursor_rows),
         "waking": _index_rows(waking_rows),
         "revival": _index_rows(revival_rows),
+        "envelope": _index_rows(envelope_rows),
         "active": _index_rows(active_rows),
     }
-    keys = set().union(*(set(x) for x in indexes.values()))
+    keys = set().union(*(set(index) for index in indexes.values()))
 
     real_alerts = []
     verified_watch = []
@@ -241,14 +265,12 @@ def build(data_dir: Path = DATA) -> dict:
         precursor = indexes["precursor"].get(k) or {}
         waking = indexes["waking"].get(k) or {}
         revival = indexes["revival"].get(k) or {}
+        envelope = indexes["envelope"].get(k) or {}
         active = indexes["active"].get(k) or {}
-        rows = (active, precursor, waking, cex, revival)
+        rows = (active, precursor, waking, cex, revival, envelope)
         chain, token, exact_identity = _identity_truth(*rows)
         pair, exact_pair = _pair_truth(*rows)
         execution_liq, total_dex_liq, execution_pair, liquidity_source = _execution_liquidity_truth(*rows)
-        # Couple the tradability gate and visible pair to the exact pool whose
-        # liquidity was measured. This prevents a thin/stale pair from masking
-        # a deeper exact-token execution pool discovered by another provider.
         if execution_pair:
             pair = execution_pair
             exact_pair = True
@@ -258,6 +280,10 @@ def build(data_dir: Path = DATA) -> dict:
         precursor_status = precursor.get("status")
         production_pass = active.get("qualification") in {"QUALIFIED", "REVIVAL_QUALIFIED"}
         precursor_pass = precursor_status in REAL_PRECURSOR_STATUSES
+        envelope_status = str(envelope.get("status") or "")
+        envelope_coverage = envelope.get("coverage") if isinstance(envelope.get("coverage"), dict) else {}
+        evidence_positive_lanes = list(envelope_coverage.get("positive_independent_lanes") or [])
+        evidence_verified_lanes = list(envelope_coverage.get("verified_independent_lanes") or [])
 
         blockers = []
         if not exact_identity:
@@ -282,18 +308,17 @@ def build(data_dir: Path = DATA) -> dict:
             _num(revival.get("revival_score_verified")),
             _num(revival.get("revival_score")),
             _num(waking.get("confirmation_score")),
+            _num((envelope.get("market") or {}).get("revival_score_verified")),
         ]
         score = max(score_parts, default=0.0)
         item = {
-            "symbol": _symbol(active, precursor, waking, cex, revival),
+            "symbol": _symbol(active, precursor, waking, cex, revival, envelope),
             "chain": chain,
             "token_address": token,
             "pair_address": pair,
             "dex": _first(cex.get("dex"), active.get("dex"), revival.get("dex")),
-            "dex_url": _first(cex.get("dex_url"), active.get("url"), revival.get("dex_url")),
-            "price_usd": _price(active, precursor, waking, cex, revival),
-            # `liquidity_usd` remains for dashboard compatibility, but now means
-            # the exact selected EXECUTION pool, not token-wide aggregate TVL.
+            "dex_url": _first(cex.get("dex_url"), active.get("url"), revival.get("dex_url"), revival.get("dex_link"), envelope.get("dex_url")),
+            "price_usd": _price(active, precursor, waking, cex, revival, envelope),
             "liquidity_usd": execution_liq,
             "execution_pool_liquidity_usd": execution_liq,
             "dex_total_liquidity_usd": total_dex_liq,
@@ -307,6 +332,10 @@ def build(data_dir: Path = DATA) -> dict:
             "waking_status": waking.get("confirmation_status"),
             "cex_score": cex.get("cex_revival_score"),
             "cex_confirmations": cex.get("coherent_confirmations"),
+            "evidence_envelope_status": envelope_status or None,
+            "evidence_ready": envelope_status == "EVIDENCE_READY",
+            "evidence_positive_lanes": evidence_positive_lanes,
+            "evidence_verified_lanes": evidence_verified_lanes,
             "first_alert_at": _first((cex.get("milestones") or {}).get("first_alert", {}).get("observed_at"), precursor.get("t0", {}).get("observed_at"), active.get("qualified_at")),
             "exact_identity_verified": exact_identity,
             "exact_pair_verified": exact_pair,
@@ -317,12 +346,17 @@ def build(data_dir: Path = DATA) -> dict:
             item["status"] = "REAL_ALERT"
             item["actionable_research_alert"] = True
             real_alerts.append(item)
-        elif exact_identity and exact_pair and age_ok:
-            item["status"] = "VERIFIED_WATCH_NOT_REAL_ALERT"
-            item["actionable_research_alert"] = False
-            verified_watch.append(item)
+        else:
+            watch_interest = bool(
+                lane_count >= 1
+                or envelope_status in {"EVIDENCE_READY", "VERIFIED_WATCH"}
+                or revival.get("watch_status") == "WAKING_MARKET_ONLY"
+            )
+            if exact_identity and exact_pair and age_ok and watch_interest:
+                item["status"] = "EVIDENCE_READY_NOT_REAL_ALERT" if envelope_status == "EVIDENCE_READY" else "VERIFIED_WATCH_NOT_REAL_ALERT"
+                item["actionable_research_alert"] = False
+                verified_watch.append(item)
 
-    # CEX rows that still lack exact identity remain visible, but can never be mistaken for real alerts.
     identity_pending = []
     for row in cex_rows:
         if row.get("identity_status") == "DEX_VERIFIED":
@@ -339,13 +373,14 @@ def build(data_dir: Path = DATA) -> dict:
         })
 
     real_alerts.sort(key=lambda x: (x.get("score") or 0, x.get("source_lane_count") or 0, x.get("execution_pool_liquidity_usd") or 0), reverse=True)
-    verified_watch.sort(key=lambda x: (x.get("source_lane_count") or 0, x.get("score") or 0), reverse=True)
+    verified_watch.sort(key=lambda x: (x.get("evidence_ready") is True, x.get("source_lane_count") or 0, x.get("score") or 0), reverse=True)
     identity_pending.sort(key=lambda x: (x.get("cex_score") or 0, x.get("coherent_confirmations") or 0), reverse=True)
 
+    evidence_ready_count = sum(1 for row in envelope_rows if isinstance(row, dict) and row.get("status") == "EVIDENCE_READY")
     return {
-        "version": 2,
+        "version": 3,
         "generated_at": now,
-        "mode": "FAIL_CLOSED_REAL_ALERT_FEED_V2_EXECUTION_POOL_LIQUIDITY",
+        "mode": "FAIL_CLOSED_REAL_ALERT_FEED_V3_EVIDENCE_ENVELOPE",
         "truth_contract": {
             "focus": "VETERAN_COIN_REVIVAL_ONLY",
             "minimum_market_age_days": 180,
@@ -358,12 +393,14 @@ def build(data_dir: Path = DATA) -> dict:
             "cex_only_never_real_alert": True,
             "production_gate_or_strong_precursor_required": True,
             "non_production_alert_requires_min_independent_lanes": 2,
+            "evidence_ready_is_visible_but_does_not_auto_promote_to_real_alert": True,
             "late_move_or_pump_dump_never_real_alert": True,
             "label_meaning": "REAL_ALERT means the system's strict research alert criteria are met; it is not a guarantee of profit or an instruction to buy.",
         },
         "counts": {
             "real_alerts": len(real_alerts),
             "verified_watch_not_real": len(verified_watch),
+            "evidence_ready_research": evidence_ready_count,
             "identity_pending_not_actionable": len(identity_pending),
         },
         "latest_real_alert": real_alerts[0] if real_alerts else None,
