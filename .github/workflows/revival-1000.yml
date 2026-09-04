@@ -11,10 +11,12 @@ on:
       - 'src/wallet500/revival_absorption_signal.py'
       - 'src/wallet500/revival_discovery_expansion.py'
       - 'src/wallet500/revival_discovery_expansion_v3.py'
+      - 'src/wallet500/revival_strict_t0.py'
       - 'src/wallet500/mature_age_gate.py'
       - 'src/wallet500/paid_visibility_lab.py'
       - 'tests/test_revival_1000.py'
       - 'tests/test_revival_absorption_signal.py'
+      - 'tests/test_revival_strict_t0.py'
       - 'tests/test_mature_age_gate.py'
       - 'tests/test_paid_visibility_lab.py'
       - '.github/workflows/revival-1000.yml'
@@ -42,7 +44,7 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Unit tests
-        run: python -m pytest -q tests/test_revival_1000.py tests/test_revival_absorption_signal.py tests/test_mature_age_gate.py tests/test_paid_visibility_lab.py
+        run: python -m pytest -q tests/test_revival_1000.py tests/test_revival_absorption_signal.py tests/test_revival_strict_t0.py tests/test_mature_age_gate.py tests/test_paid_visibility_lab.py
       - name: Migrate base Revival state to strict Solana identity
         run: |
           python - <<'PY'
@@ -65,6 +67,8 @@ jobs:
         run: python -m wallet500.revival_absorption_signal
       - name: Expand strict and pre-move absorption candidates across known Solana universe
         run: python -m wallet500.revival_discovery_expansion_v3
+      - name: Lock immutable first green STRICT discovery price
+        run: python -m wallet500.revival_strict_t0
       - name: Enforce verified 180-day mature-coin hard gate
         env:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
@@ -84,6 +88,9 @@ jobs:
           contract=d.get('discovery_expansion_contract') or {}
           if contract.get('version')!='REVIVAL_DISCOVERY_ABSORPTION_EXPANSION_V2': raise SystemExit('DISCOVERY_EXPANSION_V2_CONTRACT_MISSING')
           if contract.get('fixed_candidate_cap') is not None or contract.get('production_portfolio_impact')!='NONE': raise SystemExit('DISCOVERY_EXPANSION_SAFETY_INVALID')
+          strict_t0=d.get('strict_discovery_contract') or {}
+          if strict_t0.get('version')!='FORWARD_LOCKED_STRICT_T0_V1' or strict_t0.get('no_hindsight') is not True: raise SystemExit('STRICT_T0_CONTRACT_MISSING')
+          if strict_t0.get('production_portfolio_impact')!='NONE' or strict_t0.get('discovery_price_mutation')!='FORBIDDEN_AFTER_FIRST_LOCK': raise SystemExit('STRICT_T0_SAFETY_INVALID')
           coins=d.get('coins') or []
           if len(coins)<100: raise SystemExit('REVIVAL_UNIVERSE_TOO_SMALL')
           if any(x.get('market_age_verified') is not True or int(x.get('market_age_min_days') or 0)<180 for x in coins): raise SystemExit('REVIVAL_UNDER_180_OR_UNVERIFIED_AGE_PRESENT')
@@ -100,9 +107,13 @@ jobs:
                   if status=='ABSORPTION_WATCH_DISCOVERY_EXPANSION':
                       strict_expansion += 1
                       if flow.get('signal') is not True: raise SystemExit('STRICT_EXPANSION_WITHOUT_SIGNAL')
+                      sd=x.get('strict_discovery') or {}
+                      if not (float(sd.get('discovery_price_usd') or 0)>0 and sd.get('immutable_t0') is True and sd.get('no_hindsight') is True): raise SystemExit('STRICT_EXPANSION_WITHOUT_LOCKED_DISCOVERY_PRICE')
+                      if str(sd.get('pair_address') or '').lower()!=str(x.get('dex_pair_address') or '').lower(): raise SystemExit('STRICT_T0_PAIR_IDENTITY_MISMATCH')
                   elif status=='ABSORPTION_CANDIDATE_DISCOVERY_EXPANSION':
                       candidate_expansion += 1
                       if flow.get('signal') is True: raise SystemExit('CANDIDATE_MISLABELED_STRICT')
+                      if x.get('strict_discovery') is not None: raise SystemExit('PRE_MOVE_HAS_STRICT_DISCOVERY_METRIC')
                   else: raise SystemExit('EXPANSION_STATUS_INVALID')
               elif x.get('solana_only_platform_verified') is not True:
                   raise SystemExit('BASE_CROSS_PLATFORM_ASSET_PRESENT')
@@ -116,6 +127,7 @@ jobs:
           if counts.get('absorption_discovery_expansion_added')!=expansion: raise SystemExit('EXPANSION_COUNT_MISMATCH')
           if counts.get('absorption_discovery_strict_added')!=strict_expansion: raise SystemExit('STRICT_EXPANSION_COUNT_MISMATCH')
           if counts.get('absorption_discovery_candidate_added')!=candidate_expansion: raise SystemExit('CANDIDATE_EXPANSION_COUNT_MISMATCH')
+          if counts.get('strict_green_t0_current')!=strict_expansion: raise SystemExit('STRICT_T0_CURRENT_COUNT_MISMATCH')
           print('REVIVAL_SOLANA_EXPANDED_V6_OK',counts)
           PY
       - name: Collect paid-visibility exposure events and matched controls
@@ -142,20 +154,20 @@ jobs:
                   if int(o.get('horizon_min') or 0) not in {0,60,360,1440,4320}: raise SystemExit('PAID_EVENT_HORIZON_INVALID')
           print('PAID_VISIBILITY_LAB_V1_TRUTH_OK', {'active':summary.get('active_paid_events_now'),'solana':summary.get('active_solana_paid_events_now'),'events':summary.get('total_events_observed')})
           PY
-      - name: Publish expanded Revival, paid visibility lab, and immutable base T0 state
+      - name: Publish expanded Revival, paid visibility lab, immutable strict T0, and immutable base T0 state
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
           tmp="$(mktemp -d)"
-          for f in revival-1000-latest.json revival-1000-state.json paid-visibility-ledger.json paid-visibility-summary.json; do cp "data/$f" "$tmp/$f"; done
+          for f in revival-1000-latest.json revival-1000-state.json revival-strict-t0.json paid-visibility-ledger.json paid-visibility-summary.json; do cp "data/$f" "$tmp/$f"; done
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
-            for f in revival-1000-latest.json revival-1000-state.json paid-visibility-ledger.json paid-visibility-summary.json; do cp "$tmp/$f" "data/$f"; done
-            git add data/revival-1000-latest.json data/revival-1000-state.json data/paid-visibility-ledger.json data/paid-visibility-summary.json
+            for f in revival-1000-latest.json revival-1000-state.json revival-strict-t0.json paid-visibility-ledger.json paid-visibility-summary.json; do cp "$tmp/$f" "data/$f"; done
+            git add data/revival-1000-latest.json data/revival-1000-state.json data/revival-strict-t0.json data/paid-visibility-ledger.json data/paid-visibility-summary.json
             if git diff --cached --quiet; then echo 'REVIVAL_AND_PAID_VISIBILITY_NO_DATA_CHANGE'; exit 0; fi
-            git commit -m 'data: refresh Revival and paid visibility experiment'
+            git commit -m 'data: refresh Revival, strict T0, and paid visibility experiment'
             if git push origin HEAD:main; then echo 'REVIVAL_AND_PAID_VISIBILITY_PUBLISH_OK'; exit 0; fi
             echo "REVIVAL_AND_PAID_VISIBILITY_PUBLISH_RETRY attempt=$attempt"; sleep 3
           done
