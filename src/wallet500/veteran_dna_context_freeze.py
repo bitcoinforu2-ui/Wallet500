@@ -11,7 +11,7 @@ HOLDER = DATA / "holder-concentration-shadow.json"
 SOCIAL = DATA / "social-organic-acceleration.json"
 KOL = DATA / "kol-revival-convergence-summary.json"
 MODE = "VETERAN_DNA_T0_CONTEXT_FREEZE_V1"
-MAX_FREEZE_LAG_MINUTES = 30.0
+MAX_FREEZE_LAG_MINUTES = 5.0
 
 
 def load(path: Path, default):
@@ -34,10 +34,6 @@ def parse_ts(value):
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def same_pair(left, right) -> bool:
-    return bool(left) and bool(right) and str(left).lower() == str(right).lower()
 
 
 def token_of(row: dict):
@@ -170,20 +166,40 @@ def main() -> None:
 
     frozen = 0
     backfill_blocked = 0
+    invalid_context_removed = 0
     missing_revival_context = 0
+
     for rec in records.values():
-        if rec.get("t0_context") is not None or rec.get("t0_context_status") == "FROZEN_AT_T0":
-            continue
         t0 = parse_ts(rec.get("t0_at"))
         if not t0:
             rec["t0_context_status"] = "T0_TIMESTAMP_INVALID"
             continue
         lag_min = (now - t0).total_seconds() / 60.0
+        existing = rec.get("t0_context")
+
+        if isinstance(existing, dict):
+            frozen_at = parse_ts(existing.get("frozen_at"))
+            existing_lag = n = None
+            try:
+                existing_lag = float(existing.get("freeze_lag_minutes"))
+            except (TypeError, ValueError):
+                if frozen_at is not None:
+                    existing_lag = (frozen_at - t0).total_seconds() / 60.0
+            if existing_lag is None or existing_lag > MAX_FREEZE_LAG_MINUTES:
+                rec.pop("t0_context", None)
+                rec["t0_context_status"] = "REMOVED_RETROACTIVE_CONTEXT_OUTSIDE_T0_WINDOW"
+                rec["t0_context_freeze_lag_minutes"] = None if existing_lag is None else round(existing_lag, 3)
+                invalid_context_removed += 1
+            else:
+                rec["t0_context_status"] = "FROZEN_AT_T0"
+                continue
+
         if lag_min < -1:
             rec["t0_context_status"] = "T0_IN_FUTURE_INVALID"
             continue
         if lag_min > MAX_FREEZE_LAG_MINUTES:
-            rec["t0_context_status"] = "BACKFILL_FORBIDDEN_AFTER_T0_WINDOW"
+            if rec.get("t0_context_status") != "REMOVED_RETROACTIVE_CONTEXT_OUTSIDE_T0_WINDOW":
+                rec["t0_context_status"] = "BACKFILL_FORBIDDEN_AFTER_T0_WINDOW"
             rec["t0_context_freeze_lag_minutes"] = round(lag_min, 3)
             backfill_blocked += 1
             continue
@@ -208,7 +224,7 @@ def main() -> None:
             "organic_social": freeze_social(six.get(token)),
             "kol_convergence": freeze_kol(kix.get(token)),
             "truth_notes": [
-                "context is frozen only inside a short T0 window and is never retroactively backfilled",
+                "context is frozen only inside the same-run T0 window and is never retroactively backfilled",
                 "holder shadow is risk/context only and never a positive growth signal",
                 "raw social mentions never equal organic acceleration",
                 "missing context remains missing and is never imputed",
@@ -216,12 +232,14 @@ def main() -> None:
         }
         rec["t0_context"] = context
         rec["t0_context_status"] = "FROZEN_AT_T0"
+        rec.pop("t0_context_freeze_lag_minutes", None)
         frozen += 1
 
     ledger["context_freeze_contract"] = {
         "mode": MODE,
         "max_freeze_lag_minutes": MAX_FREEZE_LAG_MINUTES,
         "retroactive_feature_backfill": "FORBIDDEN",
+        "existing_context_outside_window": "REMOVE_AS_HINDSIGHT_CONTAMINATION",
         "exact_token_and_pair_required_for_revival_context": True,
         "holder_shadow_positive_signal": False,
         "missing_features_imputed": False,
@@ -231,6 +249,7 @@ def main() -> None:
         "at": now.isoformat(),
         "frozen": frozen,
         "backfill_blocked": backfill_blocked,
+        "invalid_context_removed": invalid_context_removed,
         "missing_revival_context": missing_revival_context,
     }
     LEDGER.write_text(json.dumps(ledger, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
