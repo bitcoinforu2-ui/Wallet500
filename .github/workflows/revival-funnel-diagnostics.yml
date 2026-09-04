@@ -7,16 +7,19 @@ on:
       - "Wallet500 Revival Solana Expanded"
       - "Wallet500 Survivor Reawakening Shadow"
       - "Wallet500 Forward Alpha Proof"
+      - "Wallet500 Candidate Evidence Envelope"
     types: [completed]
   pull_request:
     paths:
       - 'src/wallet500/revival_funnel_diagnostics.py'
+      - 'src/wallet500/candidate_evidence_envelope.py'
       - 'tests/test_revival_funnel_diagnostics.py'
       - '.github/workflows/revival-funnel-diagnostics.yml'
   push:
     branches: [main]
     paths:
       - 'src/wallet500/revival_funnel_diagnostics.py'
+      - 'src/wallet500/candidate_evidence_envelope.py'
       - 'tests/test_revival_funnel_diagnostics.py'
       - '.github/workflows/revival-funnel-diagnostics.yml'
 
@@ -53,12 +56,14 @@ jobs:
           p=Path('data/revival-funnel-diagnostics.json')
           if not p.exists() or p.stat().st_size == 0: raise SystemExit('REVIVAL_FUNNEL_DIAGNOSTICS_MISSING')
           d=json.loads(p.read_text())
-          if d.get('mode')!='REVIVAL_FUNNEL_DIAGNOSTICS_V1': raise SystemExit('REVIVAL_FUNNEL_MODE_INVALID')
+          if int(d.get('version') or 0)<2 or d.get('mode')!='REVIVAL_FUNNEL_DIAGNOSTICS_V2_EVIDENCE_PROMOTION': raise SystemExit('REVIVAL_FUNNEL_MODE_INVALID')
           if d.get('production_change') is not False or d.get('production_portfolio_impact')!='NONE': raise SystemExit('REVIVAL_FUNNEL_PRODUCTION_IMPACT_INVALID')
+          lanes=d.get('lanes') or {}
+          if 'evidence_promotion' not in lanes: raise SystemExit('REVIVAL_FUNNEL_EVIDENCE_LANE_MISSING')
           rules=set(d.get('truth_rules') or [])
-          required={'MISSING_EVIDENCE_IS_NOT_FAILURE','PARALLEL_LANES_ARE_NOT_FAKE_CONVERSION_STAGES','AGE_GATE_IS_NOT_BLAMED_WHEN_RAW_ACTIVE_IS_ZERO','NO_PRODUCTION_THRESHOLD_IS_CHANGED_BY_THIS_REPORT'}
+          required={'MISSING_EVIDENCE_IS_NOT_FAILURE','EVIDENCE_READY_IS_RESEARCH_PROMOTION_NOT_BUY_SIGNAL','CONCENTRATION_IS_RISK_CONTEXT_ONLY','STALE_EVIDENCE_NEVER_COUNTS_POSITIVE','PARALLEL_LANES_ARE_NOT_FAKE_CONVERSION_STAGES','VETERAN_180D_IS_PROJECT_SCOPE_NOT_ALPHA_THRESHOLD'}
           if not required.issubset(rules): raise SystemExit('REVIVAL_FUNNEL_TRUTH_RULES_INCOMPLETE')
-          print('REVIVAL_FUNNEL_DIAGNOSTICS_OK', d.get('lanes'), d.get('blockers'))
+          print('REVIVAL_FUNNEL_DIAGNOSTICS_V2_OK', lanes.get('evidence_promotion'), d.get('blockers'))
           PY
       - name: Publish diagnostics
         if: github.event_name != 'pull_request'
