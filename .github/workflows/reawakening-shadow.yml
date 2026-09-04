@@ -8,9 +8,11 @@ on:
     paths:
       - 'src/wallet500/reawakening_shadow.py'
       - 'src/wallet500/reawakening_forward_tracker.py'
+      - 'src/wallet500/reawakening_forward_fast_runner.py'
       - 'src/wallet500/reawakening_telegram.py'
       - 'tests/test_reawakening_shadow.py'
       - 'tests/test_reawakening_forward_tracker.py'
+      - 'tests/test_reawakening_forward_fast_runner.py'
       - 'tests/test_reawakening_telegram.py'
       - '.github/workflows/reawakening-shadow.yml'
   push:
@@ -18,9 +20,11 @@ on:
     paths:
       - 'src/wallet500/reawakening_shadow.py'
       - 'src/wallet500/reawakening_forward_tracker.py'
+      - 'src/wallet500/reawakening_forward_fast_runner.py'
       - 'src/wallet500/reawakening_telegram.py'
       - 'tests/test_reawakening_shadow.py'
       - 'tests/test_reawakening_forward_tracker.py'
+      - 'tests/test_reawakening_forward_fast_runner.py'
       - 'tests/test_reawakening_telegram.py'
       - '.github/workflows/reawakening-shadow.yml'
 
@@ -45,12 +49,12 @@ jobs:
       - name: Install and test V2 recovery truth rules
         run: |
           pip install -e . pytest
-          python -m pytest -q tests/test_reawakening_shadow.py tests/test_reawakening_forward_tracker.py tests/test_reawakening_telegram.py
+          python -m pytest -q tests/test_reawakening_shadow.py tests/test_reawakening_forward_tracker.py tests/test_reawakening_forward_fast_runner.py tests/test_reawakening_telegram.py
       - name: Measure rejected immutable pairs and build forward-only recovery lane
         if: github.event_name != 'pull_request'
         env:
           WALLET500_REAWAKENING_REQUEST_PAUSE_SECONDS: '0.22'
-        run: python -m wallet500.reawakening_forward_tracker
+        run: python -m wallet500.reawakening_forward_fast_runner
       - name: Send only fresh Recovery V2 Telegram alerts
         if: github.event_name != 'pull_request'
         env:
