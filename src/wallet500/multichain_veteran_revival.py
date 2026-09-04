@@ -26,7 +26,7 @@ MIN_VOLUME_H1_USD = 15_000.0
 MIN_TXNS_H1 = 50
 WATCH_SCORE = 70
 MAX_WORKERS = 10
-UA = {"Accept": "application/json", "User-Agent": "Wallet500/1.6"}
+UA = {"Accept": "application/json", "User-Agent": "Wallet500/1.7"}
 
 # Infrastructure/stable assets are discovery noise, not revival targets.
 BLOCKED_ADDRESSES = {
@@ -123,6 +123,13 @@ def _pair_age_days(pair_created_at: object, now_dt: datetime) -> float | None:
         return None
 
 
+def _evidence_age_days(value: object, now_dt: datetime) -> float | None:
+    observed = _parse_dt(value)
+    if observed is None or observed > now_dt:
+        return None
+    return max(0.0, (now_dt - observed).total_seconds() / 86400.0)
+
+
 def _blocked(chain: str, token: object, symbol: object = None) -> bool:
     address = _norm(chain, token)
     if not address:
@@ -185,7 +192,77 @@ def _discover_chain(chain: str, network: str) -> tuple[list[dict], list[dict]]:
     return list(found.values()), errors
 
 
-def discover_core_candidates() -> tuple[list[dict], list[dict]]:
+def _load(path: Path, default):
+    try:
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else default
+    except Exception:
+        return default
+
+
+def _spot_base_symbol(value: object) -> str:
+    symbol = str(value or "").upper().replace("-", "").replace("_", "").replace("/", "").strip()
+    return symbol[:-4] if symbol.endswith("USDT") else symbol
+
+
+def _discover_spot_registry_candidates(data_dir: Path) -> list[dict]:
+    """Translate current Spot watches to exact on-chain candidates only via registry identity.
+
+    A symbol alone can never inject a DEX candidate. The base symbol merely selects
+    a pre-existing exact registry record, whose chain+contract is the actual identity.
+    """
+    spot = _load(data_dir / "cex-spot-revival-radar.json", {})
+    registry = _load(data_dir / "cex-identity-registry.json", {})
+    symbols = registry.get("symbols") if isinstance(registry, dict) else {}
+    symbols = symbols if isinstance(symbols, dict) else {}
+    watch_bases = {
+        _spot_base_symbol(row.get("symbol"))
+        for row in (spot.get("watchlist") or [])
+        if isinstance(row, dict) and _spot_base_symbol(row.get("symbol"))
+    }
+    rows = []
+    for symbol, meta in symbols.items():
+        if not isinstance(meta, dict):
+            continue
+        canonical_symbol = str(symbol or "").upper().strip()
+        if canonical_symbol not in watch_bases:
+            continue
+        chain = str(meta.get("chain") or "").lower().strip()
+        token = str(meta.get("token_address") or "").strip()
+        if chain not in CORE_NETWORKS or not token or _blocked(chain, token, canonical_symbol):
+            continue
+        rows.append({
+            "chain": chain,
+            "token": token,
+            "symbol": canonical_symbol,
+            "name": meta.get("name"),
+            "discovery_sources": ["cex-spot-exact-registry-trigger"],
+            "source_pool_addresses": [],
+            "registry_identity_verified": True,
+            "market_age_evidence_at": meta.get("market_age_evidence_at"),
+            "market_age_evidence_source": meta.get("evidence_source") or "EXACT_IDENTITY_REGISTRY",
+            "coingecko_id": meta.get("coingecko_id"),
+        })
+    return rows
+
+
+def _merge_candidate(existing: dict, incoming: dict) -> dict:
+    merged = {**existing}
+    for field in ("discovery_sources", "source_pool_addresses"):
+        values = list(merged.get(field) or [])
+        for value in incoming.get(field) or []:
+            if value not in values:
+                values.append(value)
+        merged[field] = values
+    for field in (
+        "symbol", "name", "registry_identity_verified", "market_age_evidence_at",
+        "market_age_evidence_source", "coingecko_id",
+    ):
+        if incoming.get(field) not in (None, "", False):
+            merged[field] = incoming.get(field)
+    return merged
+
+
+def discover_core_candidates(data_dir: Path = DATA) -> tuple[list[dict], list[dict]]:
     rows = []
     errors = []
     with ThreadPoolExecutor(max_workers=len(CORE_NETWORKS)) as pool:
@@ -201,17 +278,20 @@ def discover_core_candidates() -> tuple[list[dict], list[dict]]:
             except Exception as exc:
                 chain = futures[fut]
                 errors.append({"chain": chain, "source": "discovery", "error": f"{type(exc).__name__}: {exc}"[:300]})
-    dedup = {}
+
+    # CEX Spot watches with a pre-verified exact registry identity get a direct
+    # DEX recheck even when the token is absent from GeckoTerminal page-1 pools.
+    # This closes the IDOS-class coverage gap without enabling symbol-only action.
+    rows.extend(_discover_spot_registry_candidates(data_dir))
+
+    dedup: dict[str, dict] = {}
     for row in rows:
-        dedup[_key(row["chain"], row["token"])] = row
+        key = _key(row["chain"], row["token"])
+        if key in dedup:
+            dedup[key] = _merge_candidate(dedup[key], row)
+        else:
+            dedup[key] = row
     return list(dedup.values()), errors
-
-
-def _load(path: Path, default):
-    try:
-        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else default
-    except Exception:
-        return default
 
 
 def _spot_exact_confirmation(data_dir: Path, chain: str, token: str) -> dict:
@@ -232,9 +312,7 @@ def _spot_exact_confirmation(data_dir: Path, chain: str, token: str) -> dict:
     spot = _load(data_dir / "cex-spot-revival-radar.json", {})
     matches = []
     for row in spot.get("watchlist") or []:
-        symbol = str(row.get("symbol") or "").upper().replace("-", "").replace("_", "")
-        base = symbol[:-4] if symbol.endswith("USDT") else symbol
-        if base == exact_symbol:
+        if _spot_base_symbol(row.get("symbol")) == exact_symbol:
             matches.append(row)
     if not matches:
         return {"verified": False, "reason": "NO_CURRENT_SPOT_WATCH_FOR_EXACT_REGISTRY_IDENTITY", "symbol": exact_symbol}
@@ -250,7 +328,17 @@ def _spot_exact_confirmation(data_dir: Path, chain: str, token: str) -> dict:
 
 
 def _score(row: dict, snap: dict, now_dt: datetime, previous: dict | None, cex_spot: dict) -> dict:
-    age_days = _pair_age_days(snap.get("pair_created_at"), now_dt)
+    pair_age_days = _pair_age_days(snap.get("pair_created_at"), now_dt)
+    registry_age_days = None
+    if row.get("registry_identity_verified") is True:
+        registry_age_days = _evidence_age_days(row.get("market_age_evidence_at"), now_dt)
+    age_candidates = [x for x in (pair_age_days, registry_age_days) if x is not None]
+    age_days = max(age_candidates) if age_candidates else None
+    if registry_age_days is not None and (pair_age_days is None or registry_age_days >= pair_age_days):
+        age_source = row.get("market_age_evidence_source") or "EXACT_IDENTITY_REGISTRY"
+    else:
+        age_source = "EXACT_SELECTED_PAIR_CREATED_AT_LOWER_BOUND"
+
     liq = _finite(snap.get("liquidity_usd"))
     vol_h1 = _finite(snap.get("volume_h1"))
     buys = int(snap.get("buys_h1") or 0)
@@ -323,7 +411,9 @@ def _score(row: dict, snap: dict, now_dt: datetime, previous: dict | None, cex_s
         **snap,
         "market_age_verified": age_days is not None and age_days >= MIN_VETERAN_AGE_DAYS,
         "market_age_min_days": round(age_days, 2) if age_days is not None else None,
-        "market_age_evidence_source": "EXACT_SELECTED_PAIR_CREATED_AT_LOWER_BOUND",
+        "market_age_pair_days": round(pair_age_days, 2) if pair_age_days is not None else None,
+        "market_age_registry_days": round(registry_age_days, 2) if registry_age_days is not None else None,
+        "market_age_evidence_source": age_source,
         "real_time_gate": {
             "live_liquidity_usd": liq,
             "volume_h1_usd": vol_h1,
@@ -351,7 +441,7 @@ def run(data_dir: Path = DATA, now: str | None = None) -> dict:
     now_dt = now_dt or datetime.now(timezone.utc)
     observed_at = now_dt.isoformat()
 
-    discovered, discovery_errors = discover_core_candidates()
+    discovered, discovery_errors = discover_core_candidates(data_dir)
     state_path = data_dir / "multichain-veteran-revival-state.json"
     state = _load(state_path, {})
     previous_tokens = state.get("tokens") if isinstance(state.get("tokens"), dict) else {}
@@ -403,7 +493,7 @@ def run(data_dir: Path = DATA, now: str | None = None) -> dict:
         }
 
     state_payload = {
-        "version": 1,
+        "version": 2,
         "updated_at": observed_at,
         "no_hindsight": True,
         "tokens": tokens,
@@ -425,10 +515,14 @@ def run(data_dir: Path = DATA, now: str | None = None) -> dict:
             "late_move": sum(1 for x in chain_rows if x.get("status") == "LATE_MOVE_DO_NOT_CHASE"),
         }
 
+    spot_registry_triggered = sum(
+        1 for row in discovered
+        if "cex-spot-exact-registry-trigger" in (row.get("discovery_sources") or [])
+    )
     payload = {
-        "version": 1,
+        "version": 2,
         "generated_at": observed_at,
-        "mode": "RESEARCH_ONLY_CORE_MULTICHAIN_VETERAN_REVIVAL_V1",
+        "mode": "RESEARCH_ONLY_CORE_MULTICHAIN_VETERAN_REVIVAL_V2",
         "core_chains": list(CORE_NETWORKS),
         "policy": {
             "minimum_market_age_days": MIN_VETERAN_AGE_DAYS,
@@ -438,11 +532,14 @@ def run(data_dir: Path = DATA, now: str | None = None) -> dict:
             "exact_token_pair_required": True,
             "stable_wrapped_assets_excluded": True,
             "unknown_age": "FAIL_CLOSED",
+            "veteran_age_evidence": "EXACT_SELECTED_PAIR_OR_EXACT_REGISTRY_CHAIN_CONTRACT_HISTORY",
             "symbol_only_cex_confirmation": "FORBIDDEN",
+            "spot_watch_direct_recheck": "ONLY_PREVERIFIED_EXACT_REGISTRY_CHAIN_CONTRACT",
             "production_portfolio_impact": "NONE",
             "no_hindsight": True,
         },
         "discovered": len(discovered),
+        "spot_registry_triggered": spot_registry_triggered,
         "snapshots": len(snapshots),
         "veteran_gate_pass": len(eligible),
         "dna_watch_count": len(watches),
@@ -450,6 +547,7 @@ def run(data_dir: Path = DATA, now: str | None = None) -> dict:
         "counts_by_chain": counts_by_chain,
         "dna_watch": watches[:50],
         "veteran_watch": sorted(eligible, key=lambda x: x.get("winner_dna_score_research", 0), reverse=True)[:100],
+        "all_snapshots": snapshots[:250],
         "errors_count": len(errors),
         "errors": errors[-50:],
     }

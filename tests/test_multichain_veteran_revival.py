@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -73,6 +74,39 @@ def test_missing_pair_creation_time_is_unknown_not_epoch_veteran():
     assert "PAIR_AGE_LT_180D_OR_UNKNOWN" in result["blockers"]
 
 
+def test_exact_registry_age_can_prove_veteran_when_current_pair_is_newer():
+    now = datetime(2026, 9, 4, tzinfo=timezone.utc)
+    token = "0x4580000000000000000000000000000000000789"
+    row = {
+        "chain": "arbitrum",
+        "token": token,
+        "symbol": "TEST",
+        "registry_identity_verified": True,
+        "market_age_evidence_at": "2026-02-01T00:00:00Z",
+        "market_age_evidence_source": "EXACT_REGISTRY_FIXTURE",
+    }
+    result = mvr._score(row, _snapshot("arbitrum", token, age_days=30), now, None, {"verified": False})
+    assert result["market_age_verified"] is True
+    assert result["market_age_pair_days"] < 180
+    assert result["market_age_registry_days"] > 180
+    assert result["market_age_evidence_source"] == "EXACT_REGISTRY_FIXTURE"
+    assert "PAIR_AGE_LT_180D_OR_UNKNOWN" not in result["blockers"]
+
+
+def test_unverified_row_cannot_spoof_registry_age():
+    now = datetime(2026, 9, 4, tzinfo=timezone.utc)
+    token = "0x4590000000000000000000000000000000000789"
+    row = {
+        "chain": "arbitrum",
+        "token": token,
+        "symbol": "TEST",
+        "market_age_evidence_at": "2020-01-01T00:00:00Z",
+    }
+    result = mvr._score(row, _snapshot("arbitrum", token, age_days=30), now, None, {"verified": False})
+    assert result["market_age_registry_days"] is None
+    assert "PAIR_AGE_LT_180D_OR_UNKNOWN" in result["blockers"]
+
+
 def test_live_liquidity_floor_never_relaxed():
     now = datetime(2026, 9, 4, tzinfo=timezone.utc)
     token = "0x7890000000000000000000000000000000000123"
@@ -105,16 +139,71 @@ def test_spot_confirmation_requires_exact_registry_chain_and_contract(tmp_path: 
     assert wrong_chain["verified"] is False
 
 
+def test_exact_spot_watch_injects_registry_contract_even_if_not_trending(tmp_path: Path):
+    token = "0x68731d6f14b827bbcffbebb62b19daa18de1d79c"
+    (tmp_path / "cex-identity-registry.json").write_text(
+        json.dumps({
+            "symbols": {
+                "IDOS": {
+                    "chain": "arbitrum",
+                    "token_address": token,
+                    "coingecko_id": "idos",
+                    "market_age_evidence_at": "2026-03-05T00:00:00Z",
+                    "evidence_source": "EXACT_IDOS_FIXTURE",
+                }
+            }
+        }),
+        encoding="utf-8",
+    )
+    (tmp_path / "cex-spot-revival-radar.json").write_text(
+        json.dumps({"watchlist": [{"symbol": "IDOSUSDT", "spot_revival_score": 51}]}),
+        encoding="utf-8",
+    )
+    rows = mvr._discover_spot_registry_candidates(tmp_path)
+    assert len(rows) == 1
+    assert rows[0]["chain"] == "arbitrum"
+    assert rows[0]["token"] == token
+    assert rows[0]["registry_identity_verified"] is True
+    assert rows[0]["discovery_sources"] == ["cex-spot-exact-registry-trigger"]
+
+
+def test_unregistered_spot_symbol_never_injects_candidate(tmp_path: Path):
+    (tmp_path / "cex-identity-registry.json").write_text(
+        '{"symbols":{"IDOS":{"chain":"arbitrum","token_address":"0x68731d6f14b827bbcffbebb62b19daa18de1d79c"}}}',
+        encoding="utf-8",
+    )
+    (tmp_path / "cex-spot-revival-radar.json").write_text(
+        '{"watchlist":[{"symbol":"FAKEUSDT","spot_revival_score":99}]}',
+        encoding="utf-8",
+    )
+    assert mvr._discover_spot_registry_candidates(tmp_path) == []
+
+
+def test_registry_candidate_keeps_exact_chain_scope(tmp_path: Path):
+    token = "0x68731d6f14b827bbcffbebb62b19daa18de1d79c"
+    (tmp_path / "cex-identity-registry.json").write_text(
+        json.dumps({"symbols": {"IDOS": {"chain": "arbitrum", "token_address": token}}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "cex-spot-revival-radar.json").write_text(
+        '{"watchlist":[{"symbol":"IDOS_USDT","spot_revival_score":51}]}',
+        encoding="utf-8",
+    )
+    rows = mvr._discover_spot_registry_candidates(tmp_path)
+    assert rows[0]["chain"] == "arbitrum"
+    assert mvr._key(rows[0]["chain"], rows[0]["token"]) != mvr._key("base", token)
+
+
 def test_run_keeps_all_output_research_only(tmp_path: Path, monkeypatch):
     token = "0xdef0000000000000000000000000000000000002"
     monkeypatch.setattr(
         mvr,
         "discover_core_candidates",
-        lambda: ([{"chain": "base", "token": token, "symbol": "TEST", "discovery_sources": ["fixture"]}], []),
+        lambda data_dir=mvr.DATA: ([{"chain": "base", "token": token, "symbol": "TEST", "discovery_sources": ["fixture"]}], []),
     )
     monkeypatch.setattr(mvr, "market_snapshot", lambda chain, address: _snapshot(chain, address))
     payload = mvr.run(tmp_path, "2026-09-04T00:00:00+00:00")
-    assert payload["mode"] == "RESEARCH_ONLY_CORE_MULTICHAIN_VETERAN_REVIVAL_V1"
+    assert payload["mode"] == "RESEARCH_ONLY_CORE_MULTICHAIN_VETERAN_REVIVAL_V2"
     assert payload["policy"]["production_portfolio_impact"] == "NONE"
     assert payload["core_chains"] == ["solana", "ethereum", "bsc", "arbitrum", "base"]
     assert payload["veteran_gate_pass"] == 1
