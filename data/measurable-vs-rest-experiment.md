@@ -1,7 +1,7 @@
 # Wallet500 — Measurable vs Rest Experiment
 
 {
-  "generated_at": "2026-09-04T10:15:35.600704+00:00",
+  "generated_at": "2026-09-04T12:13:18.417792+00:00",
   "method": "MEASURABLE_VS_REST_BIAS_EXPERIMENT_V1",
   "production_change": false,
   "truth_rule": "Do not interpret measurability as alpha until technical/data-coverage bias is separated from market-feature differences.",
@@ -55,7 +55,7 @@
       "liquidity_usd_median": 6.525,
       "volume_h1_median": 693.825,
       "turnover_h1_median": 0.041125,
-      "buy_sell_ratio_median": 1.095454,
+      "buy_sell_ratio_median": 1.102632,
       "txns_h1_median": 18.0
     },
     "rest": {
@@ -70,7 +70,7 @@
       "liquidity_median_ratio_measured_to_rest": null,
       "volume_median_ratio_measured_to_rest": 0.512703,
       "turnover_median_ratio_measured_to_rest": 0.007369,
-      "buy_sell_ratio_median_ratio_measured_to_rest": 0.896281,
+      "buy_sell_ratio_median_ratio_measured_to_rest": 0.902154,
       "txns_median_ratio_measured_to_rest": 0.62069
     }
   },
