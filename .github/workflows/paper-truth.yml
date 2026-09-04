@@ -34,8 +34,7 @@ on:
 permissions:
   contents: write
 
-# Main publication stays serialized; each PR SHA gets an independent fast check
-# so an obsolete deep checkout cannot block validation of a corrected commit.
+# Main publication stays serialized; each PR SHA gets an independent fast check.
 concurrency:
   group: wallet500-paper-truth-${{ github.event_name == 'pull_request' && github.sha || 'main-publisher' }}
   cancel-in-progress: false
@@ -48,9 +47,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # PR checks do not need the multi-gigabyte Git history. Main publishers
-          # retain full history because they may need to rebase before pushing.
-          fetch-depth: ${{ github.event_name == 'pull_request' && 1 || 0 }}
+          # Publishing now resets onto the latest main and restores only the two
+          # generated truth files, so neither PR nor main needs deep Git history.
+          fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -129,24 +128,28 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
-          git add data/paper-truth-ledger.json data/paper-truth-summary.json
-          if git diff --cached --quiet; then
-            echo 'No paper truth change'
-            exit 0
-          fi
-          git commit -m 'truth: advance quote-verified paper portfolio'
-          for attempt in 1 2 3 4 5; do
+
+          # Preserve the already validated generated truth result. Every retry then
+          # starts from the newest main and reapplies only these two files. This
+          # avoids rebasing a data commit across unrelated high-frequency publishers.
+          tmp="$(mktemp -d)"
+          cp data/paper-truth-ledger.json "$tmp/ledger.json"
+          cp data/paper-truth-summary.json "$tmp/summary.json"
+
+          for attempt in 1 2 3 4 5 6 7 8; do
             git fetch origin main
-            if ! git rebase origin/main; then
-              git rebase --abort || true
-              echo 'FATAL: paper truth publisher rebase conflict; refusing automatic conflict resolution'
-              exit 1
+            git reset --hard origin/main
+            cp "$tmp/ledger.json" data/paper-truth-ledger.json
+            cp "$tmp/summary.json" data/paper-truth-summary.json
+            git add data/paper-truth-ledger.json data/paper-truth-summary.json
+            if git diff --cached --quiet; then
+              echo 'No paper truth change'
+              exit 0
             fi
+            git commit -m 'truth: advance quote-verified paper portfolio'
             if git push origin HEAD:main; then
               exit 0
             fi
             sleep 3
-            if [ "$attempt" = 5 ]; then
-              exit 1
-            fi
           done
+          exit 1

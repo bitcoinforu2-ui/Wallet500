@@ -4,12 +4,23 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '8,23,38,53 * * * *'
+  pull_request:
+    paths:
+      - 'src/wallet500/reawakening_shadow.py'
+      - 'src/wallet500/reawakening_forward_tracker.py'
+      - 'src/wallet500/reawakening_telegram.py'
+      - 'tests/test_reawakening_shadow.py'
+      - 'tests/test_reawakening_forward_tracker.py'
+      - 'tests/test_reawakening_telegram.py'
+      - '.github/workflows/reawakening-shadow.yml'
   push:
     branches: [main]
     paths:
       - 'src/wallet500/reawakening_shadow.py'
+      - 'src/wallet500/reawakening_forward_tracker.py'
       - 'src/wallet500/reawakening_telegram.py'
       - 'tests/test_reawakening_shadow.py'
+      - 'tests/test_reawakening_forward_tracker.py'
       - 'tests/test_reawakening_telegram.py'
       - '.github/workflows/reawakening-shadow.yml'
 
@@ -17,13 +28,13 @@ permissions:
   contents: write
 
 concurrency:
-  group: wallet500-reawakening-shadow
+  group: wallet500-reawakening-shadow-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'publisher' }}
   cancel-in-progress: false
 
 jobs:
   shadow:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,23 +45,28 @@ jobs:
       - name: Install and test V2 recovery truth rules
         run: |
           pip install -e . pytest
-          python -m pytest -q tests/test_reawakening_shadow.py tests/test_reawakening_telegram.py
-      - name: Build forward-only false-negative recovery lane
-        run: python -m wallet500.reawakening_shadow
+          python -m pytest -q tests/test_reawakening_shadow.py tests/test_reawakening_forward_tracker.py tests/test_reawakening_telegram.py
+      - name: Measure rejected immutable pairs and build forward-only recovery lane
+        if: github.event_name != 'pull_request'
+        env:
+          WALLET500_REAWAKENING_REQUEST_PAUSE_SECONDS: '0.22'
+        run: python -m wallet500.reawakening_forward_tracker
       - name: Send only fresh Recovery V2 Telegram alerts
+        if: github.event_name != 'pull_request'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m wallet500.reawakening_telegram
       - name: Validate V2 truth contract
+        if: github.event_name != 'pull_request'
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
           p=Path('data/reawakening-shadow.json'); s=Path('data/reawakening-shadow-state.json')
-          if not p.exists() or not s.exists(): raise SystemExit('REAWAKENING_OUTPUT_MISSING')
-          d=json.loads(p.read_text())
-          st=json.loads(s.read_text())
+          f=Path('data/reawakening-forward-state.json'); r=Path('data/reawakening-forward-report.json')
+          if not p.exists() or not s.exists() or not f.exists() or not r.exists(): raise SystemExit('REAWAKENING_OUTPUT_MISSING')
+          d=json.loads(p.read_text()); st=json.loads(s.read_text()); fs=json.loads(f.read_text()); fr=json.loads(r.read_text())
           if d.get('mode')!='RESEARCH_ONLY_SURVIVOR_REAWAKENING_V2': raise SystemExit('REAWAKENING_MODE_INVALID')
           if d.get('contract')!='FALSE_NEGATIVE_RECOVERY_RECHECK_V2': raise SystemExit('REAWAKENING_CONTRACT_INVALID')
           if d.get('production_portfolio_impact')!='NONE' or d.get('automatic_buy') is not False: raise SystemExit('REAWAKENING_SAFETY_INVALID')
@@ -58,16 +74,26 @@ jobs:
           if d.get('no_hindsight') is not True: raise SystemExit('REAWAKENING_NO_HINDSIGHT_MISSING')
           if not d.get('v2_started_at') or not st.get('v2_started_at'): raise SystemExit('V2_FORWARD_START_MISSING')
           if d.get('v2_started_at') != st.get('v2_started_at'): raise SystemExit('V2_FORWARD_START_DRIFT')
-          if not str(d.get('primary_recheck_source') or '').startswith('outcome-tracker.json'): raise SystemExit('PRIMARY_RECHECK_SOURCE_INVALID')
+          if not str(d.get('primary_recheck_source') or '').startswith('reawakening-forward-state.json'): raise SystemExit('PRIMARY_RECHECK_SOURCE_INVALID')
+          if fs.get('mode')!='RESEARCH_ONLY_REAWAKENING_EXACT_PAIR_FORWARD_V1' or fr.get('mode')!='RESEARCH_ONLY_REAWAKENING_EXACT_PAIR_FORWARD_V1': raise SystemExit('DEDICATED_FORWARD_MODE_INVALID')
+          for x in (fs,fr):
+              if x.get('production_portfolio_impact')!='NONE' or x.get('production_gate_changed') is not False or x.get('automatic_buy') is not False: raise SystemExit('DEDICATED_FORWARD_SAFETY_INVALID')
+          mc=fs.get('measurement_contract') or {}
+          if mc.get('pair_identity')!='IMMUTABLE_FIRST_REJECT_EXACT_PAIR' or mc.get('token_identity_must_be_verified') is not True or mc.get('forward_only') is not True: raise SystemExit('DEDICATED_FORWARD_IDENTITY_CONTRACT_INVALID')
+          dc=d.get('dedicated_forward_contract') or {}
+          if dc.get('immutable_exact_pair') is not True or dc.get('token_identity_verified_required') is not True or dc.get('forward_only') is not True: raise SystemExit('DEDICATED_FORWARD_SHADOW_CONTRACT_INVALID')
           recovery=d.get('recovery_rule') or {}
           if float(recovery.get('liquidity_gte_usd') or 0) != 50000.0: raise SystemExit('LIQUIDITY_HARD_FLOOR_CHANGED')
           if recovery.get('exact_pair_locked') is not True: raise SystemExit('EXACT_PAIR_LOCK_MISSING')
           if recovery.get('observations_must_be_after_v2_started_at') is not True: raise SystemExit('FORWARD_ONLY_CUTOFF_MISSING')
           if float(recovery.get('confirmation_span_minutes_gte') or 0) < 15.0: raise SystemExit('CONFIRMATION_WINDOW_WEAKENED')
           if st.get('mode')!='RESEARCH_ONLY_SURVIVOR_REAWAKENING_V2': raise SystemExit('REAWAKENING_STATE_MODE_INVALID')
+          if int(fr.get('eligible_rejects') or 0) != int((d.get('counts') or {}).get('eligible_liquidity_only_rejects') or 0): raise SystemExit('DEDICATED_FORWARD_ELIGIBLE_COUNT_DRIFT')
           print('FALSE_NEGATIVE_RECOVERY_V2_OK', d.get('counts'))
+          print('DEDICATED_FORWARD_OK', {k:fr.get(k) for k in ('eligible_rejects','exact_pair_successes','exact_pair_misses','observations_added_this_run','state_hot_observations')})
           PY
       - name: Publish immutable V2 shadow state
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
@@ -75,18 +101,22 @@ jobs:
           tmp="$(mktemp -d)"
           cp data/reawakening-shadow.json "$tmp/latest.json"
           cp data/reawakening-shadow-state.json "$tmp/state.json"
+          cp data/reawakening-forward-state.json "$tmp/forward-state.json"
+          cp data/reawakening-forward-report.json "$tmp/forward-report.json"
           cp data/reawakening-telegram-report.json "$tmp/telegram-report.json"
           cp data/reawakening-telegram-state.json "$tmp/telegram-state.json"
-          for attempt in 1 2 3 4 5; do
+          for attempt in 1 2 3 4 5 6 7 8; do
             git fetch origin main
             git reset --hard origin/main
             cp "$tmp/latest.json" data/reawakening-shadow.json
             cp "$tmp/state.json" data/reawakening-shadow-state.json
+            cp "$tmp/forward-state.json" data/reawakening-forward-state.json
+            cp "$tmp/forward-report.json" data/reawakening-forward-report.json
             cp "$tmp/telegram-report.json" data/reawakening-telegram-report.json
             cp "$tmp/telegram-state.json" data/reawakening-telegram-state.json
-            git add data/reawakening-shadow.json data/reawakening-shadow-state.json data/reawakening-telegram-report.json data/reawakening-telegram-state.json
+            git add data/reawakening-shadow.json data/reawakening-shadow-state.json data/reawakening-forward-state.json data/reawakening-forward-report.json data/reawakening-telegram-report.json data/reawakening-telegram-state.json
             if git diff --cached --quiet; then exit 0; fi
-            git commit -m 'research: refresh false-negative recovery V2 shadow'
+            git commit -m 'research: refresh false-negative recovery V2 exact-pair forward state'
             if git push origin HEAD:main; then exit 0; fi
             sleep 3
           done
