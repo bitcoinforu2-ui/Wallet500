@@ -42,8 +42,8 @@ jobs:
       - name: Start PRE-WAKING exact-pair wallet evidence
         env:
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
-          REVIVAL_PREWAKING_MAX_TARGETS: '8'
-          REVIVAL_PREWAKING_MAX_SIGNATURES: '45'
+          REVIVAL_PREWAKING_MAX_TARGETS: '16'
+          REVIVAL_PREWAKING_MAX_SIGNATURES: '22'
           REVIVAL_PREWAKING_PRIORITY_SLOTS: '4'
         run: |
           if [ -z "${SOLANA_RPC_URL:-}" ]; then
@@ -82,11 +82,11 @@ jobs:
           if sel.get('future_data_used') is not False: raise SystemExit('PREWAKING_FUTURE_DATA_POLICY_INVALID')
           if sel.get('coverage_rotation') is not True: raise SystemExit('PREWAKING_ROTATION_DISABLED')
           if sel.get('rotation_state_source')!='PREVIOUS_PUBLISHED_TARGET_SET_ONLY': raise SystemExit('PREWAKING_ROTATION_STATE_INVALID')
-          if int(sel.get('max_targets') or 0)!=8: raise SystemExit('PREWAKING_TARGET_POLICY_INVALID')
+          if int(sel.get('max_targets') or 0)!=16: raise SystemExit('PREWAKING_TARGET_POLICY_INVALID')
           if int(sel.get('priority_slots') or 0)!=4: raise SystemExit('PREWAKING_PRIORITY_POLICY_INVALID')
           if int(pre.get('targets') or 0) > int(sel.get('max_targets') or 0): raise SystemExit('PREWAKING_TARGET_CAP_BREACH')
           limits=pre.get('collector_limits') or {}
-          if int(limits.get('max_signatures_per_token_per_run') or 0)!=45: raise SystemExit('PREWAKING_SIGNATURE_DEPTH_INVALID')
+          if int(limits.get('max_signatures_per_token_per_run') or 0)!=22: raise SystemExit('PREWAKING_SIGNATURE_DEPTH_INVALID')
           if int(limits.get('max_signature_budget_per_run') or 10**9)>360: raise SystemExit('PREWAKING_RPC_BUDGET_BREACH')
           allowed_lanes={'PRIORITY_PERSISTENT','ROTATION_COVERAGE'}
           for row in pre.get('tokens') or []:
