@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .solana_mintability_gate import enforce_revival
+
 DATA = Path("data")
 LATEST = DATA / "revival-1000-latest.json"
 MODE = "STRICT_STRENGTH_LEVELS_V1"
@@ -183,6 +185,9 @@ def apply_strict_strength(payload: dict) -> dict:
 def main() -> None:
     if not LATEST.exists():
         raise SystemExit("REVIVAL_STRICT_STRENGTH_LATEST_MISSING")
+    # Hard product rule: no Solana token reaches grading or the public Revival
+    # universe unless its on-chain mint authority is verified revoked/null.
+    enforce_revival(DATA)
     payload = json.loads(LATEST.read_text())
     if payload.get("network") != "solana" or payload.get("production_portfolio_impact") != "NONE":
         raise SystemExit("REVIVAL_STRICT_STRENGTH_UNSAFE_INPUT")
