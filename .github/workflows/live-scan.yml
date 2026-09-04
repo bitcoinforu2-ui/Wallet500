@@ -19,9 +19,8 @@ on:
 permissions:
   contents: write
 
-# The long Live Scan performs collection and validation only. Its final verified
-# data state is handed off as an immutable artifact to the short serialized
-# Wallet500 Verified Snapshot Publisher, removing the long-running main race.
+# Collection and validation only. Final verified state is handed to the
+# serialized snapshot publisher so research helpers cannot race production.
 concurrency:
   group: wallet500-live-scan-publisher
   cancel-in-progress: false
@@ -60,15 +59,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # A concurrent research/data writer can legitimately move main while this
-          # scan is running. Never rebase a generated fast-feed commit over newer
-          # versions of the same truth files: that creates content conflicts and can
-          # abort the entire live scan. If main moved, keep the generated files in
-          # this workspace for downstream validation and simply skip the stale early
-          # publish. The final verified publisher remains fail-closed.
           git fetch origin main
           if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
-            echo "Fast publish skipped safely: main moved during scan; retaining local fast-lane outputs for full validation"
+            echo "Fast publish skipped safely: main moved during scan; retaining local outputs for full validation"
           else
             git add data/cex-revival-radar.json data/cex-learning.json data/real-alerts.json || true
             git add data/cex-state.json data/cex-state.json.gz 2>/dev/null || true
@@ -98,17 +91,6 @@ jobs:
       - name: Ingest 6h external signal cohort
         continue-on-error: true
         run: python -m wallet500.external_signal_cohort
-      - name: Track CryptoYeezus direct wallet 1pct shadow lane
-        continue-on-error: true
-        env:
-          COPY_LIVE_ENABLED: 'false'
-          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
-          JUPITER_API_KEY: ${{ secrets.JUPITER_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          python -m pytest -q tests/test_cryptoyeezus_copy.py tests/test_cryptoyeezus_verified_monitor.py
-          python -m wallet500.cryptoyeezus_verified_monitor
 
       - name: Run veteran revival intelligence scan
         env:
@@ -146,8 +128,6 @@ jobs:
         run: python -m wallet500.holder_cluster_gate
       - name: Apply fail-closed holder cluster production gate
         run: python -m wallet500.holder_cluster_production_gate
-      - name: Run four-arm Survival Alpha experiment
-        run: python -m wallet500.experiment_matrix_v2
       - name: Reconcile immutable $100 paper portfolio
         run: python -m wallet500.paper_portfolio
       - name: Run Decision Engine V1 shadow state machine
@@ -177,9 +157,6 @@ jobs:
         continue-on-error: true
         run: python -m wallet500.scheduler_telemetry
 
-      # Storage-only compaction: every token/call and summary remains in the live
-      # tracker. Only old observation rows are moved verbatim to immutable gzip
-      # shards. Keep at least 24 recent rows/token; risk logic needs only the last 2.
       - name: Archive cold outcome history and bound live publish files
         env:
           WALLET500_OUTCOME_HOT_HISTORY: '24'
