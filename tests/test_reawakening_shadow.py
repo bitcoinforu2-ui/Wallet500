@@ -1,7 +1,10 @@
+import json
+
 from wallet500.reawakening_shadow import (
     eligible_reject,
     first_forward_trigger,
     observation_passes,
+    run,
 )
 
 PAIR = "0x9793a9cBb04f781433254e4530398107E6a8dcee"
@@ -112,3 +115,44 @@ def test_pre_reject_rows_cannot_create_trigger():
         row("2026-09-01T10:05:00+00:00", 0.00110),
     ]
     assert first_forward_trigger(record, history) is None
+
+
+def test_run_uses_outcome_tracker_history_only_after_v2_start(tmp_path):
+    record = reject_record(rejected_at="2026-09-01T10:00:00+00:00")
+    ledger_key = f"bsc|0xabc|{PAIR.lower()}"
+    (tmp_path / "rejected-candidate-ledger.json").write_text(json.dumps({
+        "records": {ledger_key: record}
+    }))
+    (tmp_path / "reawakening-shadow-state.json").write_text(json.dumps({
+        "version": 2,
+        "mode": "RESEARCH_ONLY_SURVIVOR_REAWAKENING_V2",
+        "updated_at": "2026-09-01T10:01:00+00:00",
+        "legacy_v1_triggers": {},
+        "v2_candidates": {},
+        "v2_triggers": {},
+    }))
+    history = [
+        # This strong row predates V2 and must never count toward a forward trigger.
+        row("2026-09-01T10:00:30+00:00", 0.00108, liquidity=70_000),
+        row("2026-09-01T10:05:00+00:00", 0.00110, liquidity=70_000),
+        row("2026-09-01T10:20:00+00:00", 0.00115, liquidity=72_000),
+    ]
+    (tmp_path / "outcome-tracker.json").write_text(json.dumps({
+        "tokens": {
+            "legacy-tracker-key-shape-does-not-matter": {
+                "chain": "bsc",
+                "token": "0xabc",
+                "entry_pair_address": PAIR.lower(),
+                "history": history,
+            }
+        }
+    }))
+
+    payload = run(str(tmp_path))
+    assert payload["counts"]["outcome_tracker_matches"] == 1
+    assert payload["counts"]["shadow_triggers_v2"] == 1
+    target = payload["targets"][0]
+    assert target["first_confirmation_at"] == "2026-09-01T10:05:00+00:00"
+    assert target["triggered_at"] == "2026-09-01T10:20:00+00:00"
+    assert target["evidence_source"] == "OUTCOME_TRACKER_EXACT_PAIR_HISTORY"
+    assert target["v2_started_at"] == "2026-09-01T10:01:00+00:00"
