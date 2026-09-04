@@ -1,4 +1,4 @@
-name: Wallet500 Survivor Reawakening Shadow
+name: Wallet500 False-Negative Recovery V2
 
 on:
   workflow_dispatch:
@@ -31,20 +31,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install and test
+      - name: Install and test V2 recovery truth rules
         run: |
           pip install -e . pytest
-          python -m pytest -q tests/test_reawakening_shadow.py
-      - name: Build forward-only shadow lane
+          python -m pytest -q tests/test_reawakening_shadow.py tests/test_reawakening_telegram.py
+      - name: Build forward-only false-negative recovery lane
         run: python -m wallet500.reawakening_shadow
-      - name: Send only fresh Survivor Reawakening Telegram alerts
+      - name: Send only fresh Recovery V2 Telegram alerts
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          python -m pytest -q tests/test_reawakening_telegram.py
-          python -m wallet500.reawakening_telegram
-      - name: Validate truth contract
+        run: python -m wallet500.reawakening_telegram
+      - name: Validate V2 truth contract
         run: |
           python - <<'PY'
           import json
@@ -52,13 +50,20 @@ jobs:
           p=Path('data/reawakening-shadow.json'); s=Path('data/reawakening-shadow-state.json')
           if not p.exists() or not s.exists(): raise SystemExit('REAWAKENING_OUTPUT_MISSING')
           d=json.loads(p.read_text())
-          if d.get('mode')!='RESEARCH_ONLY_SURVIVOR_REAWAKENING_V1': raise SystemExit('REAWAKENING_MODE_INVALID')
-          if d.get('contract')!='SURVIVOR_REAWAKENING_V1': raise SystemExit('REAWAKENING_CONTRACT_INVALID')
+          st=json.loads(s.read_text())
+          if d.get('mode')!='RESEARCH_ONLY_SURVIVOR_REAWAKENING_V2': raise SystemExit('REAWAKENING_MODE_INVALID')
+          if d.get('contract')!='FALSE_NEGATIVE_RECOVERY_RECHECK_V2': raise SystemExit('REAWAKENING_CONTRACT_INVALID')
           if d.get('production_portfolio_impact')!='NONE' or d.get('automatic_buy') is not False: raise SystemExit('REAWAKENING_SAFETY_INVALID')
+          if d.get('production_gate_changed') is not False: raise SystemExit('PRODUCTION_GATE_WAS_CHANGED')
           if d.get('no_hindsight') is not True: raise SystemExit('REAWAKENING_NO_HINDSIGHT_MISSING')
-          print('SURVIVOR_REAWAKENING_V1_OK', d.get('counts'))
+          recovery=d.get('recovery_rule') or {}
+          if float(recovery.get('liquidity_gte_usd') or 0) != 50000.0: raise SystemExit('LIQUIDITY_HARD_FLOOR_CHANGED')
+          if recovery.get('exact_pair_locked') is not True: raise SystemExit('EXACT_PAIR_LOCK_MISSING')
+          if float(recovery.get('confirmation_span_minutes_gte') or 0) < 15.0: raise SystemExit('CONFIRMATION_WINDOW_WEAKENED')
+          if st.get('mode')!='RESEARCH_ONLY_SURVIVOR_REAWAKENING_V2': raise SystemExit('REAWAKENING_STATE_MODE_INVALID')
+          print('FALSE_NEGATIVE_RECOVERY_V2_OK', d.get('counts'))
           PY
-      - name: Publish immutable shadow state
+      - name: Publish immutable V2 shadow state
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
@@ -77,7 +82,7 @@ jobs:
             cp "$tmp/telegram-state.json" data/reawakening-telegram-state.json
             git add data/reawakening-shadow.json data/reawakening-shadow-state.json data/reawakening-telegram-report.json data/reawakening-telegram-state.json
             if git diff --cached --quiet; then exit 0; fi
-            git commit -m 'research: refresh survivor reawakening shadow'
+            git commit -m 'research: refresh false-negative recovery V2 shadow'
             if git push origin HEAD:main; then exit 0; fi
             sleep 3
           done
