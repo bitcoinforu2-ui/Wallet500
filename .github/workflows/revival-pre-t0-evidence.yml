@@ -4,19 +4,29 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '*/5 * * * *'
+  pull_request:
+    paths:
+      - 'src/wallet500/revival_pre_t0_evidence.py'
+      - 'src/wallet500/revival_pre_t0_evidence_v2.py'
+      - 'src/wallet500/waking_pre_t0_confirmation.py'
+      - 'tests/test_revival_pre_t0_evidence.py'
+      - 'tests/test_revival_pre_t0_evidence_v2.py'
+      - '.github/workflows/revival-pre-t0-evidence.yml'
   push:
     branches: [main]
     paths:
       - 'src/wallet500/revival_pre_t0_evidence.py'
+      - 'src/wallet500/revival_pre_t0_evidence_v2.py'
       - 'src/wallet500/waking_pre_t0_confirmation.py'
       - 'tests/test_revival_pre_t0_evidence.py'
+      - 'tests/test_revival_pre_t0_evidence_v2.py'
       - '.github/workflows/revival-pre-t0-evidence.yml'
 
 permissions:
   contents: write
 
 concurrency:
-  group: wallet500-revival-pre-t0-evidence
+  group: wallet500-revival-pre-t0-evidence-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -33,9 +43,9 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Unit tests
-        run: python -m pytest -q tests/test_revival_pre_t0_evidence.py
-      - name: Capture immutable PRE-T0 evidence
-        run: python -m wallet500.revival_pre_t0_evidence
+        run: python -m pytest -q tests/test_revival_pre_t0_evidence.py tests/test_revival_pre_t0_evidence_v2.py
+      - name: Capture immutable PRE-T0 evidence with identity repair
+        run: python -m wallet500.revival_pre_t0_evidence_v2
       - name: Join PRE-T0 evidence to Waking confirmation shadow
         run: python -m wallet500.waking_pre_t0_confirmation
       - name: Validate no-hindsight truth contracts
@@ -65,6 +75,9 @@ jobs:
           if truth.get('missing_evidence_imputed') is not False: raise SystemExit('PRE_T0_IMPUTATION_INVALID')
           if truth.get('concentration_positive_alpha') is not False: raise SystemExit('PRE_T0_CONCENTRATION_ALPHA_INVALID')
           if truth.get('raw_social_mentions_are_organic_alpha') is not False: raise SystemExit('PRE_T0_SOCIAL_TRUTH_INVALID')
+          integrity=ledger.get('integrity') or {}
+          if integrity.get('unique_record_ids') is not True: raise SystemExit('PRE_T0_IDENTITY_INTEGRITY_MISSING')
+          if integrity.get('conflicting_same_id_policy')!='FAIL_CLOSED': raise SystemExit('PRE_T0_COLLISION_GUARD_MISSING')
 
           records={}
           for row in ledger.get('records') or []:
@@ -99,6 +112,8 @@ jobs:
 
           if latest.get('version')!='REVIVAL_PRE_T0_EVIDENCE_V1' or latest.get('no_hindsight') is not True:
               raise SystemExit('PRE_T0_LATEST_INVALID')
+          if (latest.get('integrity') or {}).get('record_ids_unique') is not True:
+              raise SystemExit('PRE_T0_LATEST_INTEGRITY_INVALID')
           if waking.get('version')!='WAKING_PRE_T0_CONFIRMATION_V1': raise SystemExit('WAKING_PRE_T0_VERSION_INVALID')
           if waking.get('mode')!='RESEARCH_ONLY_WAKING_PRE_T0_CONFIRMATION_SHADOW': raise SystemExit('WAKING_PRE_T0_MODE_INVALID')
           if waking.get('production_portfolio_impact')!='NONE' or waking.get('automatic_buy') is not False: raise SystemExit('WAKING_PRE_T0_SAFETY_INVALID')
@@ -115,6 +130,7 @@ jobs:
           print('WAKING_PRE_T0_CONFIRMATION_OK', waking.get('counts'))
           PY
       - name: Publish PRE-T0 evidence snapshots
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
