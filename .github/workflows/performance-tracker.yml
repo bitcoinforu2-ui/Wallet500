@@ -107,7 +107,7 @@ jobs:
               if not r.get('pair_address'): raise SystemExit('FATAL: experiment record lacks exact pair identity')
           if int(aq.get('total_records_audited') or 0)<=0: raise SystemExit('FATAL: address audit has no records')
           if aq.get('method')!='ADDRESS_QUALITY_AUDIT_V2': raise SystemExit('FATAL: address audit method mismatch')
-          if d.get('exact_pair_index_mode')!='CHAIN_TOKEN_PAIR': raise SystemExit('FATAL: performance tracker is not using chain+token+pair indexing')
+          if d.get('exact_pair_index_mode')!='CHAIN_TOKEN_PAIR_CASE_SAFE': raise SystemExit('FATAL: performance tracker is not using case-safe chain+token+pair indexing')
           print('INTEGRITY PASS')
           print('RESEARCH', {'experiment_v1':len(ev.get('records') or []),'winner_dna_status':wd.get('status'),'winner_dna':wd.get('winner_n'),'winner_controls':wd.get('control_n'),'solana_winner_dna':(wd.get('solana_study') or {}).get('status'),'revival_historical_dna':rh.get('counts'),'measured_vs_rest':[mv.get('measured_now_n'),mv.get('rest_n')]})
           PY
