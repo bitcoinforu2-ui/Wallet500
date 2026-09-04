@@ -61,21 +61,23 @@ def _message(row: dict) -> str:
     pair = str(row.get("pair_address") or "unknown")
     dex = f"https://dexscreener.com/{str(row.get('chain') or '').lower()}/{pair}"
     return "\n".join([
-        "🔥 WALLET500 — SURVIVOR REAWAKENING",
+        "🔥 WALLET500 — FALSE-NEGATIVE RECOVERY V2",
         "⚠️ התראת מחקר חמה — עדיין לא BUY",
         f"רשת: {chain}",
         f"Token: {token}",
         f"Exact Pair: {pair}",
         f"מחיר טריגר: {_fmt_money(row.get('price_usd'))}",
         f"נזילות: {_fmt_money(metrics.get('liquidity_usd'))}",
-        f"תשואה מ-T0 בעת הטריגר: {float(metrics.get('return_pct') or 0):+.1f}%",
+        f"שינוי מאז הפסילה: {float(metrics.get('gain_since_reject_pct') or 0):+.1f}%",
+        f"נפח 1H: {_fmt_money(metrics.get('volume_h1_usd'))}",
         f"Turnover 1H: {float(metrics.get('turnover_h1') or 0):.2f}x",
         f"Buy/Sell 1H: {float(metrics.get('buy_sell_ratio_h1') or 0):.2f}x",
-        f"פעילות 1H: {int(metrics.get('activity_h1') or 0)}",
+        f"עסקאות 1H: {int(metrics.get('txns_h1') or 0)}",
         f"אישורים רצופים: {int(row.get('confirmation_observations') or 0)}",
-        "Exact-pair survivor: מאומת ✅",
-        "Holder/Cluster · LP · Exit Depth: עדיין דורשים אימות",
-        "החסם המקורי לא בוטל; זהו מסלול Reawakening נפרד.",
+        f"חלון אישור: {float(row.get('confirmation_span_minutes') or 0):.0f} דקות",
+        "Exact-pair recovery מעל $50K: מאומת ✅",
+        "הפסילה המקורית נשמרת; זו בדיקת second-chance נפרדת.",
+        "Holder/Cluster · LP · Exit Depth: עדיין דורשים אימות לפני כל קידום לפרודקשן.",
         f"DexScreener: {dex}",
     ])
 
@@ -109,7 +111,7 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
                 chat_id,
                 "\n".join([
                     "✅ Wallet500 מחובר",
-                    "מנוע Survivor Reawakening פעיל.",
+                    "מנוע False-Negative Recovery V2 פעיל.",
                     "מכאן יישלחו רק התראות מחקר חמות וחדשות — לא הוראות קנייה.",
                     "הודעות היסטוריות לא יישלחו מחדש.",
                 ]),
@@ -145,7 +147,7 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
     if len(sent) > 5000:
         sent = dict(list(sent.items())[-5000:])
     report = {
-        "version": 1,
+        "version": 2,
         "updated_at": reference.isoformat(),
         "source": SOURCE,
         "configured": configured,
@@ -171,7 +173,7 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
         },
     }
     _write(out / STATE, {
-        "version": 1,
+        "version": 2,
         "updated_at": reference.isoformat(),
         "connection_confirmed": connection_confirmed,
         "sent": sent,

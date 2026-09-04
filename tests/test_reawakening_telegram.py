@@ -14,7 +14,15 @@ def target(triggered_at="2026-09-01T18:50:00+00:00"):
         "triggered_at": triggered_at,
         "price_usd": .001,
         "confirmation_observations": 2,
-        "metrics": {"liquidity_usd": 80_000, "return_pct": 25, "turnover_h1": 1.2, "buy_sell_ratio_h1": 1.3, "activity_h1": 300},
+        "confirmation_span_minutes": 15,
+        "metrics": {
+            "liquidity_usd": 80_000,
+            "gain_since_reject_pct": 25,
+            "volume_h1_usd": 60_000,
+            "turnover_h1": 0.75,
+            "buy_sell_ratio_h1": 1.3,
+            "txns_h1": 400,
+        },
     }
 
 
@@ -35,6 +43,8 @@ def test_fresh_trigger_is_sent_once(tmp_path, monkeypatch):
     assert len(messages) == 2
     assert "Wallet500 מחובר" in messages[0]
     assert "עדיין לא BUY" in messages[1]
+    assert "שינוי מאז הפסילה: +25.0%" in messages[1]
+    assert "חלון אישור: 15 דקות" in messages[1]
 
 
 def test_historical_trigger_is_suppressed(tmp_path, monkeypatch):
