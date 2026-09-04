@@ -11,6 +11,7 @@ on:
       - 'src/wallet500/veteran_dna_forward_lab.py'
       - 'src/wallet500/veteran_dna_context_freeze.py'
       - 'src/wallet500/veteran_dna_shadow_eval.py'
+      - 'src/wallet500/veteran_dna_context_coverage.py'
       - '.github/workflows/veteran-dna-forward-lab.yml'
       - 'data/revival-1000-latest.json'
       - 'data/holder-concentration-shadow.json'
@@ -39,13 +40,15 @@ jobs:
       - name: Install
         run: pip install -e .
       - name: Compile veteran DNA research modules
-        run: python -m py_compile src/wallet500/veteran_dna_forward_lab.py src/wallet500/veteran_dna_context_freeze.py src/wallet500/veteran_dna_shadow_eval.py
+        run: python -m py_compile src/wallet500/veteran_dna_forward_lab.py src/wallet500/veteran_dna_context_freeze.py src/wallet500/veteran_dna_shadow_eval.py src/wallet500/veteran_dna_context_coverage.py
       - name: Run veteran-only forward DNA lab
         run: python -m wallet500.veteran_dna_forward_lab
       - name: Freeze T0 context without retroactive backfill
         run: python -m wallet500.veteran_dna_context_freeze
       - name: Evaluate pre-registered shadow rules and checkpoint timing
         run: python -m wallet500.veteran_dna_shadow_eval
+      - name: Audit timestamp-safe context coverage
+        run: python -m wallet500.veteran_dna_context_coverage
       - name: Validate truth contract
         run: |
           python - <<'PY'
@@ -54,8 +57,9 @@ jobs:
           led=Path('data/veteran-dna-forward-ledger.json')
           sm=Path('data/veteran-dna-forward-summary.json')
           ev=Path('data/veteran-dna-shadow-eval.json')
-          if not led.exists() or not sm.exists() or not ev.exists(): raise SystemExit('VETERAN_DNA_FORWARD_OUTPUT_MISSING')
-          l=json.loads(led.read_text()); s=json.loads(sm.read_text()); e=json.loads(ev.read_text())
+          cv=Path('data/veteran-dna-context-coverage.json')
+          if not led.exists() or not sm.exists() or not ev.exists() or not cv.exists(): raise SystemExit('VETERAN_DNA_FORWARD_OUTPUT_MISSING')
+          l=json.loads(led.read_text()); s=json.loads(sm.read_text()); e=json.loads(ev.read_text()); v=json.loads(cv.read_text())
           if l.get('mode')!='VETERAN_DNA_FORWARD_NO_HINDSIGHT_V1': raise SystemExit('MODE_INVALID')
           c=l.get('truth_contract') or {}
           if c.get('veteran_only') is not True or c.get('minimum_market_age_days') != 180: raise SystemExit('VETERAN_CONTRACT_INVALID')
@@ -70,6 +74,9 @@ jobs:
           if e.get('production_change') is not False or e.get('threshold_promotion') is not False: raise SystemExit('SHADOW_EVAL_PRODUCTION_LEAK')
           ec=e.get('truth_contract') or {}
           if ec.get('pre_registered_grid') is not True or ec.get('late_24h_checkpoints_excluded_from_rule_evaluation') is not True: raise SystemExit('SHADOW_EVAL_TRUTH_INVALID')
+          if v.get('mode')!='VETERAN_DNA_CONTEXT_COVERAGE_V1' or v.get('production_change') is not False: raise SystemExit('COVERAGE_CONTRACT_INVALID')
+          vc=v.get('truth_contract') or {}
+          if vc.get('missing_context_never_imputed') is not True or vc.get('holder_shadow_is_risk_context_not_positive_growth_signal') is not True: raise SystemExit('COVERAGE_TRUTH_INVALID')
           for r in (l.get('records') or {}).values():
               if r.get('market_age_verified') is not True or float(r.get('market_age_min_days_at_t0') or 0) < 180: raise SystemExit('NON_VETERAN_RECORD_DETECTED')
               if float((r.get('t0_features') or {}).get('liquidity_usd') or 0) < 50000: raise SystemExit('LOW_LIQUIDITY_T0_DETECTED')
@@ -79,9 +86,9 @@ jobs:
                   if float(ctx.get('freeze_lag_minutes') or 0) > 5: raise SystemExit('RETROACTIVE_T0_CONTEXT_DETECTED')
                   if str(ctx.get('exact_token') or '') != str(r.get('token_address') or ''): raise SystemExit('T0_CONTEXT_TOKEN_MISMATCH')
                   if str(ctx.get('exact_pair') or '').lower() != str(r.get('pair_address') or '').lower(): raise SystemExit('T0_CONTEXT_PAIR_MISMATCH')
-          print('VETERAN_DNA_FORWARD_OK', s.get('counts'), l.get('last_context_freeze'), e.get('labeled_sample'), e.get('status'))
+          print('VETERAN_DNA_FORWARD_OK', s.get('counts'), l.get('last_context_freeze'), e.get('labeled_sample'), v.get('coverage',{}).get('metrics'), e.get('status'))
           PY
-      - name: Publish forward ledger and shadow evaluation
+      - name: Publish forward ledger and research audits
         shell: bash
         run: |
           set -euo pipefail
@@ -90,13 +97,15 @@ jobs:
           cp data/veteran-dna-forward-ledger.json /tmp/veteran-dna-forward-ledger.json
           cp data/veteran-dna-forward-summary.json /tmp/veteran-dna-forward-summary.json
           cp data/veteran-dna-shadow-eval.json /tmp/veteran-dna-shadow-eval.json
+          cp data/veteran-dna-context-coverage.json /tmp/veteran-dna-context-coverage.json
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
             cp /tmp/veteran-dna-forward-ledger.json data/veteran-dna-forward-ledger.json
             cp /tmp/veteran-dna-forward-summary.json data/veteran-dna-forward-summary.json
             cp /tmp/veteran-dna-shadow-eval.json data/veteran-dna-shadow-eval.json
-            git add data/veteran-dna-forward-ledger.json data/veteran-dna-forward-summary.json data/veteran-dna-shadow-eval.json
+            cp /tmp/veteran-dna-context-coverage.json data/veteran-dna-context-coverage.json
+            git add data/veteran-dna-forward-ledger.json data/veteran-dna-forward-summary.json data/veteran-dna-shadow-eval.json data/veteran-dna-context-coverage.json
             if git diff --cached --quiet; then exit 0; fi
             git commit -m 'research: advance veteran DNA forward lab'
             if git push origin HEAD:main; then exit 0; fi
