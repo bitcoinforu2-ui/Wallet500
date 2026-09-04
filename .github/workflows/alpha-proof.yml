@@ -7,29 +7,37 @@ on:
       - "Wallet500 Multi-Chain Live Scan"
       - "Wallet500 Survivor Reawakening Shadow"
     types: [completed]
+  pull_request:
+    paths:
+      - 'src/wallet500/alpha_proof.py'
+      - 'src/wallet500/alpha_checkpoint_recovery.py'
+      - 'tests/test_alpha_proof.py'
+      - 'tests/test_alpha_checkpoint_recovery.py'
+      - '.github/workflows/alpha-proof.yml'
   push:
     branches: [main]
     paths:
       - 'src/wallet500/alpha_proof.py'
+      - 'src/wallet500/alpha_checkpoint_recovery.py'
       - 'tests/test_alpha_proof.py'
+      - 'tests/test_alpha_checkpoint_recovery.py'
       - '.github/workflows/alpha-proof.yml'
 
 permissions:
   contents: write
 
 concurrency:
-  group: wallet500-forward-alpha-proof
+  group: wallet500-forward-alpha-proof-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
   prove:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
           fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
@@ -37,7 +45,9 @@ jobs:
       - name: Install and test forward proof contract
         run: |
           pip install -e . pytest
-          python -m pytest -q tests/test_alpha_proof.py
+          python -m pytest -q tests/test_alpha_proof.py tests/test_alpha_checkpoint_recovery.py
+      - name: Recover immutable exact-pair checkpoint gaps
+        run: python -m wallet500.alpha_checkpoint_recovery
       - name: Update forward-only alpha proof
         run: python -m wallet500.alpha_proof
       - name: Validate no-hindsight proof output
@@ -54,9 +64,17 @@ jobs:
           if ledger.get('mode')!='FORWARD_ONLY_ALPHA_PROOF_V1': raise SystemExit('ALPHA_LEDGER_MODE_INVALID')
           if report.get('activation_at')!=ledger.get('activation_at'): raise SystemExit('ALPHA_ACTIVATION_MISMATCH')
           if report.get('formal_proof_rule')!='ONLY EVENTS WHOSE IMMUTABLE EVENT TIME IS AT/AFTER ACTIVATION ARE COUNTED': raise SystemExit('ALPHA_NO_HINDSIGHT_CONTRACT_INVALID')
+          for cohort in ('signals','controls'):
+              for rec in (ledger.get(cohort) or {}).values():
+                  cps=rec.get('checkpoints') or {}
+                  for label,cp in cps.items():
+                      if not isinstance(cp,dict): raise SystemExit(f'ALPHA_CHECKPOINT_INVALID:{cohort}:{label}')
+                      if cp.get('recovery_provenance') and cp.get('recovery_provenance')!='IMMUTABLE_EXACT_PAIR_OUTCOME_HISTORY_V1':
+                          raise SystemExit('ALPHA_CHECKPOINT_RECOVERY_PROVENANCE_INVALID')
           print('FORWARD_ALPHA_PROOF_V1_OK', report.get('primary_proof_status'), report.get('formal_signal_count'), report.get('formal_control_count'))
           PY
       - name: Publish immutable alpha proof state
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
