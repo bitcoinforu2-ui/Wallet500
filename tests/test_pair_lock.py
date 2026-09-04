@@ -2,21 +2,62 @@ from wallet500 import market_data
 from wallet500 import main
 
 
+def _pair(address, base="TOKEN", quote="USDC", price="1", native="1", liquidity=1000):
+    return {
+        "pairAddress": address,
+        "baseToken": {"address": base, "symbol": base},
+        "quoteToken": {"address": quote, "symbol": quote},
+        "liquidity": {"usd": liquidity, "base": 100, "quote": 100},
+        "priceUsd": price,
+        "priceNative": native,
+        "txns": {},
+        "volume": {},
+        "priceChange": {},
+    }
+
+
 def test_snapshot_uses_requested_pair(monkeypatch):
     pairs=[
-        {"pairAddress":"PAIR_A","liquidity":{"usd":1000},"priceUsd":"1","txns":{},"volume":{},"priceChange":{}},
-        {"pairAddress":"PAIR_B","liquidity":{"usd":5000},"priceUsd":"9","txns":{},"volume":{},"priceChange":{}},
+        _pair("PAIR_A", price="1", liquidity=1000),
+        _pair("PAIR_B", price="9", liquidity=5000),
     ]
     monkeypatch.setattr(market_data,"token_pairs",lambda chain,token:pairs)
     s=market_data.snapshot("solana","TOKEN","PAIR_A")
     assert s["pair_address"]=="PAIR_A"
     assert s["price_usd"]==1.0
+    assert s["token_identity_verified"] is True
+    assert s["target_token_side"]=="BASE"
 
 
 def test_snapshot_does_not_fallback_when_locked_pair_missing(monkeypatch):
-    pairs=[{"pairAddress":"PAIR_B","liquidity":{"usd":5000},"priceUsd":"9","txns":{},"volume":{},"priceChange":{}}]
+    pairs=[_pair("PAIR_B", price="9", liquidity=5000)]
+    monkeypatch.setattr(market_data,"token_pairs",lambda chain,token:pairs)
+    monkeypatch.setattr(market_data,"pair_lookup",lambda chain,pair:None)
+    assert market_data.snapshot("solana","TOKEN","PAIR_A") is None
+
+
+def test_snapshot_rejects_pair_that_does_not_contain_target_token(monkeypatch):
+    pairs=[_pair("PAIR_A", base="OTHER", quote="USDC", price="100")]
     monkeypatch.setattr(market_data,"token_pairs",lambda chain,token:pairs)
     assert market_data.snapshot("solana","TOKEN","PAIR_A") is None
+
+
+def test_quote_side_price_is_derived_not_base_price(monkeypatch):
+    # Base is worth $100 and 2 QUOTE per BASE => QUOTE is worth $50.
+    pairs=[_pair("PAIR_A", base="BASE", quote="QUOTE", price="100", native="2")]
+    monkeypatch.setattr(market_data,"token_pairs",lambda chain,token:pairs)
+    s=market_data.snapshot("solana","QUOTE","PAIR_A")
+    assert s["target_token_side"]=="QUOTE"
+    assert s["price_usd"]==50.0
+    assert s["market_cap"]==0.0
+    assert s["fdv"]==0.0
+
+
+def test_solana_pair_identity_is_case_sensitive(monkeypatch):
+    pairs=[_pair("PairAbC", price="1")]
+    monkeypatch.setattr(market_data,"token_pairs",lambda chain,token:pairs)
+    monkeypatch.setattr(market_data,"pair_lookup",lambda chain,pair:None)
+    assert market_data.snapshot("solana","TOKEN","pairabc") is None
 
 
 def test_outcomes_refetch_locked_pair(tmp_path,monkeypatch):
