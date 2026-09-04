@@ -1,78 +1,63 @@
 {
-  "version": 1,
-  "mode": "RESEARCH_ONLY_SURVIVOR_REAWAKENING_V1",
-  "contract": "SURVIVOR_REAWAKENING_V1",
-  "generated_at": "2026-09-04T07:57:31.578278+00:00",
+  "version": 2,
+  "mode": "RESEARCH_ONLY_SURVIVOR_REAWAKENING_V2",
+  "contract": "FALSE_NEGATIVE_RECOVERY_RECHECK_V2",
+  "generated_at": "2026-09-04T08:10:16.712198+00:00",
   "production_portfolio_impact": "NONE",
-  "no_hindsight": true,
+  "production_gate_changed": false,
   "automatic_buy": false,
-  "rule": {
-    "prior_return_lte_pct": -60.0,
-    "recovery_return_gte_pct": -20.0,
-    "liquidity_gte_usd": 50000.0,
-    "turnover_h1_range": [
-      0.5,
-      12.0
+  "no_hindsight": true,
+  "source_ledger": "rejected-candidate-ledger.json",
+  "selection_rule": {
+    "first_reject_source": "LIVE_SURVIVAL_FAILED",
+    "required_reasons": [
+      "CURRENT_LIQUIDITY_BELOW_50K",
+      "PASSED_SCORE_LIQUIDITY_VOLUME_ACTIVITY_MANIPULATION"
     ],
-    "activity_h1_gte": 100,
-    "buy_sell_ratio_h1_gte": 1.1,
-    "consecutive_observations": 2,
-    "requires_non_falling_price_and_no_liquidity_drain": true
+    "hard_excluded_reasons": [
+      "PARABOLIC_MOVE_ALREADY_REVERSING",
+      "PUMP_THEN_FAST_REVERSAL",
+      "VERIFIED_RETURN_BELOW_MINUS_25PCT"
+    ]
+  },
+  "recovery_rule": {
+    "liquidity_gte_usd": 50000.0,
+    "gain_since_reject_pct_range": [
+      -25.0,
+      50.0
+    ],
+    "confirmation_observations": 2,
+    "confirmation_span_minutes_gte": 15.0,
+    "liquidity_retention_gte": 0.9,
+    "price_non_falling": true,
+    "exact_pair_locked": true
+  },
+  "shadow_activity_hypothesis": {
+    "volume_h1_gte_usd": 43000.0,
+    "turnover_h1_gte": 0.2,
+    "txns_h1_gte": 350,
+    "buy_sell_ratio_h1_gte": 1.18,
+    "minimum_checks_available": 3,
+    "minimum_checks_passed": 3,
+    "basis": "midpoint-style research hypothesis from winner/control separator medians; not production thresholds"
   },
   "truth_rules": [
-    "the original pump/dump block is never removed retroactively",
-    "a token can enter this shadow lane only after two consecutive forward observations",
-    "the trigger uses only immutable exact-pair history available at that timestamp",
-    "this experiment never creates BUY, QUALIFIED, or production portfolio impact"
+    "the original rejection is immutable and is never removed retroactively",
+    "only LIVE_SURVIVAL_FAILED liquidity-only rejects that already passed other quality checks enter V2",
+    "verified deep loss and fast/parabolic reversal reasons are hard-excluded",
+    "every trigger uses only observations after the original rejection timestamp",
+    "the exact pair must remain identical and liquidity must be back above the unchanged $50K hard floor",
+    "two qualifying observations spanning at least 15 minutes are required",
+    "V2 is research-only and cannot create BUY, QUALIFIED, or production portfolio impact",
+    "legacy V1 trigger history is preserved separately and does not qualify as V2 evidence"
   ],
   "counts": {
-    "tracked": 33099,
-    "shadow_triggers": 1
+    "rejected_ledger_records": 926,
+    "eligible_liquidity_only_rejects": 388,
+    "market_matches_now": 0,
+    "observations_added_this_run": 0,
+    "shadow_triggers_v2": 0,
+    "legacy_v1_triggers_preserved": 4
   },
-  "targets": [
-    {
-      "token_key": "bsc:0x0bf252d878da8e26c455cdc124a6dddc85437777",
-      "chain": "bsc",
-      "token": "0x0bf252d878da8e26c455cdc124a6dddc85437777",
-      "entry_pair_address": "0xF70101fb00c78c2114880F837752046894F447cB",
-      "triggered_at": "2026-09-02T07:59:21.376339+00:00",
-      "first_confirmation_at": "2026-09-02T07:55:14.613161+00:00",
-      "confirmation_observations": 2,
-      "pair_address": "0xF70101fb00c78c2114880F837752046894F447cB",
-      "price_usd": 0.0831,
-      "metrics": {
-        "return_pct": 0.0,
-        "prior_low_return_pct": -100.0,
-        "liquidity_usd": 52834.28,
-        "turnover_h1": 0.759,
-        "buy_sell_ratio_h1": 22.0,
-        "activity_h1": 161
-      },
-      "first_confirmation_metrics": {
-        "return_pct": 0.0,
-        "prior_low_return_pct": -100.0,
-        "liquidity_usd": 52834.28,
-        "turnover_h1": 0.759,
-        "buy_sell_ratio_h1": 22.0,
-        "activity_h1": 161
-      },
-      "reasons": [
-        "PRIOR_CRASH_OBSERVED",
-        "RECOVERED_FROM_CRASH_ZONE",
-        "LIQUIDITY_RECOVERED",
-        "TURNOVER_HEALTHY",
-        "ACTIVITY_RECOVERED",
-        "BUYER_BALANCE_POSITIVE",
-        "PRICE_NOT_FALLING",
-        "LIQUIDITY_NOT_DRAIN",
-        "EXACT_PAIR_PRESENT"
-      ],
-      "status": "SURVIVOR_REAWAKENING_SHADOW_WATCH",
-      "current_price_usd": 9.964e-12,
-      "current_return_pct": -100.0,
-      "peak_return_pct": 0.0,
-      "updated_at": "2026-09-02T08:31:01.517410+00:00",
-      "production_portfolio_impact": "NONE"
-    }
-  ]
+  "targets": []
 }
