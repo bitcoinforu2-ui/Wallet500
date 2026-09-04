@@ -18,6 +18,10 @@ MAX_TARGETS = int(os.environ.get("REVIVAL_PREWAKING_MAX_TARGETS", "8"))
 MAX_SIGNATURES = int(os.environ.get("REVIVAL_PREWAKING_MAX_SIGNATURES", "45"))
 PRIORITY_SLOTS = int(os.environ.get("REVIVAL_PREWAKING_PRIORITY_SLOTS", "4"))
 KEEP_SECONDS = int(os.environ.get("REVIVAL_PREWAKING_KEEP_SECONDS", str(7 * 24 * 60 * 60)))
+ACTIVE_LIQUIDITY_USD = float(os.environ.get("REVIVAL_PREWAKING_ACTIVE_LIQUIDITY_USD", "50000"))
+ACTIVE_VOLUME_24H_USD = float(os.environ.get("REVIVAL_PREWAKING_ACTIVE_VOLUME_24H_USD", "25000"))
+WARM_LIQUIDITY_USD = float(os.environ.get("REVIVAL_PREWAKING_WARM_LIQUIDITY_USD", "10000"))
+WARM_VOLUME_24H_USD = float(os.environ.get("REVIVAL_PREWAKING_WARM_VOLUME_24H_USD", "5000"))
 
 
 def _n(value: object, default: float = 0.0) -> float:
@@ -39,9 +43,25 @@ def _validate_revival(revival: dict) -> None:
         raise RuntimeError("PREWAKING_WALLET_SOURCE_TRUTH_CONTRACT_INVALID")
 
 
+def _activity_tier(coin: dict) -> tuple[int, str, float, float]:
+    """Research scheduling tier only; never changes Revival/Production status.
+
+    Exact-pair liquidity and exact-pair 24h volume are used to keep scarce RPC slots
+    focused on markets that are actually alive. COLD rows remain in the rotating
+    coverage universe, so historical misses are never erased by this prioritization.
+    """
+    liq = _n(coin.get("dex_pair_liquidity_usd"))
+    vol = _n(coin.get("dex_pair_volume_24h_usd") or coin.get("volume_24h_usd"))
+    if liq >= ACTIVE_LIQUIDITY_USD or vol >= ACTIVE_VOLUME_24H_USD:
+        return 2, "ACTIVE_DEEP_WATCH", liq, vol
+    if liq >= WARM_LIQUIDITY_USD or vol >= WARM_VOLUME_24H_USD:
+        return 1, "WARM_DEEP_WATCH", liq, vol
+    return 0, "COLD_DEEP_WATCH", liq, vol
+
+
 def _ranked_candidates(revival: dict) -> list[dict]:
     _validate_revival(revival)
-    rows: list[tuple[tuple[float, float, float, str], dict]] = []
+    rows: list[tuple[tuple[float, float, float, float, str], dict]] = []
     for coin in revival.get("coins") or []:
         if coin.get("watch_status") != "DEEP_WATCH":
             continue
@@ -53,18 +73,19 @@ def _ranked_candidates(revival: dict) -> list[dict]:
         pair = forensic.exact_pair(coin)
         if not mint or not pair:
             continue
-        rank = (
-            _n(coin.get("revival_score_verified")),
-            _n(coin.get("dex_pair_volume_24h_usd") or coin.get("volume_24h_usd")),
-            _n(coin.get("dex_pair_liquidity_usd")),
-            mint,
-        )
+        activity_rank, activity_tier, liq, vol = _activity_tier(coin)
+        revival_score = _n(coin.get("revival_score_verified"))
+        rank = (activity_rank, revival_score, vol, liq, mint)
         rows.append((rank, {
             "token_address": mint,
             "symbol": coin.get("symbol"),
             "pair_address": pair,
             "reason": "PRE_WAKING_DEEP_WATCH",
-            "prewaking_rank_score": round(rank[0], 6),
+            "activity_tier": activity_tier,
+            "activity_rank": activity_rank,
+            "exact_pair_liquidity_usd": liq,
+            "exact_pair_volume_24h_usd": vol,
+            "prewaking_rank_score": round(revival_score, 6),
             "source_revival_generated_at": revival.get("generated_at"),
         }))
     rows.sort(key=lambda item: item[0], reverse=True)
@@ -73,11 +94,12 @@ def _ranked_candidates(revival: dict) -> list[dict]:
 
 def select_targets(revival: dict, previous: dict | None = None, *, max_targets: int | None = None,
                    priority_slots: int | None = None) -> list[dict]:
-    """Keep the highest-priority candidates persistent while rotating spare slots.
+    """Keep active high-priority candidates persistent while rotating all remaining rows.
 
     Rotation is based only on the previously published PRE-WAKING target set. It never
-    uses future outcomes and it preserves exact token/pair identity. This prevents a
-    small fixed top set from starving the rest of DEEP_WATCH evidence coverage.
+    uses future outcomes and it preserves exact token/pair identity. ACTIVE/WARM rows
+    are ranked ahead of COLD rows, while spare rotation slots still cover the complete
+    DEEP_WATCH universe so cold research cases cannot disappear from learning.
     """
     ranked = _ranked_candidates(revival)
     cap = max(0, int(MAX_TARGETS if max_targets is None else max_targets))
@@ -122,8 +144,9 @@ def run() -> dict:
     # recomputing after that would advance the rotation twice in one run.
     revival = collector._load(REVIVAL, {})
     previous = collector._load(LATEST, {})
+    ranked = _ranked_candidates(revival)
     selected = select_targets(revival, previous)
-    candidate_count = len(_ranked_candidates(revival))
+    candidate_count = len(ranked)
 
     # Reuse the signed-token-owner-delta collector in an isolated PRE-WAKING state lane.
     collector.STATE = STATE
@@ -135,6 +158,11 @@ def run() -> dict:
     payload = collector.run()
     target_map = {row["token_address"]: row for row in selected}
     effective_priority = min(PRIORITY_SLOTS, MAX_TARGETS, candidate_count)
+    activity_counts = {
+        "active": sum(1 for r in ranked if r.get("activity_tier") == "ACTIVE_DEEP_WATCH"),
+        "warm": sum(1 for r in ranked if r.get("activity_tier") == "WARM_DEEP_WATCH"),
+        "cold": sum(1 for r in ranked if r.get("activity_tier") == "COLD_DEEP_WATCH"),
+    }
     payload["version"] = VERSION
     payload["mode"] = MODE
     payload["lane"] = "PRE_WAKING_DEEP_WATCH"
@@ -148,13 +176,23 @@ def run() -> dict:
         "coverage_rotation": True,
         "rotation_state_source": "PREVIOUS_PUBLISHED_TARGET_SET_ONLY",
         "candidate_universe": candidate_count,
+        "activity_counts": activity_counts,
+        "activity_thresholds": {
+            "active_pair_liquidity_usd": ACTIVE_LIQUIDITY_USD,
+            "active_pair_volume_24h_usd": ACTIVE_VOLUME_24H_USD,
+            "warm_pair_liquidity_usd": WARM_LIQUIDITY_USD,
+            "warm_pair_volume_24h_usd": WARM_VOLUME_24H_USD,
+        },
         "rank_order": [
+            "activity_tier_desc",
             "revival_score_verified_desc",
-            "volume_24h_desc",
-            "pair_liquidity_desc",
+            "exact_pair_volume_24h_desc",
+            "exact_pair_liquidity_desc",
             "token_address_desc_tiebreak",
         ],
+        "cold_rows_removed_from_research": False,
         "future_data_used": False,
+        "production_effect": False,
     }
     payload["collector_limits"] = {
         "max_signatures_per_token_per_run": MAX_SIGNATURES,
@@ -170,6 +208,8 @@ def run() -> dict:
         target = target_map.get(str(row.get("token_address") or "")) or {}
         row["target_reason"] = target.get("reason")
         row["selection_lane"] = target.get("selection_lane")
+        row["activity_tier"] = target.get("activity_tier")
+        row["activity_rank"] = target.get("activity_rank")
         row["prewaking_rank_score"] = target.get("prewaking_rank_score")
         row["source_revival_generated_at"] = target.get("source_revival_generated_at")
         (row.setdefault("coverage", {}))["eligible_as_forensics_t0_wallet_evidence"] = False
