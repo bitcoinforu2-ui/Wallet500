@@ -51,6 +51,17 @@ def test_identity_repeat_keeps_earliest_and_preserves_unique_history(tmp_path):
     assert ledger["integrity"]["unique_record_ids"] is True
 
 
+def test_unique_legacy_ledger_still_persists_integrity_marker(tmp_path):
+    a = rec("PRET0-A", "A" * 64, "mint|pair", "2026-09-04T10:00:00+00:00", 1.0)
+    write_ledger(tmp_path, [a])
+    out = _canonicalize_ledger(tmp_path)
+    ledger = json.loads((tmp_path / "revival-pre-t0-evidence-ledger.json").read_text())
+    assert out["removed"] == 0
+    assert ledger["integrity"]["unique_record_ids"] is True
+    assert ledger["integrity"]["conflicting_same_id_policy"] == "FAIL_CLOSED"
+    assert ledger["integrity"]["canonical_records_total"] == 1
+
+
 def test_same_id_conflicting_hash_fails_closed(tmp_path):
     a = rec("PRET0-X", "A" * 64, "mint|pair", "2026-09-04T10:00:00+00:00", 1.0)
     bad = rec("PRET0-X", "B" * 64, "mint|pair", "2026-09-04T10:01:00+00:00", 1.1)
