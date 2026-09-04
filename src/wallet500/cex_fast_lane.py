@@ -12,11 +12,9 @@ from .cex_spot_revival import run_cex_spot_revival
 from .real_alerts import run as build_real_alerts
 
 DATA = Path("data")
-MIN_AGE_DAYS = 180
-# Production truth may only move after strong quantitative evidence. The
-# currently available mature-pool study is RESEARCH_ONLY / NOT_A_STRATEGY_BACKTEST,
-# so the last evidence-approved production baseline remains seven days.
-APPROVED_PRODUCTION_MIN_AGE_DAYS = 7
+PROJECT_SCOPE_MIN_AGE_DAYS = 180
+MIN_AGE_DAYS = PROJECT_SCOPE_MIN_AGE_DAYS
+APPROVED_PRODUCTION_MIN_AGE_DAYS = PROJECT_SCOPE_MIN_AGE_DAYS
 
 
 def _load(path: Path, default):
@@ -168,32 +166,24 @@ def _apply_registry_dex_fallback(payload: dict) -> dict:
 
 
 def run(data_dir: Path = DATA) -> dict:
-    """Refresh raw CEX intelligence first, then apply fail-closed governance.
-
-    Collection and learning must never stop because a production policy threshold
-    is under governance review. Symbol-only spot/futures evidence is research-only;
-    exact identity, age and DEX pair verification remain mandatory before action.
-    """
+    """Refresh raw CEX intelligence, then enforce veteran-only fail-closed truth."""
     data_dir.mkdir(parents=True, exist_ok=True)
     radar_path = data_dir / "cex-revival-radar.json"
     now_dt = datetime.now(timezone.utc)
     now = now_dt.isoformat()
 
-    # Always collect fresh raw derivatives and spot data before any production
-    # governance decision. This fixes the failure mode where a threshold mismatch
-    # froze cex-state and made a healthy-looking lane stale for days.
     raw = run_cex_revival(data_dir, now)
     raw_payload = _load(radar_path, {})
     raw_rows = list(raw_payload.get("alerts") or [])
     _write(data_dir / "cex-revival-raw.json", raw_payload)
     spot = run_cex_spot_revival(data_dir, now)
 
-    # Governance may quarantine actionable derivatives output, but it may not
-    # suppress collection, milestones, learning files or the research-only spot lane.
-    if MIN_AGE_DAYS != APPROVED_PRODUCTION_MIN_AGE_DAYS:
+    # 180d is the explicit project universe boundary. If any code path drifts from
+    # it, quarantine actionable CEX output while continuing raw collection.
+    if MIN_AGE_DAYS != PROJECT_SCOPE_MIN_AGE_DAYS or MIN_AGE_DAYS != APPROVED_PRODUCTION_MIN_AGE_DAYS:
         blocked_payload = {
             **raw_payload,
-            "version": max(int(raw_payload.get("version") or 0), 11),
+            "version": max(int(raw_payload.get("version") or 0), 12),
             "alerts": [],
             "alerts_count": 0,
             "raw_alerts_before_age_gate": len(raw_rows),
@@ -209,26 +199,27 @@ def run(data_dir: Path = DATA) -> dict:
                 "production_portfolio_impact": "NONE",
             },
             "age_gate": {
-                "status": "BLOCKED_FAIL_CLOSED_UNAPPROVED_PRODUCTION_THRESHOLD",
+                "status": "BLOCKED_FAIL_CLOSED_VETERAN_SCOPE_POLICY_DRIFT",
                 "minimum_market_age_days": MIN_AGE_DAYS,
+                "project_scope_minimum_market_age_days": PROJECT_SCOPE_MIN_AGE_DAYS,
                 "approved_production_minimum_market_age_days": APPROVED_PRODUCTION_MIN_AGE_DAYS,
                 "accepted": 0,
                 "rejected": len(raw_rows),
                 "unknown_or_unresolved_identity": "REJECT",
                 "production_change_allowed": False,
-                "policy": "RESEARCH_THRESHOLD_MUST_NOT_BECOME_PRODUCTION_TRUTH_WITHOUT_STRONG_NUMERICAL_EVIDENCE",
+                "policy": "VETERAN_ONLY_SCOPE_MUST_BE_180D_EVERYWHERE; SIGNAL_THRESHOLDS_ARE_SEPARATELY_GOVERNED",
             },
             "generated_identity_preflight_at": now,
             "fast_lane_degraded": {
                 "at": now,
-                "reason": "UNAPPROVED_PRODUCTION_MARKET_AGE_THRESHOLD",
-                "policy": "ACTIONABLE_CEX_OUTPUT_QUARANTINED;_RAW_DERIVATIVES_AND_SPOT_COLLECTION_CONTINUE",
+                "reason": "VETERAN_SCOPE_POLICY_DRIFT",
+                "policy": "ACTIONABLE_CEX_OUTPUT_QUARANTINED; RAW_COLLECTION_CONTINUES",
             },
         }
         _write(radar_path, blocked_payload)
         real = build_real_alerts(data_dir)
         return {
-            "status": "COLLECTED_BUT_ACTIONABLE_BLOCKED_BY_GOVERNANCE",
+            "status": "COLLECTED_BUT_ACTIONABLE_BLOCKED_BY_SCOPE_DRIFT",
             "generated_at": now,
             "raw_cex_alerts": len(raw_rows),
             "raw_cex_symbols_seen": raw.get("symbols_seen", 0),
@@ -249,7 +240,7 @@ def run(data_dir: Path = DATA) -> dict:
 
     preflight_payload = {
         **raw_payload,
-        "version": max(int(raw_payload.get("version") or 0), 11),
+        "version": max(int(raw_payload.get("version") or 0), 12),
         "alerts": merged,
         "alerts_count": len(merged),
         "raw_alerts_before_age_gate": len(raw_rows),
@@ -267,6 +258,9 @@ def run(data_dir: Path = DATA) -> dict:
         "age_gate": {
             "status": "ENFORCED_FAIL_CLOSED" if ext_error is None else "DEGRADED_UNKNOWN_IDENTITIES_FAIL_CLOSED",
             "minimum_market_age_days": MIN_AGE_DAYS,
+            "project_scope_minimum_market_age_days": PROJECT_SCOPE_MIN_AGE_DAYS,
+            "approved_production_minimum_market_age_days": APPROVED_PRODUCTION_MIN_AGE_DAYS,
+            "scope_policy": "VETERAN_ONLY_PRODUCT_SCOPE_NOT_ALPHA_THRESHOLD",
             "accepted": len(merged),
             "rejected": max(0, len(raw_rows) - len(merged)),
             "registered_exact_identities": len(registered),
@@ -280,7 +274,7 @@ def run(data_dir: Path = DATA) -> dict:
             "at": now,
             "reason": "EXTERNAL_IDENTITY_PROVIDER_TRANSIENT",
             "detail": ext_error,
-            "policy": "REGISTERED_EXACT_IDENTITIES_KEPT;_UNKNOWN_IDENTITIES_FAIL_CLOSED",
+            "policy": "REGISTERED_EXACT_IDENTITIES_KEPT; UNKNOWN_IDENTITIES_FAIL_CLOSED",
         }
     _write(radar_path, preflight_payload)
 
