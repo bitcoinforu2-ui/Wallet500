@@ -2,14 +2,14 @@
   "version": 2,
   "mode": "RESEARCH_ONLY_SURVIVOR_REAWAKENING_V2",
   "contract": "FALSE_NEGATIVE_RECOVERY_RECHECK_V2",
-  "generated_at": "2026-09-04T13:00:05.175705+00:00",
+  "generated_at": "2026-09-04T13:13:09.426879+00:00",
   "v2_started_at": "2026-09-04T08:10:16.712198+00:00",
   "production_portfolio_impact": "NONE",
   "production_gate_changed": false,
   "automatic_buy": false,
   "no_hindsight": true,
   "source_ledger": "rejected-candidate-ledger.json",
-  "primary_recheck_source": "outcome-tracker.json exact-pair history",
+  "primary_recheck_source": "reawakening-forward-state.json dedicated exact-pair observations + outcome-tracker.json exact-pair history",
   "selection_rule": {
     "first_reject_source": "LIVE_SURVIVAL_FAILED",
     "required_reasons": [
@@ -52,18 +52,35 @@
     "the exact pair must remain identical and liquidity must be back above the unchanged $50K hard floor",
     "two or more qualifying observations spanning at least 15 minutes are required",
     "V2 is research-only and cannot create BUY, QUALIFIED, or production portfolio impact",
-    "legacy V1 trigger history is preserved separately and does not qualify as V2 evidence"
+    "legacy V1 trigger history is preserved separately and does not qualify as V2 evidence",
+    "dedicated forward observations measure the immutable rejected exact pair independently of normal live-candidate files and never change production"
   ],
   "counts": {
     "rejected_ledger_records": 926,
     "eligible_liquidity_only_rejects": 388,
-    "outcome_tracker_records": 33099,
-    "outcome_tracker_matches": 365,
-    "forward_tracker_rows_after_v2_start": 0,
+    "outcome_tracker_records": 33114,
+    "outcome_tracker_matches": 380,
+    "forward_tracker_rows_after_v2_start": 93,
     "fallback_market_matches_now": 0,
     "fallback_observations_added_this_run": 0,
     "shadow_triggers_v2": 0,
-    "legacy_v1_triggers_preserved": 4
+    "legacy_v1_triggers_preserved": 4,
+    "dedicated_forward_state_candidates": 388,
+    "dedicated_forward_hot_rows": 93,
+    "dedicated_forward_observations_added_this_run": 93,
+    "dedicated_forward_exact_pair_successes_this_run": 93,
+    "dedicated_forward_exact_pair_misses_this_run": 295,
+    "dedicated_forward_runtime_tracker_candidates": 93,
+    "dedicated_forward_triggers_v2": 0
   },
-  "targets": []
+  "targets": [],
+  "dedicated_forward_contract": {
+    "mode": "RESEARCH_ONLY_REAWAKENING_EXACT_PAIR_FORWARD_V1",
+    "research_only": true,
+    "production_gate_changed": false,
+    "automatic_buy": false,
+    "immutable_exact_pair": true,
+    "token_identity_verified_required": true,
+    "forward_only": true
+  }
 }
