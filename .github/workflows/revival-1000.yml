@@ -11,16 +11,19 @@ on:
       - 'src/wallet500/revival_absorption_signal.py'
       - 'src/wallet500/revival_discovery_expansion.py'
       - 'src/wallet500/revival_discovery_expansion_v3.py'
+      - 'src/wallet500/revival_strict_strength.py'
       - 'src/wallet500/revival_strict_t0.py'
       - 'src/wallet500/mature_age_gate.py'
       - 'src/wallet500/paid_visibility_lab.py'
       - 'tests/test_revival_1000.py'
       - 'tests/test_revival_absorption_signal.py'
+      - 'tests/test_revival_strict_strength.py'
       - 'tests/test_revival_strict_t0.py'
       - 'tests/test_mature_age_gate.py'
       - 'tests/test_paid_visibility_lab.py'
       - '.github/workflows/revival-1000.yml'
       - 'dashboard-revival1000.html'
+      - 'dashboard-live-price.js'
 
 permissions:
   contents: write
@@ -44,7 +47,7 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Unit tests
-        run: python -m pytest -q tests/test_revival_1000.py tests/test_revival_absorption_signal.py tests/test_revival_strict_t0.py tests/test_mature_age_gate.py tests/test_paid_visibility_lab.py
+        run: python -m pytest -q tests/test_revival_1000.py tests/test_revival_absorption_signal.py tests/test_revival_strict_strength.py tests/test_revival_strict_t0.py tests/test_mature_age_gate.py tests/test_paid_visibility_lab.py
       - name: Migrate base Revival state to strict Solana identity
         run: |
           python - <<'PY'
@@ -67,7 +70,9 @@ jobs:
         run: python -m wallet500.revival_absorption_signal
       - name: Expand strict and pre-move absorption candidates across known Solana universe
         run: python -m wallet500.revival_discovery_expansion_v3
-      - name: Lock immutable first green STRICT discovery price
+      - name: Grade green STRICT strength 1 to 3
+        run: python -m wallet500.revival_strict_strength
+      - name: Lock immutable first green STRICT discovery price and strength
         run: python -m wallet500.revival_strict_t0
       - name: Enforce verified 180-day mature-coin hard gate
         env:
@@ -88,6 +93,9 @@ jobs:
           contract=d.get('discovery_expansion_contract') or {}
           if contract.get('version')!='REVIVAL_DISCOVERY_ABSORPTION_EXPANSION_V2': raise SystemExit('DISCOVERY_EXPANSION_V2_CONTRACT_MISSING')
           if contract.get('fixed_candidate_cap') is not None or contract.get('production_portfolio_impact')!='NONE': raise SystemExit('DISCOVERY_EXPANSION_SAFETY_INVALID')
+          strength=d.get('strict_strength_contract') or {}
+          if strength.get('version')!='STRICT_STRENGTH_LEVELS_V1' or strength.get('no_hindsight') is not True: raise SystemExit('STRICT_STRENGTH_CONTRACT_MISSING')
+          if strength.get('production_portfolio_impact')!='NONE' or strength.get('pre_alpha_promotion')!='FORBIDDEN': raise SystemExit('STRICT_STRENGTH_SAFETY_INVALID')
           strict_t0=d.get('strict_discovery_contract') or {}
           if strict_t0.get('version')!='FORWARD_LOCKED_STRICT_T0_V1' or strict_t0.get('no_hindsight') is not True: raise SystemExit('STRICT_T0_CONTRACT_MISSING')
           if strict_t0.get('production_portfolio_impact')!='NONE' or strict_t0.get('discovery_price_mutation')!='FORBIDDEN_AFTER_FIRST_LOCK': raise SystemExit('STRICT_T0_SAFETY_INVALID')
@@ -97,7 +105,7 @@ jobs:
           if any(x.get('network')!='solana' or x.get('network_verified') is not True for x in coins): raise SystemExit('NON_VERIFIED_SOLANA_PRESENT')
           if any(not looks_like_solana_address(x.get('token_address')) for x in coins): raise SystemExit('INVALID_SOLANA_ADDRESS')
           if any(x.get('pre_alpha_eligible') for x in coins): raise SystemExit('RESEARCH_LAYER_PROMOTED_PRE_ALPHA')
-          expansion=0; strict_expansion=0; candidate_expansion=0
+          expansion=0; strict_expansion=0; candidate_expansion=0; levels={1:0,2:0,3:0}
           for x in coins:
               if x.get('source')=='revival_discovery_state+dexscreener_absorption_expansion':
                   expansion += 1
@@ -107,13 +115,19 @@ jobs:
                   if status=='ABSORPTION_WATCH_DISCOVERY_EXPANSION':
                       strict_expansion += 1
                       if flow.get('signal') is not True: raise SystemExit('STRICT_EXPANSION_WITHOUT_SIGNAL')
+                      level=int(flow.get('strict_level') or 0)
+                      if level not in {1,2,3} or flow.get('strict_grade')!=f'STRICT-{level}': raise SystemExit('STRICT_LEVEL_INVALID')
+                      if not (0 <= int(flow.get('strict_strength_score') or -1) <= 100): raise SystemExit('STRICT_STRENGTH_SCORE_INVALID')
+                      if (x.get('strict_strength') or {}).get('strict_level')!=level: raise SystemExit('STRICT_STRENGTH_COIN_FLOW_MISMATCH')
+                      levels[level]+=1
                       sd=x.get('strict_discovery') or {}
                       if not (float(sd.get('discovery_price_usd') or 0)>0 and sd.get('immutable_t0') is True and sd.get('no_hindsight') is True): raise SystemExit('STRICT_EXPANSION_WITHOUT_LOCKED_DISCOVERY_PRICE')
                       if str(sd.get('pair_address') or '').lower()!=str(x.get('dex_pair_address') or '').lower(): raise SystemExit('STRICT_T0_PAIR_IDENTITY_MISMATCH')
                   elif status=='ABSORPTION_CANDIDATE_DISCOVERY_EXPANSION':
                       candidate_expansion += 1
                       if flow.get('signal') is True: raise SystemExit('CANDIDATE_MISLABELED_STRICT')
-                      if x.get('strict_discovery') is not None: raise SystemExit('PRE_MOVE_HAS_STRICT_DISCOVERY_METRIC')
+                      if x.get('strict_discovery') is not None or x.get('strict_strength') is not None: raise SystemExit('PRE_MOVE_HAS_STRICT_METRIC')
+                      if flow.get('strict_level') is not None or flow.get('strict_grade') is not None: raise SystemExit('PRE_MOVE_HAS_STRICT_LEVEL')
                   else: raise SystemExit('EXPANSION_STATUS_INVALID')
               elif x.get('solana_only_platform_verified') is not True:
                   raise SystemExit('BASE_CROSS_PLATFORM_ASSET_PRESENT')
@@ -127,6 +141,8 @@ jobs:
           if counts.get('absorption_discovery_expansion_added')!=expansion: raise SystemExit('EXPANSION_COUNT_MISMATCH')
           if counts.get('absorption_discovery_strict_added')!=strict_expansion: raise SystemExit('STRICT_EXPANSION_COUNT_MISMATCH')
           if counts.get('absorption_discovery_candidate_added')!=candidate_expansion: raise SystemExit('CANDIDATE_EXPANSION_COUNT_MISMATCH')
+          if counts.get('strict_strength_graded')!=strict_expansion: raise SystemExit('STRICT_STRENGTH_COUNT_MISMATCH')
+          if counts.get('strict_level_1')!=levels[1] or counts.get('strict_level_2')!=levels[2] or counts.get('strict_level_3')!=levels[3]: raise SystemExit('STRICT_LEVEL_COUNTS_MISMATCH')
           if counts.get('strict_green_t0_current')!=strict_expansion: raise SystemExit('STRICT_T0_CURRENT_COUNT_MISMATCH')
           print('REVIVAL_SOLANA_EXPANDED_V6_OK',counts)
           PY
@@ -167,7 +183,7 @@ jobs:
             for f in revival-1000-latest.json revival-1000-state.json revival-strict-t0.json paid-visibility-ledger.json paid-visibility-summary.json; do cp "$tmp/$f" "data/$f"; done
             git add data/revival-1000-latest.json data/revival-1000-state.json data/revival-strict-t0.json data/paid-visibility-ledger.json data/paid-visibility-summary.json
             if git diff --cached --quiet; then echo 'REVIVAL_AND_PAID_VISIBILITY_NO_DATA_CHANGE'; exit 0; fi
-            git commit -m 'data: refresh Revival, strict T0, and paid visibility experiment'
+            git commit -m 'data: refresh Revival, strict strength/T0, and paid visibility experiment'
             if git push origin HEAD:main; then echo 'REVIVAL_AND_PAID_VISIBILITY_PUBLISH_OK'; exit 0; fi
             echo "REVIVAL_AND_PAID_VISIBILITY_PUBLISH_RETRY attempt=$attempt"; sleep 3
           done
