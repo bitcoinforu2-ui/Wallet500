@@ -45,15 +45,21 @@ def main() -> int:
     loader = (ROOT / "dashboard-live-price.js").read_text(encoding="utf-8")
     core = (ROOT / "dashboard-live-price-core.js").read_text(encoding="utf-8")
     truth = (ROOT / "dashboard-truth-overlap.js").read_text(encoding="utf-8")
+    published_core = (DATA / "dashboard-live-price-core.js").read_text(encoding="utf-8")
+    published_truth = (DATA / "dashboard-truth-overlap.js").read_text(encoding="utf-8")
     live_html = (ROOT / "dashboard-live.html").read_text(encoding="utf-8")
     v2_source = (ROOT / "src/wallet500/revival_pre_t0_evidence_v2.py").read_text(encoding="utf-8")
     pre_workflow = (ROOT / ".github/workflows/revival-pre-t0-evidence.yml").read_text(encoding="utf-8")
 
-    # Dashboard wiring / compatibility.
+    # Dashboard wiring / compatibility / deployment bundle.
     if "dashboard-live-price.js" not in html:
         add("CRITICAL", "REVIVAL_SHARED_LOADER_MISSING", "Revival dashboard does not load shared dashboard script")
-    if "dashboard-live-price-core.js" not in loader or "dashboard-truth-overlap.js" not in loader:
-        add("CRITICAL", "TRUTH_LOADER_INCOMPLETE", "Shared loader does not synchronously chain core + truth layer")
+    if "data/dashboard-live-price-core.js" not in loader or "data/dashboard-truth-overlap.js" not in loader:
+        add("CRITICAL", "TRUTH_LOADER_INCOMPLETE", "Shared loader does not synchronously chain the published core + truth modules")
+    if core != published_core:
+        add("CRITICAL", "PUBLISHED_CORE_DRIFT", "Published data-bundle live-price core differs from source core")
+    if truth != published_truth:
+        add("CRITICAL", "PUBLISHED_TRUTH_DRIFT", "Published data-bundle truth module differs from source truth module")
     if "Wallet500LivePrice" not in core:
         add("CRITICAL", "LIVE_PRICE_CORE_LOST", "Preserved live-price core no longer exposes Wallet500LivePrice")
     for required in ("revival-pre-t0-evidence.json", "real-alerts.json", "revival-holder-latest.json", "waking-pre-t0-confirmation.json"):
