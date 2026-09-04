@@ -22,6 +22,23 @@ MIN_TXNS_24H = 40
 MIN_VOLUME_TO_LIQUIDITY = 0.05
 MAX_SELL_BUY_COUNT_RATIO = 2.0
 
+# STRICT grading is an evidence-strength ladder inside the research-only
+# absorption layer. It never changes eligibility, T0, portfolio, or production
+# gates. STRICT-3 is intentionally "early premium" rather than simply "more up".
+STRICT2_MIN_LIQUIDITY_USD = 100_000.0
+STRICT2_MIN_TXNS_24H = 150
+STRICT2_MIN_VOLUME_TO_LIQUIDITY = 0.25
+STRICT2_MIN_CONFIRMATIONS = 3
+STRICT2_MAX_24H_CHANGE_PCT = 50.0
+
+STRICT3_MIN_LIQUIDITY_USD = 75_000.0
+STRICT3_MIN_TXNS_24H = 250
+STRICT3_MIN_VOLUME_TO_LIQUIDITY = 0.50
+STRICT3_MAX_SELL_BUY_RATIO = 1.50
+STRICT3_MIN_24H_CHANGE_PCT = 1.0
+STRICT3_MAX_24H_CHANGE_PCT = 25.0
+STRICT3_MIN_H1_CHANGE_PCT = -2.0
+
 
 def n(value, default: float = 0.0) -> float:
     try:
@@ -59,6 +76,85 @@ def exact_pair_for_coin(coin: dict, pairs: list[dict]) -> dict | None:
     return None
 
 
+def grade_strict_absorption(
+    *,
+    signal: bool,
+    liquidity_usd: float,
+    volume_to_liquidity: float,
+    txns_h24: int,
+    sell_buy_ratio: float | None,
+    price_change_h24: float,
+    price_change_h6: float,
+    price_change_h1: float,
+) -> dict:
+    """Return transparent STRICT-1/2/3 research grading.
+
+    STRICT-1 = all base absorption gates passed.
+    STRICT-2 = base gates + broad confirmation strength, while avoiding a
+               clearly late >50% 24h move.
+    STRICT-3 = early-premium structure: high activity/turnover, constructive
+               short-term price, balanced sell dominance, and a still-early
+               24h move. This is not a BUY signal.
+    """
+    if not signal:
+        return {
+            "strict_level": 0,
+            "strict_grade": None,
+            "strict_grade_reason": "BASE_STRICT_NOT_PASSED",
+            "strict_grade_criteria": {},
+        }
+
+    strict2_checks = {
+        "h6_positive": price_change_h6 > 0,
+        "h1_not_weaker_than_minus_2pct": price_change_h1 >= STRICT3_MIN_H1_CHANGE_PCT,
+        "volume_to_liquidity_ge_25pct": volume_to_liquidity >= STRICT2_MIN_VOLUME_TO_LIQUIDITY,
+        "txns_24h_ge_150": txns_h24 >= STRICT2_MIN_TXNS_24H,
+        "liquidity_ge_100k": liquidity_usd >= STRICT2_MIN_LIQUIDITY_USD,
+    }
+    strict2_confirmations = sum(bool(v) for v in strict2_checks.values())
+    strict2_pass = (
+        price_change_h24 <= STRICT2_MAX_24H_CHANGE_PCT
+        and strict2_confirmations >= STRICT2_MIN_CONFIRMATIONS
+    )
+
+    strict3_checks = {
+        "liquidity_ge_75k": liquidity_usd >= STRICT3_MIN_LIQUIDITY_USD,
+        "txns_24h_ge_250": txns_h24 >= STRICT3_MIN_TXNS_24H,
+        "volume_to_liquidity_ge_50pct": volume_to_liquidity >= STRICT3_MIN_VOLUME_TO_LIQUIDITY,
+        "sell_buy_ratio_le_1_50": sell_buy_ratio is not None and sell_buy_ratio <= STRICT3_MAX_SELL_BUY_RATIO,
+        "price_24h_in_early_band_1_to_25pct": STRICT3_MIN_24H_CHANGE_PCT <= price_change_h24 <= STRICT3_MAX_24H_CHANGE_PCT,
+        "h6_positive": price_change_h6 > 0,
+        "h1_not_weaker_than_minus_2pct": price_change_h1 >= STRICT3_MIN_H1_CHANGE_PCT,
+    }
+    strict3_pass = all(strict3_checks.values())
+
+    if strict3_pass:
+        level = 3
+        grade = "STRICT-3"
+        reason = "EARLY_PREMIUM_ABSORPTION"
+    elif strict2_pass:
+        level = 2
+        grade = "STRICT-2"
+        reason = "CONFIRMED_ABSORPTION"
+    else:
+        level = 1
+        grade = "STRICT-1"
+        reason = "BASE_ABSORPTION_ONLY"
+
+    return {
+        "strict_level": level,
+        "strict_grade": grade,
+        "strict_grade_reason": reason,
+        "strict_grade_criteria": {
+            "strict2": strict2_checks,
+            "strict2_confirmation_count": strict2_confirmations,
+            "strict2_required_confirmations": STRICT2_MIN_CONFIRMATIONS,
+            "strict2_not_late_24h_le_50pct": price_change_h24 <= STRICT2_MAX_24H_CHANGE_PCT,
+            "strict3": strict3_checks,
+        },
+    }
+
+
 def compute_absorption_proxy(coin: dict, pair: dict | None) -> dict:
     """Detect sell-count dominance being absorbed while price/activity stay constructive.
 
@@ -70,6 +166,10 @@ def compute_absorption_proxy(coin: dict, pair: dict | None) -> dict:
             "signal": False,
             "signal_type": "DATA_UNAVAILABLE",
             "research_only": True,
+            "strict_level": 0,
+            "strict_grade": None,
+            "strict_grade_reason": "DATA_UNAVAILABLE",
+            "strict_grade_criteria": {},
             "exact_buy_sell_notional_verified": False,
             "buy_volume_24h_usd": None,
             "sell_volume_24h_usd": None,
@@ -131,11 +231,23 @@ def compute_absorption_proxy(coin: dict, pair: dict | None) -> dict:
     if price_change_h1 >= -5:
         score += 5
 
+    strict = grade_strict_absorption(
+        signal=signal,
+        liquidity_usd=liquidity_usd,
+        volume_to_liquidity=volume_to_liquidity,
+        txns_h24=txns_h24,
+        sell_buy_ratio=sell_buy_ratio,
+        price_change_h24=price_change_h24,
+        price_change_h6=price_change_h6,
+        price_change_h1=price_change_h1,
+    )
+
     return {
         "signal": signal,
         "signal_type": "SELL_COUNT_ABSORPTION_PROXY" if signal else "NONE",
         "research_only": True,
         "score": min(100, score),
+        **strict,
         "pair_address": pair.get("pairAddress"),
         "buys_h24": buys_h24,
         "sells_h24": sells_h24,
@@ -143,6 +255,7 @@ def compute_absorption_proxy(coin: dict, pair: dict | None) -> dict:
         "sells_h6": sells_h6,
         "buys_h1": buys_h1,
         "sells_h1": sells_h1,
+        "txns_h24": txns_h24,
         "sell_buy_count_ratio_h24": None if sell_buy_ratio is None else round(sell_buy_ratio, 4),
         "liquidity_usd": round(liquidity_usd, 2),
         "volume_24h_usd": round(volume_24h_usd, 2),
@@ -201,6 +314,7 @@ def apply_absorption_layer(payload: dict, pair_map: dict[str, dict], failures: l
     signal_count = 0
     outside_core_count = 0
     unavailable_count = 0
+    strict_counts = {1: 0, 2: 0, 3: 0}
 
     for coin in coins:
         pair_key = str(coin.get("dex_pair_address") or "").strip().lower()
@@ -211,6 +325,9 @@ def apply_absorption_layer(payload: dict, pair_map: dict[str, dict], failures: l
         triggers = list(coin.get("watch_triggers") or [])
         if signal.get("signal") is True:
             signal_count += 1
+            level = int(signal.get("strict_level") or 0)
+            if level in strict_counts:
+                strict_counts[level] += 1
             if signal["signal_type"] not in triggers:
                 triggers.append(signal["signal_type"])
             coin["watch_triggers"] = triggers
@@ -230,9 +347,12 @@ def apply_absorption_layer(payload: dict, pair_map: dict[str, dict], failures: l
     counts["absorption_proxy_watch"] = signal_count
     counts["absorption_proxy_outside_core"] = outside_core_count
     counts["absorption_pair_data_unavailable"] = unavailable_count
+    counts["absorption_strict_1"] = strict_counts[1]
+    counts["absorption_strict_2"] = strict_counts[2]
+    counts["absorption_strict_3"] = strict_counts[3]
 
     payload["order_flow_absorption_contract"] = {
-        "version": "SELL_COUNT_ABSORPTION_PROXY_V1",
+        "version": "SELL_COUNT_ABSORPTION_PROXY_V2_STRICT_LEVELS",
         "research_only": True,
         "production_portfolio_impact": "NONE",
         "pair_identity": "EXISTING_VERIFIED_EXACT_PAIR_ONLY_NO_POOL_SWITCHING",
@@ -242,6 +362,11 @@ def apply_absorption_layer(payload: dict, pair_map: dict[str, dict], failures: l
         "minimum_txns_24h": MIN_TXNS_24H,
         "minimum_volume_to_liquidity": MIN_VOLUME_TO_LIQUIDITY,
         "maximum_sell_buy_count_ratio": MAX_SELL_BUY_COUNT_RATIO,
+        "strict_grading": {
+            "STRICT-1": "ALL_BASE_STRICT_CONDITIONS_TRUE",
+            "STRICT-2": "BASE_PLUS_AT_LEAST_3_OF_5_CONFIRMATIONS_AND_24H_LE_50PCT",
+            "STRICT-3": "EARLY_PREMIUM_HIGH_ACTIVITY_TIGHT_RATIO_CONSTRUCTIVE_SHORT_TERM_24H_1_TO_25PCT",
+        },
         "directional_usd_notional": "NOT_AVAILABLE_FROM_CURRENT_DEXSCREENER_PAIR_FEED",
         "truth_rule": "PROXY_NEVER_CLAIMS_BUY_USD_VOLUME_GT_SELL_USD_VOLUME_WITHOUT_A_VERIFIED_DIRECTIONAL_NOTIONAL_SOURCE",
         "pre_alpha_promotion": "FORBIDDEN",
@@ -274,6 +399,9 @@ def main() -> None:
     counts = payload.get("counts") or {}
     print(json.dumps({
         "absorption_proxy_watch": counts.get("absorption_proxy_watch", 0),
+        "strict_1": counts.get("absorption_strict_1", 0),
+        "strict_2": counts.get("absorption_strict_2", 0),
+        "strict_3": counts.get("absorption_strict_3", 0),
         "absorption_proxy_outside_core": counts.get("absorption_proxy_outside_core", 0),
         "pair_data_unavailable": counts.get("absorption_pair_data_unavailable", 0),
         "batch_failures": len(failures),
