@@ -1,0 +1,93 @@
+name: Wallet500 PRE-T0 Prospective Validation
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/revival_pre_t0_prospective.py'
+      - 'tests/test_revival_pre_t0_prospective.py'
+      - '.github/workflows/revival-pre-t0-prospective.yml'
+      - 'data/revival-pre-t0-evidence-ledger.json'
+      - 'data/revival-forensics-latest.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-pre-t0-prospective
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Unit tests
+        run: python -m pytest -q tests/test_revival_pre_t0_prospective.py
+      - name: Build prospective PRE-T0 outcome join
+        run: python -m wallet500.revival_pre_t0_prospective
+      - name: Validate prospective truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime
+          from pathlib import Path
+
+          p=Path('data/revival-pre-t0-prospective.json')
+          if not p.exists(): raise SystemExit('PRE_T0_PROSPECTIVE_OUTPUT_MISSING')
+          d=json.loads(p.read_text())
+          if d.get('version')!='REVIVAL_PRE_T0_PROSPECTIVE_V1': raise SystemExit('PRE_T0_PROSPECTIVE_VERSION_INVALID')
+          if d.get('mode')!='RESEARCH_ONLY_PRE_T0_PROSPECTIVE_VALIDATION': raise SystemExit('PRE_T0_PROSPECTIVE_MODE_INVALID')
+          if d.get('network')!='solana': raise SystemExit('PRE_T0_PROSPECTIVE_NETWORK_INVALID')
+          if d.get('no_hindsight') is not True: raise SystemExit('PRE_T0_PROSPECTIVE_HINDSIGHT_RISK')
+          if d.get('production_portfolio_impact')!='NONE' or d.get('automatic_buy') is not False: raise SystemExit('PRE_T0_PROSPECTIVE_SAFETY_INVALID')
+          tc=d.get('truth_contract') or {}
+          if tc.get('enrollment_requires_existing_bound_pre_t0_snapshot') is not True: raise SystemExit('PRE_T0_ENROLLMENT_GUARD_MISSING')
+          if tc.get('pre_t0_snapshot_must_not_postdate_waking_t0') is not True: raise SystemExit('PRE_T0_TIME_GUARD_MISSING')
+          if tc.get('exact_pair_case_sensitive_validation') is not True: raise SystemExit('PRE_T0_PAIR_GUARD_MISSING')
+          if tc.get('retroactive_pre_t0_backfill')!='FORBIDDEN': raise SystemExit('PRE_T0_BACKFILL_GUARD_MISSING')
+          if tc.get('outcomes_are_forward_forensics_only') is not True: raise SystemExit('PRE_T0_FORWARD_OUTCOME_GUARD_MISSING')
+          if tc.get('production_thresholds_modified') is not False: raise SystemExit('PRE_T0_PRODUCTION_MUTATION')
+          expected={'5m','15m','60m','240m','1440m'}
+          if set(d.get('horizons') or [])!=expected: raise SystemExit('PRE_T0_HORIZONS_INVALID')
+          for e in d.get('events') or []:
+              if not e.get('pre_t0_record_id'): raise SystemExit('PRE_T0_EVENT_WITHOUT_RECORD')
+              if not e.get('pair_address'): raise SystemExit('PRE_T0_EVENT_WITHOUT_PAIR')
+              c=datetime.fromisoformat(str(e.get('pre_t0_captured_at')).replace('Z','+00:00'))
+              t=datetime.fromisoformat(str(e.get('waking_t0')).replace('Z','+00:00'))
+              if c>t: raise SystemExit('PRE_T0_EVENT_POST_T0_LEAK')
+              truth=e.get('truth_contract') or {}
+              if truth.get('exact_pair_case_sensitive') is not True: raise SystemExit('PRE_T0_EVENT_PAIR_TRUTH_MISSING')
+              if truth.get('post_t0_feature_backfill')!='FORBIDDEN': raise SystemExit('PRE_T0_EVENT_BACKFILL_GUARD_MISSING')
+          print('PRE_T0_PROSPECTIVE_VALID', d.get('summary'), d.get('invalid_binding_counts'))
+          PY
+      - name: Publish prospective snapshot
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          cp data/revival-pre-t0-prospective.json "$tmp/revival-pre-t0-prospective.json"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/revival-pre-t0-prospective.json" data/revival-pre-t0-prospective.json
+            git add data/revival-pre-t0-prospective.json
+            if git diff --cached --quiet; then echo 'PRE_T0_PROSPECTIVE_NO_DATA_CHANGE'; exit 0; fi
+            git commit -m 'data: refresh PRE-T0 prospective validation'
+            if git push origin HEAD:main; then echo 'PRE_T0_PROSPECTIVE_PUBLISH_OK'; exit 0; fi
+            echo "PRE_T0_PROSPECTIVE_PUBLISH_RETRY attempt=$attempt"; sleep 3
+          done
+          echo '::error::PRE_T0_PROSPECTIVE_PUBLISH_RACE_EXHAUSTED'
+          exit 1
