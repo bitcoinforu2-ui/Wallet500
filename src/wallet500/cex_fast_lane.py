@@ -8,6 +8,7 @@ from pathlib import Path
 from .cex_identity import _verified_pairs, run as resolve_identity
 from .cex_identity_preflight import run as verify_age_and_identity
 from .cex_revival import run_cex_revival
+from .cex_spot_revival import run_cex_spot_revival
 from .real_alerts import run as build_real_alerts
 
 DATA = Path("data")
@@ -167,34 +168,52 @@ def _apply_registry_dex_fallback(payload: dict) -> dict:
 
 
 def run(data_dir: Path = DATA) -> dict:
-    """Refresh veteran CEX identity before slower research stages.
+    """Refresh raw CEX intelligence first, then apply fail-closed governance.
 
-    Exact registry identities are used first. Unknown/ambiguous symbols still go
-    through strict external verification. Provider outages can delay unknown
-    identities but can never turn symbol-only data into an actionable result.
+    Collection and learning must never stop because a production policy threshold
+    is under governance review. Symbol-only spot/futures evidence is research-only;
+    exact identity, age and DEX pair verification remain mandatory before action.
     """
-    # Do not let an unapproved research threshold become production truth. At the
-    # same time, a governance mismatch must not freeze the unrelated DEX truth lane.
-    # Quarantine CEX actionable output to an empty fail-closed set, rebuild the
-    # unified alert feed, and allow the rest of the validated live scan to proceed.
+    data_dir.mkdir(parents=True, exist_ok=True)
+    radar_path = data_dir / "cex-revival-radar.json"
+    now_dt = datetime.now(timezone.utc)
+    now = now_dt.isoformat()
+
+    # Always collect fresh raw derivatives and spot data before any production
+    # governance decision. This fixes the failure mode where a threshold mismatch
+    # froze cex-state and made a healthy-looking lane stale for days.
+    raw = run_cex_revival(data_dir, now)
+    raw_payload = _load(radar_path, {})
+    raw_rows = list(raw_payload.get("alerts") or [])
+    _write(data_dir / "cex-revival-raw.json", raw_payload)
+    spot = run_cex_spot_revival(data_dir, now)
+
+    # Governance may quarantine actionable derivatives output, but it may not
+    # suppress collection, milestones, learning files or the research-only spot lane.
     if MIN_AGE_DAYS != APPROVED_PRODUCTION_MIN_AGE_DAYS:
-        data_dir.mkdir(parents=True, exist_ok=True)
-        radar_path = data_dir / "cex-revival-radar.json"
-        now = datetime.now(timezone.utc).isoformat()
-        previous = _load(radar_path, {})
-        previous_alerts = list(previous.get("alerts") or []) if isinstance(previous, dict) else []
         blocked_payload = {
-            **(previous if isinstance(previous, dict) else {}),
-            "version": max(int((previous or {}).get("version") or 0), 10) if isinstance(previous, dict) else 10,
+            **raw_payload,
+            "version": max(int(raw_payload.get("version") or 0), 11),
             "alerts": [],
             "alerts_count": 0,
-            "raw_alerts_before_age_gate": len(previous_alerts),
+            "raw_alerts_before_age_gate": len(raw_rows),
+            "raw_collection_generated_at": raw_payload.get("generated_at") or now,
+            "collection_status": "FRESH_COLLECTION_CONTINUES",
+            "spot_collection": {
+                "generated_at": spot.get("generated_at"),
+                "healthy_sources": spot.get("healthy_sources", 0),
+                "markets_seen": spot.get("markets_seen", 0),
+                "symbols_seen": spot.get("symbols_seen", 0),
+                "watch_count": spot.get("watch_count", 0),
+                "alerts_count": spot.get("alerts_count", 0),
+                "production_portfolio_impact": "NONE",
+            },
             "age_gate": {
                 "status": "BLOCKED_FAIL_CLOSED_UNAPPROVED_PRODUCTION_THRESHOLD",
                 "minimum_market_age_days": MIN_AGE_DAYS,
                 "approved_production_minimum_market_age_days": APPROVED_PRODUCTION_MIN_AGE_DAYS,
                 "accepted": 0,
-                "rejected": len(previous_alerts),
+                "rejected": len(raw_rows),
                 "unknown_or_unresolved_identity": "REJECT",
                 "production_change_allowed": False,
                 "policy": "RESEARCH_THRESHOLD_MUST_NOT_BECOME_PRODUCTION_TRUTH_WITHOUT_STRONG_NUMERICAL_EVIDENCE",
@@ -203,29 +222,25 @@ def run(data_dir: Path = DATA) -> dict:
             "fast_lane_degraded": {
                 "at": now,
                 "reason": "UNAPPROVED_PRODUCTION_MARKET_AGE_THRESHOLD",
-                "policy": "CEX_ACTIONABLE_OUTPUT_QUARANTINED_FAIL_CLOSED;_UNRELATED_LIVE_TRUTH_LANE_CONTINUES",
+                "policy": "ACTIONABLE_CEX_OUTPUT_QUARANTINED;_RAW_DERIVATIVES_AND_SPOT_COLLECTION_CONTINUE",
             },
         }
         _write(radar_path, blocked_payload)
         real = build_real_alerts(data_dir)
         return {
-            "status": "BLOCKED_FAIL_CLOSED_UNAPPROVED_PRODUCTION_THRESHOLD",
+            "status": "COLLECTED_BUT_ACTIONABLE_BLOCKED_BY_GOVERNANCE",
             "generated_at": now,
-            "raw_cex_alerts": len(previous_alerts),
+            "raw_cex_alerts": len(raw_rows),
+            "raw_cex_symbols_seen": raw.get("symbols_seen", 0),
+            "spot_watch_count": spot.get("watch_count", 0),
+            "spot_alerts_count": spot.get("alerts_count", 0),
+            "spot_symbols_seen": spot.get("symbols_seen", 0),
             "registry_verified": 0,
             "external_age_identity_preflight": {"status": "NOT_RUN_POLICY_BLOCK"},
             "external_error": None,
             "dex_identity": {"dex_verified": 0, "pair_pending": 0, "identity_pending": 0},
             "real_alert_feed": real,
         }
-
-    data_dir.mkdir(parents=True, exist_ok=True)
-    radar_path = data_dir / "cex-revival-radar.json"
-    now_dt = datetime.now(timezone.utc)
-    now = now_dt.isoformat()
-    raw = run_cex_revival(data_dir, now)
-    raw_payload = _load(radar_path, {})
-    raw_rows = list(raw_payload.get("alerts") or [])
 
     registered, unknown = _registry_rows(raw_rows, data_dir, now_dt)
     external_rows, ext_report, ext_error = _preflight_unknown(raw_payload, unknown, data_dir)
@@ -234,10 +249,21 @@ def run(data_dir: Path = DATA) -> dict:
 
     preflight_payload = {
         **raw_payload,
-        "version": max(int(raw_payload.get("version") or 0), 9),
+        "version": max(int(raw_payload.get("version") or 0), 11),
         "alerts": merged,
         "alerts_count": len(merged),
         "raw_alerts_before_age_gate": len(raw_rows),
+        "raw_collection_generated_at": raw_payload.get("generated_at") or now,
+        "collection_status": "FRESH_COLLECTION_CONTINUES",
+        "spot_collection": {
+            "generated_at": spot.get("generated_at"),
+            "healthy_sources": spot.get("healthy_sources", 0),
+            "markets_seen": spot.get("markets_seen", 0),
+            "symbols_seen": spot.get("symbols_seen", 0),
+            "watch_count": spot.get("watch_count", 0),
+            "alerts_count": spot.get("alerts_count", 0),
+            "production_portfolio_impact": "NONE",
+        },
         "age_gate": {
             "status": "ENFORCED_FAIL_CLOSED" if ext_error is None else "DEGRADED_UNKNOWN_IDENTITIES_FAIL_CLOSED",
             "minimum_market_age_days": MIN_AGE_DAYS,
@@ -267,6 +293,10 @@ def run(data_dir: Path = DATA) -> dict:
         "status": "OK" if ext_error is None else "DEGRADED_UNKNOWN_IDENTITIES_FAIL_CLOSED",
         "generated_at": now,
         "raw_cex_alerts": raw.get("alerts_count", 0),
+        "raw_cex_symbols_seen": raw.get("symbols_seen", 0),
+        "spot_watch_count": spot.get("watch_count", 0),
+        "spot_alerts_count": spot.get("alerts_count", 0),
+        "spot_symbols_seen": spot.get("symbols_seen", 0),
         "registry_verified": len(registered),
         "external_age_identity_preflight": ext_report,
         "external_error": ext_error,
