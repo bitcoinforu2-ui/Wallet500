@@ -64,7 +64,8 @@ jobs:
           if s.get('production_change') is not False or s.get('automatic_buy') is not False: raise SystemExit('SUMMARY_PRODUCTION_CONTRACT_INVALID')
           freeze=l.get('context_freeze_contract') or {}
           if freeze.get('retroactive_feature_backfill')!='FORBIDDEN' or freeze.get('missing_features_imputed') is not False: raise SystemExit('T0_CONTEXT_FREEZE_INVALID')
-          if float(freeze.get('max_freeze_lag_minutes') or 999) > 30: raise SystemExit('T0_CONTEXT_WINDOW_TOO_WIDE')
+          if freeze.get('existing_context_outside_window')!='REMOVE_AS_HINDSIGHT_CONTAMINATION': raise SystemExit('T0_CONTEXT_CLEANUP_RULE_MISSING')
+          if float(freeze.get('max_freeze_lag_minutes') or 999) > 5: raise SystemExit('T0_CONTEXT_WINDOW_TOO_WIDE')
           if e.get('mode')!='VETERAN_DNA_SHADOW_EVAL_V1': raise SystemExit('SHADOW_EVAL_MODE_INVALID')
           if e.get('production_change') is not False or e.get('threshold_promotion') is not False: raise SystemExit('SHADOW_EVAL_PRODUCTION_LEAK')
           ec=e.get('truth_contract') or {}
@@ -75,9 +76,10 @@ jobs:
               ctx=r.get('t0_context')
               if ctx is not None:
                   if ctx.get('no_hindsight') is not True or ctx.get('immutable_after_freeze') is not True: raise SystemExit('MUTABLE_OR_HINDSIGHT_T0_CONTEXT')
+                  if float(ctx.get('freeze_lag_minutes') or 0) > 5: raise SystemExit('RETROACTIVE_T0_CONTEXT_DETECTED')
                   if str(ctx.get('exact_token') or '') != str(r.get('token_address') or ''): raise SystemExit('T0_CONTEXT_TOKEN_MISMATCH')
                   if str(ctx.get('exact_pair') or '').lower() != str(r.get('pair_address') or '').lower(): raise SystemExit('T0_CONTEXT_PAIR_MISMATCH')
-          print('VETERAN_DNA_FORWARD_OK', s.get('counts'), e.get('labeled_sample'), e.get('status'))
+          print('VETERAN_DNA_FORWARD_OK', s.get('counts'), l.get('last_context_freeze'), e.get('labeled_sample'), e.get('status'))
           PY
       - name: Publish forward ledger and shadow evaluation
         shell: bash
