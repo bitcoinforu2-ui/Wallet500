@@ -38,14 +38,18 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e . pytest
-      - name: Test mature age, identity, health and production truth contracts
+      - name: Test mature age, identity, evidence, health and production truth contracts
         run: >-
           python -m pytest -q
           tests/test_mature_age_gate.py
           tests/test_cex_identity_preflight.py
           tests/test_cex_identity.py
-          tests/test_telegram_exact_pair.py
+          tests/test_cex_fast_lane_collection.py
+          tests/test_candidate_evidence_envelope.py
           tests/test_real_alerts.py
+          tests/test_real_alerts_revival_bridge.py
+          tests/test_revival_funnel_diagnostics.py
+          tests/test_telegram_exact_pair.py
           tests/test_system_health.py
           tests/test_production_status.py
           tests/test_hot_email_alerts.py
@@ -55,7 +59,7 @@ jobs:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: python -m wallet500.cex_fast_lane
 
-      - name: Publish fast CEX identity and REAL ALERT feed
+      - name: Publish fast CEX identity only
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -63,7 +67,9 @@ jobs:
           if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
             echo "Fast publish skipped safely: main moved during scan; retaining local outputs for full validation"
           else
-            git add data/cex-revival-radar.json data/cex-learning.json data/real-alerts.json || true
+            # Do not publish the intermediate REAL ALERT file. It is recalculated
+            # only after the full evidence envelope is built later in this run.
+            git add data/cex-revival-radar.json data/cex-learning.json || true
             git add data/cex-state.json data/cex-state.json.gz 2>/dev/null || true
             if git diff --cached --quiet; then
               echo "No fast-lane data changes"
@@ -107,7 +113,7 @@ jobs:
         run: python -m wallet500.fresh_solana_gate
       - name: Revalidate immutable exact pairs
         run: python -m wallet500.exact_pair_survival
-      - name: Enforce evidence-governed production age policy on final active DEX lane
+      - name: Enforce veteran-only production age scope on final active DEX lane
         run: python -m wallet500.production_age_governance
       - name: Refresh immutable performance exact-pair marks
         run: python -m wallet500.performance_tracker
@@ -140,8 +146,34 @@ jobs:
         run: python -m wallet500.filter_tuning_advisor
       - name: Capture immutable qualified evidence
         run: python -m wallet500.evidence_capture
-      - name: Build fail-closed unified REAL ALERT feed
+
+      # The public decision outputs are generated as one coherent derived state,
+      # after all current-run upstream evidence is present in the workspace.
+      - name: Build canonical Candidate Evidence Envelope
+        run: python -m wallet500.candidate_evidence_envelope
+      - name: Build evidence-aware fail-closed REAL ALERT feed
         run: python -m wallet500.real_alerts
+      - name: Build evidence-promotion funnel diagnostics
+        run: python -m wallet500.revival_funnel_diagnostics
+      - name: Validate coherent decision snapshot
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          e=json.loads(Path('data/candidate-evidence-envelope.json').read_text())
+          r=json.loads(Path('data/real-alerts.json').read_text())
+          f=json.loads(Path('data/revival-funnel-diagnostics.json').read_text())
+          ec=e.get('counts') or {}; rc=r.get('counts') or {}; ep=(f.get('lanes') or {}).get('evidence_promotion') or {}
+          ready=int(ec.get('evidence_ready') or 0)
+          if int(rc.get('evidence_ready_research') or 0) != ready: raise SystemExit('LIVE_DECISION_EVIDENCE_COUNT_SKEW')
+          if int(ep.get('evidence_ready') or 0) != ready: raise SystemExit('LIVE_FUNNEL_EVIDENCE_COUNT_SKEW')
+          if e.get('production_change') is not False or e.get('automatic_buy') is not False: raise SystemExit('LIVE_ENVELOPE_PRODUCTION_LEAK')
+          if (e.get('truth_contract') or {}).get('minimum_market_age_days') != 180: raise SystemExit('LIVE_VETERAN_SCOPE_DRIFT')
+          age=json.loads(Path('data/active-qualified-age-gate.json').read_text())
+          if age.get('status')=='QUARANTINED_FAIL_CLOSED_UNAPPROVED_POLICY': raise SystemExit('LIVE_STALE_7D_AGE_POLICY')
+          print('LIVE_DECISION_SNAPSHOT_COHERENT', {'evidence_ready':ready,'verified_watch':rc.get('verified_watch_not_real'),'real_alerts':rc.get('real_alerts')})
+          PY
+
       - name: Send gated Telegram alerts
         run: python -m wallet500.telegram_alerts
       - name: Send HOT email alerts
