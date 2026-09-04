@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import math
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -110,6 +109,9 @@ def _parse_dt(value: object) -> datetime | None:
 def _pair_age_days(pair_created_at: object, now_dt: datetime) -> float | None:
     try:
         raw = float(pair_created_at or 0)
+        # Missing/zero creation time is unknown age, never an epoch-age veteran.
+        if not math.isfinite(raw) or raw <= 0:
+            return None
         # DexScreener uses milliseconds. Test fixtures may use seconds.
         if raw > 10_000_000_000:
             raw /= 1000.0
