@@ -41,12 +41,14 @@ def test_recovers_first_exact_pair_observation_after_missing_horizon(tmp_path: P
                 "event_at": "2026-09-04T01:00:00+00:00",
                 "entry_price_usd": 1.0,
                 "checkpoints": {
+                    "5m": {"captured_at": "2026-09-04T01:06:00+00:00", "price_usd": 1.01},
+                    "15m": {"captured_at": "2026-09-04T01:16:00+00:00", "price_usd": 1.02},
                     "1h": {
                         "captured_at": "2026-09-04T02:01:00+00:00",
                         "price_usd": 1.1,
                         "gross_return_pct": 10.0,
                         "friction_adjusted_return_pct": 8.0,
-                    }
+                    },
                 },
             }
         },
@@ -72,7 +74,7 @@ def test_recovers_first_exact_pair_observation_after_missing_horizon(tmp_path: P
     result = acr.recover(tmp_path)
     updated = json.loads((tmp_path / "alpha-proof-ledger.json").read_text())
 
-    assert result["recovered"] == 3  # 5m, 15m and 6h; 1h already exists
+    assert result["recovered"] == 1
     assert updated["signals"]["signal"]["checkpoints"]["1h"]["price_usd"] == 1.1
     assert updated["signals"]["signal"]["checkpoints"]["6h"]["captured_at"] == "2026-09-04T07:05:00+00:00"
     assert updated["signals"]["signal"]["checkpoints"]["6h"]["price_usd"] == 1.3
