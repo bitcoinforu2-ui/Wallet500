@@ -10,6 +10,7 @@ from .catalyst_dna import run_catalyst_dna
 from .cex_revival import run_cex_revival
 from .config import Settings
 from .established_hour_census import run_established_hour_census
+from .multichain_veteran_revival import run as run_multichain_veteran_revival
 from .social_catalyst import run_social_catalyst
 from .time_machine import run_time_machine
 
@@ -57,6 +58,10 @@ def run():
     # Production discovery is 100% veteran-token revival. The CEX fast lane may
     # already have refreshed this file before the slower learning stages begin.
     cex = _cex(out, now)
+    # Core multi-chain expansion is deliberately research-only. It applies the
+    # 180d veteran, exact-token/pair, $50k liquidity and activity gates before a
+    # DNA watch can exist, but it cannot create a BUY or production candidate.
+    multichain = _stage("multichain_veteran_revival", lambda: run_multichain_veteran_revival(out, now))
     census = _stage("established_hour_census", lambda: run_established_hour_census(out, now, cex))
     dna = _stage("catalyst_dna", lambda: run_catalyst_dna(out, now))
     tm = _stage("time_machine", lambda: run_time_machine(out, now))
@@ -80,9 +85,11 @@ def run():
         "minimum_exchange_confirmations": 2,
         "strong_exchange_confirmations": 4,
         "early_meaning": "EARLY_IN_REVIVAL_NOT_NEW_TOKEN",
+        "core_multichain_research": ["solana", "ethereum", "bsc", "arbitrum", "base"],
     }
     summary["lane_health"] = {
         "old_coin_revival": "HEALTHY" if cex.get("healthy_sources", 0) >= 2 and cex.get("contracts_seen", 0) > 0 else "DEGRADED",
+        "multichain_veteran_research": "HEALTHY" if multichain.get("snapshots", 0) > 0 else "DEGRADED",
         "new_token_lab": "DISABLED_POLICY",
         "social_catalyst": social.get("status"),
         "social_error": social_error,
@@ -95,6 +102,17 @@ def run():
         "alerts": cex.get("alerts_count", 0),
         "errors": len(cex.get("errors", [])),
         "identity_counts": cex.get("identity_counts", {}),
+    }
+    summary["multichain_veteran_research"] = {
+        "mode": multichain.get("mode"),
+        "core_chains": multichain.get("core_chains", []),
+        "discovered": multichain.get("discovered", 0),
+        "snapshots": multichain.get("snapshots", 0),
+        "veteran_gate_pass": multichain.get("veteran_gate_pass", 0),
+        "dna_watch_count": multichain.get("dna_watch_count", 0),
+        "late_move_count": multichain.get("late_move_count", 0),
+        "counts_by_chain": multichain.get("counts_by_chain", {}),
+        "production_portfolio_impact": "NONE",
     }
     summary["established_hour_census"] = {
         "started_at": census.get("started_at"),
@@ -127,7 +145,7 @@ def run():
     }
     summary["cex_revival_alerts"] = cex.get("alerts_count", 0)
     summary["updated_at"] = completed_at
-    summary["mode"] = "VETERAN_COIN_REVIVAL_ONLY_180D_MIN+CEX_EXACT_ID+CATALYST_DNA+TIME_MACHINE+SOCIAL"
+    summary["mode"] = "VETERAN_COIN_REVIVAL_ONLY_180D_MIN+CEX_EXACT_ID+CEX_SPOT_RESEARCH+CORE_MULTICHAIN_RESEARCH+CATALYST_DNA+TIME_MACHINE+SOCIAL"
     _write(summary_path, summary)
 
     # Keep the old artifact path explicit so no dashboard can silently interpret
@@ -146,7 +164,7 @@ def run():
     _write(out / "new-token-lab.json", new_lab)
 
     learning = {
-        "version": 9,
+        "version": 10,
         "updated_at": completed_at,
         "objective": "optimize early revival detection in verified veteran tokens with exact identity and no hindsight",
         "attention_budget_pct": {"old_coin_revival": 100, "new_token_research": 0},
@@ -154,6 +172,8 @@ def run():
             "only verified veteran coins >=180d enter the revival discovery policy",
             "EARLY means early in a revival, never a new launch",
             "exact contract/mint and exact DEX pair are required before actionable research status",
+            "multi-chain research is never production authority by itself",
+            "CEX spot evidence can confirm a DEX candidate only through exact registry chain+contract identity",
             "social popularity never overrides risk gates",
             "case studies are never counted as Wallet500 calls",
             "never invent historical catalysts, mentions, entry prices or baselines",
@@ -166,6 +186,11 @@ def run():
             "cex_healthy_sources": cex.get("healthy_sources", 0),
             "cex_symbols_seen": cex.get("symbols_seen", 0),
             "cex_identity_counts": cex.get("identity_counts", {}),
+            "multichain_discovered": multichain.get("discovered", 0),
+            "multichain_snapshots": multichain.get("snapshots", 0),
+            "multichain_veteran_gate_pass": multichain.get("veteran_gate_pass", 0),
+            "multichain_dna_watch": multichain.get("dna_watch_count", 0),
+            "multichain_counts_by_chain": multichain.get("counts_by_chain", {}),
             "established_1h_unique": (census.get("summary") or {}).get("unique_established_symbols_observed", 0),
             "established_1h_runs": (census.get("summary") or {}).get("runs_recorded", 0),
             "catalyst_dna_market_profiles": dna.get("market_profiles_count", dna.get("profiles_count", 0)),
@@ -179,11 +204,12 @@ def run():
             "observed_influencers": social.get("influencers", 0),
         },
         "next_learning_targets": [
-            "increase exact identity resolution rate for CEX revival candidates",
+            "increase exact identity resolution rate for CEX spot and derivatives revival candidates",
             "measure 5m/15m/30m/1h/4h/24h response from first verified revival anomaly",
+            "measure forward hit rate separately by Solana/Ethereum/BSC/Arbitrum/Base",
             "rank DNA patterns by verified forward hit rate and drawdown",
             "rank exchanges/sources by verified early-warning contribution",
-            "compare source combinations rather than isolated indicators",
+            "compare cross-venue DEX+CEX spot confirmation against isolated indicators",
             "connect timestamped social/KOL evidence only after exact token identity",
         ],
     }
@@ -191,6 +217,7 @@ def run():
     print("[orchestrator] COMPLETE", flush=True)
     return {
         "cex": cex,
+        "multichain_veteran_revival": multichain,
         "established_hour_census": census,
         "catalyst_dna": dna,
         "time_machine": tm,
