@@ -1,0 +1,76 @@
+name: Wallet500 Veteran DNA Forward Lab
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '37 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/veteran_dna_forward_lab.py'
+      - '.github/workflows/veteran-dna-forward-lab.yml'
+      - 'data/revival-1000-latest.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-veteran-dna-forward-lab
+  cancel-in-progress: false
+
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e .
+      - name: Run veteran-only forward DNA lab
+        run: python -m wallet500.veteran_dna_forward_lab
+      - name: Validate truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          led=Path('data/veteran-dna-forward-ledger.json')
+          sm=Path('data/veteran-dna-forward-summary.json')
+          if not led.exists() or not sm.exists(): raise SystemExit('VETERAN_DNA_FORWARD_OUTPUT_MISSING')
+          l=json.loads(led.read_text()); s=json.loads(sm.read_text())
+          if l.get('mode')!='VETERAN_DNA_FORWARD_NO_HINDSIGHT_V1': raise SystemExit('MODE_INVALID')
+          c=l.get('truth_contract') or {}
+          if c.get('veteran_only') is not True or c.get('minimum_market_age_days') != 180: raise SystemExit('VETERAN_CONTRACT_INVALID')
+          if c.get('stable_wrapped_pegged_excluded') is not True or c.get('exact_pair_only') is not True: raise SystemExit('ASSET_OR_PAIR_CONTRACT_INVALID')
+          if c.get('immutable_t0') is not True or c.get('no_hindsight') is not True or c.get('production_change') is not False: raise SystemExit('TRUTH_CONTRACT_INVALID')
+          if s.get('production_change') is not False or s.get('automatic_buy') is not False: raise SystemExit('SUMMARY_PRODUCTION_CONTRACT_INVALID')
+          for r in (l.get('records') or {}).values():
+              if r.get('market_age_verified') is not True or float(r.get('market_age_min_days_at_t0') or 0) < 180: raise SystemExit('NON_VETERAN_RECORD_DETECTED')
+              if float((r.get('t0_features') or {}).get('liquidity_usd') or 0) < 50000: raise SystemExit('LOW_LIQUIDITY_T0_DETECTED')
+          print('VETERAN_DNA_FORWARD_OK', s.get('counts'), s.get('status'))
+          PY
+      - name: Publish forward ledger
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-veteran-dna-bot'
+          git config user.email 'wallet500-veteran-dna-bot@users.noreply.github.com'
+          cp data/veteran-dna-forward-ledger.json /tmp/veteran-dna-forward-ledger.json
+          cp data/veteran-dna-forward-summary.json /tmp/veteran-dna-forward-summary.json
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp /tmp/veteran-dna-forward-ledger.json data/veteran-dna-forward-ledger.json
+            cp /tmp/veteran-dna-forward-summary.json data/veteran-dna-forward-summary.json
+            git add data/veteran-dna-forward-ledger.json data/veteran-dna-forward-summary.json
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'research: advance veteran DNA forward lab'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 3
+          done
+          exit 1
