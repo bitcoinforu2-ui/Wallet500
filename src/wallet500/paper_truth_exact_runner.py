@@ -5,14 +5,18 @@ from typing import Any
 
 from . import exact_pair_quote as epq
 from . import paper_truth_portfolio as ptp
+from . import solana_exact_pair_quote as seq
 
 EVM_CHAINS = {'BSC', 'BNB', 'ETH', 'ETHEREUM'}
+SOLANA_CHAINS = {'SOL', 'SOLANA'}
 
 
 def _entry_quote(row: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
     chain = str(row.get('chain') or '').upper()
     if chain in EVM_CHAINS:
         return epq.entry_quote(row, ptp.POSITION_SIZE)
+    if chain in SOLANA_CHAINS:
+        return seq.entry_quote(row, ptp.POSITION_SIZE)
     return None, 'EXACT_PAIR_EXECUTION_VERIFIER_NOT_IMPLEMENTED_FOR_CHAIN'
 
 
@@ -20,6 +24,8 @@ def _exit_quote(position: dict[str, Any]) -> tuple[dict[str, Any] | None, str | 
     chain = str(position.get('chain') or '').upper()
     if chain in EVM_CHAINS:
         return epq.exit_quote(position)
+    if chain in SOLANA_CHAINS:
+        return seq.exit_quote(position)
     return None, 'EXACT_PAIR_EXECUTION_VERIFIER_NOT_IMPLEMENTED_FOR_CHAIN'
 
 
@@ -51,7 +57,9 @@ def main() -> None:
             exit_quotes[key] = q or {'status': 'UNAVAILABLE', 'reason': err}
 
     ledger, summary = ptp.reconcile(ledger, rows, entry_quotes, exit_quotes)
-    summary['exact_pair_quote_engine'] = 'ONCHAIN_EVM_V2_LOCKED_PAIR_RESERVES_V1'
+    summary['exact_pair_quote_engine'] = 'EVM_V2_RESERVES_PLUS_SOLANA_0X_SINGLE_LEG_LOCKED_PAIR_ACCOUNT_V1'
+    summary['exact_pair_supported_chains'] = ['BSC', 'BNB', 'ETH', 'ETHEREUM', 'SOL', 'SOLANA']
+    summary['solana_exact_pair_rule'] = 'SINGLE_DIRECT_ROUTE_LEG + DEX_ADDRESS_EQUALS_LOCKED_PAIR + LOCKED_PAIR_PRESENT_IN_INSTRUCTION_ACCOUNTS'
     summary['generic_router_booking_disabled'] = True
     summary['unsupported_chain_policy'] = 'UNVERIFIED_NO_BOOKING'
 
