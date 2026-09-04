@@ -9,6 +9,8 @@ on:
       - 'dashboard-live-price.js'
       - 'dashboard-live-price-core.js'
       - 'dashboard-truth-overlap.js'
+      - 'data/dashboard-live-price-core.js'
+      - 'data/dashboard-truth-overlap.js'
       - 'dashboard-revival1000.html'
       - 'dashboard-live.html'
       - 'tools/check_engine_dashboard_overlap.py'
@@ -20,6 +22,8 @@ on:
       - 'dashboard-live-price.js'
       - 'dashboard-live-price-core.js'
       - 'dashboard-truth-overlap.js'
+      - 'data/dashboard-live-price-core.js'
+      - 'data/dashboard-truth-overlap.js'
       - 'dashboard-revival1000.html'
       - 'dashboard-live.html'
       - 'data/revival-pre-t0-evidence.json'
@@ -46,8 +50,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Syntax check
+      - name: Python syntax check
         run: python -m py_compile tools/check_engine_dashboard_overlap.py
+      - name: Dashboard JavaScript syntax check
+        run: |
+          node --check dashboard-live-price.js
+          node --check dashboard-live-price-core.js
+          node --check dashboard-truth-overlap.js
+          node --check data/dashboard-live-price-core.js
+          node --check data/dashboard-truth-overlap.js
       - name: Structural truth contract on PR
         if: github.event_name == 'pull_request'
         run: python tools/check_engine_dashboard_overlap.py --strict --structural-only
