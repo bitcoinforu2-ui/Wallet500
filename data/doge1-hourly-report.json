@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "observed_at": "2026-09-04T18:04:00Z",
+  "observed_at": "2026-09-04T19:21:04Z",
   "token": {
     "symbol": "DOGE-1",
     "chain": "solana",
@@ -18,14 +18,14 @@
     "price_change_h1_pct": -3.52,
     "price_change_h6_pct": null,
     "price_change_24h_pct": -37.53,
-    "coverage": "PARTIAL_EXACT_PAIR_VERIFIED: price, liquidity, 24h volume, 1h and 24h price change verified on exact Meteora V2 pair; H1 volume, H1 buys/sells and 6h change not exposed by the same fresh exact-pair source and remain null"
+    "coverage": "STALE_EXACT_PAIR_SNAPSHOT_RETAINED: no exact-pair source newer than the prior canonical snapshot was verified this run. WhatToFarm still exposes the prior 2026-09-04 13:39 UTC snapshot; GeckoTerminal exposes a conflicting same-day snapshot around 13:58 UTC. Values are retained from the prior canonical exact-pair source rather than mixed across pools/sources. H1 volume, H1 buys/sells and 6h change remain null."
   },
   "holders": {
     "count": 21750,
     "delta_1h": null,
     "delta_24h": null,
-    "coverage": "PARTIAL_TOKEN_LEVEL_POINT_IN_TIME; source reports +1.64% holders over 24h but no timestamp-safe prior raw count was captured in the previous canonical snapshot, so deltas are not backfilled",
-    "source": "SolanaTerminal exact-CA token page"
+    "coverage": "STALE_PRIOR_POINT_IN_TIME_RETAINED; CoinMarketCap currently rounds holders to 21.76K but this is not the same raw-count source, so no delta is inferred",
+    "source": "Prior SolanaTerminal exact-CA point-in-time snapshot"
   },
   "whales": {
     "threshold_supply_pct": 0.1,
@@ -36,7 +36,7 @@
     "organic_acceleration": null,
     "status": "INSUFFICIENT_COVERAGE",
     "notable_mentions": [],
-    "coverage": "SolanaTerminal reports an organic score of 74/100, but this is not equivalent to verified time-series Organic Social Acceleration; project-owned/incentivized shill activity is excluded"
+    "coverage": "No fresh timestamp-safe independent Organic Social Acceleration was verified. Project-owned, sponsored, duplicated or mission-only mentions are excluded from token-organic acceleration."
   },
   "listings": [],
   "news": [],
@@ -44,40 +44,39 @@
     {
       "type": "MISSION_TARGET_DATE",
       "date": "2026-09-14",
-      "status": "PROJECT CLAIM CONTINUES; NO FRESH OFFICIAL SPACEX/GEC/INTUITIVE MACHINES TOKEN ENDORSEMENT VERIFIED",
+      "status": "SPONSORED/PROJECT CLAIM CONTINUES; NO FRESH OFFICIAL SPACEX/GEC/INTUITIVE MACHINES TOKEN ENDORSEMENT VERIFIED",
       "token_endorsement": false
     }
   ],
   "game_changer": {
     "status": "NO_VERIFIED_GAME_CHANGER",
     "token_endorsement": false,
-    "mission_level_signal": "No fresh explicit endorsement linking Elon Musk, SpaceX, Geometric Energy Corporation, Samuel Reid or Intuitive Machines to this exact Solana contract was verified. Project-owned claims are not treated as independent endorsement."
+    "mission_level_signal": "No fresh explicit endorsement linking Elon Musk, SpaceX, Geometric Energy Corporation, Samuel Reid or Intuitive Machines to this exact Solana contract was verified. Historical mission-level Dogecoin/SpaceX references and sponsored/project claims are not token endorsement."
   },
   "changes_since_previous": {
-    "status": "MATERIAL_COVERAGE_RESTORED_AND_MARKET_DOWNTREND_VERIFIED",
-    "price_change_vs_previous_snapshot_pct": null,
-    "liquidity_change_vs_previous_snapshot_pct": null,
-    "volume_24h_change_vs_previous_snapshot_pct": null,
-    "price_change_24h_pct_change_points": null,
+    "status": "NO_MATERIAL_CHANGE",
+    "price_change_vs_previous_snapshot_pct": 0.0,
+    "liquidity_change_vs_previous_snapshot_pct": 0.0,
+    "volume_24h_change_vs_previous_snapshot_pct": 0.0,
+    "price_change_24h_pct_change_points": 0.0,
     "holder_delta_since_previous_snapshot": null,
-    "wallet500_survivor_change": "Current canonical survivor snapshot: survivor_n=14, dna_high_n=0, dna_medium_n=0, wave_building_n=0 at 2026-09-04T17:25:50.925952+00:00. No DNA alert condition is active."
+    "wallet500_survivor_change": "Current canonical survivor snapshot generated 2026-09-04T18:29:13.167087+00:00: survivor_n=14, dna_high_n=0, dna_medium_n=0, wave_building_n=0. No DNA alert condition is active."
   },
   "evidence_notes": [
-    "Exact DOGE-1 contract and exact Meteora V2 pair identity preserved; no pools mixed.",
-    "Fresh exact-pair market coverage was restored this run via WhatToFarm for the exact pair address.",
-    "Exact-pair price was $0.0004207, liquidity $192,975.33, 24h volume $134,601.76, 1h price change -3.52%, and 24h price change -37.53% at the source snapshot.",
-    "The same source reports 957 transactions, 631 buys and 326 sells for its displayed aggregate window; these were not inserted into buys_h1/sells_h1 because they are not proven H1 values.",
-    "Holder count 21,750 is token-level point-in-time data tied to the exact CA; prior canonical holder count was null, so no raw-count delta was inferred.",
-    "No swap-verified whale event >=0.1% of supply was established; plain transfers are not classified as buys or sells.",
-    "No fresh timestamp-safe independent Organic Social Acceleration or explicit token endorsement was verified.",
+    "Exact DOGE-1 contract and exact Meteora DAMM V2 pair identity preserved; no pools mixed.",
+    "No newer timestamped exact-pair snapshot than the prior canonical source was verified this run, so prior exact-pair values were retained rather than combining incompatible snapshots.",
+    "GeckoTerminal showed the same exact pair at $0.0003988, liquidity about $183.7K and 24h volume about $238.45K, but its displayed exchange-rate timestamp was around 13:58 UTC and conflicts with the prior WhatToFarm snapshot around 13:39 UTC; the conflict is recorded, not averaged.",
+    "CoinMarketCap currently shows the exact Solana contract with price about $0.000461 and holders rounded to 21.76K, but these are token-level values and are not substituted into exact-pair fields.",
+    "No swap-verified whale event >=0.1% of current supply was established; plain transfers are not classified as buys or sells.",
+    "No fresh timestamp-safe independent Organic Social Acceleration, listing confirmation, or explicit token endorsement was verified.",
     "Wallet500 survivor state remains research-only; no production gate was modified.",
-    "T0 forensics remains unchanged: 20 Winners vs 40 controls; Winner medians H1 volume $62,835.585 vs $24,854.685 controls, turnover 0.28562 vs 0.138942, buy/sell 1.315892 vs 1.082092, H1 txns 558 vs 252.5; historical external-context coverage remains insufficient."
+    "T0 Winner-vs-Loser research remains unchanged in this run; no post-rise feature was introduced and no production threshold was modified."
   ],
   "source_links": [
     "https://whattofarm.io/it/pairs/solana-meteorav-doge--sol-created-2025-09-10",
     "https://www.geckoterminal.com/solana/pools/2fckuYXUrwbA9LHKMP1az5DTFstFrRjqqbBstz7yvVXL",
-    "https://www.solanaterminal.com/solana/token/doge-1/DpBzjtgGLF7QA9Ug3eUVGbnqa6j3jvYBn1XuQuktvfhm",
-    "https://www.doge1.io/",
+    "https://coinmarketcap.com/currencies/doge-1-satellite/",
+    "https://u.today/press-releases/doge-1-from-to-the-moon-to-the-moon",
     "https://github.com/bitcoinforu2-ui/Wallet500/blob/main/data/survivor-wave-watch.json",
     "https://github.com/bitcoinforu2-ui/Wallet500/blob/main/data/winner-separator-study.json"
   ]
