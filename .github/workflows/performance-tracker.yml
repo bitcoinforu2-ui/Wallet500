@@ -20,10 +20,12 @@ on:
       - 'src/wallet500/quality_shadow.py'
       - 'src/wallet500/hot_healthy_radar.py'
       - 'src/wallet500/address_quality_audit.py'
+      - 'scripts/compact_outcome_history.py'
       - 'tests/test_lifecycle_strategy.py'
       - 'tests/test_experiment_v1.py'
       - 'tests/test_research_integrity_v2.py'
       - 'tests/test_revival_historical_dna.py'
+      - 'tests/test_compact_outcome_history.py'
       - '.github/workflows/performance-tracker.yml'
 
 permissions:
@@ -52,7 +54,7 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Run lifecycle strategy and research integrity tests
-        run: python -m pytest -q tests/test_lifecycle_strategy.py tests/test_experiment_v1.py tests/test_research_integrity_v2.py tests/test_revival_historical_dna.py
+        run: python -m pytest -q tests/test_lifecycle_strategy.py tests/test_experiment_v1.py tests/test_research_integrity_v2.py tests/test_revival_historical_dna.py tests/test_compact_outcome_history.py
       - name: Rebuild immutable Performance Since Discovery
         run: python -m wallet500.performance_tracker
       - name: Update forward lifecycle strategy ledger
@@ -79,6 +81,12 @@ jobs:
         env:
           ZEROX_API_KEY: ${{ secrets.ZEROX_API_KEY }}
         run: python -m wallet500.cash_verified
+      - name: Compact outcome history without deleting evidence
+        env:
+          WALLET500_OUTCOME_HOT_HISTORY: '24'
+          WALLET500_OUTCOME_MAX_LIVE_BYTES: '73400320'
+          WALLET500_OUTCOME_ARCHIVE_SHARD_BYTES: '16777216'
+        run: python scripts/compact_outcome_history.py
       - name: Validate measurement integrity
         run: |
           python - <<'PY'
@@ -90,6 +98,12 @@ jobs:
           d,rp,pl,cr,ev,es,wd,rh,mv,qs,hh,aq=[json.loads(x.read_text()) for x in paths]
           total=int(d.get('tracked_tokens') or len((d.get('tokens') or {}))); entries=pl.get('entries') if isinstance(pl.get('entries'),list) else []
           if total<=0: raise SystemExit('FATAL: tracker attempted to publish zero tracked tokens')
+          storage=d.get('history_storage') or {}
+          if storage.get('mode')!='HOT_TAIL_PLUS_IMMUTABLE_GZIP_JSONL_ARCHIVE': raise SystemExit('FATAL: outcome history compaction contract missing')
+          if storage.get('preserves_all_token_records') is not True or storage.get('preserves_all_observations') is not True: raise SystemExit('FATAL: outcome compaction preservation contract invalid')
+          ceiling=70*1024*1024
+          for p in (Path('data/outcome-tracker.json'),Path('data/signal-outcomes.json')):
+              if p.stat().st_size>ceiling: raise SystemExit('FATAL: live outcome file exceeds 70MiB publish ceiling: '+str(p))
           if int(rp.get('paper_entries_count') or 0)!=len(entries): raise SystemExit('FATAL: paper entry count differs from persistent ledger')
           for p in entries:
               if not p.get('entry_at') or not p.get('pair_address') or float(p.get('entry_price_usd') or 0)<=0: raise SystemExit('FATAL: paper entry lacks immutable time/pair/price')
@@ -109,6 +123,7 @@ jobs:
           if aq.get('method')!='ADDRESS_QUALITY_AUDIT_V2': raise SystemExit('FATAL: address audit method mismatch')
           if d.get('exact_pair_index_mode')!='CHAIN_TOKEN_PAIR_CASE_SAFE': raise SystemExit('FATAL: performance tracker is not using case-safe chain+token+pair indexing')
           print('INTEGRITY PASS')
+          print('STORAGE', storage)
           print('RESEARCH', {'experiment_v1':len(ev.get('records') or []),'winner_dna_status':wd.get('status'),'winner_dna':wd.get('winner_n'),'winner_controls':wd.get('control_n'),'solana_winner_dna':(wd.get('solana_study') or {}).get('status'),'revival_historical_dna':rh.get('counts'),'measured_vs_rest':[mv.get('measured_now_n'),mv.get('rest_n')]})
           PY
       - name: Publish measurement data
@@ -116,7 +131,7 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/outcome-tracker.json data/signal-outcomes.json data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json data/first-eligible-paper-ledger.json data/cohort-research.json data/cohort-research.md data/experiment-v1-ledger.json data/experiment-v1-scoreboard.json data/experiment-v1-report.md data/winner-dna-study.json data/revival-historical-dna.json data/measurable-vs-rest-experiment.json data/measurable-vs-rest-experiment.md data/quality-shadow-ledger.json data/quality-shadow-summary.json data/hot-healthy-radar.json data/address-quality-audit.json
+          git add data/outcome-tracker.json data/signal-outcomes.json data/outcome-archive data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json data/first-eligible-paper-ledger.json data/cohort-research.json data/cohort-research.md data/experiment-v1-ledger.json data/experiment-v1-scoreboard.json data/experiment-v1-report.md data/winner-dna-study.json data/revival-historical-dna.json data/measurable-vs-rest-experiment.json data/measurable-vs-rest-experiment.md data/quality-shadow-ledger.json data/quality-shadow-summary.json data/hot-healthy-radar.json data/address-quality-audit.json
           if ! git diff --cached --quiet; then
             git commit -m 'data: refresh performance and research lab outputs'
             for attempt in 1 2 3 4 5; do

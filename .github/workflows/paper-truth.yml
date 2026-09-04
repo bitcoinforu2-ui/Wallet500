@@ -7,41 +7,59 @@ on:
     types: [completed]
   schedule:
     - cron: '12,27,42,57 * * * *'
+  pull_request:
+    paths:
+      - 'src/wallet500/paper_truth_portfolio.py'
+      - 'src/wallet500/paper_truth_exact_runner.py'
+      - 'src/wallet500/exact_pair_quote.py'
+      - 'src/wallet500/solana_exact_pair_quote.py'
+      - 'src/wallet500/cash_verified.py'
+      - 'tests/test_exact_pair_quote.py'
+      - 'tests/test_solana_exact_pair_quote.py'
+      - 'tests/test_paper_truth_exact_runner.py'
+      - '.github/workflows/paper-truth.yml'
   push:
     branches: [main]
     paths:
       - 'src/wallet500/paper_truth_portfolio.py'
       - 'src/wallet500/paper_truth_exact_runner.py'
       - 'src/wallet500/exact_pair_quote.py'
+      - 'src/wallet500/solana_exact_pair_quote.py'
       - 'src/wallet500/cash_verified.py'
+      - 'tests/test_exact_pair_quote.py'
+      - 'tests/test_solana_exact_pair_quote.py'
+      - 'tests/test_paper_truth_exact_runner.py'
       - '.github/workflows/paper-truth.yml'
 
 permissions:
   contents: write
 
-# Paper Truth owns its two ledger artifacts and already rebases/pushes fail-closed.
-# Keep its runs from being displaced by unrelated high-frequency data publishers.
+# Main publication stays serialized; each PR SHA gets an independent fast check
+# so an obsolete deep checkout cannot block validation of a corrected commit.
 concurrency:
-  group: wallet500-paper-truth-publisher
+  group: wallet500-paper-truth-${{ github.event_name == 'pull_request' && github.sha || 'main-publisher' }}
   cancel-in-progress: false
-  queue: max
 
 jobs:
   truth:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
-          fetch-depth: 0
+          # PR checks do not need the multi-gigabyte Git history. Main publishers
+          # retain full history because they may need to rebase before pushing.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 1 || 0 }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install
-        run: pip install -e .
+      - name: Install and test exact-pair truth contract
+        run: |
+          pip install -e . pytest
+          python -m pytest -q tests/test_exact_pair_quote.py tests/test_solana_exact_pair_quote.py tests/test_paper_truth_exact_runner.py
       - name: Reconcile exact-pair quote-verified paper truth ledger
+        if: github.event_name != 'pull_request'
         env:
           ZEROX_API_KEY: ${{ secrets.ZEROX_API_KEY }}
           ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
@@ -49,6 +67,7 @@ jobs:
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
         run: python -m wallet500.paper_truth_exact_runner
       - name: Validate truth accounting
+        if: github.event_name != 'pull_request'
         run: |
           python - <<'PY'
           import json
@@ -68,6 +87,10 @@ jobs:
               raise SystemExit('FATAL: position size changed')
           if s.get('generic_router_booking_disabled') is not True:
               raise SystemExit('FATAL: generic router booking unexpectedly enabled')
+          if 'SOLANA' not in set(s.get('exact_pair_supported_chains') or []):
+              raise SystemExit('FATAL: Solana exact-pair verifier not declared')
+          if s.get('solana_exact_pair_rule') != 'SINGLE_DIRECT_ROUTE_LEG + DEX_ADDRESS_EQUALS_LOCKED_PAIR + LOCKED_PAIR_PRESENT_IN_INSTRUCTION_ACCOUNTS':
+              raise SystemExit('FATAL: Solana exact-pair proof rule mismatch')
 
           closed_status = 'CLOSED_EXACT_PAIR_QUOTE_VERIFIED'
           positions = l.get('positions') or []
@@ -101,6 +124,7 @@ jobs:
           )
           PY
       - name: Publish truth ledger only
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
