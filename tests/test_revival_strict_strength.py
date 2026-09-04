@@ -39,13 +39,13 @@ def test_strict_3_requires_strong_structure():
     ))
     assert result["strict_grade"] == "STRICT-3"
     assert result["strict_level"] == 3
-    assert result["strict_strength_score"] >= 80
+    assert result["strict_strength_score"] >= 90
 
 
 def test_strict_2_is_middle_strength_band():
     result = grade_strict_flow(flow())
     assert result["strict_grade"] == "STRICT-2"
-    assert 60 <= result["strict_strength_score"] < 80
+    assert 65 <= result["strict_strength_score"] < 90
 
 
 def test_strict_1_can_pass_strict_but_have_weaker_structure():
@@ -60,7 +60,7 @@ def test_strict_1_can_pass_strict_but_have_weaker_structure():
         price_change_h1_pct=-4.0,
     ))
     assert result["strict_grade"] == "STRICT-1"
-    assert result["strict_strength_score"] < 60
+    assert result["strict_strength_score"] < 65
 
 
 def test_non_strict_never_receives_a_grade():
