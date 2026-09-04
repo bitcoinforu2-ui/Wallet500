@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .solana_mintability_public_guard import sanitize_real_alerts
+
 DATA = Path("data")
 OUTPUT = DATA / "decision-snapshot-integrity.json"
 MIN_AGE_DAYS = 180
@@ -98,6 +100,18 @@ def build(data_dir: Path = DATA) -> dict:
         if _int(c.get("positive_independent_count")) < 1:
             fail("EVIDENCE_READY_WITHOUT_INDEPENDENT_EVIDENCE", "Evidence Ready requires an independent positive lane", row.get("key"))
 
+    for surface in ("alerts", "verified_watch", "evidence_ready"):
+        for row in real.get(surface) or []:
+            if not isinstance(row, dict):
+                continue
+            chain = str(row.get("chain") or row.get("network") or "").lower()
+            if chain == "solana" and not (
+                row.get("mintability_verified") is True
+                and row.get("mintable") is False
+                and row.get("mint_authority") is None
+            ):
+                fail("SOLANA_MINTABILITY_PUBLIC_BREACH", "Mintable or unverified Solana token reached a public decision surface", {"surface": surface, "token": row.get("token_address")})
+
     for row in real.get("alerts") or []:
         if not isinstance(row, dict):
             continue
@@ -116,9 +130,9 @@ def build(data_dir: Path = DATA) -> dict:
             fail("PRODUCTION_STATUS_SCOPE_DRIFT", "Production status must report 180d veteran scope", policy.get("minimum_verified_market_age_days"))
 
     return {
-        "version": 1,
+        "version": 2,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "mode": "FAIL_CLOSED_DECISION_SNAPSHOT_COHERENCE_GUARD_V1",
+        "mode": "FAIL_CLOSED_DECISION_SNAPSHOT_COHERENCE_GUARD_V2_NO_MINTABLE_SOLANA",
         "passed": not failures,
         "failure_count": len(failures),
         "failures": failures,
@@ -127,11 +141,15 @@ def build(data_dir: Path = DATA) -> dict:
             "verified_watch": _int(rc.get("verified_watch_not_real")),
             "real_alerts": _int(rc.get("real_alerts")),
             "identity_pending": _int(rc.get("identity_pending_not_actionable")),
+            "mintability_rejected_not_visible": _int(rc.get("mintability_rejected_not_visible")),
         },
         "truth_contract": {
             "veteran_scope_days": MIN_AGE_DAYS,
             "minimum_execution_pool_liquidity_usd": MIN_LIQUIDITY_USD,
             "exact_pair_required": True,
+            "solana_mint_authority_must_be_revoked_null": True,
+            "solana_mintable_tokens_allowed": False,
+            "solana_unknown_mintability_allowed": False,
             "evidence_ready_is_research_only": True,
             "no_hindsight": True,
         },
@@ -139,6 +157,9 @@ def build(data_dir: Path = DATA) -> dict:
 
 
 def run(data_dir: Path = DATA, fail_on_error: bool = True) -> dict:
+    # Sanitize first so stale precursor/waking rows cannot keep a mintable token
+    # visible after the canonical Revival universe has correctly rejected it.
+    sanitize_real_alerts(data_dir)
     payload = build(data_dir)
     (data_dir / OUTPUT.name).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if fail_on_error and not payload["passed"]:
