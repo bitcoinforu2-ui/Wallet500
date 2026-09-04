@@ -48,6 +48,32 @@ def test_whitewhale_shape_triggers_research_absorption_proxy():
     assert result["exact_buy_sell_notional_verified"] is False
     assert result["buy_volume_24h_usd"] is None
     assert result["sell_volume_24h_usd"] is None
+    assert result["strict_level"] == 2
+    assert result["strict_grade"] == "STRICT-2"
+
+
+def test_strict3_requires_early_premium_structure():
+    coin, pair = whitewhale_shape()
+    pair["volume"]["h24"] = 160000
+    pair["priceChange"]["h1"] = -1.0
+    result = compute_absorption_proxy(coin, pair)
+    assert result["signal"] is True
+    assert result["strict_level"] == 3
+    assert result["strict_grade"] == "STRICT-3"
+    assert result["strict_grade_reason"] == "EARLY_PREMIUM_ABSORPTION"
+    assert all(result["strict_grade_criteria"]["strict3"].values())
+
+
+def test_late_extended_move_does_not_upgrade_above_strict1():
+    coin, pair = whitewhale_shape()
+    pair["volume"]["h24"] = 160000
+    pair["priceChange"]["h24"] = 60.0
+    pair["priceChange"]["h1"] = 5.0
+    result = compute_absorption_proxy(coin, pair)
+    assert result["signal"] is True
+    assert result["strict_level"] == 1
+    assert result["strict_grade"] == "STRICT-1"
+    assert result["strict_grade_reason"] == "BASE_ABSORPTION_ONLY"
 
 
 def test_proxy_rejects_sell_pressure_with_negative_24h_price():
@@ -56,6 +82,8 @@ def test_proxy_rejects_sell_pressure_with_negative_24h_price():
     result = compute_absorption_proxy(coin, pair)
     assert result["signal"] is False
     assert result["criteria"]["price_change_24h_positive"] is False
+    assert result["strict_level"] == 0
+    assert result["strict_grade"] is None
 
 
 def test_exact_pair_resolution_never_switches_to_other_pool():
@@ -83,6 +111,13 @@ def test_apply_layer_adds_watch_only_without_score_or_pre_alpha_promotion():
     assert out["research_watch_eligible"] is True
     assert out["pre_alpha_eligible"] is False
     assert out["revival_score_verified"] == original_score
+    assert out["order_flow_absorption"]["strict_grade"] == "STRICT-2"
     assert enriched["counts"]["absorption_proxy_watch"] == 1
     assert enriched["counts"]["absorption_proxy_outside_core"] == 1
-    assert enriched["order_flow_absorption_contract"]["pre_alpha_promotion"] == "FORBIDDEN"
+    assert enriched["counts"]["absorption_strict_1"] == 0
+    assert enriched["counts"]["absorption_strict_2"] == 1
+    assert enriched["counts"]["absorption_strict_3"] == 0
+    contract = enriched["order_flow_absorption_contract"]
+    assert contract["version"] == "SELL_COUNT_ABSORPTION_PROXY_V2_STRICT_LEVELS"
+    assert contract["pre_alpha_promotion"] == "FORBIDDEN"
+    assert contract["production_portfolio_impact"] == "NONE"
