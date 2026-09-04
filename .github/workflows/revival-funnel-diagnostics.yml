@@ -1,0 +1,82 @@
+name: Wallet500 Revival Funnel Diagnostics
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - "Wallet500 Revival Solana Expanded"
+      - "Wallet500 Survivor Reawakening Shadow"
+      - "Wallet500 Forward Alpha Proof"
+    types: [completed]
+  pull_request:
+    paths:
+      - 'src/wallet500/revival_funnel_diagnostics.py'
+      - 'tests/test_revival_funnel_diagnostics.py'
+      - '.github/workflows/revival-funnel-diagnostics.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/revival_funnel_diagnostics.py'
+      - 'tests/test_revival_funnel_diagnostics.py'
+      - '.github/workflows/revival-funnel-diagnostics.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-revival-funnel-diagnostics-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install and test diagnostics contract
+        run: |
+          pip install -e . pytest
+          python -m pytest -q tests/test_revival_funnel_diagnostics.py
+      - name: Build revival diagnostics
+        run: python -m wallet500.revival_funnel_diagnostics
+      - name: Validate diagnostics are research-only
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/revival-funnel-diagnostics.json')
+          if not p.exists() or p.stat().st_size == 0: raise SystemExit('REVIVAL_FUNNEL_DIAGNOSTICS_MISSING')
+          d=json.loads(p.read_text())
+          if d.get('mode')!='REVIVAL_FUNNEL_DIAGNOSTICS_V1': raise SystemExit('REVIVAL_FUNNEL_MODE_INVALID')
+          if d.get('production_change') is not False or d.get('production_portfolio_impact')!='NONE': raise SystemExit('REVIVAL_FUNNEL_PRODUCTION_IMPACT_INVALID')
+          rules=set(d.get('truth_rules') or [])
+          required={'MISSING_EVIDENCE_IS_NOT_FAILURE','PARALLEL_LANES_ARE_NOT_FAKE_CONVERSION_STAGES','AGE_GATE_IS_NOT_BLAMED_WHEN_RAW_ACTIVE_IS_ZERO','NO_PRODUCTION_THRESHOLD_IS_CHANGED_BY_THIS_REPORT'}
+          if not required.issubset(rules): raise SystemExit('REVIVAL_FUNNEL_TRUTH_RULES_INCOMPLETE')
+          print('REVIVAL_FUNNEL_DIAGNOSTICS_OK', d.get('lanes'), d.get('blockers'))
+          PY
+      - name: Publish diagnostics
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          cp data/revival-funnel-diagnostics.json "$tmp/revival-funnel-diagnostics.json"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/revival-funnel-diagnostics.json" data/revival-funnel-diagnostics.json
+            git add data/revival-funnel-diagnostics.json
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'data: refresh revival funnel diagnostics'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 3
+          done
+          echo 'Revival funnel diagnostics publish failed after retries'
+          exit 1
