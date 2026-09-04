@@ -25,6 +25,7 @@ on:
       - 'data/waking-confirmation-latest.json'
       - 'data/cex-revival-radar.json'
       - 'data/revival-pre-t0-evidence.json'
+      - 'data/active-qualified-age-gate.json'
 
 permissions:
   contents: write
@@ -91,31 +92,54 @@ jobs:
           print('REAL_ALERT_V3_OK',r.get('counts'))
           print('FUNNEL_V2_OK',(f.get('lanes') or {}).get('evidence_promotion'))
           PY
-      - name: Publish atomic derived evidence snapshot
+      - name: Publish coherent derived decision snapshot
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'wallet500-evidence-bot'
           git config user.email 'wallet500-evidence-bot@users.noreply.github.com'
-          tmp="$(mktemp -d)"
-          for f in candidate-evidence-envelope.json real-alerts.json revival-funnel-diagnostics.json; do cp "data/$f" "$tmp/$f"; done
 
+          # Critical coherence rule: never copy a derived file calculated from an
+          # older checkout onto a newer main. On every publish attempt, reset to
+          # the latest main and recompute all three derived files from that exact
+          # source snapshot before committing them together.
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
-            for f in candidate-evidence-envelope.json real-alerts.json revival-funnel-diagnostics.json; do cp "$tmp/$f" "data/$f"; done
+            python -m wallet500.candidate_evidence_envelope
+            python -m wallet500.real_alerts
+            python -m wallet500.revival_funnel_diagnostics
+
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          e=json.loads(Path('data/candidate-evidence-envelope.json').read_text())
+          r=json.loads(Path('data/real-alerts.json').read_text())
+          f=json.loads(Path('data/revival-funnel-diagnostics.json').read_text())
+          ec=e.get('counts') or {}; rc=r.get('counts') or {}; ep=(f.get('lanes') or {}).get('evidence_promotion') or {}
+          if int(rc.get('evidence_ready_research') or 0) != int(ec.get('evidence_ready') or 0):
+              raise SystemExit('DERIVED_SNAPSHOT_EVIDENCE_COUNT_SKEW')
+          if int(ep.get('evidence_ready') or 0) != int(ec.get('evidence_ready') or 0):
+              raise SystemExit('DERIVED_SNAPSHOT_FUNNEL_COUNT_SKEW')
+          if (f.get('lanes') or {}).get('active_qualification',{}).get('age_gate_status') == 'QUARANTINED_FAIL_CLOSED_UNAPPROVED_POLICY':
+              age=json.loads(Path('data/active-qualified-age-gate.json').read_text()) if Path('data/active-qualified-age-gate.json').exists() else {}
+              if age.get('status') != 'QUARANTINED_FAIL_CLOSED_UNAPPROVED_POLICY':
+                  raise SystemExit('DERIVED_SNAPSHOT_STALE_AGE_GATE')
+          print('COHERENT_DERIVED_SNAPSHOT_OK', {'evidence_ready':ec.get('evidence_ready'),'watch':rc.get('verified_watch_not_real')})
+          PY
+
             git add data/candidate-evidence-envelope.json data/real-alerts.json data/revival-funnel-diagnostics.json
             if git diff --cached --quiet; then
               echo 'CANDIDATE_EVIDENCE_NO_DATA_CHANGE'
               exit 0
             fi
-            git commit -m 'data: refresh candidate evidence envelope'
+            git commit -m 'data: refresh coherent candidate evidence snapshot'
             if git push origin HEAD:main; then
-              echo 'CANDIDATE_EVIDENCE_PUBLISH_OK'
+              echo 'CANDIDATE_EVIDENCE_COHERENT_PUBLISH_OK'
               exit 0
             fi
-            echo "CANDIDATE_EVIDENCE_PUBLISH_RETRY attempt=$attempt"
+            echo "CANDIDATE_EVIDENCE_RECOMPUTE_RETRY attempt=$attempt"
             sleep 3
           done
-          echo '::error::CANDIDATE_EVIDENCE_PUBLISH_RACE_EXHAUSTED'
+          echo '::error::CANDIDATE_EVIDENCE_COHERENT_PUBLISH_RACE_EXHAUSTED'
           exit 1
