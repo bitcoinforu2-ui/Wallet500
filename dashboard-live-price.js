@@ -3,8 +3,8 @@
   const current=document.currentScript;
   const src=current&&current.src?current.src:'';
   const base=src?src.slice(0,src.lastIndexOf('/')+1):'';
-  const core=base+'dashboard-live-price-core.js';
-  const truth=base+'dashboard-truth-overlap.js';
+  const core=base+'data/dashboard-live-price-core.js';
+  const truth=base+'data/dashboard-truth-overlap.js';
   const esc=u=>String(u).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
   if(document.readyState==='loading'){
     document.write('<script src="'+esc(core)+'"><\/script>');
