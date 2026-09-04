@@ -34,10 +34,10 @@ on:
 permissions:
   contents: write
 
-# Paper Truth owns its two ledger artifacts and already rebases/pushes fail-closed.
-# Keep its runs from being displaced by unrelated high-frequency data publishers.
+# Main publication stays serialized; each PR SHA gets an independent fast check
+# so an obsolete deep checkout cannot block validation of a corrected commit.
 concurrency:
-  group: wallet500-paper-truth-publisher-${{ github.event.pull_request.number || github.ref }}
+  group: wallet500-paper-truth-${{ github.event_name == 'pull_request' && github.sha || 'main-publisher' }}
   cancel-in-progress: false
 
 jobs:
