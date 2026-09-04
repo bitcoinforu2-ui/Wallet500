@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/survivor_wave_watch.py'
+      - 'src/wallet500/survivor_signal_enhancer.py'
       - 'src/wallet500/survivor_veteran_gate.py'
       - '.github/workflows/survivor-wave-watch.yml'
       - 'data/winner-separator-study.json'
@@ -36,6 +37,8 @@ jobs:
         run: pip install -e .
       - name: Run exact-pair survivor watch
         run: python -m wallet500.survivor_wave_watch
+      - name: Run shadow Winner DNA v2 research layers
+        run: python -m wallet500.survivor_signal_enhancer
       - name: Apply veteran-only alert gate
         run: python -m wallet500.survivor_veteran_gate
       - name: Validate truth contract
@@ -49,6 +52,8 @@ jobs:
           if d.get('mode')!='HOURLY_WINNER_SURVIVOR_WAVE_WATCH_V1': raise SystemExit('MODE_INVALID')
           if d.get('research_only') is not True or d.get('automatic_buy') is not False: raise SystemExit('PRODUCTION_CONTRACT_INVALID')
           if d.get('exact_pair_only') is not True: raise SystemExit('PAIR_CONTRACT_INVALID')
+          layers=d.get('research_layers') or {}
+          if layers.get('production_gates_changed') is not False: raise SystemExit('RESEARCH_LAYER_CONTRACT_INVALID')
           contract=d.get('veteran_truth_contract') or {}
           if contract.get('focus')!='VETERAN_COIN_REVIVAL_ONLY': raise SystemExit('VETERAN_FOCUS_INVALID')
           if float(contract.get('minimum_market_age_days') or 0) < 180: raise SystemExit('VETERAN_AGE_FLOOR_INVALID')
@@ -75,12 +80,16 @@ jobs:
           tmp="$(mktemp -d)"
           cp data/survivor-wave-watch.json "$tmp/survivor-wave-watch.json"
           cp data/survivor-wave-watch-state.json "$tmp/survivor-wave-watch-state.json"
+          cp data/survivor-signal-enhancer-state.json "$tmp/survivor-signal-enhancer-state.json"
+          cp data/survivor-forward-validation.json "$tmp/survivor-forward-validation.json"
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
             cp "$tmp/survivor-wave-watch.json" data/survivor-wave-watch.json
             cp "$tmp/survivor-wave-watch-state.json" data/survivor-wave-watch-state.json
-            git add data/survivor-wave-watch.json data/survivor-wave-watch-state.json
+            cp "$tmp/survivor-signal-enhancer-state.json" data/survivor-signal-enhancer-state.json
+            cp "$tmp/survivor-forward-validation.json" data/survivor-forward-validation.json
+            git add data/survivor-wave-watch.json data/survivor-wave-watch-state.json data/survivor-signal-enhancer-state.json data/survivor-forward-validation.json
             if git diff --cached --quiet; then exit 0; fi
             git commit -m 'data: refresh hourly survivor wave watch'
             if git push origin HEAD:main; then exit 0; fi
