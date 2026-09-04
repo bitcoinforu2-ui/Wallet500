@@ -1,0 +1,140 @@
+name: Wallet500 Revival PRE-T0 Evidence
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/revival_pre_t0_evidence.py'
+      - 'src/wallet500/waking_pre_t0_confirmation.py'
+      - 'tests/test_revival_pre_t0_evidence.py'
+      - '.github/workflows/revival-pre-t0-evidence.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-revival-pre-t0-evidence
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Unit tests
+        run: python -m pytest -q tests/test_revival_pre_t0_evidence.py
+      - name: Capture immutable PRE-T0 evidence
+        run: python -m wallet500.revival_pre_t0_evidence
+      - name: Join PRE-T0 evidence to Waking confirmation shadow
+        run: python -m wallet500.waking_pre_t0_confirmation
+      - name: Validate no-hindsight truth contracts
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime
+          from pathlib import Path
+
+          lp=Path('data/revival-pre-t0-evidence-ledger.json')
+          pp=Path('data/revival-pre-t0-evidence.json')
+          wp=Path('data/waking-pre-t0-confirmation.json')
+          if not all(p.exists() for p in (lp,pp,wp)):
+              raise SystemExit('PRE_T0_OUTPUT_MISSING')
+
+          ledger=json.loads(lp.read_text())
+          latest=json.loads(pp.read_text())
+          waking=json.loads(wp.read_text())
+
+          if ledger.get('version')!='REVIVAL_PRE_T0_EVIDENCE_V1': raise SystemExit('PRE_T0_VERSION_INVALID')
+          if ledger.get('mode')!='RESEARCH_ONLY_IMMUTABLE_PRE_T0_EVIDENCE': raise SystemExit('PRE_T0_MODE_INVALID')
+          if ledger.get('network')!='solana' or ledger.get('no_hindsight') is not True: raise SystemExit('PRE_T0_TRUTH_INVALID')
+          if ledger.get('production_portfolio_impact')!='NONE' or ledger.get('automatic_buy') is not False: raise SystemExit('PRE_T0_SAFETY_INVALID')
+          truth=ledger.get('truth_contract') or {}
+          if truth.get('capture_lane')!='DEEP_WATCH_BEFORE_WAKING_ONLY': raise SystemExit('PRE_T0_CAPTURE_LANE_INVALID')
+          if truth.get('retroactive_backfill_after_waking')!='FORBIDDEN': raise SystemExit('PRE_T0_BACKFILL_GUARD_MISSING')
+          if truth.get('missing_evidence_imputed') is not False: raise SystemExit('PRE_T0_IMPUTATION_INVALID')
+          if truth.get('concentration_positive_alpha') is not False: raise SystemExit('PRE_T0_CONCENTRATION_ALPHA_INVALID')
+          if truth.get('raw_social_mentions_are_organic_alpha') is not False: raise SystemExit('PRE_T0_SOCIAL_TRUTH_INVALID')
+
+          records={}
+          for row in ledger.get('records') or []:
+              rid=row.get('record_id')
+              if not rid or rid in records: raise SystemExit('PRE_T0_RECORD_ID_INVALID')
+              records[rid]=row
+              if row.get('watch_status_at_capture')!='DEEP_WATCH': raise SystemExit('PRE_T0_NON_DEEP_WATCH_CAPTURE')
+              if row.get('immutable_after_append') is not True or row.get('no_hindsight') is not True: raise SystemExit('PRE_T0_RECORD_MUTABILITY_INVALID')
+              if row.get('production_portfolio_impact')!='NONE': raise SystemExit('PRE_T0_RECORD_PRODUCTION_IMPACT')
+              if ((row.get('families') or {}).get('concentration') or {}).get('positive') is not False:
+                  raise SystemExit('PRE_T0_CONCENTRATION_FALSE_ALPHA')
+              if ((row.get('confirmation_shadow') or {}).get('pre_alpha_promotion'))!='FORBIDDEN':
+                  raise SystemExit('PRE_T0_PREALPHA_PROMOTION_INVALID')
+
+          for key,b in (ledger.get('waking_bindings') or {}).items():
+              if b.get('key')!=key or b.get('immutable') is not True or b.get('no_hindsight') is not True:
+                  raise SystemExit('PRE_T0_BINDING_INVALID')
+              status=b.get('status')
+              if status=='BOUND_TO_PRE_WAKING_EVIDENCE':
+                  rid=b.get('pre_t0_record_id')
+                  if rid not in records: raise SystemExit('PRE_T0_BINDING_RECORD_MISSING')
+                  rec=records[rid]
+                  if b.get('pre_t0_evidence_sha256')!=rec.get('evidence_sha256'): raise SystemExit('PRE_T0_BINDING_HASH_MISMATCH')
+                  ct=datetime.fromisoformat(str(rec.get('captured_at')).replace('Z','+00:00'))
+                  wt=datetime.fromisoformat(str(b.get('waking_first_seen_at')).replace('Z','+00:00'))
+                  if ct>wt: raise SystemExit('PRE_T0_HINDSIGHT_BINDING')
+              elif status=='MISSING_PRE_T0_NO_BACKFILL_ALLOWED':
+                  if b.get('snapshot') is not None or b.get('pre_t0_record_id') is not None:
+                      raise SystemExit('PRE_T0_MISSING_BINDING_FABRICATED')
+              else:
+                  raise SystemExit('PRE_T0_BINDING_STATUS_INVALID')
+
+          if latest.get('version')!='REVIVAL_PRE_T0_EVIDENCE_V1' or latest.get('no_hindsight') is not True:
+              raise SystemExit('PRE_T0_LATEST_INVALID')
+          if waking.get('version')!='WAKING_PRE_T0_CONFIRMATION_V1': raise SystemExit('WAKING_PRE_T0_VERSION_INVALID')
+          if waking.get('mode')!='RESEARCH_ONLY_WAKING_PRE_T0_CONFIRMATION_SHADOW': raise SystemExit('WAKING_PRE_T0_MODE_INVALID')
+          if waking.get('production_portfolio_impact')!='NONE' or waking.get('automatic_buy') is not False: raise SystemExit('WAKING_PRE_T0_SAFETY_INVALID')
+          wt=waking.get('truth_contract') or {}
+          if wt.get('uses_only_immutable_pre_waking_binding') is not True: raise SystemExit('WAKING_PRE_T0_BINDING_GUARD_MISSING')
+          if wt.get('retroactive_backfill')!='FORBIDDEN': raise SystemExit('WAKING_PRE_T0_BACKFILL_INVALID')
+          if wt.get('existing_waking_confirmation_mutated') is not False: raise SystemExit('WAKING_CONFIRMATION_MUTATED')
+          if wt.get('shadow_only_until_prospective_validation') is not True: raise SystemExit('WAKING_PRE_T0_PREMATURE_PRODUCTION')
+          for row in waking.get('targets') or []:
+              if row.get('production_effect') is not False or row.get('pre_alpha_promotion')!='FORBIDDEN' or row.get('automatic_buy') is not False:
+                  raise SystemExit('WAKING_PRE_T0_ROW_SAFETY_INVALID')
+
+          print('REVIVAL_PRE_T0_EVIDENCE_OK', latest.get('counts'))
+          print('WAKING_PRE_T0_CONFIRMATION_OK', waking.get('counts'))
+          PY
+      - name: Publish PRE-T0 evidence snapshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          for f in revival-pre-t0-evidence-ledger.json revival-pre-t0-evidence.json waking-pre-t0-confirmation.json; do
+            cp "data/$f" "$tmp/$f"
+          done
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            for f in revival-pre-t0-evidence-ledger.json revival-pre-t0-evidence.json waking-pre-t0-confirmation.json; do
+              cp "$tmp/$f" "data/$f"
+            done
+            git add data/revival-pre-t0-evidence-ledger.json data/revival-pre-t0-evidence.json data/waking-pre-t0-confirmation.json
+            if git diff --cached --quiet; then echo 'PRE_T0_EVIDENCE_NO_DATA_CHANGE'; exit 0; fi
+            git commit -m 'data: capture immutable Revival PRE-T0 evidence'
+            if git push origin HEAD:main; then echo 'PRE_T0_EVIDENCE_PUBLISH_OK'; exit 0; fi
+            echo "PRE_T0_EVIDENCE_PUBLISH_RETRY attempt=$attempt"; sleep 3
+          done
+          echo '::error::PRE_T0_EVIDENCE_PUBLISH_RACE_EXHAUSTED'
+          exit 1
