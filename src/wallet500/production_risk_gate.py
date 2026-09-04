@@ -2,6 +2,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .solana_mintability_gate import enforce_active
+
 MIN_TRADABLE_LIQUIDITY_USD = 50_000.0
 MAX_LIQUIDITY_DROP_FROM_PREV = 0.45
 MAX_LIQUIDITY_DROP_FROM_OBSERVED_PEAK = 0.70
@@ -96,7 +98,11 @@ def evaluate(candidate,outcomes):
     return {**candidate,'production_risk_gate':'BLOCKED' if blocked else ('CAUTION' if reasons else 'PASS'),'production_risk_blocked':blocked,'production_risk_critical':list(dict.fromkeys(critical)),'production_risk_reasons':list(dict.fromkeys(critical+reasons)),'production_live_liquidity_usd':current,'production_execution_pool_liquidity_usd':current,'production_liquidity_gate_metric':'EXECUTION_POOL_LIQUIDITY_USD','production_dex_total_liquidity_usd':candidate.get('dex_total_liquidity_usd'),'production_previous_liquidity_usd':previous or None,'production_peak_observed_liquidity_usd':peak or None,'production_liquidity_retention_from_peak':round(retention_peak,6) if retention_peak is not None else None,'production_history_points':m['history_points'],'pre_rug_danger_score':sig['danger_score'],'pre_rug_exit_warning':sig['exit_warning'],'pre_rug_turnover_h1':round(sig['turnover_h1'],6),'pre_rug_sell_buy_ratio_h1':round(sig['sell_buy_ratio_h1'],6),'pre_rug_signals':sig['signals'],'lp_removal_protection_verified':sig['lp_verified'],'liquidity_drain_holder_cluster_verified':conc['verified'],'liquidity_drain_insider_linked_supply_pct':conc['insider_pct'],'liquidity_drain_top10_supply_pct':conc['top10_pct'],'liquidity_drain_signals':conc['signals']+conc['critical']}
 
 def apply(output_dir='data'):
-    out=Path(output_dir); outcomes=_load(out/'outcome-tracker.json',{}); active=_load(out/'active-qualified-candidates.json',[]); watch=_load(out/'watchlist.json',[]); existing=_load(out/'pump-dump-risk.json',[]); summary=_load(out/'run-summary.json',{})
+    out=Path(output_dir)
+    # Solana candidates are removed before any production scoring unless the
+    # on-chain mint account proves mintAuthority == null. Unknown also fails closed.
+    enforce_active(out)
+    outcomes=_load(out/'outcome-tracker.json',{}); active=_load(out/'active-qualified-candidates.json',[]); watch=_load(out/'watchlist.json',[]); existing=_load(out/'pump-dump-risk.json',[]); summary=_load(out/'run-summary.json',{})
     evaluations=[evaluate(x,outcomes) for x in active]; passed=[x for x in evaluations if not x.get('production_risk_blocked')]; blocked=[x for x in evaluations if x.get('production_risk_blocked')]
     passed_keys={(_key(x.get('chain'),x.get('token') or x.get('mint') or x.get('token_address') or '')) for x in passed}
     filtered=[x for x in watch if x.get('watch_source')!='QUALIFIED_ANOMALY' or _key(x.get('chain'),x.get('token') or x.get('mint') or x.get('token_address') or '') in passed_keys]
@@ -105,6 +111,6 @@ def apply(output_dir='data'):
         if x.get('chain') and (x.get('token') or x.get('mint') or x.get('token_address')): merged[_key(x.get('chain'),x.get('token') or x.get('mint') or x.get('token_address') or '')]=x
     _write(out/'active-qualified-candidates.json',passed); _write(out/'watchlist.json',filtered); _write(out/'production-risk-evaluations.json',evaluations); _write(out/'production-risk-blocked.json',blocked); _write(out/'pump-dump-risk.json',list(merged.values()))
     if isinstance(summary,dict):
-        summary['production_risk_gate']={'min_execution_pool_liquidity_usd':50000,'min_live_liquidity_usd':50000,'liquidity_gate_metric':'EXECUTION_POOL_LIQUIDITY_USD','dex_total_liquidity_is_informational_only':True,'active_before_gate':len(active),'active_after_gate':len(passed),'blocked_now':len(blocked),'exit_warnings_now':sum(bool(x.get('pre_rug_exit_warning')) for x in evaluations),'hard_rule':'DEEPEST_VERIFIED_EXACT_TOKEN_EXECUTION_POOL_MUST_REMAIN_GE_50K','evacuation_rule':'LOSS_OF_EXECUTABLE_LIQUIDITY_OVERRIDES PRICE VOLUME BUYS AND ANOMALY SCORE','lp_rule':'LP LOCK ONLY PROTECTS AGAINST LP REMOVAL; IT DOES NOT PROTECT QUOTE-SIDE LIQUIDITY FROM INSIDER/HOLDER DUMP DRAIN','drain_rule':'HOLDER/CLUSTER CONCENTRATION IS A SEPARATE REQUIRED DRAIN-RISK CONTROL; >=35% LINKED INSIDER OR >=70% TOP10 IS HARD BLOCK WHEN VERIFIED DATA IS PRESENT.'}; summary['active_qualified']=len(passed); summary['watchlist']=len(filtered); _write(out/'run-summary.json',summary)
+        summary['production_risk_gate']={'min_execution_pool_liquidity_usd':50000,'min_live_liquidity_usd':50000,'liquidity_gate_metric':'EXECUTION_POOL_LIQUIDITY_USD','dex_total_liquidity_is_informational_only':True,'active_before_gate':len(active),'active_after_gate':len(passed),'blocked_now':len(blocked),'exit_warnings_now':sum(bool(x.get('pre_rug_exit_warning')) for x in evaluations),'hard_rule':'DEEPEST_VERIFIED_EXACT_TOKEN_EXECUTION_POOL_MUST_REMAIN_GE_50K','solana_mintability_rule':'MINT_AUTHORITY_MUST_BE_REVOKED_NULL; UNKNOWN_FAILS_CLOSED','evacuation_rule':'LOSS_OF_EXECUTABLE_LIQUIDITY_OVERRIDES PRICE VOLUME BUYS AND ANOMALY SCORE','lp_rule':'LP LOCK ONLY PROTECTS AGAINST LP REMOVAL; IT DOES NOT PROTECT QUOTE-SIDE LIQUIDITY FROM INSIDER/HOLDER DUMP DRAIN','drain_rule':'HOLDER/CLUSTER CONCENTRATION IS A SEPARATE REQUIRED DRAIN-RISK CONTROL; >=35% LINKED INSIDER OR >=70% TOP10 IS HARD BLOCK WHEN VERIFIED DATA IS PRESENT.'}; summary['active_qualified']=len(passed); summary['watchlist']=len(filtered); _write(out/'run-summary.json',summary)
     result={'active_before_gate':len(active),'active_after_gate':len(passed),'blocked_now':len(blocked),'watchlist':len(filtered)}; print(json.dumps(result,indent=2)); return result
 if __name__=='__main__': apply()
