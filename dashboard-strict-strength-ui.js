@@ -6,6 +6,7 @@
   const isStrict=x=>(x?.order_flow_absorption||{}).signal===true;
   const level=x=>isStrict(x)?Number((x.order_flow_absorption||{}).strict_level||0):0;
   const strength=x=>isStrict(x)?Number((x.order_flow_absorption||{}).strict_strength_score||0):0;
+  const token=x=>String(x?.token_address||'');
 
   function sourceOrder(){
     if(typeof window.candidateCoins!=='function') return [];
@@ -15,6 +16,17 @@
     });
   }
 
+  function pairCards(coins,cards){
+    const byToken=new Map(coins.map(x=>[token(x),x]));
+    const alreadyMapped=cards.length>0&&cards.every(c=>c.dataset.strictToken&&byToken.has(c.dataset.strictToken));
+    if(alreadyMapped)return cards.map(card=>({coin:byToken.get(card.dataset.strictToken),card}));
+    return coins.map((coin,i)=>{
+      const card=cards[i];
+      if(card)card.dataset.strictToken=token(coin);
+      return {coin,card};
+    }).filter(x=>x.card);
+  }
+
   function paint(){
     const grid=document.getElementById('candidateGrid');
     if(!grid) return;
@@ -22,7 +34,7 @@
     const cards=[...grid.querySelectorAll('.candidateCard')];
     if(!coins.length||cards.length!==coins.length) return;
 
-    const pairs=coins.map((coin,i)=>({coin,card:cards[i]}));
+    const pairs=pairCards(coins,cards);
     for(const {coin,card} of pairs){
       if(!isStrict(coin)) continue;
       const flow=coin.order_flow_absorption||{};
@@ -61,7 +73,9 @@
       }
       return n((b.coin.order_flow_absorption||{}).score)-n((a.coin.order_flow_absorption||{}).score);
     });
-    for(const p of pairs) grid.appendChild(p.card);
+    const desired=pairs.map(x=>x.card);
+    const current=[...grid.querySelectorAll(':scope > .candidateCard')];
+    if(desired.some((card,i)=>current[i]!==card))for(const card of desired)grid.appendChild(card);
 
     const strict=coins.filter(isStrict);
     const s1=strict.filter(x=>level(x)===1).length;
