@@ -56,9 +56,13 @@ jobs:
           if d.get('production_portfolio_impact')!='NONE' or d.get('automatic_buy') is not False: raise SystemExit('REAWAKENING_SAFETY_INVALID')
           if d.get('production_gate_changed') is not False: raise SystemExit('PRODUCTION_GATE_WAS_CHANGED')
           if d.get('no_hindsight') is not True: raise SystemExit('REAWAKENING_NO_HINDSIGHT_MISSING')
+          if not d.get('v2_started_at') or not st.get('v2_started_at'): raise SystemExit('V2_FORWARD_START_MISSING')
+          if d.get('v2_started_at') != st.get('v2_started_at'): raise SystemExit('V2_FORWARD_START_DRIFT')
+          if not str(d.get('primary_recheck_source') or '').startswith('outcome-tracker.json'): raise SystemExit('PRIMARY_RECHECK_SOURCE_INVALID')
           recovery=d.get('recovery_rule') or {}
           if float(recovery.get('liquidity_gte_usd') or 0) != 50000.0: raise SystemExit('LIQUIDITY_HARD_FLOOR_CHANGED')
           if recovery.get('exact_pair_locked') is not True: raise SystemExit('EXACT_PAIR_LOCK_MISSING')
+          if recovery.get('observations_must_be_after_v2_started_at') is not True: raise SystemExit('FORWARD_ONLY_CUTOFF_MISSING')
           if float(recovery.get('confirmation_span_minutes_gte') or 0) < 15.0: raise SystemExit('CONFIRMATION_WINDOW_WEAKENED')
           if st.get('mode')!='RESEARCH_ONLY_SURVIVOR_REAWAKENING_V2': raise SystemExit('REAWAKENING_STATE_MODE_INVALID')
           print('FALSE_NEGATIVE_RECOVERY_V2_OK', d.get('counts'))
