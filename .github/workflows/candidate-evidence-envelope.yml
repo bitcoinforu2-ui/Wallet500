@@ -8,11 +8,13 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/candidate_evidence_envelope.py'
+      - 'src/wallet500/decision_snapshot_guard.py'
       - 'src/wallet500/real_alerts.py'
       - 'src/wallet500/revival_funnel_diagnostics.py'
       - 'src/wallet500/production_age_governance.py'
       - 'src/wallet500/cex_fast_lane.py'
       - 'tests/test_candidate_evidence_envelope.py'
+      - 'tests/test_decision_snapshot_guard.py'
       - 'tests/test_real_alerts.py'
       - 'tests/test_real_alerts_revival_bridge.py'
       - 'tests/test_revival_funnel_diagnostics.py'
@@ -51,6 +53,7 @@ jobs:
         run: |
           python -m pytest -q \
             tests/test_candidate_evidence_envelope.py \
+            tests/test_decision_snapshot_guard.py \
             tests/test_real_alerts.py \
             tests/test_real_alerts_revival_bridge.py \
             tests/test_revival_funnel_diagnostics.py \
@@ -61,15 +64,17 @@ jobs:
         run: python -m wallet500.real_alerts
       - name: Refresh funnel diagnostics
         run: python -m wallet500.revival_funnel_diagnostics
+      - name: Enforce decision snapshot coherence
+        run: python -m wallet500.decision_snapshot_guard
       - name: Validate truth contracts
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-
           e=json.loads(Path('data/candidate-evidence-envelope.json').read_text())
           r=json.loads(Path('data/real-alerts.json').read_text())
           f=json.loads(Path('data/revival-funnel-diagnostics.json').read_text())
+          g=json.loads(Path('data/decision-snapshot-integrity.json').read_text())
           if e.get('mode')!='RESEARCH_ONLY_CANDIDATE_EVIDENCE_ENVELOPE_V1': raise SystemExit('ENVELOPE_MODE_INVALID')
           if e.get('production_change') is not False or e.get('automatic_buy') is not False: raise SystemExit('ENVELOPE_PRODUCTION_LEAK')
           truth=e.get('truth_contract') or {}
@@ -78,19 +83,12 @@ jobs:
           if truth.get('missing_evidence_never_positive') is not True: raise SystemExit('ENVELOPE_MISSING_EVIDENCE_GUARD')
           if truth.get('stale_evidence_never_positive') is not True: raise SystemExit('ENVELOPE_STALE_EVIDENCE_GUARD')
           if truth.get('concentration_is_risk_context_only') is not True: raise SystemExit('ENVELOPE_CONCENTRATION_GUARD')
-          for row in e.get('candidates') or []:
-              if row.get('production_effect') is not False or row.get('automatic_buy') is not False: raise SystemExit('ENVELOPE_ROW_PRODUCTION_LEAK')
-              if row.get('status')=='EVIDENCE_READY':
-                  cov=row.get('coverage') or {}; t=row.get('truth') or {}
-                  if cov.get('evidence_ready') is not True: raise SystemExit('EVIDENCE_READY_COVERAGE_MISMATCH')
-                  if not (t.get('exact_identity_verified') and t.get('exact_pair_verified') and t.get('market_age_verified_180d_plus') and t.get('execution_liquidity_floor_passed')): raise SystemExit('EVIDENCE_READY_TRUTH_BREACH')
-                  if int(cov.get('positive_independent_count') or 0)<1: raise SystemExit('EVIDENCE_READY_WITHOUT_INDEPENDENT_LANE')
+          if g.get('passed') is not True: raise SystemExit('DECISION_SNAPSHOT_GUARD_FAILED')
           if int(r.get('version') or 0)<3: raise SystemExit('REAL_ALERT_V3_MISSING')
           if (r.get('truth_contract') or {}).get('evidence_ready_is_visible_but_does_not_auto_promote_to_real_alert') is not True: raise SystemExit('REAL_ALERT_EVIDENCE_GUARD_MISSING')
           if int(f.get('version') or 0)<2 or 'evidence_promotion' not in (f.get('lanes') or {}): raise SystemExit('FUNNEL_EVIDENCE_LANE_MISSING')
           print('CANDIDATE_EVIDENCE_TRUTH_OK',e.get('counts'))
-          print('REAL_ALERT_V3_OK',r.get('counts'))
-          print('FUNNEL_V2_OK',(f.get('lanes') or {}).get('evidence_promotion'))
+          print('DECISION_SNAPSHOT_GUARD_OK',g.get('counts'))
           PY
       - name: Publish coherent derived decision snapshot
         shell: bash
@@ -99,36 +97,22 @@ jobs:
           git config user.name 'wallet500-evidence-bot'
           git config user.email 'wallet500-evidence-bot@users.noreply.github.com'
 
-          # Critical coherence rule: never copy a derived file calculated from an
-          # older checkout onto a newer main. On every publish attempt, reset to
-          # the latest main and recompute all three derived files from that exact
-          # source snapshot before committing them together.
+          # Never copy derived files calculated from an older checkout onto a
+          # newer main. Every attempt resets to latest main and recomputes the
+          # complete derived decision snapshot from that exact source state.
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
             python -m wallet500.candidate_evidence_envelope
             python -m wallet500.real_alerts
             python -m wallet500.revival_funnel_diagnostics
+            python -m wallet500.decision_snapshot_guard
 
-            python - <<'PY'
-          import json
-          from pathlib import Path
-          e=json.loads(Path('data/candidate-evidence-envelope.json').read_text())
-          r=json.loads(Path('data/real-alerts.json').read_text())
-          f=json.loads(Path('data/revival-funnel-diagnostics.json').read_text())
-          ec=e.get('counts') or {}; rc=r.get('counts') or {}; ep=(f.get('lanes') or {}).get('evidence_promotion') or {}
-          if int(rc.get('evidence_ready_research') or 0) != int(ec.get('evidence_ready') or 0):
-              raise SystemExit('DERIVED_SNAPSHOT_EVIDENCE_COUNT_SKEW')
-          if int(ep.get('evidence_ready') or 0) != int(ec.get('evidence_ready') or 0):
-              raise SystemExit('DERIVED_SNAPSHOT_FUNNEL_COUNT_SKEW')
-          if (f.get('lanes') or {}).get('active_qualification',{}).get('age_gate_status') == 'QUARANTINED_FAIL_CLOSED_UNAPPROVED_POLICY':
-              age=json.loads(Path('data/active-qualified-age-gate.json').read_text()) if Path('data/active-qualified-age-gate.json').exists() else {}
-              if age.get('status') != 'QUARANTINED_FAIL_CLOSED_UNAPPROVED_POLICY':
-                  raise SystemExit('DERIVED_SNAPSHOT_STALE_AGE_GATE')
-          print('COHERENT_DERIVED_SNAPSHOT_OK', {'evidence_ready':ec.get('evidence_ready'),'watch':rc.get('verified_watch_not_real')})
-          PY
-
-            git add data/candidate-evidence-envelope.json data/real-alerts.json data/revival-funnel-diagnostics.json
+            git add \
+              data/candidate-evidence-envelope.json \
+              data/real-alerts.json \
+              data/revival-funnel-diagnostics.json \
+              data/decision-snapshot-integrity.json
             if git diff --cached --quiet; then
               echo 'CANDIDATE_EVIDENCE_NO_DATA_CHANGE'
               exit 0
