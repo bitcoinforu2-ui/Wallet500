@@ -4,7 +4,13 @@ from pathlib import Path
 from wallet500 import cex_fast_lane as fast
 
 
-def test_collection_runs_before_governance_block(tmp_path: Path, monkeypatch):
+def test_default_scope_is_veteran_only():
+    assert fast.PROJECT_SCOPE_MIN_AGE_DAYS == 180
+    assert fast.MIN_AGE_DAYS == 180
+    assert fast.APPROVED_PRODUCTION_MIN_AGE_DAYS == 180
+
+
+def test_collection_runs_before_scope_drift_block(tmp_path: Path, monkeypatch):
     calls = {"futures": 0, "spot": 0}
 
     def fake_futures(out: Path, now: str):
@@ -44,7 +50,7 @@ def test_collection_runs_before_governance_block(tmp_path: Path, monkeypatch):
     result = fast.run(tmp_path)
 
     assert calls == {"futures": 1, "spot": 1}
-    assert result["status"] == "COLLECTED_BUT_ACTIONABLE_BLOCKED_BY_GOVERNANCE"
+    assert result["status"] == "COLLECTED_BUT_ACTIONABLE_BLOCKED_BY_SCOPE_DRIFT"
     assert result["raw_cex_alerts"] == 1
     assert result["spot_alerts_count"] == 1
 
@@ -56,3 +62,4 @@ def test_collection_runs_before_governance_block(tmp_path: Path, monkeypatch):
     assert published["raw_alerts_before_age_gate"] == 1
     assert published["alerts"] == []
     assert published["spot_collection"]["alerts_count"] == 1
+    assert published["age_gate"]["status"] == "BLOCKED_FAIL_CLOSED_VETERAN_SCOPE_POLICY_DRIFT"
