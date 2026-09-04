@@ -12,6 +12,11 @@ STATE = DATA / "solana-mintability-state.json"
 REVIVAL_REPORT = DATA / "solana-mintability-revival-report.json"
 ACTIVE_REPORT = DATA / "solana-mintability-active-report.json"
 DEFAULT_RPC = "https://api.mainnet-beta.solana.com"
+PUBLIC_RPC_FALLBACKS = (
+    "https://api.mainnet-beta.solana.com",
+    "https://api.mainnet.solana.com",
+    "https://solana-rpc.publicnode.com",
+)
 BATCH_SIZE = 100
 SPL_TOKEN_PROGRAMS = {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -46,13 +51,12 @@ def _chain(row: dict) -> str:
 
 def _rpc_urls() -> list[str]:
     preferred = os.getenv("SOLANA_RPC_URL", "").strip()
-    values = [preferred, DEFAULT_RPC]
-    return list(dict.fromkeys(x for x in values if x))
+    return list(dict.fromkeys(x for x in (preferred, *PUBLIC_RPC_FALLBACKS) if x))
 
 
 def _post_rpc(url: str, method: str, params: list, timeout: int = 35):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
-    req = Request(url, data=body, headers={"Content-Type": "application/json", "User-Agent": "Wallet500-Mintability/1.0"})
+    req = Request(url, data=body, headers={"Content-Type": "application/json", "User-Agent": "Wallet500-Mintability/1.1"})
     with urlopen(req, timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8"))
     if payload.get("error"):
@@ -143,6 +147,23 @@ def _fetch_batch(mints: list[str], checked_at: str) -> dict[str, dict]:
     }
 
 
+def _embedded_state(data_dir: Path) -> dict:
+    base = _load(data_dir / "revival-1000-state.json", {})
+    tokens = base.get("mintability_tokens") if isinstance(base.get("mintability_tokens"), dict) else {}
+    return {"version": 1, "tokens": tokens}
+
+
+def _persist_embedded_state(data_dir: Path, next_state: dict) -> None:
+    path = data_dir / "revival-1000-state.json"
+    base = _load(path, {})
+    if not isinstance(base, dict):
+        base = {}
+    base["mintability_policy"] = "SOLANA_MINT_AUTHORITY_MUST_BE_REVOKED_NULL"
+    base["mintability_tokens"] = next_state.get("tokens") or {}
+    base["mintability_updated_at"] = next_state.get("updated_at")
+    _write(path, base)
+
+
 def resolve(mints: list[str], state: dict | None = None, checked_at: str | None = None) -> tuple[dict[str, dict], dict]:
     checked_at = checked_at or _now()
     state = state if isinstance(state, dict) else {}
@@ -152,13 +173,12 @@ def resolve(mints: list[str], state: dict | None = None, checked_at: str | None 
     to_check: list[str] = []
     for mint in unique:
         row = cached.get(mint) if isinstance(cached.get(mint), dict) else None
-        # A revoked/null mint authority is irreversible in the SPL mint account,
-        # so a previously verified safe result can be reused permanently.
+        # Once mintAuthority is verified null, SPL cannot restore it. Safe truth
+        # is therefore immutable and can be reused without another RPC call.
         if row and row.get("status") == "NON_MINTABLE_VERIFIED" and row.get("mintability_verified") is True and row.get("mintable") is False and row.get("mint_authority") is None:
             resolved[mint] = row
         else:
-            # Mintable and unknown tokens are rechecked every run because a project
-            # may revoke its authority later and become eligible in the future.
+            # Mintable/unknown tokens are rechecked because authority may later be revoked.
             to_check.append(mint)
     for start in range(0, len(to_check), BATCH_SIZE):
         resolved.update(_fetch_batch(to_check[start:start + BATCH_SIZE], checked_at))
@@ -201,12 +221,13 @@ def enforce_revival(data_dir: Path = DATA) -> dict:
     coins = [x for x in (payload.get("coins") or []) if isinstance(x, dict)]
     state_path = data_dir / STATE.name
     current_state = _load(state_path, {})
+    if not (current_state.get("tokens") if isinstance(current_state, dict) else None):
+        current_state = _embedded_state(data_dir)
     solana = [x for x in coins if _chain(x) == "solana" and _token(x)]
     truth, next_state = resolve([_token(x) for x in solana], current_state)
     accepted, rejected = [], []
     for row in coins:
         if _chain(row) != "solana":
-            # Revival Solana should never contain another chain; fail closed anyway.
             rejected.append({"symbol": row.get("symbol"), "token_address": _token(row), "status": "NON_SOLANA_BLOCKED"})
             continue
         t = truth.get(_token(row)) or (next_state.get("tokens") or {}).get(_token(row)) or {}
@@ -250,6 +271,7 @@ def enforce_revival(data_dir: Path = DATA) -> dict:
     }
     _write(latest_path, payload)
     _write(state_path, next_state)
+    _persist_embedded_state(data_dir, next_state)
     report = {
         "version": 1,
         "generated_at": next_state["updated_at"],
@@ -270,6 +292,8 @@ def enforce_active(data_dir: Path = DATA) -> dict:
     active = [x for x in active if isinstance(x, dict)] if isinstance(active, list) else []
     state_path = data_dir / STATE.name
     current_state = _load(state_path, {})
+    if not (current_state.get("tokens") if isinstance(current_state, dict) else None):
+        current_state = _embedded_state(data_dir)
     solana_mints = [_token(x) for x in active if _chain(x) == "solana" and _token(x)]
     truth, next_state = resolve(solana_mints, current_state)
     accepted, rejected = [], []
@@ -300,6 +324,7 @@ def enforce_active(data_dir: Path = DATA) -> dict:
         _write(watch_path, watch)
     _write(active_path, accepted)
     _write(state_path, next_state)
+    _persist_embedded_state(data_dir, next_state)
     report = {
         "version": 1,
         "generated_at": next_state["updated_at"],
