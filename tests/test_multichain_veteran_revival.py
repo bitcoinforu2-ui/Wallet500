@@ -62,6 +62,17 @@ def test_unknown_or_under_180d_age_fails_closed():
     assert result["status"] == "INELIGIBLE_FAIL_CLOSED"
 
 
+def test_missing_pair_creation_time_is_unknown_not_epoch_veteran():
+    now = datetime(2026, 9, 4, tzinfo=timezone.utc)
+    token = "0x4570000000000000000000000000000000000789"
+    row = {"chain": "base", "token": token, "symbol": "TEST"}
+    snap = _snapshot("base", token)
+    snap["pair_created_at"] = None
+    result = mvr._score(row, snap, now, None, {"verified": False})
+    assert result["market_age_verified"] is False
+    assert "PAIR_AGE_LT_180D_OR_UNKNOWN" in result["blockers"]
+
+
 def test_live_liquidity_floor_never_relaxed():
     now = datetime(2026, 9, 4, tzinfo=timezone.utc)
     token = "0x7890000000000000000000000000000000000123"
