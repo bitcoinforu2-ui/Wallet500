@@ -1,0 +1,33 @@
+name: Wallet500 Outcome Storage Contract
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/compact_outcome_history.py'
+      - 'tests/test_compact_outcome_history.py'
+      - '.github/workflows/performance-tracker.yml'
+      - '.github/workflows/storage-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/compact_outcome_history.py'
+      - 'tests/test_compact_outcome_history.py'
+      - '.github/workflows/performance-tracker.yml'
+      - '.github/workflows/storage-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  storage-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Verify lossless outcome compaction
+        run: python -m pytest -q tests/test_compact_outcome_history.py
