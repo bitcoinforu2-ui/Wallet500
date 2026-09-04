@@ -48,7 +48,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          # PR checks do not need the multi-gigabyte Git history. Main publishers
+          # retain full history because they may need to rebase before pushing.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 1 || 0 }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
