@@ -90,9 +90,15 @@ def _rows(payload: Any) -> list[dict]:
 
 def _identity(row: dict) -> tuple[str, str, str]:
     chain = str(row.get("chain") or "").lower()
+    if chain == "eth":
+        chain = "ethereum"
+    elif chain in {"bnb", "bsc"}:
+        chain = "bsc"
+    elif chain in {"sol", "solana"}:
+        chain = "solana"
     token = str(row.get("token") or row.get("token_address") or row.get("mint") or "")
     pair = str(row.get("pair_address") or row.get("locked_pair_address") or row.get("pair") or "")
-    if chain in {"ethereum", "eth", "bsc", "bnb"}:
+    if chain in {"ethereum", "bsc"}:
         token = token.lower()
         pair = pair.lower()
     return chain, token, pair
@@ -186,7 +192,7 @@ def observation_passes(row: dict, reject_price: float) -> tuple[bool, list[str],
     liquidity = _f(row.get("liquidity_usd"))
     pair = str(row.get("pair_address") or "")
     gain = (price / reject_price - 1.0) * 100.0 if reject_price > 0 and price > 0 else -10_000.0
-    activity_checks, activity_metrics = _activity_metrics(row)
+    _activity_checks, activity_metrics = _activity_metrics(row)
     available = int(activity_metrics["activity_checks_available"])
     passed_activity = int(activity_metrics["activity_checks_passed"])
     checks = {
@@ -207,7 +213,7 @@ def observation_passes(row: dict, reject_price: float) -> tuple[bool, list[str],
     return all(checks.values()), reasons, metrics
 
 
-def first_forward_trigger(record: dict, observations: list[dict] | None = None) -> dict | None:
+def first_forward_trigger(record: dict, observations: list[dict] | None = None, not_before: str | None = None) -> dict | None:
     eligible, eligible_reasons = eligible_reject(record)
     if not eligible:
         return None
@@ -215,9 +221,19 @@ def first_forward_trigger(record: dict, observations: list[dict] | None = None) 
     snap = record.get("first_reject_snapshot") if isinstance(record.get("first_reject_snapshot"), dict) else {}
     reject_price = _f(snap.get("price_usd"))
     reject_at = _dt(snap.get("observed_at") or record.get("first_rejected_at"))
+    forward_start = _dt(not_before) if not_before else None
+    cutoff = reject_at
+    if forward_start is not None and (cutoff is None or forward_start > cutoff):
+        cutoff = forward_start
     expected_pair = str((record.get("identity") or {}).get("pair_address") or snap.get("pair_address") or "")
     chain = str((record.get("identity") or {}).get("chain") or snap.get("chain") or "").lower()
-    if chain in {"ethereum", "eth", "bsc", "bnb"}:
+    if chain == "eth":
+        chain = "ethereum"
+    elif chain in {"bnb", "bsc"}:
+        chain = "bsc"
+    elif chain in {"sol", "solana"}:
+        chain = "solana"
+    if chain in {"ethereum", "bsc"}:
         expected_pair = expected_pair.lower()
     if reject_price <= 0 or not expected_pair:
         return None
@@ -235,11 +251,11 @@ def first_forward_trigger(record: dict, observations: list[dict] | None = None) 
     streak: list[tuple[dict, dict, list[str]]] = []
     for row in ordered:
         observed = _dt(row.get("observed_at"))
-        if reject_at is not None and (observed is None or observed <= reject_at):
+        if cutoff is not None and (observed is None or observed <= cutoff):
             continue
 
         row_pair = str(row.get("pair_address") or "")
-        if chain in {"ethereum", "eth", "bsc", "bnb"}:
+        if chain in {"ethereum", "bsc"}:
             row_pair = row_pair.lower()
         if row_pair != expected_pair:
             streak = []
@@ -316,6 +332,9 @@ def run(output_dir: str = "data") -> dict:
 
     state_path = out / "reawakening-shadow-state.json"
     old_state = _load(state_path, {})
+    now = datetime.now(timezone.utc).isoformat()
+    v2_started_at = str(old_state.get("v2_started_at") or old_state.get("updated_at") or now)
+
     legacy_v1 = old_state.get("legacy_v1_triggers") if isinstance(old_state.get("legacy_v1_triggers"), dict) else {}
     old_v1 = old_state.get("triggers") if isinstance(old_state.get("triggers"), dict) else {}
     if old_v1:
@@ -324,18 +343,43 @@ def run(output_dir: str = "data") -> dict:
     candidates = old_state.get("v2_candidates") if isinstance(old_state.get("v2_candidates"), dict) else {}
     triggers = old_state.get("v2_triggers") if isinstance(old_state.get("v2_triggers"), dict) else {}
 
-    now = datetime.now(timezone.utc).isoformat()
+    # Primary recheck source: the immutable exact-pair outcome history already maintained
+    # for the project. V1 used this source successfully; V2 only consumes observations
+    # strictly after v2_started_at so historical false negatives cannot become fake
+    # forward triggers.
+    tracker = _load(out / "outcome-tracker.json", {})
+    tracker_tokens = tracker.get("tokens") if isinstance(tracker, dict) and isinstance(tracker.get("tokens"), dict) else {}
+    tracker_index: dict[str, dict] = {}
+    for tracker_record in tracker_tokens.values():
+        if not isinstance(tracker_record, dict):
+            continue
+        canonical = _key({
+            "chain": tracker_record.get("chain"),
+            "token": tracker_record.get("token"),
+            "pair_address": tracker_record.get("entry_pair_address"),
+        })
+        if canonical != "||":
+            tracker_index[canonical] = tracker_record
+
+    # Small live files remain a fallback for records not yet represented in the
+    # outcome tracker. They can add a current mark, but never bypass the exact-pair
+    # and v2_started_at checks.
     market: dict[str, dict] = {}
     for filename in MARKET_SOURCES:
         for row in _rows(_load(out / filename, [])):
-            key = _key(row)
-            if key != "||":
-                market[key] = _market_snapshot(row, filename, now)
+            canonical = _key(row)
+            if canonical != "||":
+                market[canonical] = _market_snapshot(row, filename, now)
 
     eligible_count = 0
+    tracker_matches = 0
+    fallback_market_matches = 0
+    forward_history_rows = 0
     observations_added = 0
     rows = []
-    for key, record in records.items():
+
+    v2_start_dt = _dt(v2_started_at)
+    for ledger_key, record in records.items():
         if not isinstance(record, dict):
             continue
         eligible, eligible_reasons = eligible_reject(record)
@@ -345,37 +389,66 @@ def run(output_dir: str = "data") -> dict:
 
         snap = record.get("first_reject_snapshot") if isinstance(record.get("first_reject_snapshot"), dict) else {}
         identity = record.get("identity") if isinstance(record.get("identity"), dict) else {}
-        cstate = candidates.get(key) if isinstance(candidates.get(key), dict) else {
-            "token_key": key,
+        canonical = _key({
+            "chain": identity.get("chain") or snap.get("chain"),
+            "token": identity.get("token") or snap.get("token"),
+            "pair_address": identity.get("pair_address") or snap.get("pair_address"),
+        })
+        cstate = candidates.get(ledger_key) if isinstance(candidates.get(ledger_key), dict) else {
+            "token_key": ledger_key,
+            "canonical_identity": canonical,
             "chain": identity.get("chain") or snap.get("chain"),
             "token": identity.get("token") or snap.get("token"),
             "pair_address": identity.get("pair_address") or snap.get("pair_address"),
             "first_rejected_at": record.get("first_rejected_at"),
             "first_reject_snapshot": snap,
             "eligibility_reasons": eligible_reasons,
-            "observations": [],
+            "fallback_observations": [],
         }
-        observations = cstate.get("observations") if isinstance(cstate.get("observations"), list) else []
-
-        current = market.get(key)
-        if current and _dedupe_append(observations, current):
-            observations_added += 1
-        cstate["observations"] = observations[-500:]
+        cstate["canonical_identity"] = canonical
+        cstate["v2_started_at"] = v2_started_at
         cstate["updated_at"] = now
-        candidates[key] = cstate
 
-        found = first_forward_trigger(record, cstate["observations"])
-        immutable = triggers.get(key)
+        tracker_record = tracker_index.get(canonical)
+        observations: list[dict]
+        evidence_source: str
+        if isinstance(tracker_record, dict):
+            tracker_matches += 1
+            history = tracker_record.get("history") if isinstance(tracker_record.get("history"), list) else []
+            observations = [x for x in history if isinstance(x, dict)]
+            if v2_start_dt is not None:
+                for x in observations:
+                    observed = _dt(x.get("observed_at"))
+                    if observed is not None and observed > v2_start_dt:
+                        forward_history_rows += 1
+            evidence_source = "OUTCOME_TRACKER_EXACT_PAIR_HISTORY"
+        else:
+            fallback = cstate.get("fallback_observations") if isinstance(cstate.get("fallback_observations"), list) else []
+            current = market.get(canonical)
+            if current:
+                fallback_market_matches += 1
+                if _dedupe_append(fallback, current):
+                    observations_added += 1
+            cstate["fallback_observations"] = fallback[-500:]
+            observations = cstate["fallback_observations"]
+            evidence_source = "SMALL_LIVE_FILE_FALLBACK"
+
+        candidates[ledger_key] = cstate
+        found = first_forward_trigger(record, observations, not_before=v2_started_at)
+        immutable = triggers.get(ledger_key)
         if found is not None and not isinstance(immutable, dict):
             immutable = {
-                "token_key": key,
+                "token_key": ledger_key,
+                "canonical_identity": canonical,
                 "chain": cstate.get("chain"),
                 "token": cstate.get("token"),
                 "entry_pair_address": cstate.get("pair_address"),
                 "first_rejected_at": cstate.get("first_rejected_at"),
+                "v2_started_at": v2_started_at,
+                "evidence_source": evidence_source,
                 **found,
             }
-            triggers[key] = immutable
+            triggers[ledger_key] = immutable
         if isinstance(immutable, dict):
             rows.append({
                 **immutable,
@@ -389,11 +462,13 @@ def run(output_dir: str = "data") -> dict:
         "mode": MODE,
         "contract": CONTRACT,
         "generated_at": now,
+        "v2_started_at": v2_started_at,
         "production_portfolio_impact": "NONE",
         "production_gate_changed": False,
         "automatic_buy": False,
         "no_hindsight": True,
         "source_ledger": "rejected-candidate-ledger.json",
+        "primary_recheck_source": "outcome-tracker.json exact-pair history",
         "selection_rule": {
             "first_reject_source": ELIGIBLE_SOURCE,
             "required_reasons": sorted(REQUIRED_REASONS),
@@ -407,6 +482,7 @@ def run(output_dir: str = "data") -> dict:
             "liquidity_retention_gte": MIN_LIQUIDITY_RETENTION,
             "price_non_falling": True,
             "exact_pair_locked": True,
+            "observations_must_be_after_v2_started_at": True,
         },
         "shadow_activity_hypothesis": {
             "volume_h1_gte_usd": MIN_VOLUME_H1_USD,
@@ -421,17 +497,20 @@ def run(output_dir: str = "data") -> dict:
             "the original rejection is immutable and is never removed retroactively",
             "only LIVE_SURVIVAL_FAILED liquidity-only rejects that already passed other quality checks enter V2",
             "verified deep loss and fast/parabolic reversal reasons are hard-excluded",
-            "every trigger uses only observations after the original rejection timestamp",
+            "historical outcome rows at or before v2_started_at are never eligible to create a V2 forward trigger",
             "the exact pair must remain identical and liquidity must be back above the unchanged $50K hard floor",
-            "two qualifying observations spanning at least 15 minutes are required",
+            "two or more qualifying observations spanning at least 15 minutes are required",
             "V2 is research-only and cannot create BUY, QUALIFIED, or production portfolio impact",
             "legacy V1 trigger history is preserved separately and does not qualify as V2 evidence",
         ],
         "counts": {
             "rejected_ledger_records": len(records),
             "eligible_liquidity_only_rejects": eligible_count,
-            "market_matches_now": sum(1 for key in candidates if key in market),
-            "observations_added_this_run": observations_added,
+            "outcome_tracker_records": len(tracker_tokens),
+            "outcome_tracker_matches": tracker_matches,
+            "forward_tracker_rows_after_v2_start": forward_history_rows,
+            "fallback_market_matches_now": fallback_market_matches,
+            "fallback_observations_added_this_run": observations_added,
             "shadow_triggers_v2": len(rows),
             "legacy_v1_triggers_preserved": len(legacy_v1),
         },
@@ -441,6 +520,7 @@ def run(output_dir: str = "data") -> dict:
         "version": 2,
         "mode": MODE,
         "updated_at": now,
+        "v2_started_at": v2_started_at,
         "legacy_v1_triggers": legacy_v1,
         "v2_candidates": candidates,
         "v2_triggers": triggers,
