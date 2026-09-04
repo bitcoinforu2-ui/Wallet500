@@ -65,23 +65,21 @@ jobs:
           if not required.issubset(rules): raise SystemExit('REVIVAL_FUNNEL_TRUTH_RULES_INCOMPLETE')
           print('REVIVAL_FUNNEL_DIAGNOSTICS_V2_OK', lanes.get('evidence_promotion'), d.get('blockers'))
           PY
-      - name: Publish diagnostics
+      - name: Publish diagnostics recomputed from latest main
         if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
-          tmp="$(mktemp -d)"
-          cp data/revival-funnel-diagnostics.json "$tmp/revival-funnel-diagnostics.json"
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
-            cp "$tmp/revival-funnel-diagnostics.json" data/revival-funnel-diagnostics.json
+            python -m wallet500.revival_funnel_diagnostics
             git add data/revival-funnel-diagnostics.json
             if git diff --cached --quiet; then exit 0; fi
-            git commit -m 'data: refresh revival funnel diagnostics'
+            git commit -m 'data: refresh latest-main revival funnel diagnostics'
             if git push origin HEAD:main; then exit 0; fi
             sleep 3
           done
-          echo 'Revival funnel diagnostics publish failed after retries'
+          echo 'Revival funnel diagnostics publish failed after recompute retries'
           exit 1
