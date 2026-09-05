@@ -308,6 +308,21 @@ def run() -> dict:
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
     configured = bool(bot_token and chat_id)
+
+    # Non-production scan lanes intentionally run without Telegram secrets.
+    # They must never overwrite the persisted production delivery/dedupe truth
+    # with a misleading configured=false report. Only the dedicated post-publish
+    # workflow, which supplies both secrets, is allowed to mutate Telegram state.
+    if not configured:
+        existing = _load(out / "telegram-alert-report.json", {})
+        skipped = {
+            "status": "SKIPPED_UNCONFIGURED_NO_STATE_WRITE",
+            "reason": "TELEGRAM_SECRETS_NOT_PRESENT_IN_THIS_LANE",
+            "preserved_existing_report": isinstance(existing, dict) and bool(existing),
+        }
+        print(json.dumps(skipped, indent=2))
+        return existing if isinstance(existing, dict) else skipped
+
     now = datetime.now(timezone.utc).isoformat()
     now_israel = _fmt_israel_time(now)
     delivered = []
@@ -343,8 +358,6 @@ def run() -> dict:
 
         previous = sent.get(key) if isinstance(sent.get(key), dict) else {}
         if previous.get("actionable") is True:
-            continue
-        if not configured:
             continue
 
         event_id = _alert_event_id(key, now)
@@ -404,10 +417,10 @@ def run() -> dict:
         )
 
     report = {
-        "version": 9,
+        "version": 10,
         "updated_at": now,
         "updated_at_israel": now_israel,
-        "configured": configured,
+        "configured": True,
         "candidate_count": len(candidates),
         "real_alert_count": len(real_rows),
         "eligible_count": len(eligible),
@@ -442,6 +455,7 @@ def run() -> dict:
             "telegram_timestamp": "every delivered message includes explicit Asia/Jerusalem send date/time plus original signal T0",
             "delivery_retries": "up to 3 attempts on transient Telegram/network failures",
             "audit_id": "each delivery has a stable alert_event_id derived from exact-pair key plus send timestamp",
+            "state_writer": "only configured production lanes may write Telegram state/report; unconfigured scan lanes are read-only no-ops",
         },
     }
     _write(state_path, {"updated_at": now, "updated_at_israel": now_israel, "sent": sent})
