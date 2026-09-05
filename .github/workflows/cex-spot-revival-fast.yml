@@ -1,0 +1,138 @@
+name: Wallet500 CEX Spot Revival Fast Lane
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '5,20,35,50 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cex-spot-revival-fast.yml'
+      - 'src/wallet500/cex_spot_identity.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-cex-spot-fast-lane
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Verify strict CEX Spot identity contracts
+        run: >-
+          python -m pytest -q
+          tests/test_cex_spot_identity.py
+          tests/test_cex_spot_dynamic_identity_bridge.py
+          tests/test_cex_identity_preflight.py
+          tests/test_cex_identity.py
+          tests/test_multichain_veteran_revival.py
+      - name: Refresh veteran Spot momentum and dynamic exact identity
+        env:
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from wallet500.cex_spot_revival import run_cex_spot_revival
+          from wallet500.cex_spot_identity import run as resolve_spot_identity
+
+          now=datetime.now(timezone.utc).isoformat()
+          spot=run_cex_spot_revival(Path('data'), now)
+          ident=resolve_spot_identity(Path('data'))
+          print('CEX_SPOT_FAST', {
+              'generated_at': spot.get('generated_at'),
+              'healthy_sources': spot.get('healthy_sources'),
+              'symbols_seen': spot.get('symbols_seen'),
+              'watch_count': spot.get('watch_count'),
+              'alerts_count': spot.get('alerts_count'),
+              'identity_status': ident.get('status'),
+              'identity_counts': ident.get('counts'),
+              'auto_registry': ident.get('auto_registry'),
+          })
+          PY
+      - name: Validate research-only fail-closed output
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          spot=json.loads(Path('data/cex-spot-revival-radar.json').read_text())
+          ident=json.loads(Path('data/cex-spot-identity-radar.json').read_text())
+          def age(ts):
+              s=str(ts or '').replace('Z','+00:00')
+              return (datetime.now(timezone.utc)-datetime.fromisoformat(s)).total_seconds()
+          if age(spot.get('generated_at')) > 600: raise SystemExit('CEX_SPOT_OUTPUT_STALE')
+          if age(ident.get('generated_at')) > 600: raise SystemExit('CEX_SPOT_IDENTITY_OUTPUT_STALE')
+          if ident.get('automatic_buy') is not False: raise SystemExit('CEX_SPOT_AUTO_BUY_LEAK')
+          truth=ident.get('truth_contract') or {}
+          if truth.get('symbol_only_never_actionable') is not True: raise SystemExit('SYMBOL_ONLY_GUARD_MISSING')
+          if truth.get('cex_only_never_real_alert') is not True: raise SystemExit('CEX_ONLY_REAL_ALERT_GUARD_MISSING')
+          for row in ident.get('candidates') or []:
+              if row.get('research_only') is not True or row.get('actionable') is not False:
+                  raise SystemExit('CEX_SPOT_RESEARCH_BOUNDARY_LEAK')
+          print('CEX_SPOT_FAIL_CLOSED_VALID')
+          PY
+      - name: Publish fresh Spot research state without overwriting newer main paths
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          base="$GITHUB_SHA"
+          targets=(
+            data/cex-spot-revival-radar.json
+            data/cex-spot-identity-radar.json
+            data/cex-spot-state.json
+            data/cex-spot-state.json.gz
+            data/cex-identity-registry.json
+          )
+          snap="$(mktemp -d)"
+          for f in "${targets[@]}"; do
+            if [ -f "$f" ]; then
+              mkdir -p "$snap/$(dirname "$f")"
+              cp -a "$f" "$snap/$f"
+            fi
+          done
+          git fetch origin main
+          latest="$(git rev-parse origin/main)"
+          conflict=0
+          for f in "${targets[@]}"; do
+            if ! git diff --quiet "$base" "$latest" -- "$f"; then
+              echo "Newer main changed $f; preserving newer truth and skipping this publish"
+              conflict=1
+            fi
+          done
+          if [ "$conflict" -ne 0 ]; then
+            exit 0
+          fi
+          git reset --hard "$latest"
+          for f in "${targets[@]}"; do
+            if [ -f "$snap/$f" ]; then
+              mkdir -p "$(dirname "$f")"
+              cp -a "$snap/$f" "$f"
+            elif [ -e "$f" ]; then
+              rm -f "$f"
+            fi
+          done
+          git add -A -- "${targets[@]}"
+          if git diff --cached --quiet; then
+            echo "No Spot research changes"
+            exit 0
+          fi
+          git commit -m "data: refresh independent CEX spot revival fast lane"
+          if ! git push origin HEAD:main; then
+            echo "Main moved during final push; no force push and no stale overwrite"
+            exit 0
+          fi
