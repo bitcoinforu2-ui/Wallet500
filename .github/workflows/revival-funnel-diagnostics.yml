@@ -56,14 +56,24 @@ jobs:
           p=Path('data/revival-funnel-diagnostics.json')
           if not p.exists() or p.stat().st_size == 0: raise SystemExit('REVIVAL_FUNNEL_DIAGNOSTICS_MISSING')
           d=json.loads(p.read_text())
-          if int(d.get('version') or 0)<2 or d.get('mode')!='REVIVAL_FUNNEL_DIAGNOSTICS_V2_EVIDENCE_PROMOTION': raise SystemExit('REVIVAL_FUNNEL_MODE_INVALID')
+          version=int(d.get('version') or 0)
+          mode=str(d.get('mode') or '')
+          allowed_modes={
+              'REVIVAL_FUNNEL_DIAGNOSTICS_V2_EVIDENCE_PROMOTION',
+              'REVIVAL_FUNNEL_DIAGNOSTICS_V3_ADAPTIVE_DISCOVERY',
+          }
+          if version < 2 or mode not in allowed_modes: raise SystemExit('REVIVAL_FUNNEL_MODE_INVALID')
           if d.get('production_change') is not False or d.get('production_portfolio_impact')!='NONE': raise SystemExit('REVIVAL_FUNNEL_PRODUCTION_IMPACT_INVALID')
           lanes=d.get('lanes') or {}
           if 'evidence_promotion' not in lanes: raise SystemExit('REVIVAL_FUNNEL_EVIDENCE_LANE_MISSING')
+          if version >= 3 and 'adaptive_discovery' not in lanes: raise SystemExit('REVIVAL_FUNNEL_ADAPTIVE_LANE_MISSING')
           rules=set(d.get('truth_rules') or [])
           required={'MISSING_EVIDENCE_IS_NOT_FAILURE','EVIDENCE_READY_IS_RESEARCH_PROMOTION_NOT_BUY_SIGNAL','CONCENTRATION_IS_RISK_CONTEXT_ONLY','STALE_EVIDENCE_NEVER_COUNTS_POSITIVE','PARALLEL_LANES_ARE_NOT_FAKE_CONVERSION_STAGES','VETERAN_180D_IS_PROJECT_SCOPE_NOT_ALPHA_THRESHOLD'}
           if not required.issubset(rules): raise SystemExit('REVIVAL_FUNNEL_TRUTH_RULES_INCOMPLETE')
-          print('REVIVAL_FUNNEL_DIAGNOSTICS_V2_OK', lanes.get('evidence_promotion'), d.get('blockers'))
+          if version >= 3:
+              required_v3={'ADAPTIVE_DISCOVERY_IS_WATCH_ONLY_AND_NEVER_AUTO_BUY','REAL_ALERT_STRICT_GATE_IS_UNCHANGED'}
+              if not required_v3.issubset(rules): raise SystemExit('REVIVAL_FUNNEL_V3_TRUTH_RULES_INCOMPLETE')
+          print('REVIVAL_FUNNEL_DIAGNOSTICS_OK', {'version':version,'mode':mode,'evidence':lanes.get('evidence_promotion')})
           PY
       - name: Publish diagnostics recomputed from latest main
         if: github.event_name != 'pull_request'
