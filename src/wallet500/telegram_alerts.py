@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -37,6 +40,10 @@ def _pair_key(row: dict) -> str:
         token = token.lower()
         pair = pair.lower()
     return f"{chain}:{token}:{pair}"
+
+
+def _alert_event_id(key: str, sent_at: str) -> str:
+    return hashlib.sha256(f"{key}|{sent_at}".encode("utf-8")).hexdigest()[:16]
 
 
 def _exact_pair_locked(row: dict) -> bool:
@@ -155,7 +162,12 @@ def _merge_display_context(active: dict, real: dict) -> dict:
     return merged
 
 
-def _message(row: dict, tier: str, sent_at: str | None = None) -> str:
+def _message(
+    row: dict,
+    tier: str,
+    sent_at: str | None = None,
+    alert_event_id: str | None = None,
+) -> str:
     chain = str(row.get("chain") or "unknown").upper().replace("BSC", "BNB")
     symbol = str(row.get("symbol") or row.get("name") or "UNKNOWN")
     token = str(row.get("token") or row.get("mint") or row.get("token_address") or "unknown")
@@ -191,29 +203,36 @@ def _message(row: dict, tier: str, sent_at: str | None = None) -> str:
 
     lines = [
         f"{title} — WALLET500",
+        "🆕 NEW REAL ALERT",
         f"📅 תאריך ושעת שליחת ההתראה (ישראל): {sent_israel}",
         f"🕒 T0 אות מקורי (ישראל): {signal_israel}",
-        "⚠️ MANUAL DECISION ONLY — NO AUTOMATIC TRADE",
-        f"Promotion: {promotion} ✅",
-        f"Token: {symbol}",
-        f"Chain: {chain}",
-        f"Contract: {token}",
-        f"Pair: {pair}",
-        f"DEX: {dex}",
-        "Pair identity: EXACT LOCK ✅",
-        f"Pair checked: {pair_checked}",
-        f"Market age: ≥{market_age}d ✅",
-        f"Age proof: {age_source}",
-        f"Current pair age: {pair_age_text}",
-        f"Research/Revival score: {score:.2f}/100",
-        f"Price: {_fmt_money(price)}",
-        f"Liquidity: {_fmt_money(liquidity)} ✅ min $50K",
-        f"Volume 1H: {_fmt_money(volume)}",
-        f"Buys/Sells 1H: {buys}/{sells}",
-        f"Pump/Dump Risk: {risk}",
-        "Holder/Cluster evidence: COMPLETE PASS",
-        "Actionable research alert: YES ✅",
     ]
+    if alert_event_id:
+        lines.append(f"🧾 Alert ID: {alert_event_id}")
+    lines.extend(
+        [
+            "⚠️ MANUAL DECISION ONLY — NO AUTOMATIC TRADE",
+            f"Promotion: {promotion} ✅",
+            f"Token: {symbol}",
+            f"Chain: {chain}",
+            f"Contract: {token}",
+            f"Pair: {pair}",
+            f"DEX: {dex}",
+            "Pair identity: EXACT LOCK ✅",
+            f"Pair checked: {pair_checked}",
+            f"Market age: ≥{market_age}d ✅",
+            f"Age proof: {age_source}",
+            f"Current pair age: {pair_age_text}",
+            f"Research/Revival score: {score:.2f}/100",
+            f"Price: {_fmt_money(price)}",
+            f"Liquidity: {_fmt_money(liquidity)} ✅ min $50K",
+            f"Volume 1H: {_fmt_money(volume)}",
+            f"Buys/Sells 1H: {buys}/{sells}",
+            f"Pump/Dump Risk: {risk}",
+            "Holder/Cluster evidence: COMPLETE PASS",
+            "Actionable research alert: YES ✅",
+        ]
+    )
     if source_lanes:
         lines.append(f"Decision lanes: {', '.join(map(str, source_lanes))}")
     if positive_lanes:
@@ -226,19 +245,42 @@ def _message(row: dict, tier: str, sent_at: str | None = None) -> str:
     return "\n".join(lines)
 
 
-def _send(bot_token: str, chat_id: str, text: str) -> None:
+def _send(bot_token: str, chat_id: str, text: str, max_attempts: int = 3) -> tuple[int | None, int]:
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = urllib.parse.urlencode(
+    body = urllib.parse.urlencode(
         {
             "chat_id": chat_id,
             "text": text,
             "disable_web_page_preview": "true",
         }
     ).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, method="POST")
-    with urllib.request.urlopen(req, timeout=15) as response:
-        if response.status < 200 or response.status >= 300:
-            raise RuntimeError(f"Telegram HTTP {response.status}")
+
+    last_error: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        req = urllib.request.Request(url, data=body, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=15) as response:
+                raw = response.read().decode("utf-8", errors="replace")
+                if response.status < 200 or response.status >= 300:
+                    raise RuntimeError(f"Telegram HTTP {response.status}")
+                payload = json.loads(raw) if raw else {}
+                if payload.get("ok") is not True:
+                    raise RuntimeError("Telegram API returned ok=false")
+                result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+                message_id = result.get("message_id")
+                return int(message_id) if message_id is not None else None, attempt
+        except urllib.error.HTTPError as exc:
+            last_error = exc
+            retryable = exc.code == 429 or 500 <= exc.code < 600
+            if not retryable or attempt >= max_attempts:
+                raise
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, RuntimeError) as exc:
+            last_error = exc
+            if attempt >= max_attempts:
+                raise
+        time.sleep(float(attempt))
+
+    raise RuntimeError(f"Telegram delivery failed after {max_attempts} attempts: {last_error}")
 
 
 def run() -> dict:
@@ -304,10 +346,19 @@ def run() -> dict:
             continue
         if not configured:
             continue
+
+        event_id = _alert_event_id(key, now)
         try:
-            _send(bot_token, chat_id, _message(display, tier, sent_at=now))
+            telegram_message_id, attempts = _send(
+                bot_token,
+                chat_id,
+                _message(display, tier, sent_at=now, alert_event_id=event_id),
+            )
             sent[key] = {
                 "fingerprint": fingerprint,
+                "alert_event_id": event_id,
+                "telegram_message_id": telegram_message_id,
+                "delivery_attempts": attempts,
                 "tier": tier,
                 "symbol": display.get("symbol"),
                 "pair_address": row.get("pair_address"),
@@ -319,6 +370,9 @@ def run() -> dict:
             delivered.append(
                 {
                     "key": key,
+                    "alert_event_id": event_id,
+                    "telegram_message_id": telegram_message_id,
+                    "delivery_attempts": attempts,
                     "tier": tier,
                     "symbol": display.get("symbol"),
                     "pair_address": row.get("pair_address"),
@@ -328,7 +382,7 @@ def run() -> dict:
                 }
             )
         except Exception as exc:
-            errors.append({"key": key, "error": f"{type(exc).__name__}: {exc}"[:300]})
+            errors.append({"key": key, "alert_event_id": event_id, "error": f"{type(exc).__name__}: {exc}"[:300]})
 
     # Re-arm a token after it leaves the actionable state, so a later fresh
     # promotion back into ACTIONABLE creates a new Telegram alert.
@@ -350,7 +404,7 @@ def run() -> dict:
         )
 
     report = {
-        "version": 8,
+        "version": 9,
         "updated_at": now,
         "updated_at_israel": now_israel,
         "configured": configured,
@@ -386,6 +440,8 @@ def run() -> dict:
             "manual_execution": "Telegram is a review alert only; no automatic trade is executed",
             "dedupe": "one alert per transition into actionable state for chain+token+exact_pair",
             "telegram_timestamp": "every delivered message includes explicit Asia/Jerusalem send date/time plus original signal T0",
+            "delivery_retries": "up to 3 attempts on transient Telegram/network failures",
+            "audit_id": "each delivery has a stable alert_event_id derived from exact-pair key plus send timestamp",
         },
     }
     _write(state_path, {"updated_at": now, "updated_at_israel": now_israel, "sent": sent})
