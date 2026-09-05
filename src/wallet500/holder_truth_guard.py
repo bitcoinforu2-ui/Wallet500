@@ -99,14 +99,15 @@ def guard_payloads(revival_latest: dict, revival_state: dict, waking_latest: dic
     for row in revival_latest.get("coins") or []:
         if isinstance(row, dict) and quarantine_revival_row(row):
             quarantined_revival += 1
-    revival_latest["holder_truth_policy"] = "UNIQUE_OWNER_OR_STABLE_HOLDER_ADDRESS_SOURCE_REQUIRED"
+    # The guard must never erase a verified provider identity. The tracker owns the
+    # provider strategy; this layer only quarantines explicitly unsafe semantics.
+    revival_latest["holder_truth_guard"] = "FAIL_CLOSED_UNSAFE_PROVIDER_SEMANTICS"
     revival_latest["growth_fail_closed"] = True
-    revival_latest["provider"] = "MIXED_RAW_EVIDENCE_WITH_TRUTH_GUARD"
 
     for row in (revival_state.get("coins") or {}).values():
         if isinstance(row, dict):
             quarantine_revival_row(row)
-    revival_state["holder_truth_policy"] = "UNIQUE_OWNER_OR_STABLE_HOLDER_ADDRESS_SOURCE_REQUIRED"
+    revival_state["holder_truth_guard"] = "FAIL_CLOSED_UNSAFE_PROVIDER_SEMANTICS"
     revival_state["growth_fail_closed"] = True
 
     for target in waking_latest.get("targets") or []:
