@@ -10,6 +10,7 @@ from .cex_identity_preflight import run as verify_age_and_identity
 from .cex_revival import run_cex_revival
 from .cex_spot_revival import run_cex_spot_revival
 from .real_alerts import run as build_real_alerts
+from .liquidity_truth_guard import sanitize_cex_radar, sanitize_real_alerts
 
 DATA = Path("data")
 PROJECT_SCOPE_MIN_AGE_DAYS = 180
@@ -165,8 +166,13 @@ def _apply_registry_dex_fallback(payload: dict) -> dict:
     return payload
 
 
+def _build_and_sanitize_real_alerts(data_dir: Path) -> dict:
+    build_real_alerts(data_dir)
+    return sanitize_real_alerts(data_dir / "real-alerts.json")
+
+
 def run(data_dir: Path = DATA) -> dict:
-    """Refresh raw CEX intelligence, then enforce veteran-only fail-closed truth."""
+    """Refresh raw CEX intelligence, then enforce veteran-only and liquidity truth fail-closed rules."""
     data_dir.mkdir(parents=True, exist_ok=True)
     radar_path = data_dir / "cex-revival-radar.json"
     now_dt = datetime.now(timezone.utc)
@@ -178,8 +184,6 @@ def run(data_dir: Path = DATA) -> dict:
     _write(data_dir / "cex-revival-raw.json", raw_payload)
     spot = run_cex_spot_revival(data_dir, now)
 
-    # 180d is the explicit project universe boundary. If any code path drifts from
-    # it, quarantine actionable CEX output while continuing raw collection.
     if MIN_AGE_DAYS != PROJECT_SCOPE_MIN_AGE_DAYS or MIN_AGE_DAYS != APPROVED_PRODUCTION_MIN_AGE_DAYS:
         blocked_payload = {
             **raw_payload,
@@ -217,7 +221,7 @@ def run(data_dir: Path = DATA) -> dict:
             },
         }
         _write(radar_path, blocked_payload)
-        real = build_real_alerts(data_dir)
+        real = _build_and_sanitize_real_alerts(data_dir)
         return {
             "status": "COLLECTED_BUT_ACTIONABLE_BLOCKED_BY_SCOPE_DRIFT",
             "generated_at": now,
@@ -281,7 +285,9 @@ def run(data_dir: Path = DATA) -> dict:
     identity = _retry(lambda: resolve_identity(radar_path), attempts=2)
     resolved_payload = _apply_registry_dex_fallback(_load(radar_path, {}))
     _write(radar_path, resolved_payload)
-    real = build_real_alerts(data_dir)
+    liquidity_truth_counts = sanitize_cex_radar(radar_path)
+    resolved_payload = _load(radar_path, {})
+    real = _build_and_sanitize_real_alerts(data_dir)
 
     return {
         "status": "OK" if ext_error is None else "DEGRADED_UNKNOWN_IDENTITIES_FAIL_CLOSED",
@@ -295,6 +301,7 @@ def run(data_dir: Path = DATA) -> dict:
         "external_age_identity_preflight": ext_report,
         "external_error": ext_error,
         "dex_identity": resolved_payload.get("identity_counts", identity),
+        "liquidity_truth": liquidity_truth_counts,
         "real_alert_feed": real,
     }
 
