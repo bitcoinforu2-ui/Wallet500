@@ -73,35 +73,56 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
 
     envelope_rows = envelope.get("candidates") if isinstance(envelope, dict) else []
     envelope_rows = envelope_rows if isinstance(envelope_rows, list) else []
+
+    # V3 separates hard truth blockers from "not confirmed yet".
     blocker_counts = Counter()
+    pending_counts = Counter()
+    discovery_tier_counts = Counter()
+    rescue_eligible = 0
     for row in envelope_rows:
         if not isinstance(row, dict):
             continue
         for code in row.get("blockers") or []:
             blocker_counts[str(code)] += 1
+        for code in row.get("pending_confirmations") or []:
+            pending_counts[str(code)] += 1
+        tier = str(row.get("discovery_tier") or "")
+        if tier:
+            discovery_tier_counts[tier] += 1
+        if (_dict(row.get("rescue_shadow"))).get("eligible") is True:
+            rescue_eligible += 1
 
     blockers: list[dict[str, Any]] = []
     for code, count in blocker_counts.most_common(8):
         blockers.append({
             "code": code,
             "count": count,
-            "classification": "EVIDENCE_OR_TRUTH_BLOCKER",
-            "detail": "Counted from the canonical Candidate Evidence Envelope; missing evidence is not treated as failure.",
+            "classification": "HARD_TRUTH_OR_RISK_BLOCKER",
+            "detail": "Counted from canonical Candidate Evidence Envelope hard blockers only.",
+        })
+
+    pending_confirmations: list[dict[str, Any]] = []
+    for code, count in pending_counts.most_common(10):
+        pending_confirmations.append({
+            "code": code,
+            "count": count,
+            "classification": "PENDING_CONFIRMATION_NOT_HARD_FAILURE",
+            "detail": "Kept in forward watch; missing/not-yet-positive evidence is not converted into a failure.",
         })
 
     insufficient = _num(precursor_counts.get("INSUFFICIENT_PRECURSOR_EVIDENCE"))
     if insufficient:
-        blockers.append({
+        pending_confirmations.append({
             "code": "PRECURSOR_EVIDENCE_INSUFFICIENT",
             "count": insufficient,
-            "classification": "INSUFFICIENT_EVIDENCE",
+            "classification": "PENDING_CONFIRMATION_NOT_HARD_FAILURE",
         })
 
     if wallet_partial:
-        blockers.append({
+        pending_confirmations.append({
             "code": "PREWAKING_WALLET_COVERAGE_PARTIAL",
             "count": wallet_partial,
-            "classification": "COVERAGE_GAP",
+            "classification": "COVERAGE_GAP_NOT_HARD_FAILURE",
         })
 
     eligible_reawakening = _num(reawakening_counts.get("eligible_liquidity_only_rejects"))
@@ -119,19 +140,19 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
             "code": "NO_ACTIVE_QUALIFIED_BEFORE_AGE_GOVERNANCE",
             "count": 0,
             "classification": "UPSTREAM_QUALIFICATION_EMPTY",
-            "detail": "Legacy active-qualified is empty; Evidence Envelope is reported separately and does not silently become production authority.",
+            "detail": "Legacy active-qualified is empty; Evidence Envelope remains a separate research lane.",
         })
 
     active_count = len(active) if isinstance(active, list) else 0
     return {
-        "version": 2,
-        "mode": "REVIVAL_FUNNEL_DIAGNOSTICS_V2_EVIDENCE_PROMOTION",
+        "version": 3,
+        "mode": "REVIVAL_FUNNEL_DIAGNOSTICS_V3_ADAPTIVE_DISCOVERY",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "production_change": False,
         "production_portfolio_impact": "NONE",
         "cohort_warning": (
-            "Revival, Precursor, Evidence Envelope, Reawakening and legacy Active Qualification are distinct lanes. "
-            "Only exact token/pair identity links may be compared."
+            "Revival, adaptive discovery, Precursor, Evidence Envelope, Reawakening and legacy Active Qualification "
+            "are distinct lanes. Only exact token/pair identity links may be compared."
         ),
         "lanes": {
             "solana_veteran_revival": {
@@ -154,6 +175,16 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
                 "verified_watch": _num(envelope_counts.get("verified_watch")),
                 "deep_watch": _num(envelope_counts.get("deep_watch")),
                 "blocked_truth": _num(envelope_counts.get("blocked_truth")),
+                "pre_waking_evidence_ready": _num(envelope_counts.get("pre_waking_evidence_ready")),
+                "anomaly_watch": _num(envelope_counts.get("anomaly_watch")),
+                "waking_market_watch": _num(envelope_counts.get("waking_market_watch")),
+                "baseline_deep_watch": _num(envelope_counts.get("baseline_deep_watch")),
+                "market_confirmation_pending": _num(envelope_counts.get("market_confirmation_pending")),
+                "independent_evidence_pending": _num(envelope_counts.get("independent_evidence_pending")),
+                "adaptive_anomaly_positive": _num(envelope_counts.get("adaptive_anomaly_positive")),
+                "adaptive_velocity_positive": _num(envelope_counts.get("adaptive_velocity_positive")),
+                "adaptive_persistence_positive": _num(envelope_counts.get("adaptive_persistence_positive")),
+                "rescue_shadow_eligible": _num(envelope_counts.get("rescue_shadow_eligible")) or rescue_eligible,
                 "verified_holder_lane": _num(envelope_counts.get("with_verified_holder_growth_lane")),
                 "positive_holder_growth": _num(envelope_counts.get("with_positive_holder_growth")),
                 "verified_wallet_lane": _num(envelope_counts.get("with_verified_wallet_lane")),
@@ -161,6 +192,16 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
                 "positive_smart_money": _num(envelope_counts.get("with_positive_smart_money")),
                 "positive_cex": _num(envelope_counts.get("with_positive_cex")),
                 "production_effect": False,
+            },
+            "adaptive_discovery": {
+                "pre_waking_evidence_ready": discovery_tier_counts.get("PRE_WAKING_EVIDENCE_READY", 0),
+                "anomaly_watch": discovery_tier_counts.get("ANOMALY_WATCH", 0),
+                "waking_evidence_ready": discovery_tier_counts.get("WAKING_EVIDENCE_READY", 0),
+                "waking_market_watch": discovery_tier_counts.get("WAKING_MARKET_WATCH", 0),
+                "baseline_deep_watch": discovery_tier_counts.get("BASELINE_DEEP_WATCH", 0),
+                "rescue_shadow_eligible": rescue_eligible,
+                "market_waking_is_early_gate": False,
+                "real_alert_gate_changed": False,
             },
             "precursor": {
                 "source_generated_at": precursor.get("generated_at") if isinstance(precursor, dict) else None,
@@ -201,11 +242,17 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
             },
         },
         "blockers": blockers,
+        "pending_confirmations": pending_confirmations,
         "truth_rules": [
             "MISSING_EVIDENCE_IS_NOT_FAILURE",
             "EVIDENCE_READY_IS_RESEARCH_PROMOTION_NOT_BUY_SIGNAL",
             "CONCENTRATION_IS_RISK_CONTEXT_ONLY",
             "STALE_EVIDENCE_NEVER_COUNTS_POSITIVE",
+            "MARKET_WAKING_IS_LATE_CONFIRMATION_NOT_EARLY_DISCOVERY_GATE",
+            "HARD_TRUTH_BLOCKERS_ARE_SEPARATE_FROM_PENDING_CONFIRMATIONS",
+            "ADAPTIVE_DISCOVERY_IS_WATCH_ONLY_AND_NEVER_AUTO_BUY",
+            "REAL_ALERT_STRICT_GATE_IS_UNCHANGED",
+            "RESCUE_SHADOW_RECHECKS_EARLY_FALSE_NEGATIVES_FORWARD_ONLY",
             "PARALLEL_LANES_ARE_NOT_FAKE_CONVERSION_STAGES",
             "VETERAN_180D_IS_PROJECT_SCOPE_NOT_ALPHA_THRESHOLD",
         ],

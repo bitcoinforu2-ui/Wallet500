@@ -32,6 +32,8 @@ def seed_revival(root: Path):
             "revival_score_verified": 72,
             "watch_status": "WAKING_MARKET_ONLY",
             "drawdown_from_ath_pct": 88,
+            "change_24h_pct": 8,
+            "change_7d_pct": 18,
             "revival_score_components": {
                 "same_pair_as_previous": True,
                 "liquidity_change_pct": 4,
@@ -97,6 +99,7 @@ def test_verified_holder_and_wallet_evidence_promotes_to_evidence_ready(tmp_path
     assert result["counts"]["evidence_ready"] == 1
     row = result["candidates"][0]
     assert row["status"] == "EVIDENCE_READY"
+    assert row["discovery_tier"] == "WAKING_EVIDENCE_READY"
     assert row["production_effect"] is False
     assert row["automatic_buy"] is False
     assert set(row["coverage"]["positive_independent_lanes"]) == {"HOLDER_GROWTH", "WALLET_ACCUMULATION"}
@@ -111,7 +114,8 @@ def test_stale_supporting_evidence_cannot_promote(tmp_path):
     row = result["candidates"][0]
     assert row["status"] == "VERIFIED_WATCH"
     assert row["coverage"]["positive_independent_count"] == 0
-    assert "NO_INDEPENDENT_POSITIVE_EVIDENCE" in row["blockers"]
+    assert "NO_INDEPENDENT_POSITIVE_EVIDENCE" not in row["blockers"]
+    assert "INDEPENDENT_EVIDENCE_PENDING" in row["pending_confirmations"]
 
 
 def test_unverified_holder_source_is_never_counted_positive(tmp_path):
@@ -134,3 +138,87 @@ def test_unverified_holder_source_is_never_counted_positive(tmp_path):
     assert row["families"]["holder_growth"]["verified"] is False
     assert row["families"]["holder_growth"]["positive"] is False
     assert "HOLDER_GROWTH" not in row["coverage"]["positive_independent_lanes"]
+
+
+def test_pre_waking_two_lane_acceleration_enters_verified_watch_without_becoming_evidence_ready(tmp_path):
+    seed_revival(tmp_path)
+    seed_supporting_evidence(tmp_path)
+    seed_empty_optional(tmp_path)
+    revival = json.loads((tmp_path / "revival-1000-latest.json").read_text())
+    coin = revival["coins"][0]
+    coin["revival_score_verified"] = 58
+    coin["watch_status"] = "DEEP_WATCH"
+    coin["revival_score_components"]["pair_volume_change_pct"] = 65
+    coin["revival_score_components"]["liquidity_change_pct"] = 18
+    write(tmp_path, "revival-1000-latest.json", revival)
+
+    result = build(tmp_path, now=NOW)
+    row = result["candidates"][0]
+    assert row["status"] == "VERIFIED_WATCH"
+    assert row["discovery_tier"] == "PRE_WAKING_EVIDENCE_READY"
+    assert row["coverage"]["pre_waking_evidence_ready"] is True
+    assert row["coverage"]["evidence_ready"] is False
+    assert "MARKET_CONFIRMATION_PENDING" in row["pending_confirmations"]
+    assert "MARKET_STRUCTURE_NOT_WAKING" not in row["blockers"]
+    assert result["truth_contract"]["market_waking_required_for_early_watch"] is False
+    assert result["truth_contract"]["real_alert_gate_unchanged"] is True
+
+
+def test_forward_volume_liquidity_anomaly_can_enter_watch_before_market_waking(tmp_path):
+    seed_revival(tmp_path)
+    seed_empty_optional(tmp_path)
+    write(tmp_path, "revival-holder-latest.json", {"generated_at": "2026-09-04T23:55:00+00:00", "coins": []})
+    write(tmp_path, "revival-prewaking-wallet-evidence.json", {"generated_at": "2026-09-04T23:55:00+00:00", "tokens": []})
+    revival = json.loads((tmp_path / "revival-1000-latest.json").read_text())
+    coin = revival["coins"][0]
+    coin["revival_score_verified"] = 55
+    coin["watch_status"] = "DEEP_WATCH"
+    coin["revival_score_components"]["pair_volume_change_pct"] = 80
+    coin["revival_score_components"]["liquidity_change_pct"] = 12
+    write(tmp_path, "revival-1000-latest.json", revival)
+
+    result = build(tmp_path, now=NOW)
+    row = result["candidates"][0]
+    assert row["status"] == "VERIFIED_WATCH"
+    assert row["discovery_tier"] == "ANOMALY_WATCH"
+    assert row["adaptive_discovery"]["anomaly_positive"] is True
+    assert row["coverage"]["positive_independent_count"] == 0
+    assert row["coverage"]["evidence_ready"] is False
+    assert row["automatic_buy"] is False
+
+
+def test_liquidity_floor_stays_hard_blocker_and_is_delegated_to_rescue_shadow(tmp_path):
+    seed_revival(tmp_path)
+    seed_empty_optional(tmp_path)
+    write(tmp_path, "revival-holder-latest.json", {"generated_at": "2026-09-04T23:55:00+00:00", "coins": []})
+    write(tmp_path, "revival-prewaking-wallet-evidence.json", {"generated_at": "2026-09-04T23:55:00+00:00", "tokens": []})
+    revival = json.loads((tmp_path / "revival-1000-latest.json").read_text())
+    coin = revival["coins"][0]
+    coin["dex_pair_liquidity_usd"] = 42000
+    coin["revival_score_verified"] = 58
+    coin["watch_status"] = "DEEP_WATCH"
+    write(tmp_path, "revival-1000-latest.json", revival)
+
+    result = build(tmp_path, now=NOW)
+    row = result["candidates"][0]
+    assert row["status"] == "BLOCKED_TRUTH"
+    assert "EXECUTION_LIQUIDITY_LT_50K" in row["blockers"]
+    assert row["rescue_shadow"]["eligible"] is True
+    assert row["rescue_shadow"]["delegated_to"] == "reawakening-shadow.json"
+    assert row["rescue_shadow"]["observation_horizons_hours"] == [6, 24, 72]
+
+
+def test_late_move_cannot_be_promoted_by_adaptive_funnel(tmp_path):
+    seed_revival(tmp_path)
+    seed_supporting_evidence(tmp_path)
+    seed_empty_optional(tmp_path)
+    revival = json.loads((tmp_path / "revival-1000-latest.json").read_text())
+    coin = revival["coins"][0]
+    coin["change_24h_pct"] = 48
+    write(tmp_path, "revival-1000-latest.json", revival)
+
+    result = build(tmp_path, now=NOW)
+    row = result["candidates"][0]
+    assert row["status"] == "BLOCKED_TRUTH"
+    assert "LATE_MOVE_DO_NOT_CHASE" in row["blockers"]
+    assert row["coverage"]["evidence_ready"] is False
