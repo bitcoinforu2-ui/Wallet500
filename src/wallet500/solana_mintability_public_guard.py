@@ -42,13 +42,36 @@ def _safe_row(row: dict, truth: dict) -> dict:
     }
 
 
+def _real_evidence_ready_count(payload: dict) -> int:
+    """REAL feed stores Evidence Ready rows inside verified_watch in V3."""
+    watch = payload.get("verified_watch") if isinstance(payload.get("verified_watch"), list) else []
+    explicit = payload.get("evidence_ready") if isinstance(payload.get("evidence_ready"), list) else []
+    keys = set()
+    for row in [*watch, *explicit]:
+        if not isinstance(row, dict):
+            continue
+        ready = (
+            row.get("evidence_ready") is True
+            or row.get("evidence_envelope_status") == "EVIDENCE_READY"
+            or row.get("status") == "EVIDENCE_READY_NOT_REAL_ALERT"
+        )
+        if ready:
+            key = (
+                str(row.get("chain") or row.get("network") or ""),
+                _token(row),
+                str(row.get("pair_address") or row.get("dex_pair_address") or ""),
+            )
+            keys.add(key)
+    return len(keys)
+
+
 def sanitize_real_alerts(data_dir: Path = DATA) -> dict:
     """Fail closed across every current decision/candidate surface.
 
-    This function intentionally sanitizes both the canonical Evidence Envelope
-    and the public REAL/Watch feed with one on-chain mintability snapshot. The
-    funnel is rebuilt after the removals so decision-snapshot counts cannot skew.
-    Historical research ledgers are left intact for learning/audit purposes.
+    The Evidence Envelope and public REAL/Watch feed are sanitized with one
+    on-chain mintability snapshot. The funnel is rebuilt afterwards so every
+    decision surface describes the same post-rejection population. Historical
+    research ledgers remain untouched for learning/audit purposes.
     """
     real_path = data_dir / "real-alerts.json"
     envelope_path = data_dir / "candidate-evidence-envelope.json"
@@ -77,8 +100,6 @@ def sanitize_real_alerts(data_dir: Path = DATA) -> dict:
 
     removed: list[dict] = []
 
-    # Candidate Evidence Envelope is itself a current candidate list. Mintable or
-    # unknown Solana tokens must not remain in it, even as BLOCKED_TRUTH rows.
     if isinstance(envelope.get("candidates"), list):
         kept_candidates = []
         for row in envelope.get("candidates") or []:
@@ -145,7 +166,7 @@ def sanitize_real_alerts(data_dir: Path = DATA) -> dict:
     counts = real.get("counts") if isinstance(real.get("counts"), dict) else {}
     counts["real_alerts"] = len(real.get("alerts") or [])
     counts["verified_watch_not_real"] = len(real.get("verified_watch") or [])
-    counts["evidence_ready_research"] = len(real.get("evidence_ready") or [])
+    counts["evidence_ready_research"] = _real_evidence_ready_count(real)
     counts["identity_pending_not_actionable"] = len(real.get("identity_pending") or [])
     counts["mintability_rejected_not_visible"] = sum(x.get("surface") in LIST_KEYS for x in removed)
     real["counts"] = counts
@@ -155,7 +176,7 @@ def sanitize_real_alerts(data_dir: Path = DATA) -> dict:
     truth_contract["solana_unknown_mintability_allowed"] = False
     real["truth_contract"] = truth_contract
     real["mintability_public_guard"] = {
-        "version": 2,
+        "version": 3,
         "status": "ENFORCED_FAIL_CLOSED",
         "rule": "SOLANA_MINT_AUTHORITY_MUST_BE_REVOKED_NULL",
         "removed_not_visible": counts["mintability_rejected_not_visible"],
@@ -165,9 +186,6 @@ def sanitize_real_alerts(data_dir: Path = DATA) -> dict:
     _write(real_path, real)
     _write(state_path, next_state)
 
-    # Funnel diagnostics must be derived AFTER the candidate removal; otherwise
-    # its evidence-ready count describes a different population and the snapshot
-    # coherence guard correctly fails closed.
     from .revival_funnel_diagnostics import run as rebuild_funnel
     rebuild_funnel(data_dir)
 
