@@ -3,7 +3,9 @@ name: Wallet500 Independent System Watchdog
 on:
   workflow_dispatch:
   schedule:
-    - cron: '3,18,33,48 * * * *'
+    # Lightweight integrity/availability guard twice per hour.
+    # The deeper Wallet500 Full Guard remains the hourly second layer.
+    - cron: '3,33 * * * *'
   push:
     branches: [main]
     paths:
