@@ -14,6 +14,7 @@ on:
       - 'dashboard-performance.html'
       - 'dashboard-engine-control.html'
       - 'dashboard-terminal.html'
+      - 'dashboard-social.html'
       - 'dashboard-live-price.js'
       - 'dashboard-reference-fix.js'
       - '.github/workflows/pages.yml'
@@ -44,7 +45,7 @@ jobs:
           check_text(){ grep -Fq "$2" "$1" || fail "missing marker [$2] in $1"; }
 
           rm -rf _site
-          mkdir -p _site/live _site/alerts _site/revival _site/performance _site/control _site/terminal
+          mkdir -p _site/live _site/alerts _site/revival _site/performance _site/control _site/terminal _site/social
           cp index.html _site/index.html
           cp dashboard-live.html _site/live/index.html
           cp dashboard-real-alerts.html _site/alerts/index.html
@@ -52,6 +53,7 @@ jobs:
           cp dashboard-performance.html _site/performance/index.html
           cp dashboard-engine-control.html _site/control/index.html
           cp dashboard-terminal.html _site/terminal/index.html
+          cp dashboard-social.html _site/social/index.html
           cp dashboard-live-price.js _site/dashboard-live-price.js
           cp dashboard-reference-fix.js _site/dashboard-reference-fix.js
           cp -r data _site/data
@@ -59,8 +61,6 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import re
-          # Old experiment-rubric bootstraps are retired. Strip any already-embedded
-          # copies from published pages so deleted/no-result labs cannot reappear.
           for page in Path('_site').rglob('*.html'):
               s=page.read_text(encoding='utf-8')
               s=re.sub(r'<style id="w500-sticky-rubric-source">.*?</style>', '', s, flags=re.S|re.I)
@@ -72,11 +72,13 @@ jobs:
           touch _site/.nojekyll
           printf '%s\n' "$GITHUB_SHA" > _site/build.txt
 
-          for f in _site/index.html _site/live/index.html _site/alerts/index.html _site/revival/index.html _site/performance/index.html _site/control/index.html _site/terminal/index.html _site/data/real-alerts.json _site/data/case-study-doge1.json _site/data/revival-1000-latest.json; do
+          for f in _site/index.html _site/live/index.html _site/alerts/index.html _site/revival/index.html _site/performance/index.html _site/control/index.html _site/terminal/index.html _site/social/index.html _site/data/real-alerts.json _site/data/case-study-doge1.json _site/data/revival-1000-latest.json; do
             check_file "$f"
           done
           check_text _site/index.html 'WALLET500 · מסך החלטה'
           check_text _site/index.html 'VETERAN REVIVAL ONLY'
+          check_text _site/index.html 'FUSION HOT/WARM'
+          check_text _site/social/index.html 'SOCIAL INTELLIGENCE V2'
           check_text _site/live/index.html 'LIVE RADAR'
           check_text _site/revival/index.html 'REVIVAL'
           check_text _site/performance/index.html 'LIVE PRICE 5s'
@@ -86,6 +88,8 @@ jobs:
           python -m json.tool _site/data/real-alerts.json >/dev/null
           python -m json.tool _site/data/case-study-doge1.json >/dev/null
           python -m json.tool _site/data/revival-1000-latest.json >/dev/null
+          if test -s _site/data/social-intelligence-v2.json; then python -m json.tool _site/data/social-intelligence-v2.json >/dev/null; fi
+          if test -s _site/data/cross-signal-fusion-v2.json; then python -m json.tool _site/data/cross-signal-fusion-v2.json >/dev/null; fi
           echo 'BUILD_VERIFY_OK'
 
       - uses: actions/configure-pages@v5
@@ -104,8 +108,9 @@ jobs:
           for attempt in $(seq 1 30); do
             build="$(curl -fsSL --max-time 20 "${BASE}build.txt?v=${GITHUB_SHA}" 2>/dev/null || true)"
             root="$(curl -fsSL --max-time 20 "${BASE}?v=${GITHUB_SHA}" 2>/dev/null || true)"
+            social="$(curl -fsSL --max-time 20 "${BASE}social/?v=${GITHUB_SHA}" 2>/dev/null || true)"
             feed="$(curl -fsSL --max-time 20 "${BASE}data/real-alerts.json?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'WALLET500 · מסך החלטה' <<<"$root" && python -c 'import json,sys; json.load(sys.stdin)' <<<"$feed" >/dev/null 2>&1; then
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'WALLET500 · מסך החלטה' <<<"$root" && grep -Fq 'SOCIAL INTELLIGENCE V2' <<<"$social" && python -c 'import json,sys; json.load(sys.stdin)' <<<"$feed" >/dev/null 2>&1; then
               ok=1
               break
             fi
