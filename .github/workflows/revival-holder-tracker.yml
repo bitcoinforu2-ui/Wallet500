@@ -8,9 +8,12 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/revival_holder_tracker.py'
+      - 'src/wallet500/revival_holder_tracker_v3.py'
       - 'src/wallet500/solscan_holder_truth.py'
+      - 'src/wallet500/holder_truth_provider.py'
       - 'src/wallet500/holder_truth_guard.py'
       - 'tests/test_solscan_holder_truth.py'
+      - 'tests/test_holder_truth_provider.py'
       - 'tests/test_holder_truth_guard.py'
       - '.github/workflows/revival-holder-tracker.yml'
 
@@ -35,12 +38,13 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Verify holder truth tests
-        run: python -m pytest -q tests/test_holder_truth_guard.py tests/test_solscan_holder_truth.py
+        run: python -m pytest -q tests/test_holder_truth_guard.py tests/test_solscan_holder_truth.py tests/test_holder_truth_provider.py
       - name: Track trusted forward holder evidence
         env:
           REVIVAL_HOLDER_BATCH: '30'
           SOLSCAN_API_KEY: ${{ secrets.SOLSCAN_API_KEY }}
-        run: python -m wallet500.revival_holder_tracker
+          SOLANA_HOLDER_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+        run: python -m wallet500.revival_holder_tracker_v3
       - name: Fail closed unsafe holder-count semantics
         run: python -m wallet500.holder_truth_guard
       - name: Validate holder truth contract
@@ -54,21 +58,22 @@ jobs:
           if not p.exists() or not s.exists() or not g.exists(): raise SystemExit('REVIVAL_HOLDER_OUTPUT_MISSING')
           d=json.loads(p.read_text())
           guard=json.loads(g.read_text())
-          if d.get('mode')!='RESEARCH_ONLY_REVIVAL_HOLDER_TRACKER_V2': raise SystemExit('REVIVAL_HOLDER_MODE_INVALID')
+          if d.get('mode')!='RESEARCH_ONLY_REVIVAL_HOLDER_TRACKER_V3': raise SystemExit('REVIVAL_HOLDER_MODE_INVALID')
           if d.get('network')!='solana' or d.get('production_portfolio_impact')!='NONE' or d.get('no_hindsight') is not True: raise SystemExit('REVIVAL_HOLDER_TRUTH_INVALID')
           if 'NEVER FABRICATE RETROACTIVE HOLDER COUNT' not in str(d.get('truth_rule')): raise SystemExit('REVIVAL_HOLDER_NO_RETROACTIVE_RULE_MISSING')
           if d.get('growth_fail_closed') is not True: raise SystemExit('REVIVAL_HOLDER_FAIL_CLOSED_MISSING')
           if guard.get('mode')!='HOLDER_TRUTH_FAIL_CLOSED_V1': raise SystemExit('HOLDER_TRUTH_GUARD_INVALID')
+          if d.get('provider')!='VERIFIED_UNIQUE_POSITIVE_OWNER_COUNT': raise SystemExit('HOLDER_PROVIDER_CHAIN_INVALID')
           for x in d.get('coins') or []:
               if x.get('source')=='RUGCHECK_EXACT_MINT_PUBLIC_REPORT':
                   if x.get('holder_count') is not None or x.get('growth_eligible') is not False: raise SystemExit('RUGCHECK_TRUTH_LEAK')
               if x.get('holder_truth_status')=='ANOMALY_REQUIRES_SECOND_SOURCE' and x.get('growth_eligible') is not False:
                   raise SystemExit('ANOMALOUS_JUMP_NOT_BLOCKED')
-              if x.get('source')=='SOLSCAN_V2_TOKEN_HOLDERS_TOTAL' and x.get('holder_count') is not None:
-                  if x.get('holder_truth_status')!='FORWARD_VERIFIED' or x.get('growth_eligible') is not True: raise SystemExit('SOLSCAN_TRUTH_NOT_MARKED')
+              if x.get('source')=='VERIFIED_UNIQUE_POSITIVE_OWNER_COUNT' and x.get('holder_count') is not None:
+                  if x.get('holder_truth_status')!='FORWARD_VERIFIED' or x.get('growth_eligible') is not True: raise SystemExit('HOLDER_TRUTH_NOT_MARKED')
                   if x.get('first_holder_count') is not None and x.get('holder_growth_count') is not None:
                       if int(x['holder_growth_count']) != int(x['holder_count'])-int(x['first_holder_count']): raise SystemExit('REVIVAL_HOLDER_DELTA_MISMATCH')
-          print('REVIVAL_HOLDER_V2_OK', {'configured':d.get('provider_configured'),'success':d.get('successful_this_run'),'covered':d.get('covered')})
+          print('REVIVAL_HOLDER_V3_OK', {'usable':d.get('provider_usable_this_run'),'success':d.get('successful_this_run'),'covered':d.get('covered')})
           PY
       - name: Publish guarded holder tracker state
         run: |
