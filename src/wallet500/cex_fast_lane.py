@@ -16,6 +16,9 @@ DATA = Path("data")
 PROJECT_SCOPE_MIN_AGE_DAYS = 180
 MIN_AGE_DAYS = PROJECT_SCOPE_MIN_AGE_DAYS
 APPROVED_PRODUCTION_MIN_AGE_DAYS = PROJECT_SCOPE_MIN_AGE_DAYS
+MIN_DEX_VOLUME_H24_USD = 10_000.0
+MIN_DEX_VOLUME_H1_USD = 1_000.0
+MIN_DAILY_LIQUIDITY_TURNOVER = 0.005
 
 
 def _load(path: Path, default):
@@ -58,14 +61,12 @@ def _registry_rows(raw_rows: list[dict], data_dir: Path, now: datetime) -> tuple
     for row in raw_rows:
         reg = symbols.get(_base_symbol(row.get("symbol")))
         if not isinstance(reg, dict):
-            unknown.append(row)
-            continue
+            unknown.append(row); continue
         evidence = str(reg.get("market_age_evidence_at") or "").strip()
         try:
             s = evidence[:-1] + "+00:00" if evidence.endswith("Z") else evidence
             d = datetime.fromisoformat(s)
-            if d.tzinfo is None:
-                d = d.replace(tzinfo=timezone.utc)
+            if d.tzinfo is None: d = d.replace(tzinfo=timezone.utc)
             age_days = int((now - d.astimezone(timezone.utc)).total_seconds() // 86400)
         except Exception:
             age_days = -1
@@ -73,24 +74,13 @@ def _registry_rows(raw_rows: list[dict], data_dir: Path, now: datetime) -> tuple
         token = str(reg.get("token_address") or "").strip()
         coin_id = str(reg.get("coingecko_id") or "").strip()
         if age_days < MIN_AGE_DAYS or not chain or not token or not coin_id:
-            unknown.append(row)
-            continue
-        registered.append({
-            **row,
-            "coingecko_id": coin_id,
-            "chain": chain,
-            "token_address": token,
-            "market_age_verified": True,
-            "market_age_min_days": age_days,
+            unknown.append(row); continue
+        registered.append({**row, "coingecko_id": coin_id, "chain": chain, "token_address": token,
+            "market_age_verified": True, "market_age_min_days": age_days,
             "market_age_evidence_at": evidence,
             "market_age_evidence_source": reg.get("evidence_source") or "EXACT_IDENTITY_REGISTRY",
-            "cex_identity_preflight_verified": True,
-            "identity_registry_verified": True,
-            "cex_identity_preflight": {
-                "method": "EXACT_IDENTITY_REGISTRY",
-                "registry_version": registry.get("version"),
-            },
-        })
+            "cex_identity_preflight_verified": True, "identity_registry_verified": True,
+            "cex_identity_preflight": {"method": "EXACT_IDENTITY_REGISTRY", "registry_version": registry.get("version")}})
     return registered, unknown
 
 
@@ -104,65 +94,70 @@ def _preflight_unknown(raw_payload: dict, unknown: list[dict], data_dir: Path) -
         payload = _load(temp, {})
         return list(payload.get("alerts") or []), report, None
     except Exception as e:
-        return [], {
-            "accepted": 0,
-            "rejected": len(unknown),
-            "status": "DEGRADED_FAIL_CLOSED_PROVIDER_TRANSIENT",
-        }, f"{type(e).__name__}: {e}"[:500]
+        return [], {"accepted": 0, "rejected": len(unknown), "status": "DEGRADED_FAIL_CLOSED_PROVIDER_TRANSIENT"}, f"{type(e).__name__}: {e}"[:500]
     finally:
-        try:
-            temp.unlink(missing_ok=True)
-        except Exception:
-            pass
+        try: temp.unlink(missing_ok=True)
+        except Exception: pass
 
 
 def _apply_registry_dex_fallback(payload: dict) -> dict:
     rows = list(payload.get("alerts") or [])
     for i, row in enumerate(rows):
-        if row.get("identity_registry_verified") is not True or row.get("identity_status") == "DEX_VERIFIED":
-            continue
-        candidate = {
-            "chain": str(row.get("chain") or "").lower(),
-            "token_address": str(row.get("token_address") or ""),
-            "coingecko_platform": "identity-registry",
-        }
-        try:
-            pairs = _verified_pairs(candidate)
-        except Exception:
-            pairs = []
+        if row.get("identity_registry_verified") is not True or row.get("identity_status") == "DEX_VERIFIED": continue
+        candidate = {"chain": str(row.get("chain") or "").lower(), "token_address": str(row.get("token_address") or ""), "coingecko_platform": "identity-registry"}
+        try: pairs = _verified_pairs(candidate)
+        except Exception: pairs = []
         if not pairs:
-            rows[i] = {
-                **row,
-                "identity_status": "IDENTITY_RESOLVED_PAIR_PENDING",
-                "identity_blocker": "EXACT_DEX_PAIR_NOT_FOUND_ACROSS_PROVIDERS",
-                "actionable": False,
-            }
-            continue
+            rows[i] = {**row, "identity_status": "IDENTITY_RESOLVED_PAIR_PENDING", "identity_blocker": "EXACT_DEX_PAIR_NOT_FOUND_ACROSS_PROVIDERS", "actionable": False}; continue
         best = max(pairs, key=lambda x: (float(x.get("liquidity_usd") or 0), float(x.get("volume_h24") or 0)))
-        rows[i] = {
-            **row,
-            "identity_status": "DEX_VERIFIED",
-            "identity_verified": True,
-            "pair_address": best.get("pair_address"),
-            "dex": best.get("dex"),
-            "dex_url": best.get("dex_url"),
-            "dex_price_usd": best.get("price_usd"),
-            "dex_liquidity_usd": best.get("liquidity_usd"),
-            "dex_volume_h1": best.get("volume_h1"),
-            "dex_volume_h24": best.get("volume_h24"),
-            "pair_created_at": best.get("pair_created_at"),
-            "pair_provider": best.get("pair_provider"),
-            "exact_token_side": best.get("exact_token_side"),
-            "identity_source": "EXACT_IDENTITY_REGISTRY_PLUS_EXACT_ADDRESS_DEX_POOL",
-            "pair_selection_rule": "HIGHEST_CURRENT_LIQUIDITY_AMONG_EXACT_TOKEN_PAIRS_ACROSS_FALLBACK_PROVIDERS",
-            "actionable": False,
-        }
+        rows[i] = {**row, "identity_status": "DEX_VERIFIED", "identity_verified": True,
+            "pair_address": best.get("pair_address"), "dex": best.get("dex"), "dex_url": best.get("dex_url"),
+            "dex_price_usd": best.get("price_usd"), "dex_liquidity_usd": best.get("liquidity_usd"),
+            "dex_volume_h1": best.get("volume_h1"), "dex_volume_h24": best.get("volume_h24"),
+            "pair_created_at": best.get("pair_created_at"), "pair_provider": best.get("pair_provider"),
+            "exact_token_side": best.get("exact_token_side"), "identity_source": "EXACT_IDENTITY_REGISTRY_PLUS_EXACT_ADDRESS_DEX_POOL",
+            "pair_selection_rule": "HIGHEST_CURRENT_LIQUIDITY_AMONG_EXACT_TOKEN_PAIRS_ACROSS_FALLBACK_PROVIDERS", "actionable": False}
     payload["alerts"] = rows
-    payload["identity_counts"] = {
-        "dex_verified": sum(1 for x in rows if x.get("identity_status") == "DEX_VERIFIED"),
+    payload["identity_counts"] = {"dex_verified": sum(1 for x in rows if x.get("identity_status") == "DEX_VERIFIED"), "pair_pending": sum(1 for x in rows if x.get("identity_status") == "IDENTITY_RESOLVED_PAIR_PENDING"), "identity_pending": sum(1 for x in rows if x.get("identity_status") == "IDENTITY_PENDING")}
+    return payload
+
+
+def _apply_dex_activity_gate(payload: dict) -> dict:
+    """Liquidity is not activity. Quarantine exact pairs that are economically dormant.
+
+    A CEX signal may discover a veteran token, but a deep on-chain pool with negligible
+    trading must never become VERIFIED WATCH/REAL ALERT. Missing DEX volume also fails closed.
+    """
+    rows = list(payload.get("alerts") or [])
+    quarantined = 0
+    for i, row in enumerate(rows):
+        if row.get("identity_status") != "DEX_VERIFIED":
+            continue
+        liq = float(row.get("dex_liquidity_usd") or 0)
+        h24_raw, h1_raw = row.get("dex_volume_h24"), row.get("dex_volume_h1")
+        h24 = float(h24_raw or 0); h1 = float(h1_raw or 0)
+        turnover = h24 / liq if liq > 0 else 0.0
+        reasons = []
+        if h24_raw is None: reasons.append("DEX_H24_VOLUME_UNAVAILABLE")
+        elif h24 < MIN_DEX_VOLUME_H24_USD: reasons.append("DEX_H24_VOLUME_LT_10K")
+        if h1_raw is not None and h1 < MIN_DEX_VOLUME_H1_USD: reasons.append("DEX_H1_VOLUME_LT_1K")
+        if liq > 0 and turnover < MIN_DAILY_LIQUIDITY_TURNOVER: reasons.append("DEX_DAILY_TURNOVER_LT_0_5PCT")
+        if reasons:
+            quarantined += 1
+            rows[i] = {**row, "identity_status": "DEX_VERIFIED_DORMANT", "identity_verified": True,
+                "dex_activity_verified": False, "dex_activity_blockers": reasons,
+                "dex_daily_liquidity_turnover": round(turnover, 8), "actionable": False,
+                "identity_blocker": "DORMANT_EXACT_PAIR_NO_MEANINGFUL_ONCHAIN_ACTIVITY"}
+        else:
+            rows[i] = {**row, "dex_activity_verified": True, "dex_daily_liquidity_turnover": round(turnover, 8)}
+    payload["alerts"] = rows
+    payload["dex_activity_gate"] = {"policy": "LIQUIDITY_NEVER_SUBSTITUTES_FOR_ACTIVITY_FAIL_CLOSED",
+        "minimum_volume_h24_usd": MIN_DEX_VOLUME_H24_USD, "minimum_volume_h1_usd_when_available": MIN_DEX_VOLUME_H1_USD,
+        "minimum_daily_liquidity_turnover": MIN_DAILY_LIQUIDITY_TURNOVER, "quarantined": quarantined}
+    payload["identity_counts"] = {"dex_verified": sum(1 for x in rows if x.get("identity_status") == "DEX_VERIFIED"),
+        "dex_verified_dormant": sum(1 for x in rows if x.get("identity_status") == "DEX_VERIFIED_DORMANT"),
         "pair_pending": sum(1 for x in rows if x.get("identity_status") == "IDENTITY_RESOLVED_PAIR_PENDING"),
-        "identity_pending": sum(1 for x in rows if x.get("identity_status") == "IDENTITY_PENDING"),
-    }
+        "identity_pending": sum(1 for x in rows if x.get("identity_status") == "IDENTITY_PENDING")}
     return payload
 
 
@@ -172,138 +167,39 @@ def _build_and_sanitize_real_alerts(data_dir: Path) -> dict:
 
 
 def run(data_dir: Path = DATA) -> dict:
-    """Refresh raw CEX intelligence, then enforce veteran-only and liquidity truth fail-closed rules."""
     data_dir.mkdir(parents=True, exist_ok=True)
     radar_path = data_dir / "cex-revival-radar.json"
-    now_dt = datetime.now(timezone.utc)
-    now = now_dt.isoformat()
-
-    raw = run_cex_revival(data_dir, now)
-    raw_payload = _load(radar_path, {})
-    raw_rows = list(raw_payload.get("alerts") or [])
+    now_dt = datetime.now(timezone.utc); now = now_dt.isoformat()
+    raw = run_cex_revival(data_dir, now); raw_payload = _load(radar_path, {}); raw_rows = list(raw_payload.get("alerts") or [])
     _write(data_dir / "cex-revival-raw.json", raw_payload)
     spot = run_cex_spot_revival(data_dir, now)
-
     if MIN_AGE_DAYS != PROJECT_SCOPE_MIN_AGE_DAYS or MIN_AGE_DAYS != APPROVED_PRODUCTION_MIN_AGE_DAYS:
-        blocked_payload = {
-            **raw_payload,
-            "version": max(int(raw_payload.get("version") or 0), 12),
-            "alerts": [],
-            "alerts_count": 0,
-            "raw_alerts_before_age_gate": len(raw_rows),
-            "raw_collection_generated_at": raw_payload.get("generated_at") or now,
-            "collection_status": "FRESH_COLLECTION_CONTINUES",
-            "spot_collection": {
-                "generated_at": spot.get("generated_at"),
-                "healthy_sources": spot.get("healthy_sources", 0),
-                "markets_seen": spot.get("markets_seen", 0),
-                "symbols_seen": spot.get("symbols_seen", 0),
-                "watch_count": spot.get("watch_count", 0),
-                "alerts_count": spot.get("alerts_count", 0),
-                "production_portfolio_impact": "NONE",
-            },
-            "age_gate": {
-                "status": "BLOCKED_FAIL_CLOSED_VETERAN_SCOPE_POLICY_DRIFT",
-                "minimum_market_age_days": MIN_AGE_DAYS,
-                "project_scope_minimum_market_age_days": PROJECT_SCOPE_MIN_AGE_DAYS,
-                "approved_production_minimum_market_age_days": APPROVED_PRODUCTION_MIN_AGE_DAYS,
-                "accepted": 0,
-                "rejected": len(raw_rows),
-                "unknown_or_unresolved_identity": "REJECT",
-                "production_change_allowed": False,
-                "policy": "VETERAN_ONLY_SCOPE_MUST_BE_180D_EVERYWHERE; SIGNAL_THRESHOLDS_ARE_SEPARATELY_GOVERNED",
-            },
-            "generated_identity_preflight_at": now,
-            "fast_lane_degraded": {
-                "at": now,
-                "reason": "VETERAN_SCOPE_POLICY_DRIFT",
-                "policy": "ACTIONABLE_CEX_OUTPUT_QUARANTINED; RAW_COLLECTION_CONTINUES",
-            },
-        }
-        _write(radar_path, blocked_payload)
-        real = _build_and_sanitize_real_alerts(data_dir)
-        return {
-            "status": "COLLECTED_BUT_ACTIONABLE_BLOCKED_BY_SCOPE_DRIFT",
-            "generated_at": now,
-            "raw_cex_alerts": len(raw_rows),
-            "raw_cex_symbols_seen": raw.get("symbols_seen", 0),
-            "spot_watch_count": spot.get("watch_count", 0),
-            "spot_alerts_count": spot.get("alerts_count", 0),
-            "spot_symbols_seen": spot.get("symbols_seen", 0),
-            "registry_verified": 0,
-            "external_age_identity_preflight": {"status": "NOT_RUN_POLICY_BLOCK"},
-            "external_error": None,
-            "dex_identity": {"dex_verified": 0, "pair_pending": 0, "identity_pending": 0},
-            "real_alert_feed": real,
-        }
-
+        blocked_payload = {**raw_payload, "version": max(int(raw_payload.get("version") or 0), 12), "alerts": [], "alerts_count": 0,
+            "raw_alerts_before_age_gate": len(raw_rows), "raw_collection_generated_at": raw_payload.get("generated_at") or now,
+            "collection_status": "FRESH_COLLECTION_CONTINUES", "spot_collection": {"generated_at": spot.get("generated_at"), "healthy_sources": spot.get("healthy_sources", 0), "markets_seen": spot.get("markets_seen", 0), "symbols_seen": spot.get("symbols_seen", 0), "watch_count": spot.get("watch_count", 0), "alerts_count": spot.get("alerts_count", 0), "production_portfolio_impact": "NONE"},
+            "age_gate": {"status": "BLOCKED_FAIL_CLOSED_VETERAN_SCOPE_POLICY_DRIFT", "minimum_market_age_days": MIN_AGE_DAYS, "project_scope_minimum_market_age_days": PROJECT_SCOPE_MIN_AGE_DAYS, "approved_production_minimum_market_age_days": APPROVED_PRODUCTION_MIN_AGE_DAYS, "accepted": 0, "rejected": len(raw_rows), "unknown_or_unresolved_identity": "REJECT", "production_change_allowed": False, "policy": "VETERAN_ONLY_SCOPE_MUST_BE_180D_EVERYWHERE; SIGNAL_THRESHOLDS_ARE_SEPARATELY_GOVERNED"},
+            "generated_identity_preflight_at": now, "fast_lane_degraded": {"at": now, "reason": "VETERAN_SCOPE_POLICY_DRIFT", "policy": "ACTIONABLE_CEX_OUTPUT_QUARANTINED; RAW_COLLECTION_CONTINUES"}}
+        _write(radar_path, blocked_payload); real = _build_and_sanitize_real_alerts(data_dir)
+        return {"status": "COLLECTED_BUT_ACTIONABLE_BLOCKED_BY_SCOPE_DRIFT", "generated_at": now, "raw_cex_alerts": len(raw_rows), "raw_cex_symbols_seen": raw.get("symbols_seen", 0), "spot_watch_count": spot.get("watch_count", 0), "spot_alerts_count": spot.get("alerts_count", 0), "spot_symbols_seen": spot.get("symbols_seen", 0), "registry_verified": 0, "external_age_identity_preflight": {"status": "NOT_RUN_POLICY_BLOCK"}, "external_error": None, "dex_identity": {"dex_verified": 0, "pair_pending": 0, "identity_pending": 0}, "real_alert_feed": real}
     registered, unknown = _registry_rows(raw_rows, data_dir, now_dt)
     external_rows, ext_report, ext_error = _preflight_unknown(raw_payload, unknown, data_dir)
     merged = registered + external_rows
     merged.sort(key=lambda x: (float(x.get("cex_revival_score") or 0), int(x.get("coherent_confirmations") or 0)), reverse=True)
-
-    preflight_payload = {
-        **raw_payload,
-        "version": max(int(raw_payload.get("version") or 0), 12),
-        "alerts": merged,
-        "alerts_count": len(merged),
-        "raw_alerts_before_age_gate": len(raw_rows),
-        "raw_collection_generated_at": raw_payload.get("generated_at") or now,
-        "collection_status": "FRESH_COLLECTION_CONTINUES",
-        "spot_collection": {
-            "generated_at": spot.get("generated_at"),
-            "healthy_sources": spot.get("healthy_sources", 0),
-            "markets_seen": spot.get("markets_seen", 0),
-            "symbols_seen": spot.get("symbols_seen", 0),
-            "watch_count": spot.get("watch_count", 0),
-            "alerts_count": spot.get("alerts_count", 0),
-            "production_portfolio_impact": "NONE",
-        },
-        "age_gate": {
-            "status": "ENFORCED_FAIL_CLOSED" if ext_error is None else "DEGRADED_UNKNOWN_IDENTITIES_FAIL_CLOSED",
-            "minimum_market_age_days": MIN_AGE_DAYS,
-            "project_scope_minimum_market_age_days": PROJECT_SCOPE_MIN_AGE_DAYS,
-            "approved_production_minimum_market_age_days": APPROVED_PRODUCTION_MIN_AGE_DAYS,
-            "scope_policy": "VETERAN_ONLY_PRODUCT_SCOPE_NOT_ALPHA_THRESHOLD",
-            "accepted": len(merged),
-            "rejected": max(0, len(raw_rows) - len(merged)),
-            "registered_exact_identities": len(registered),
-            "external_preflight": ext_report,
-            "unknown_or_unresolved_identity": "REJECT",
-        },
-        "generated_identity_preflight_at": now,
-    }
-    if ext_error:
-        preflight_payload["fast_lane_degraded"] = {
-            "at": now,
-            "reason": "EXTERNAL_IDENTITY_PROVIDER_TRANSIENT",
-            "detail": ext_error,
-            "policy": "REGISTERED_EXACT_IDENTITIES_KEPT; UNKNOWN_IDENTITIES_FAIL_CLOSED",
-        }
+    preflight_payload = {**raw_payload, "version": max(int(raw_payload.get("version") or 0), 12), "alerts": merged, "alerts_count": len(merged),
+        "raw_alerts_before_age_gate": len(raw_rows), "raw_collection_generated_at": raw_payload.get("generated_at") or now, "collection_status": "FRESH_COLLECTION_CONTINUES",
+        "spot_collection": {"generated_at": spot.get("generated_at"), "healthy_sources": spot.get("healthy_sources", 0), "markets_seen": spot.get("markets_seen", 0), "symbols_seen": spot.get("symbols_seen", 0), "watch_count": spot.get("watch_count", 0), "alerts_count": spot.get("alerts_count", 0), "production_portfolio_impact": "NONE"},
+        "age_gate": {"status": "ENFORCED_FAIL_CLOSED" if ext_error is None else "DEGRADED_UNKNOWN_IDENTITIES_FAIL_CLOSED", "minimum_market_age_days": MIN_AGE_DAYS, "project_scope_minimum_market_age_days": PROJECT_SCOPE_MIN_AGE_DAYS, "approved_production_minimum_market_age_days": APPROVED_PRODUCTION_MIN_AGE_DAYS, "scope_policy": "VETERAN_ONLY_PRODUCT_SCOPE_NOT_ALPHA_THRESHOLD", "accepted": len(merged), "rejected": max(0, len(raw_rows)-len(merged)), "registered_exact_identities": len(registered), "external_preflight": ext_report, "unknown_or_unresolved_identity": "REJECT"}, "generated_identity_preflight_at": now}
+    if ext_error: preflight_payload["fast_lane_degraded"] = {"at": now, "reason": "EXTERNAL_IDENTITY_PROVIDER_TRANSIENT", "detail": ext_error, "policy": "REGISTERED_EXACT_IDENTITIES_KEPT; UNKNOWN_IDENTITIES_FAIL_CLOSED"}
     _write(radar_path, preflight_payload)
-
     identity = _retry(lambda: resolve_identity(radar_path), attempts=2)
     resolved_payload = _apply_registry_dex_fallback(_load(radar_path, {}))
+    resolved_payload = _apply_dex_activity_gate(resolved_payload)
     _write(radar_path, resolved_payload)
     liquidity_truth_counts = sanitize_cex_radar(radar_path)
     resolved_payload = _load(radar_path, {})
     real = _build_and_sanitize_real_alerts(data_dir)
-
-    return {
-        "status": "OK" if ext_error is None else "DEGRADED_UNKNOWN_IDENTITIES_FAIL_CLOSED",
-        "generated_at": now,
-        "raw_cex_alerts": raw.get("alerts_count", 0),
-        "raw_cex_symbols_seen": raw.get("symbols_seen", 0),
-        "spot_watch_count": spot.get("watch_count", 0),
-        "spot_alerts_count": spot.get("alerts_count", 0),
-        "spot_symbols_seen": spot.get("symbols_seen", 0),
-        "registry_verified": len(registered),
-        "external_age_identity_preflight": ext_report,
-        "external_error": ext_error,
-        "dex_identity": resolved_payload.get("identity_counts", identity),
-        "liquidity_truth": liquidity_truth_counts,
-        "real_alert_feed": real,
-    }
+    return {"status": "OK" if ext_error is None else "DEGRADED_UNKNOWN_IDENTITIES_FAIL_CLOSED", "generated_at": now,
+        "raw_cex_alerts": raw.get("alerts_count", 0), "raw_cex_symbols_seen": raw.get("symbols_seen", 0), "spot_watch_count": spot.get("watch_count", 0), "spot_alerts_count": spot.get("alerts_count", 0), "spot_symbols_seen": spot.get("symbols_seen", 0), "registry_verified": len(registered), "external_age_identity_preflight": ext_report, "external_error": ext_error, "dex_identity": resolved_payload.get("identity_counts", identity), "dex_activity_gate": resolved_payload.get("dex_activity_gate", {}), "liquidity_truth": liquidity_truth_counts, "real_alert_feed": real}
 
 
 if __name__ == "__main__":
