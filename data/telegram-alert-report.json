@@ -1,8 +1,10 @@
 {
-  "version": 6,
-  "updated_at": "2026-09-05T07:23:41.004566+00:00",
-  "configured": false,
+  "version": 8,
+  "updated_at": "2026-09-05T14:56:00.868843+00:00",
+  "updated_at_israel": "05/09/2026 17:56:00",
+  "configured": true,
   "candidate_count": 0,
+  "real_alert_count": 0,
   "eligible_count": 0,
   "delivered_count": 0,
   "error_count": 0,
@@ -11,10 +13,13 @@
   "errors": [],
   "policy": {
     "source": "active-qualified-candidates.json",
+    "real_alert_source": "real-alerts.json",
+    "transition_rule": "send once when an exact-pair candidate ENTERS actionable REAL_ALERT; re-arm after it leaves actionable state",
     "requires": [
+      "matching real-alerts.json row with status=REAL_ALERT and actionable_research_alert=true",
       "market_age_verified=true",
       "market_age_min_days>=180",
-      "qualification=QUALIFIED",
+      "qualification=QUALIFIED or REVIVAL_QUALIFIED",
       "live_survival_gate=ACTIVE",
       "pump_dump_blocked=false",
       "pair_identity_locked=true",
@@ -27,6 +32,8 @@
       "risk not HIGH/CRITICAL"
     ],
     "high_conviction": "score>=90, liquidity>=50000, volume_h1>=30000, risk=LOW",
-    "dedupe": "one alert per chain+token+exact_pair qualification fingerprint"
+    "manual_execution": "Telegram is a review alert only; no automatic trade is executed",
+    "dedupe": "one alert per transition into actionable state for chain+token+exact_pair",
+    "telegram_timestamp": "every delivered message includes explicit Asia/Jerusalem send date/time plus original signal T0"
   }
 }
