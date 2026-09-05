@@ -2,6 +2,11 @@ name: Wallet500 Candidate Evidence Envelope
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - "Wallet500 Revival Holder Tracker"
+      - "Wallet500 Revival Smart Money Registry"
+    types: [completed]
   schedule:
     - cron: '*/5 * * * *'
   push:
@@ -15,6 +20,9 @@ on:
       - 'src/wallet500/revival_funnel_diagnostics.py'
       - 'src/wallet500/production_age_governance.py'
       - 'src/wallet500/cex_fast_lane.py'
+      - 'src/wallet500/holder_truth_provider.py'
+      - 'src/wallet500/revival_holder_tracker_v3.py'
+      - 'src/wallet500/revival_prewaking_wallet_evidence_v2.py'
       - 'tests/test_candidate_evidence_envelope.py'
       - 'tests/test_decision_snapshot_guard.py'
       - 'tests/test_solana_mintability_gate.py'
@@ -42,6 +50,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
