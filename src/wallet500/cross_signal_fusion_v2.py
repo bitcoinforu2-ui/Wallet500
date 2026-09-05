@@ -72,8 +72,17 @@ def score_row(row: dict, social: dict | None) -> dict:
     smart_score = 65.0 if smart_verified and smart.get("positive") is True else (15.0 if smart_verified else 0.0)
     channels["smart_money"] = {"available": smart_verified, "score": smart_score, "weight": 10.0}
 
-    narrative_available = bool(social)
-    channels["narrative"] = {"available": narrative_available, "score": _n(s.get("narrative")), "weight": 20.0}
+    social_confidence = max(0.0, min(100.0, _n(s.get("confidence"))))
+    narrative_raw = max(0.0, min(100.0, _n(s.get("narrative"))))
+    narrative_effective = narrative_raw * social_confidence / 100.0
+    narrative_available = bool(social) and social_confidence >= 20.0
+    channels["narrative"] = {
+        "available": narrative_available,
+        "score": narrative_effective,
+        "raw_score": narrative_raw,
+        "confidence": social_confidence,
+        "weight": 20.0,
+    }
 
     denom = sum(x["weight"] for x in channels.values() if x["available"])
     raw = sum(x["weight"] * x["score"] / 100.0 for x in channels.values() if x["available"])
@@ -108,9 +117,10 @@ def score_row(row: dict, social: dict | None) -> dict:
     if _n(adaptive.get("persistence_score")) >= 60: why.append(f"PERSISTENCE_{_n(adaptive.get('persistence_score')):.0f}")
     if holder_verified and holder_score >= 40: why.append(f"HOLDER_GROWTH_SCORE_{holder_score:.0f}")
     if wallet_verified and wallet_score >= 40: why.append(f"WALLET_ACCUMULATION_{wallet_score:.0f}")
-    if narrative_available and _n(s.get("social_momentum")) >= 50: why.append(f"SOCIAL_{_n(s.get('social_momentum')):.0f}")
-    if narrative_available and _n(s.get("kol_quality")) >= 35: why.append(f"KOL_{_n(s.get('kol_quality')):.0f}")
-    if narrative_available and _n(s.get("news_catalyst")) >= 35: why.append(f"NEWS_{_n(s.get('news_catalyst')):.0f}")
+    if narrative_available and social_confidence >= 40 and _n(s.get("social_momentum")) >= 50: why.append(f"SOCIAL_{_n(s.get('social_momentum')):.0f}")
+    if narrative_available and social_confidence >= 40 and _n(s.get("kol_quality")) >= 35: why.append(f"KOL_{_n(s.get('kol_quality')):.0f}")
+    if narrative_available and social_confidence >= 40 and _n(s.get("news_catalyst")) >= 35: why.append(f"NEWS_{_n(s.get('news_catalyst')):.0f}")
+    if narrative_available and narrative_raw >= 60 and social_confidence < 40: why.append(f"NARRATIVE_LOW_CONFIDENCE_{social_confidence:.0f}")
     if manipulation >= 40: why.append(f"HYPE_RISK_{manipulation:.0f}")
     if not why: why.append("NO_MULTI_SIGNAL_CONVERGENCE_YET")
 
@@ -123,6 +133,13 @@ def score_row(row: dict, social: dict | None) -> dict:
         "social_acceleration_vs_6h": (social.get("organic") or {}).get("acceleration_vs_prior_6h") if narrative_available else None,
     }
 
+    public_channels = {}
+    for k, v in channels.items():
+        public_channels[k] = {"available": v["available"], "score": round(v["score"], 1)}
+        if k == "narrative":
+            public_channels[k]["raw_score"] = round(v["raw_score"], 1)
+            public_channels[k]["confidence"] = round(v["confidence"], 1)
+
     return {
         "token_address": row.get("token_address"),
         "symbol": row.get("symbol"),
@@ -134,7 +151,7 @@ def score_row(row: dict, social: dict | None) -> dict:
         "fusion_score": round(score, 1),
         "coverage_weight_pct": round(coverage, 1),
         "positive_family_count": positive_families,
-        "channels": {k: {"available": v["available"], "score": round(v["score"], 1)} for k, v in channels.items()},
+        "channels": public_channels,
         "risk": {"manipulation": round(manipulation, 1), "late_move": late, "hard_blockers": row.get("blockers") or []},
         "why_now": why,
         "change": change,
@@ -167,6 +184,7 @@ def build(data_dir: Path = DATA) -> dict:
             "missing_channel_reduces_coverage_not_negative_score": True,
             "hard_truth_blockers_cannot_be_overridden": True,
             "social_cannot_override_identity_pair_liquidity_security": True,
+            "narrative_is_confidence_weighted_before_fusion": True,
         },
         "counts": {
             "tokens": len(rows),
