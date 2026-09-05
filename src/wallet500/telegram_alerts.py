@@ -6,8 +6,10 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 MIN_MARKET_AGE_DAYS = 180
+ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
 
 
 def _load(path: Path, default):
@@ -66,6 +68,20 @@ def _fmt_money(v) -> str:
     if n == 0:
         return "$0"
     return f"${n:.8f}".rstrip("0").rstrip(".")
+
+
+def _fmt_israel_time(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return "n/a"
+    try:
+        normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+        dt = datetime.fromisoformat(normalized)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(ISRAEL_TZ).strftime("%d/%m/%Y %H:%M:%S")
+    except Exception:
+        return raw
 
 
 def _tier(row: dict) -> str | None:
@@ -139,7 +155,7 @@ def _merge_display_context(active: dict, real: dict) -> dict:
     return merged
 
 
-def _message(row: dict, tier: str) -> str:
+def _message(row: dict, tier: str, sent_at: str | None = None) -> str:
     chain = str(row.get("chain") or "unknown").upper().replace("BSC", "BNB")
     symbol = str(row.get("symbol") or row.get("name") or "UNKNOWN")
     token = str(row.get("token") or row.get("mint") or row.get("token_address") or "unknown")
@@ -165,6 +181,9 @@ def _message(row: dict, tier: str) -> str:
     verified_lanes = list(row.get("evidence_verified_lanes") or [])
     source_lanes = list(row.get("source_lanes") or [])
     evidence_ready = row.get("evidence_ready") is True or row.get("evidence_envelope_status") == "EVIDENCE_READY"
+    sent_at = sent_at or datetime.now(timezone.utc).isoformat()
+    sent_israel = _fmt_israel_time(sent_at)
+    signal_israel = _fmt_israel_time(row.get("first_alert_at"))
 
     title = "🔥 HIGH-CONVICTION BUY REVIEW" if tier == "HIGH_CONVICTION" else "🚨 BUY REVIEW"
     pair_age_text = f"{float(pair_age):.0f}m" if pair_age is not None else "n/a"
@@ -172,6 +191,8 @@ def _message(row: dict, tier: str) -> str:
 
     lines = [
         f"{title} — WALLET500",
+        f"📅 תאריך ושעת שליחת ההתראה (ישראל): {sent_israel}",
+        f"🕒 T0 אות מקורי (ישראל): {signal_israel}",
         "⚠️ MANUAL DECISION ONLY — NO AUTOMATIC TRADE",
         f"Promotion: {promotion} ✅",
         f"Token: {symbol}",
@@ -246,6 +267,7 @@ def run() -> dict:
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
     configured = bool(bot_token and chat_id)
     now = datetime.now(timezone.utc).isoformat()
+    now_israel = _fmt_israel_time(now)
     delivered = []
     eligible = []
     errors = []
@@ -283,7 +305,7 @@ def run() -> dict:
         if not configured:
             continue
         try:
-            _send(bot_token, chat_id, _message(display, tier))
+            _send(bot_token, chat_id, _message(display, tier, sent_at=now))
             sent[key] = {
                 "fingerprint": fingerprint,
                 "tier": tier,
@@ -291,6 +313,7 @@ def run() -> dict:
                 "pair_address": row.get("pair_address"),
                 "actionable": True,
                 "sent_at": now,
+                "sent_at_israel": now_israel,
                 "dex_url": display.get("dex_url") or display.get("url"),
             }
             delivered.append(
@@ -299,6 +322,8 @@ def run() -> dict:
                     "tier": tier,
                     "symbol": display.get("symbol"),
                     "pair_address": row.get("pair_address"),
+                    "sent_at": now,
+                    "sent_at_israel": now_israel,
                     "dex_url": display.get("dex_url") or display.get("url"),
                 }
             )
@@ -325,8 +350,9 @@ def run() -> dict:
         )
 
     report = {
-        "version": 7,
+        "version": 8,
         "updated_at": now,
+        "updated_at_israel": now_israel,
         "configured": configured,
         "candidate_count": len(candidates),
         "real_alert_count": len(real_rows),
@@ -359,9 +385,10 @@ def run() -> dict:
             "high_conviction": "score>=90, liquidity>=50000, volume_h1>=30000, risk=LOW",
             "manual_execution": "Telegram is a review alert only; no automatic trade is executed",
             "dedupe": "one alert per transition into actionable state for chain+token+exact_pair",
+            "telegram_timestamp": "every delivered message includes explicit Asia/Jerusalem send date/time plus original signal T0",
         },
     }
-    _write(state_path, {"updated_at": now, "sent": sent})
+    _write(state_path, {"updated_at": now, "updated_at_israel": now_israel, "sent": sent})
     _write(out / "telegram-alert-report.json", report)
     print(json.dumps(report, indent=2))
     return report
