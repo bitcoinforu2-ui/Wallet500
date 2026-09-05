@@ -1,0 +1,100 @@
+name: Wallet500 Social Intelligence V2
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23,53 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/social_feed_scan.py'
+      - 'src/wallet500/social_intelligence_v2.py'
+      - 'src/wallet500/cross_signal_fusion_v2.py'
+      - 'tests/test_social_intelligence_v2.py'
+      - 'tests/test_cross_signal_fusion_v2.py'
+      - '.github/workflows/social-intelligence-v2.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-social-intelligence-v2
+  cancel-in-progress: false
+
+jobs:
+  social:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+
+      - name: Unit tests
+        run: python -m pytest -q tests/test_social_intelligence_v2.py tests/test_cross_signal_fusion_v2.py tests/test_social_organic_acceleration.py
+
+      - name: Scan public social and news sources
+        env:
+          SOCIAL_SCAN_BUDGET: '12'
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: python -m wallet500.social_feed_scan
+
+      - name: Recompute organic acceleration
+        run: python -m wallet500.social_organic_acceleration
+
+      - name: Build Social Intelligence V2
+        run: python -m wallet500.social_intelligence_v2
+
+      - name: Build research-only cross-signal fusion
+        run: python -m wallet500.cross_signal_fusion_v2
+
+      - name: Validate truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          s=json.loads(Path('data/social-source-scan.json').read_text())
+          i=json.loads(Path('data/social-intelligence-v2.json').read_text())
+          f=json.loads(Path('data/cross-signal-fusion-v2.json').read_text())
+          if s.get('mode')!='RESEARCH_ONLY_SOCIAL_SOURCE_SCAN_V1': raise SystemExit('SOCIAL_SCAN_MODE_INVALID')
+          if i.get('mode')!='RESEARCH_ONLY_SOCIAL_INTELLIGENCE_V2': raise SystemExit('SOCIAL_INTELLIGENCE_MODE_INVALID')
+          if f.get('mode')!='RESEARCH_ONLY_CROSS_SIGNAL_FUSION_V2': raise SystemExit('FUSION_MODE_INVALID')
+          if i.get('automatic_buy') is not False or f.get('automatic_buy') is not False: raise SystemExit('SOCIAL_PRODUCTION_LEAK')
+          if (f.get('truth_contract') or {}).get('does_not_modify_real_alert_gate') is not True: raise SystemExit('REAL_ALERT_GATE_LEAK')
+          for row in f.get('tokens') or []:
+              if row.get('production_effect') is not False or row.get('automatic_buy') is not False: raise SystemExit('FUSION_ROW_PRODUCTION_LEAK')
+              if row.get('risk',{}).get('hard_blockers') and row.get('fusion_status')!='HARD_TRUTH_BLOCKED': raise SystemExit('HARD_BLOCKER_OVERRIDE')
+          print('SOCIAL_INTELLIGENCE_V2_OK', i.get('counts'), f.get('counts'))
+          PY
+
+      - name: Publish social intelligence snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-social-bot'
+          git config user.email 'wallet500-social-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          for f in social-source-scan.json social-catalyst-ledger.json social-organic-acceleration.json social-intelligence-v2.json cross-signal-fusion-v2.json; do cp "data/$f" "$tmp/$f"; done
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            for f in social-source-scan.json social-catalyst-ledger.json social-organic-acceleration.json social-intelligence-v2.json cross-signal-fusion-v2.json; do cp "$tmp/$f" "data/$f"; done
+            python -m wallet500.social_intelligence_v2
+            python -m wallet500.cross_signal_fusion_v2
+            git add data/social-source-scan.json data/social-catalyst-ledger.json data/social-organic-acceleration.json data/social-intelligence-v2.json data/cross-signal-fusion-v2.json
+            if git diff --cached --quiet; then echo 'SOCIAL_V2_NO_DATA_CHANGE'; exit 0; fi
+            git commit -m 'data: refresh social intelligence v2 and fusion'
+            if git push origin HEAD:main; then echo 'SOCIAL_V2_PUBLISH_OK'; exit 0; fi
+            echo "SOCIAL_V2_RETRY attempt=$attempt"
+            sleep 3
+          done
+          echo '::error::SOCIAL_V2_PUBLISH_RACE_EXHAUSTED'
+          exit 1
