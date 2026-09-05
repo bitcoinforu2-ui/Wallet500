@@ -13,6 +13,25 @@ from .waking_confirmation import _broad_query
 
 MODE = base.MODE
 DEFAULT_PRIORITY_SLOTS = 8
+DEFAULT_DIRECT_BUDGETS = {
+    "x": 6,
+    "youtube": 1,
+    "reddit": 6,
+}
+DIRECT_ENV = {
+    "x": "X_DIRECT_SLOTS",
+    "youtube": "YOUTUBE_DIRECT_SLOTS",
+    "reddit": "REDDIT_DIRECT_SLOTS",
+}
+DIRECT_CONFIG_KEY = {
+    "x": "x",
+    "youtube": "youtube",
+    "reddit": "reddit_oauth",
+}
+PERMANENT_DIRECT_FAILURES = {"HTTP_401", "HTTP_402", "HTTP_403", "HTTP_429"}
+
+_DIRECT_CALLS = {"x": 0, "youtube": 0, "reddit": 0}
+_DIRECT_BREAKERS: dict[str, str] = {}
 
 _ORIGINAL_SELECT = base._select_targets
 _ORIGINAL_IDENTITY = base._identity
@@ -21,6 +40,20 @@ _ORIGINAL_MERGE = base._merge_exact_social_events
 _ORIGINAL_X = base._scan_x
 _ORIGINAL_YOUTUBE = base._scan_youtube
 _ORIGINAL_REDDIT = base._scan_reddit
+
+
+def _direct_budget(provider: str) -> int:
+    env_name = DIRECT_ENV[provider]
+    default = DEFAULT_DIRECT_BUDGETS[provider]
+    try:
+        return max(0, int(os.getenv(env_name, str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
+def _reset_direct_runtime_state() -> None:
+    _DIRECT_CALLS.update({"x": 0, "youtube": 0, "reddit": 0})
+    _DIRECT_BREAKERS.clear()
 
 
 def _rotating_select(envelope: dict, budget: int) -> list[dict]:
@@ -177,7 +210,27 @@ def _scan_index(identity: dict, provider: str, source: str, site_query: str) -> 
 
 
 def _fallback(direct_fn, identity: dict, provider: str, source: str, sites: str):
-    events, status = direct_fn(identity)
+    config = direct.provider_config()
+    config_key = DIRECT_CONFIG_KEY[provider]
+    configured = bool(config.get(config_key))
+    budget = _direct_budget(provider)
+
+    if not configured:
+        events, status = [], {"provider": provider, "status": "NOT_CONFIGURED"}
+    elif provider in _DIRECT_BREAKERS:
+        events, status = [], {
+            "provider": provider,
+            "status": f"CIRCUIT_BREAKER_{_DIRECT_BREAKERS[provider]}",
+        }
+    elif _DIRECT_CALLS[provider] >= budget:
+        events, status = [], {"provider": provider, "status": "SKIPPED_DIRECT_BUDGET"}
+    else:
+        _DIRECT_CALLS[provider] += 1
+        events, status = direct_fn(identity)
+        status_text = str((status or {}).get("status") or "UNKNOWN")
+        if status_text in PERMANENT_DIRECT_FAILURES:
+            _DIRECT_BREAKERS[provider] = status_text
+
     direct_status = str((status or {}).get("status") or "UNKNOWN")
     if direct_status.startswith("OK"):
         return events, status
@@ -209,6 +262,7 @@ def _scan_reddit_resilient(identity: dict):
 
 
 def run(output_dir: str = "data") -> dict:
+    _reset_direct_runtime_state()
     base._select_targets = _rotating_select
     base._identity = _identity_with_pair
     base._attribution = _attribution_v2
@@ -229,6 +283,9 @@ def run(output_dir: str = "data") -> dict:
 
     payload["version"] = 3
     payload["direct_provider_config"] = direct.provider_config()
+    payload["direct_provider_budget"] = {provider: _direct_budget(provider) for provider in DEFAULT_DIRECT_BUDGETS}
+    payload["direct_provider_calls_used"] = dict(_DIRECT_CALLS)
+    payload["direct_provider_circuit_breakers"] = dict(_DIRECT_BREAKERS)
     payload["identity_query_contract"] = {
         "primary": "EXACT_TOKEN_MINT",
         "secondary": "EXACT_PAIR_ADDRESS",
@@ -250,6 +307,8 @@ def run(output_dir: str = "data") -> dict:
         "EXACT_PAIR_MENTION_IS_VERIFIED_IDENTITY_EVIDENCE",
         "PUBLIC_SEARCH_INDEX_FALLBACK_IS_CONTEXT_ONLY_NEVER_ORGANIC_SOCIAL_PROOF",
         "DIRECT_PROVIDER_FAILURE_IS_UNKNOWN_NOT_ZERO",
+        "DIRECT_PROVIDER_CALL_BUDGETS_PROTECT_X_CREDITS_AND_YOUTUBE_DAILY_QUOTA",
+        "PERMANENT_DIRECT_HTTP_FAILURE_CIRCUIT_BREAKS_FOR_REMAINDER_OF_RUN",
         "PRIORITY_PLUS_ROTATION_PREVENTS_TOP_TARGET_STARVATION_OF_THE_REST_OF_UNIVERSE",
     ):
         if rule not in rules:
@@ -265,6 +324,9 @@ def main() -> None:
         "targets": payload.get("targets_scanned"),
         "providers": payload.get("provider_status_counts"),
         "direct_config": payload.get("direct_provider_config"),
+        "direct_budget": payload.get("direct_provider_budget"),
+        "direct_calls_used": payload.get("direct_provider_calls_used"),
+        "direct_breakers": payload.get("direct_provider_circuit_breakers"),
         "identity_query_contract": payload.get("identity_query_contract"),
         "selection": payload.get("selection_policy"),
     }, ensure_ascii=False))
