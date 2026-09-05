@@ -2,6 +2,8 @@ name: Wallet500 New REAL ALERT $10 Paper Tracker Repair
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '11,41 * * * *'
 
 permissions:
   contents: write
@@ -27,11 +29,17 @@ jobs:
       - name: Install
         run: pip install -e . pytest
 
-      - name: Test new-alert $10 tracking contract
-        run: python -m pytest -q tests/test_real_alert_10usd_tracker.py
+      - name: Test new-alert $10 tracking and Signal DNA enrichment contracts
+        run: >-
+          python -m pytest -q
+          tests/test_real_alert_10usd_tracker.py
+          tests/test_paper_signal_enrichment.py
 
       - name: Reconcile $10 paper cohort from newly delivered Telegram REAL ALERTs only
         run: python -m wallet500.real_alert_10usd_tracker
+
+      - name: Enrich $10 positions with immutable T0 Signal DNA
+        run: python -m wallet500.paper_signal_enrichment
 
       - name: Validate outputs
         run: |
@@ -47,7 +55,9 @@ jobs:
               raise SystemExit('REAL_ALERT_10USD_SIZE_DRIFT')
           if s.get('new_entry_trigger') != 'SUCCESSFULLY_DELIVERED_NEW_TELEGRAM_REAL_ALERT_AFTER_ACTIVATION_ONLY':
               raise SystemExit('REAL_ALERT_10USD_TRIGGER_DRIFT')
-          print('REAL_ALERT_10USD_TRACKER_REPAIR_OK', {'positions':s.get('positions_total'),'roi_pct':s.get('roi_pct')})
+          positions=list(s.get('positions') or [])
+          immutable=sum(1 for p in positions if isinstance(p,dict) and p.get('signal_dna_immutable_t0') is True)
+          print('REAL_ALERT_10USD_TRACKER_REPAIR_OK', {'positions':s.get('positions_total'),'roi_pct':s.get('roi_pct'),'immutable_signal_dna_positions':immutable})
           PY
 
       - name: Publish repaired tracker state
