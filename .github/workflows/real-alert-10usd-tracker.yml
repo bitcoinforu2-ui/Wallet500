@@ -1,23 +1,17 @@
-name: Wallet500 New REAL ALERT $10 Paper Tracker
+name: Wallet500 New REAL ALERT $10 Paper Tracker Repair
 
 on:
-  workflow_run:
-    workflows: ["Wallet500 Verified Snapshot Publisher"]
-    types: [completed]
   workflow_dispatch:
-  schedule:
-    - cron: '5,20,35,50 * * * *'
 
 permissions:
   contents: write
 
 concurrency:
-  group: wallet500-real-alert-10usd-paper-tracker
-  cancel-in-progress: true
+  group: wallet500-real-alert-10usd-paper-tracker-repair
+  cancel-in-progress: false
 
 jobs:
   track:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -53,10 +47,10 @@ jobs:
               raise SystemExit('REAL_ALERT_10USD_SIZE_DRIFT')
           if s.get('new_entry_trigger') != 'SUCCESSFULLY_DELIVERED_NEW_TELEGRAM_REAL_ALERT_AFTER_ACTIVATION_ONLY':
               raise SystemExit('REAL_ALERT_10USD_TRIGGER_DRIFT')
-          print('REAL_ALERT_10USD_TRACKER_OK', {'positions':s.get('positions_total'),'roi_pct':s.get('roi_pct')})
+          print('REAL_ALERT_10USD_TRACKER_REPAIR_OK', {'positions':s.get('positions_total'),'roi_pct':s.get('roi_pct')})
           PY
 
-      - name: Publish tracker state
+      - name: Publish repaired tracker state
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -66,8 +60,8 @@ jobs:
             echo "No $10 tracker changes"
             exit 0
           fi
-          git commit -m "data: update new REAL ALERT $10 paper tracker"
-          for attempt in 1 2 3; do
+          git commit -m "data: repair new REAL ALERT $10 paper tracker"
+          for attempt in 1 2 3 4 5; do
             if git push origin HEAD:main; then
               exit 0
             fi
@@ -75,5 +69,5 @@ jobs:
             git rebase origin/main
             sleep $((attempt * 2))
           done
-          echo "Failed to publish $10 tracker after 3 attempts"
+          echo "Failed to publish $10 tracker after 5 attempts"
           exit 1
