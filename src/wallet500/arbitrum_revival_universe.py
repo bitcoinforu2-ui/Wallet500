@@ -71,7 +71,9 @@ def discover(data_dir=DATA,pages=5):
     return list(found.values()),errors
 
 def classify(row,snap,now,previous=None):
-    if not snap or snap.get('token_identity_verified') is not True:return {**row,'status':'INELIGIBLE_FAIL_CLOSED','blockers':['NO_VERIFIED_EXACT_PAIR']}
+    boundary={'research_only':True,'actionable':False,'production_portfolio_impact':'NONE'}
+    if not snap or snap.get('token_identity_verified') is not True:
+        return {**row,'status':'INELIGIBLE_FAIL_CLOSED','blockers':['NO_VERIFIED_EXACT_PAIR'],'exact_pair_verified':False,'market_age_verified':False,'revival_signal':False,**boundary}
     age=_pair_age(snap.get('pair_created_at'),now); liq=float(snap.get('liquidity_usd') or 0); vol=float(snap.get('volume_h1') or 0); tx=int(snap.get('buys_h1') or 0)+int(snap.get('sells_h1') or 0)
     blockers=[]
     if age is None or age<MIN_AGE_DAYS:blockers.append('PAIR_AGE_LT_180D_OR_UNKNOWN')
@@ -81,7 +83,7 @@ def classify(row,snap,now,previous=None):
     prev=previous or {}; pv=float(prev.get('volume_h1') or 0); pl=float(prev.get('liquidity_usd') or 0)
     vchg=((vol/pv)-1)*100 if pv>0 else None; lchg=((liq/pl)-1)*100 if pl>0 else None
     revival=bool(not blockers and ((vchg is not None and vchg>=20) or float(snap.get('price_change_h1') or 0)>=5 or (int(snap.get('buys_h1') or 0)>=int(snap.get('sells_h1') or 0)*1.5)))
-    return {**row,**{k:snap.get(k) for k in ('pair_address','dex','url','price_usd','liquidity_usd','volume_h1','volume_h24','buys_h1','sells_h1','price_change_h1','price_change_h24','pair_created_at')},'market_age_days':None if age is None else round(age,2),'market_age_verified':bool(age is not None and age>=MIN_AGE_DAYS),'exact_pair_verified':True,'volume_change_since_previous_pct':None if vchg is None else round(vchg,2),'liquidity_change_since_previous_pct':None if lchg is None else round(lchg,2),'blockers':blockers,'revival_signal':revival,'status':'REVIVAL_WATCH_RESEARCH' if revival else ('VETERAN_FILTER_PASS' if not blockers else 'INELIGIBLE_FAIL_CLOSED'),'research_only':True,'actionable':False,'production_portfolio_impact':'NONE'}
+    return {**row,**{k:snap.get(k) for k in ('pair_address','dex','url','price_usd','liquidity_usd','volume_h1','volume_h24','buys_h1','sells_h1','price_change_h1','price_change_h24','pair_created_at')},'market_age_days':None if age is None else round(age,2),'market_age_verified':bool(age is not None and age>=MIN_AGE_DAYS),'exact_pair_verified':True,'volume_change_since_previous_pct':None if vchg is None else round(vchg,2),'liquidity_change_since_previous_pct':None if lchg is None else round(lchg,2),'blockers':blockers,'revival_signal':revival,'status':'REVIVAL_WATCH_RESEARCH' if revival else ('VETERAN_FILTER_PASS' if not blockers else 'INELIGIBLE_FAIL_CLOSED'),**boundary}
 
 def run(data_dir=DATA,now=None):
     data_dir=Path(data_dir); data_dir.mkdir(parents=True,exist_ok=True); now=now or datetime.now(timezone.utc)
