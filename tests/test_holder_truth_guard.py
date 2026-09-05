@@ -1,4 +1,4 @@
-from wallet500.holder_truth_guard import quarantine_revival_row, quarantine_waking_holder
+from wallet500.holder_truth_guard import guard_payloads, quarantine_revival_row, quarantine_waking_holder
 
 
 def test_rugcheck_revival_holder_is_quarantined():
@@ -48,3 +48,23 @@ def test_trusted_non_rugcheck_source_is_untouched():
     row = {"source": "TRUSTED_UNIQUE_OWNER_SOURCE", "holder_count": 100}
     assert quarantine_revival_row(row) is False
     assert row == {"source": "TRUSTED_UNIQUE_OWNER_SOURCE", "holder_count": 100}
+
+
+def test_guard_preserves_verified_provider_chain_identity():
+    latest = {
+        "provider": "VERIFIED_UNIQUE_POSITIVE_OWNER_COUNT",
+        "holder_truth_policy": "UNIQUE_POSITIVE_OWNER_COUNT_EXACT_MINT",
+        "coins": [{
+            "source": "VERIFIED_UNIQUE_POSITIVE_OWNER_COUNT",
+            "holder_count": 100,
+            "holder_truth_status": "FORWARD_VERIFIED",
+            "growth_eligible": True,
+        }],
+    }
+    state = {"coins": {}}
+    counts = guard_payloads(latest, state, {}, {})
+    assert counts["quarantined_revival_rows"] == 0
+    assert latest["provider"] == "VERIFIED_UNIQUE_POSITIVE_OWNER_COUNT"
+    assert latest["holder_truth_policy"] == "UNIQUE_POSITIVE_OWNER_COUNT_EXACT_MINT"
+    assert latest["coins"][0]["holder_count"] == 100
+    assert latest["holder_truth_guard"] == "FAIL_CLOSED_UNSAFE_PROVIDER_SEMANTICS"
