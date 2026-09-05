@@ -1,4 +1,5 @@
 from wallet500.telegram_alerts import (
+    _fmt_israel_time,
     _is_actionable_real_alert,
     _merge_display_context,
     _message,
@@ -56,6 +57,7 @@ def _real_alert():
         "evidence_ready": True,
         "evidence_positive_lanes": ["VERIFIED_SOCIAL"],
         "evidence_verified_lanes": ["SMART_MONEY", "VERIFIED_SOCIAL"],
+        "first_alert_at": "2026-09-01T18:17:38+00:00",
     }
 
 
@@ -86,12 +88,18 @@ def test_real_alert_must_be_explicitly_actionable():
     assert _is_actionable_real_alert(research_only) is False
 
 
-def test_dedupe_key_contains_pair_and_message_exposes_manual_promotion_and_dex():
+def test_israel_time_format_is_explicit_and_dst_aware():
+    assert _fmt_israel_time("2026-09-05T14:30:00+00:00") == "05/09/2026 17:30:00"
+
+
+def test_dedupe_key_contains_pair_and_message_exposes_manual_promotion_dex_and_time():
     row = _row()
     assert _pair_key(row) == "bsc:0xabc:0xpair"
     display = _merge_display_context(row, _real_alert())
-    msg = _message(display, "HIGH_CONVICTION")
+    msg = _message(display, "HIGH_CONVICTION", sent_at="2026-09-05T14:30:00+00:00")
     assert "HIGH-CONVICTION BUY REVIEW" in msg
+    assert "תאריך ושעת שליחת ההתראה (ישראל): 05/09/2026 17:30:00" in msg
+    assert "T0 אות מקורי (ישראל): 01/09/2026 21:17:38" in msg
     assert "MANUAL DECISION ONLY" in msg
     assert "Promotion: EVIDENCE_READY → ACTIONABLE" in msg
     assert "Token: ARC" in msg
