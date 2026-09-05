@@ -85,7 +85,7 @@ jobs:
                   raise SystemExit('CEX_SPOT_RESEARCH_BOUNDARY_LEAK')
           print('CEX_SPOT_FAIL_CLOSED_VALID')
           PY
-      - name: Publish fresh Spot research state without overwriting newer main paths
+      - name: Publish fresh Spot research state with bounded optimistic retries
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -105,34 +105,51 @@ jobs:
               cp -a "$f" "$snap/$f"
             fi
           done
-          git fetch origin main
-          latest="$(git rev-parse origin/main)"
-          conflict=0
-          for f in "${targets[@]}"; do
-            if ! git diff --quiet "$base" "$latest" -- "$f"; then
-              echo "Newer main changed $f; preserving newer truth and skipping this publish"
-              conflict=1
+
+          for attempt in $(seq 1 20); do
+            echo "CEX Spot publish attempt $attempt/20"
+            git fetch origin main
+            latest="$(git rev-parse origin/main)"
+
+            conflict=0
+            for f in "${targets[@]}"; do
+              if ! git diff --quiet "$base" "$latest" -- "$f"; then
+                echo "Newer main changed $f; preserving newer truth and skipping stale publish"
+                conflict=1
+              fi
+            done
+            if [ "$conflict" -ne 0 ]; then
+              exit 0
             fi
-          done
-          if [ "$conflict" -ne 0 ]; then
-            exit 0
-          fi
-          git reset --hard "$latest"
-          for f in "${targets[@]}"; do
-            if [ -f "$snap/$f" ]; then
-              mkdir -p "$(dirname "$f")"
-              cp -a "$snap/$f" "$f"
-            elif [ -e "$f" ]; then
-              rm -f "$f"
+
+            git reset --hard "$latest"
+            for f in "${targets[@]}"; do
+              if [ -f "$snap/$f" ]; then
+                mkdir -p "$(dirname "$f")"
+                cp -a "$snap/$f" "$f"
+              elif git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+                rm -f "$f"
+              fi
+            done
+
+            for f in "${targets[@]}"; do
+              if [ -e "$f" ] || git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+                git add -A -- "$f"
+              fi
+            done
+            if git diff --cached --quiet; then
+              echo "No Spot research changes"
+              exit 0
             fi
+
+            git commit -m "data: refresh independent CEX spot revival fast lane"
+            if git push origin HEAD:main; then
+              echo "Fresh CEX Spot research state published"
+              exit 0
+            fi
+            echo "Main moved during push; retrying on newest main"
+            sleep 1
           done
-          git add -A -- "${targets[@]}"
-          if git diff --cached --quiet; then
-            echo "No Spot research changes"
-            exit 0
-          fi
-          git commit -m "data: refresh independent CEX spot revival fast lane"
-          if ! git push origin HEAD:main; then
-            echo "Main moved during final push; no force push and no stale overwrite"
-            exit 0
-          fi
+
+          echo "CEX Spot publisher failed after 20 bounded retries"
+          exit 1
