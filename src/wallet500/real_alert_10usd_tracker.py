@@ -8,6 +8,7 @@ from typing import Any
 
 DATA = Path("data")
 POSITION_SIZE_USD = 10.0
+ACTIVATION_AT = "2026-09-05T14:47:25+00:00"
 LEDGER_PATH = DATA / "real-alert-10usd-ledger.json"
 SUMMARY_PATH = DATA / "real-alert-10usd-summary.json"
 TELEGRAM_REPORT_PATH = DATA / "telegram-alert-report.json"
@@ -53,6 +54,25 @@ def _num(row: dict[str, Any], *names: str) -> float:
     return 0.0
 
 
+def _parse_ts(value: object) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        dt = datetime.fromisoformat(raw)
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _after_activation(value: object) -> bool:
+    sent = _parse_ts(value)
+    cutoff = _parse_ts(ACTIVATION_AT)
+    return bool(sent and cutoff and sent >= cutoff)
+
+
 def _http_json(url: str) -> Any:
     req = urllib.request.Request(url, headers=UA)
     with urllib.request.urlopen(req, timeout=15) as r:
@@ -76,9 +96,7 @@ def _pair_quote(chain: str, pair: str) -> dict[str, Any] | None:
         return None
     want = _norm(chain, pair)
     for row in rows:
-        if not isinstance(row, dict):
-            continue
-        if _norm(chain, row.get("pairAddress")) == want:
+        if isinstance(row, dict) and _norm(chain, row.get("pairAddress")) == want:
             return row
     return None
 
@@ -105,16 +123,16 @@ def _real_index(payload: Any) -> dict[str, dict[str, Any]]:
         if not isinstance(row, dict):
             continue
         key = _key(row.get("chain"), row.get("token_address") or row.get("token"), row.get("pair_address"))
-        if key.count(":") >= 2:
-            out[key] = row
+        out[key] = row
     return out
 
 
 def initial_ledger(now: str | None = None) -> dict[str, Any]:
     ts = now or _now()
     return {
-        "version": 1,
+        "version": 2,
         "mode": "PAPER_ONLY_NO_REAL_MONEY",
+        "activation_at": ACTIVATION_AT,
         "rule": "ONLY_NEW_TELEGRAM_DELIVERED_REAL_ALERTS_FROM_ACTIVATION_FORWARD",
         "created_at": ts,
         "updated_at": ts,
@@ -138,10 +156,13 @@ def reconcile(
     existing = {str(p.get("key")): p for p in positions if isinstance(p, dict) and p.get("key")}
     real_index = _real_index(real_payload)
 
-    # Entry truth is the Telegram delivery event itself. This intentionally
-    # prevents backfilling historical REAL ALERT cards into the $10 cohort.
+    # Entry truth is a Telegram delivery after the explicit activation cutoff.
+    # Historical REAL ALERT cards are never backfilled into this cohort.
     for delivered in list((telegram_report or {}).get("delivered") or []):
         if not isinstance(delivered, dict):
+            continue
+        sent_at = str(delivered.get("sent_at") or "")
+        if not _after_activation(sent_at):
             continue
         key = str(delivered.get("key") or "")
         if not key or key in existing:
@@ -155,16 +176,17 @@ def reconcile(
         if not chain or not token or not pair:
             continue
 
+        # The REAL ALERT price belongs to the same scan that emitted Telegram,
+        # so it is the canonical paper-entry price. Live DEX is fallback only.
+        alert_price = _num(real, "price_usd", "current_price_usd")
+        alert_liq = _num(real, "execution_pool_liquidity_usd", "liquidity_usd")
         quote = quote_fn(chain, pair)
         live_price, live_liq = _quote_price_liquidity(quote)
-        fallback_price = _num(real, "price_usd", "current_price_usd")
-        fallback_liq = _num(real, "execution_pool_liquidity_usd", "liquidity_usd")
-        entry_price = live_price or fallback_price
+        entry_price = alert_price or live_price
         if entry_price <= 0:
             events.append({"at": ts, "type": "ENTRY_SKIPPED", "key": key, "reason": "NO_EXACT_PAIR_PRICE"})
             continue
 
-        sent_at = str(delivered.get("sent_at") or ts)
         quantity = POSITION_SIZE_USD / entry_price
         pos = {
             "key": key,
@@ -178,21 +200,22 @@ def reconcile(
             "paper_only": True,
             "telegram_sent_at": sent_at,
             "telegram_sent_at_israel": delivered.get("sent_at_israel"),
-            "entry_time": ts,
+            "entry_time": sent_at,
+            "tracker_started_at": ts,
             "cost_usd": POSITION_SIZE_USD,
             "entry_price_usd": entry_price,
-            "entry_price_source": "DEXSCREENER_EXACT_PAIR_AT_TRACK_START" if live_price > 0 else "REAL_ALERT_EXACT_PAIR_FALLBACK",
-            "entry_liquidity_usd": live_liq or fallback_liq,
+            "entry_price_source": "REAL_ALERT_PRICE_AT_TELEGRAM_SCAN" if alert_price > 0 else "DEXSCREENER_EXACT_PAIR_FALLBACK",
+            "entry_liquidity_usd": alert_liq or live_liq,
             "quantity": quantity,
-            "current_price_usd": entry_price,
-            "current_value_usd": POSITION_SIZE_USD,
-            "current_return_pct": 0.0,
-            "peak_price_usd": entry_price,
-            "peak_return_pct": 0.0,
-            "trough_price_usd": entry_price,
-            "trough_return_pct": 0.0,
+            "current_price_usd": live_price or entry_price,
+            "current_value_usd": quantity * (live_price or entry_price),
+            "current_return_pct": round((((live_price or entry_price) / entry_price) - 1.0) * 100.0, 6),
+            "peak_price_usd": max(entry_price, live_price or entry_price),
+            "peak_return_pct": round(((max(entry_price, live_price or entry_price) / entry_price) - 1.0) * 100.0, 6),
+            "trough_price_usd": min(entry_price, live_price or entry_price),
+            "trough_return_pct": round(((min(entry_price, live_price or entry_price) / entry_price) - 1.0) * 100.0, 6),
             "last_mark_at": ts,
-            "last_liquidity_usd": live_liq or fallback_liq,
+            "last_liquidity_usd": live_liq or alert_liq,
             "tracking_rule": "NO_AUTOMATIC_EXIT_TRACK_UNTIL_POLICY_DEFINED",
         }
         positions.append(pos)
@@ -235,13 +258,14 @@ def reconcile(
     winners = sum(1 for p in positions if float(p.get("current_return_pct") or 0) > 0)
     losers = sum(1 for p in positions if float(p.get("current_return_pct") or 0) < 0)
 
-    ledger.update({"updated_at": ts, "positions": positions, "events": events[-5000:]})
+    ledger.update({"version": 2, "activation_at": ACTIVATION_AT, "updated_at": ts, "positions": positions, "events": events[-5000:]})
     summary = {
-        "version": 1,
+        "version": 2,
         "updated_at": ts,
         "mode": "PAPER_ONLY_NO_REAL_MONEY",
+        "activation_at": ACTIVATION_AT,
         "position_size_usd": POSITION_SIZE_USD,
-        "new_entry_trigger": "SUCCESSFULLY_DELIVERED_NEW_TELEGRAM_REAL_ALERT_ONLY",
+        "new_entry_trigger": "SUCCESSFULLY_DELIVERED_NEW_TELEGRAM_REAL_ALERT_AFTER_ACTIVATION_ONLY",
         "positions_total": len(positions),
         "paper_cost_usd": round(total_cost, 8),
         "current_value_usd": round(current_value, 8),
@@ -264,6 +288,7 @@ def main() -> None:
     _write(SUMMARY_PATH, summary)
     print(json.dumps({
         "mode": summary["mode"],
+        "activation_at": summary["activation_at"],
         "positions_total": summary["positions_total"],
         "paper_cost_usd": summary["paper_cost_usd"],
         "current_value_usd": summary["current_value_usd"],
