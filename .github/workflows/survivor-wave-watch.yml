@@ -11,6 +11,7 @@ on:
       - 'src/wallet500/survivor_signal_enhancer.py'
       - 'src/wallet500/survivor_signal_intelligence_v3.py'
       - 'src/wallet500/survivor_model_governor_v4.py'
+      - 'src/wallet500/collect_survivor_transaction_feed.py'
       - 'src/wallet500/survivor_wallet_transaction_intelligence_v5.py'
       - 'src/wallet500/survivor_pre_wave_fusion_v6.py'
       - 'src/wallet500/survivor_veteran_gate.py'
@@ -48,6 +49,13 @@ jobs:
         run: python -m wallet500.survivor_signal_intelligence_v3
       - name: Run shadow Model Governor v4
         run: python -m wallet500.survivor_model_governor_v4
+      - name: Collect exact-pair transaction feed
+        env:
+          BITQUERY_TOKEN: ${{ secrets.BITQUERY_TOKEN }}
+          BITQUERY_ENDPOINT: ${{ secrets.BITQUERY_ENDPOINT }}
+          WALLET500_TX_WINDOW_HOURS: '1'
+          WALLET500_TX_LIMIT_PER_PAIR: '500'
+        run: python -m wallet500.collect_survivor_transaction_feed
       - name: Run shadow Wallet Transaction Intelligence v5
         env:
           WALLET500_TX_FEED_URL: ${{ secrets.WALLET500_TX_FEED_URL }}
@@ -75,6 +83,10 @@ jobs:
           if gov.get('research_only') is not True or gov.get('production_gates_changed') is not False: raise SystemExit('GOVERNOR_V4_CONTRACT_INVALID')
           cal=gov.get('calibration') or {}
           if cal.get('probability_model_enabled') is not False: raise SystemExit('UNCALIBRATED_PROBABILITY_ENABLED')
+          feed=Path('data/wallet-transaction-observations.json')
+          if not feed.exists(): raise SystemExit('WALLET_TX_FEED_OUTPUT_MISSING')
+          feed_data=json.loads(feed.read_text())
+          if feed_data.get('exact_pair_only') is not True: raise SystemExit('WALLET_TX_FEED_PAIR_CONTRACT_INVALID')
           tx5=d.get('wallet_transaction_intelligence_v5') or {}
           if tx5.get('research_only') is not True or tx5.get('production_gates_changed') is not False or tx5.get('exact_pair_only') is not True: raise SystemExit('WALLET_TX_V5_CONTRACT_INVALID')
           fusion6=d.get('pre_wave_fusion_v6') or {}
@@ -102,7 +114,7 @@ jobs:
               if not q.exists(): raise SystemExit('SHADOW_OUTPUT_MISSING:'+qn)
               qd=json.loads(q.read_text())
               if qd.get('research_only') is not True or qd.get('production_gates_changed') is not False: raise SystemExit('SHADOW_OUTPUT_CONTRACT_INVALID:'+qn)
-          print('SURVIVOR_WAVE_WATCH_OK', d.get('survivor_n'), d.get('actionable_veteran_signal_n'), d.get('suppressed_non_veteran_or_unverified_signal_n'), tx5.get('verified_flow_token_n'))
+          print('SURVIVOR_WAVE_WATCH_OK', d.get('survivor_n'), d.get('actionable_veteran_signal_n'), d.get('suppressed_non_veteran_or_unverified_signal_n'), feed_data.get('provider_status'), tx5.get('verified_flow_token_n'))
           PY
       - name: Publish hourly survivor state
         shell: bash
