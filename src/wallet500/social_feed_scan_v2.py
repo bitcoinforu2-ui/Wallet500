@@ -4,16 +4,20 @@ import html
 import json
 import os
 import xml.etree.ElementTree as ET
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from . import social_feed_scan as base
+from . import social_direct_providers as direct
 from .waking_confirmation import _broad_query
 
 MODE = base.MODE
 DEFAULT_PRIORITY_SLOTS = 8
 
 _ORIGINAL_SELECT = base._select_targets
+_ORIGINAL_IDENTITY = base._identity
+_ORIGINAL_ATTRIBUTION = base._attribution
+_ORIGINAL_MERGE = base._merge_exact_social_events
 _ORIGINAL_X = base._scan_x
 _ORIGINAL_YOUTUBE = base._scan_youtube
 _ORIGINAL_REDDIT = base._scan_reddit
@@ -46,10 +50,97 @@ def _rotating_select(envelope: dict, budget: int) -> list[dict]:
     return priority + rotation
 
 
+def _identity_with_pair(coin: dict):
+    identity, statuses = _ORIGINAL_IDENTITY(coin)
+    pair = str(coin.get("dex_pair_address") or "").strip()
+    identity = dict(identity or {})
+    identity["pair_address"] = pair or None
+    identity["dex_pair_address"] = pair or None
+    return identity, statuses
+
+
+def _official_handle(url: str | None) -> str | None:
+    if not url:
+        return None
+    try:
+        path = urlparse(str(url)).path.strip("/")
+        return path.split("/")[0].lower() if path else None
+    except Exception:
+        return None
+
+
+def _attribution_v2(event: dict, identity: dict) -> str:
+    text = str(event.get("text") or "")
+    mint = str(identity.get("token_address") or "")
+    pair = str(identity.get("pair_address") or identity.get("dex_pair_address") or "")
+    if mint and mint in text:
+        return "EXACT_CONTRACT"
+    if pair and pair in text:
+        return "EXACT_PAIR"
+    src = str(event.get("source") or "").lower()
+    author = str(event.get("author") or "").lower().lstrip("@")
+    handle = _official_handle(identity.get("official_x"))
+    if src == "x" and handle and author == handle:
+        return "OFFICIAL_CHANNEL_CONTEXT"
+    if src == "telegram" and identity.get("official_telegram"):
+        return "OFFICIAL_CHANNEL_CONTEXT"
+    return "NAME_SYMBOL_CONTEXT"
+
+
+def _merge_exact_social_events_v2(scan_targets: list[dict], observed_at: str, data_dir) -> int:
+    ledger = base._load(data_dir / base.LEDGER.name, {})
+    old = ledger.get("events") if isinstance(ledger, dict) else []
+    events = list(old) if isinstance(old, list) else []
+    known = {str(x.get("fingerprint") or "") for x in events if isinstance(x, dict)}
+    added = 0
+    accepted = {"EXACT_CONTRACT", "EXACT_PAIR", "OFFICIAL_CHANNEL_CONTEXT"}
+    for target in scan_targets:
+        token = str(target.get("token_address") or "")
+        pair = str(target.get("pair_address") or "")
+        for event in target.get("events") or []:
+            if not isinstance(event, dict) or str(event.get("source") or "") not in {"x", "youtube", "reddit", "telegram"}:
+                continue
+            attr = str(event.get("attribution") or "")
+            if attr not in accepted:
+                continue
+            raw = dict(event)
+            raw.update({"contract": token, "pair_address": pair, "chain": base.NETWORK})
+            if attr == "OFFICIAL_CHANNEL_CONTEXT":
+                raw["project_owned"] = True
+                raw["author_role"] = "official"
+            for row in base._normalize(raw, observed_at):
+                fp = str(row.get("fingerprint") or "")
+                if not fp or fp in known:
+                    continue
+                row["attribution"] = attr
+                row["pair_address"] = pair
+                events.append(row)
+                known.add(fp)
+                added += 1
+    events = events[-10000:]
+    base._write(data_dir / base.LEDGER.name, {
+        "version": 3,
+        "updated_at": observed_at,
+        "method": "IMMUTABLE_SOCIAL_EVENT_LEDGER_EXACT_MINT_PAIR_OR_OFFICIAL_CONTEXT",
+        "events_count": len(events),
+        "new_events_this_run": added,
+        "quality_metadata_preserved": True,
+        "accepted_attribution": sorted(accepted),
+        "events": events,
+    })
+    return added
+
+
 def _scan_index(identity: dict, provider: str, source: str, site_query: str) -> tuple[list[dict], dict]:
     broad = _broad_query(identity)
     mint = str(identity.get("token_address") or "").strip()
-    q = f"({broad} OR \"{mint}\") ({site_query}) when:1d"
+    pair = str(identity.get("pair_address") or identity.get("dex_pair_address") or "").strip()
+    identity_terms = [broad]
+    if mint:
+        identity_terms.append(f'"{mint}"')
+    if pair:
+        identity_terms.append(f'"{pair}"')
+    q = f"({' OR '.join(identity_terms)}) ({site_query}) when:1d"
     url = "https://news.google.com/rss/search?" + urlencode({
         "q": q,
         "hl": "en-US",
@@ -57,7 +148,7 @@ def _scan_index(identity: dict, provider: str, source: str, site_query: str) -> 
         "ceid": "US:en",
     })
     try:
-        req = Request(url, headers={"User-Agent": "Wallet500-SocialIndex/1.0", "Accept": "application/rss+xml,text/xml,*/*"})
+        req = Request(url, headers={"User-Agent": "Wallet500-SocialIndex/2.0", "Accept": "application/rss+xml,text/xml,*/*"})
         with urlopen(req, timeout=18) as response:
             raw = response.read()
         root = ET.fromstring(raw)
@@ -85,10 +176,10 @@ def _scan_index(identity: dict, provider: str, source: str, site_query: str) -> 
         return [], {"provider": provider, "status": f"INDEX_{status}"}
 
 
-def _fallback(direct, identity: dict, provider: str, source: str, sites: str):
-    events, status = direct(identity)
+def _fallback(direct_fn, identity: dict, provider: str, source: str, sites: str):
+    events, status = direct_fn(identity)
     direct_status = str((status or {}).get("status") or "UNKNOWN")
-    if direct_status == "OK":
+    if direct_status.startswith("OK"):
         return events, status
     indexed, indexed_status = _scan_index(identity, provider, source, sites)
     if indexed:
@@ -106,24 +197,45 @@ def _fallback(direct, identity: dict, provider: str, source: str, sites: str):
 
 
 def _scan_x_resilient(identity: dict):
-    return _fallback(_ORIGINAL_X, identity, "x", "x_index", "site:x.com OR site:twitter.com")
+    return _fallback(direct.scan_x, identity, "x", "x_index", "site:x.com OR site:twitter.com")
 
 
 def _scan_youtube_resilient(identity: dict):
-    return _fallback(_ORIGINAL_YOUTUBE, identity, "youtube", "youtube_index", "site:youtube.com")
+    return _fallback(direct.scan_youtube, identity, "youtube", "youtube_index", "site:youtube.com")
 
 
 def _scan_reddit_resilient(identity: dict):
-    return _fallback(_ORIGINAL_REDDIT, identity, "reddit", "reddit_index", "site:reddit.com")
+    return _fallback(direct.scan_reddit, identity, "reddit", "reddit_index", "site:reddit.com")
 
 
 def run(output_dir: str = "data") -> dict:
     base._select_targets = _rotating_select
+    base._identity = _identity_with_pair
+    base._attribution = _attribution_v2
+    base._merge_exact_social_events = _merge_exact_social_events_v2
     base._scan_x = _scan_x_resilient
     base._scan_youtube = _scan_youtube_resilient
     base._scan_reddit = _scan_reddit_resilient
-    payload = base.run(output_dir)
-    payload["version"] = 2
+    try:
+        payload = base.run(output_dir)
+    finally:
+        base._select_targets = _ORIGINAL_SELECT
+        base._identity = _ORIGINAL_IDENTITY
+        base._attribution = _ORIGINAL_ATTRIBUTION
+        base._merge_exact_social_events = _ORIGINAL_MERGE
+        base._scan_x = _ORIGINAL_X
+        base._scan_youtube = _ORIGINAL_YOUTUBE
+        base._scan_reddit = _ORIGINAL_REDDIT
+
+    payload["version"] = 3
+    payload["direct_provider_config"] = direct.provider_config()
+    payload["identity_query_contract"] = {
+        "primary": "EXACT_TOKEN_MINT",
+        "secondary": "EXACT_PAIR_ADDRESS",
+        "official_context": True,
+        "broad_name_symbol_context_only": True,
+        "accepted_into_social_ledger": ["EXACT_CONTRACT", "EXACT_PAIR", "OFFICIAL_CHANNEL_CONTEXT"],
+    }
     payload["selection_policy"] = {
         "priority_slots": max(0, int(os.getenv("SOCIAL_SCAN_PRIORITY_SLOTS", str(DEFAULT_PRIORITY_SLOTS)))),
         "rotation_enabled": True,
@@ -132,6 +244,10 @@ def run(output_dir: str = "data") -> dict:
     }
     rules = list(payload.get("rules") or [])
     for rule in (
+        "DIRECT_X_API_USES_EXACT_MINT_PAIR_AND_OFFICIAL_HANDLE",
+        "DIRECT_YOUTUBE_API_USES_EXACT_MINT_PAIR_AND_BROAD_CONTEXT",
+        "DIRECT_REDDIT_OAUTH_USES_EXACT_MINT_PAIR_AND_BROAD_CONTEXT",
+        "EXACT_PAIR_MENTION_IS_VERIFIED_IDENTITY_EVIDENCE",
         "PUBLIC_SEARCH_INDEX_FALLBACK_IS_CONTEXT_ONLY_NEVER_ORGANIC_SOCIAL_PROOF",
         "DIRECT_PROVIDER_FAILURE_IS_UNKNOWN_NOT_ZERO",
         "PRIORITY_PLUS_ROTATION_PREVENTS_TOP_TARGET_STARVATION_OF_THE_REST_OF_UNIVERSE",
@@ -148,6 +264,8 @@ def main() -> None:
     print(json.dumps({
         "targets": payload.get("targets_scanned"),
         "providers": payload.get("provider_status_counts"),
+        "direct_config": payload.get("direct_provider_config"),
+        "identity_query_contract": payload.get("identity_query_contract"),
         "selection": payload.get("selection_policy"),
     }, ensure_ascii=False))
 
