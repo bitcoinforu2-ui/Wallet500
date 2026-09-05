@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import urllib.request
 from datetime import datetime, timezone
@@ -9,6 +10,14 @@ from typing import Any
 DATA = Path("data")
 POSITION_SIZE_USD = 10.0
 ACTIVATION_AT = "2026-09-05T14:47:25+00:00"
+CHECKPOINTS = (
+    (15, "15m"),
+    (60, "1h"),
+    (240, "4h"),
+    (1440, "24h"),
+    (4320, "72h"),
+    (10080, "7d"),
+)
 LEDGER_PATH = DATA / "real-alert-10usd-ledger.json"
 SUMMARY_PATH = DATA / "real-alert-10usd-summary.json"
 TELEGRAM_REPORT_PATH = DATA / "telegram-alert-report.json"
@@ -43,6 +52,10 @@ def _key(chain: object, token: object, pair: object) -> str:
     return f"{c}:{_norm(c, token)}:{_norm(c, pair)}"
 
 
+def _event_id(key: str, sent_at: str) -> str:
+    return hashlib.sha256(f"{key}|{sent_at}".encode("utf-8")).hexdigest()[:16]
+
+
 def _num(row: dict[str, Any], *names: str) -> float:
     for name in names:
         try:
@@ -71,6 +84,14 @@ def _after_activation(value: object) -> bool:
     sent = _parse_ts(value)
     cutoff = _parse_ts(ACTIVATION_AT)
     return bool(sent and cutoff and sent >= cutoff)
+
+
+def _elapsed_minutes(start: object, end: object) -> float | None:
+    a = _parse_ts(start)
+    b = _parse_ts(end)
+    if not a or not b or b < a:
+        return None
+    return (b - a).total_seconds() / 60.0
 
 
 def _http_json(url: str) -> Any:
@@ -127,16 +148,41 @@ def _real_index(payload: Any) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _capture_checkpoints(pos: dict[str, Any], ts: str, price: float, liquidity: float) -> None:
+    elapsed = _elapsed_minutes(pos.get("telegram_sent_at"), ts)
+    entry = float(pos.get("entry_price_usd") or 0)
+    qty = float(pos.get("quantity") or 0)
+    if elapsed is None or entry <= 0 or qty <= 0 or price <= 0:
+        return
+    checkpoints = dict(pos.get("checkpoints") or {})
+    ret = ((price / entry) - 1.0) * 100.0
+    for target_minutes, label in CHECKPOINTS:
+        if elapsed < target_minutes or label in checkpoints:
+            continue
+        checkpoints[label] = {
+            "target_minutes": target_minutes,
+            "captured_at": ts,
+            "captured_elapsed_minutes": round(elapsed, 3),
+            "price_usd": price,
+            "value_usd": round(qty * price, 8),
+            "return_pct": round(ret, 6),
+            "liquidity_usd": liquidity,
+            "capture_rule": "FIRST_OBSERVED_EXACT_PAIR_MARK_AT_OR_AFTER_HORIZON",
+        }
+    pos["checkpoints"] = checkpoints
+
+
 def initial_ledger(now: str | None = None) -> dict[str, Any]:
     ts = now or _now()
     return {
-        "version": 2,
+        "version": 3,
         "mode": "PAPER_ONLY_NO_REAL_MONEY",
         "activation_at": ACTIVATION_AT,
         "rule": "ONLY_NEW_TELEGRAM_DELIVERED_REAL_ALERTS_FROM_ACTIVATION_FORWARD",
         "created_at": ts,
         "updated_at": ts,
         "position_size_usd": POSITION_SIZE_USD,
+        "checkpoint_horizons": [label for _, label in CHECKPOINTS],
         "positions": [],
         "events": [],
     }
@@ -176,8 +222,8 @@ def reconcile(
         if not chain or not token or not pair:
             continue
 
-        # The REAL ALERT price belongs to the same scan that emitted Telegram,
-        # so it is the canonical paper-entry price. Live DEX is fallback only.
+        # The REAL ALERT price belongs to the same verified snapshot that emitted
+        # Telegram, so it is the canonical paper-entry price. Live DEX is fallback.
         alert_price = _num(real, "price_usd", "current_price_usd")
         alert_liq = _num(real, "execution_pool_liquidity_usd", "liquidity_usd")
         quote = quote_fn(chain, pair)
@@ -188,8 +234,12 @@ def reconcile(
             continue
 
         quantity = POSITION_SIZE_USD / entry_price
+        current_price = live_price or entry_price
+        current_ret = ((current_price / entry_price) - 1.0) * 100.0
+        event_id = _event_id(key, sent_at)
         pos = {
             "key": key,
+            "alert_event_id": event_id,
             "symbol": delivered.get("symbol") or real.get("symbol"),
             "chain": chain,
             "token_address": token,
@@ -200,37 +250,59 @@ def reconcile(
             "paper_only": True,
             "telegram_sent_at": sent_at,
             "telegram_sent_at_israel": delivered.get("sent_at_israel"),
+            "original_signal_t0": real.get("first_alert_at"),
             "entry_time": sent_at,
             "tracker_started_at": ts,
             "cost_usd": POSITION_SIZE_USD,
             "entry_price_usd": entry_price,
             "entry_price_source": "REAL_ALERT_PRICE_AT_TELEGRAM_SCAN" if alert_price > 0 else "DEXSCREENER_EXACT_PAIR_FALLBACK",
             "entry_liquidity_usd": alert_liq or live_liq,
+            "entry_score": real.get("score"),
+            "entry_market_age_days": real.get("market_age_days"),
+            "entry_source_lanes": list(real.get("source_lanes") or []),
+            "entry_evidence_status": real.get("evidence_envelope_status"),
+            "entry_positive_evidence": list(real.get("evidence_positive_lanes") or []),
+            "entry_verified_evidence": list(real.get("evidence_verified_lanes") or []),
             "quantity": quantity,
-            "current_price_usd": live_price or entry_price,
-            "current_value_usd": quantity * (live_price or entry_price),
-            "current_return_pct": round((((live_price or entry_price) / entry_price) - 1.0) * 100.0, 6),
-            "peak_price_usd": max(entry_price, live_price or entry_price),
-            "peak_return_pct": round(((max(entry_price, live_price or entry_price) / entry_price) - 1.0) * 100.0, 6),
-            "trough_price_usd": min(entry_price, live_price or entry_price),
-            "trough_return_pct": round(((min(entry_price, live_price or entry_price) / entry_price) - 1.0) * 100.0, 6),
+            "current_price_usd": current_price,
+            "current_value_usd": quantity * current_price,
+            "current_return_pct": round(current_ret, 6),
+            "current_multiple": round(current_price / entry_price, 8),
+            "peak_price_usd": max(entry_price, current_price),
+            "peak_return_pct": round(((max(entry_price, current_price) / entry_price) - 1.0) * 100.0, 6),
+            "trough_price_usd": min(entry_price, current_price),
+            "trough_return_pct": round(((min(entry_price, current_price) / entry_price) - 1.0) * 100.0, 6),
+            "drawdown_from_peak_pct": round(((current_price / max(entry_price, current_price)) - 1.0) * 100.0, 6),
             "last_mark_at": ts,
+            "last_mark_attempt_at": ts,
+            "missed_mark_count": 0,
             "last_liquidity_usd": live_liq or alert_liq,
+            "checkpoints": {},
             "tracking_rule": "NO_AUTOMATIC_EXIT_TRACK_UNTIL_POLICY_DEFINED",
         }
+        _capture_checkpoints(pos, ts, current_price, live_liq or alert_liq)
         positions.append(pos)
         existing[key] = pos
-        events.append({"at": ts, "type": "PAPER_BUY_10_USD", "key": key, "entry_price_usd": entry_price, "telegram_sent_at": sent_at})
+        events.append({
+            "at": ts,
+            "type": "PAPER_BUY_10_USD",
+            "key": key,
+            "alert_event_id": event_id,
+            "entry_price_usd": entry_price,
+            "telegram_sent_at": sent_at,
+        })
 
     # Mark every tracked position on the immutable exact pair only.
     for pos in positions:
         if not isinstance(pos, dict) or pos.get("status") != "ACTIVE_TRACKING":
             continue
+        pos["last_mark_attempt_at"] = ts
         chain = str(pos.get("chain") or "").lower()
         pair = str(pos.get("pair_address") or "")
         quote = quote_fn(chain, pair)
         price, liquidity = _quote_price_liquidity(quote)
         if price <= 0:
+            pos["missed_mark_count"] = int(pos.get("missed_mark_count") or 0) + 1
             continue
         entry = float(pos.get("entry_price_usd") or 0)
         qty = float(pos.get("quantity") or 0)
@@ -239,28 +311,43 @@ def reconcile(
         ret = ((price / entry) - 1.0) * 100.0
         peak_price = max(float(pos.get("peak_price_usd") or entry), price)
         trough_price = min(float(pos.get("trough_price_usd") or entry), price)
+        drawdown = ((price / peak_price) - 1.0) * 100.0 if peak_price > 0 else 0.0
         pos.update({
             "current_price_usd": price,
             "current_value_usd": qty * price,
             "current_return_pct": round(ret, 6),
+            "current_multiple": round(price / entry, 8),
             "peak_price_usd": peak_price,
             "peak_return_pct": round(((peak_price / entry) - 1.0) * 100.0, 6),
             "trough_price_usd": trough_price,
             "trough_return_pct": round(((trough_price / entry) - 1.0) * 100.0, 6),
+            "drawdown_from_peak_pct": round(drawdown, 6),
             "last_mark_at": ts,
             "last_liquidity_usd": liquidity,
         })
+        _capture_checkpoints(pos, ts, price, liquidity)
 
     total_cost = sum(float(p.get("cost_usd") or 0) for p in positions if isinstance(p, dict))
     current_value = sum(float(p.get("current_value_usd") or 0) for p in positions if isinstance(p, dict))
     pnl = current_value - total_cost
     roi = (pnl / total_cost * 100.0) if total_cost > 0 else 0.0
-    winners = sum(1 for p in positions if float(p.get("current_return_pct") or 0) > 0)
-    losers = sum(1 for p in positions if float(p.get("current_return_pct") or 0) < 0)
+    current_returns = [float(p.get("current_return_pct") or 0) for p in positions if isinstance(p, dict)]
+    peak_returns = [float(p.get("peak_return_pct") or 0) for p in positions if isinstance(p, dict)]
+    winners = sum(1 for r in current_returns if r > 0)
+    losers = sum(1 for r in current_returns if r < 0)
+    doubled = sum(1 for r in peak_returns if r >= 100.0)
+    up_50 = sum(1 for r in peak_returns if r >= 50.0)
 
-    ledger.update({"version": 2, "activation_at": ACTIVATION_AT, "updated_at": ts, "positions": positions, "events": events[-5000:]})
+    ledger.update({
+        "version": 3,
+        "activation_at": ACTIVATION_AT,
+        "updated_at": ts,
+        "checkpoint_horizons": [label for _, label in CHECKPOINTS],
+        "positions": positions,
+        "events": events[-5000:],
+    })
     summary = {
-        "version": 2,
+        "version": 3,
         "updated_at": ts,
         "mode": "PAPER_ONLY_NO_REAL_MONEY",
         "activation_at": ACTIVATION_AT,
@@ -273,6 +360,12 @@ def reconcile(
         "roi_pct": round(roi, 6),
         "winners_now": winners,
         "losers_now": losers,
+        "best_current_return_pct": round(max(current_returns), 6) if current_returns else 0.0,
+        "worst_current_return_pct": round(min(current_returns), 6) if current_returns else 0.0,
+        "best_peak_return_pct": round(max(peak_returns), 6) if peak_returns else 0.0,
+        "positions_peak_ge_50pct": up_50,
+        "positions_peak_ge_100pct": doubled,
+        "checkpoint_horizons": [label for _, label in CHECKPOINTS],
         "tracking_policy": "track exact pair continuously; no automatic sell is defined",
         "positions": positions,
     }
@@ -293,6 +386,7 @@ def main() -> None:
         "paper_cost_usd": summary["paper_cost_usd"],
         "current_value_usd": summary["current_value_usd"],
         "roi_pct": summary["roi_pct"],
+        "positions_peak_ge_100pct": summary["positions_peak_ge_100pct"],
     }, indent=2))
 
 
