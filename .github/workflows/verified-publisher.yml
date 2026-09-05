@@ -16,12 +16,12 @@ permissions:
   actions: read
   contents: write
 
-# Short serialized publishing lane. workflow_run is primary; schedule/manual and
-# the one-time self-push are fail-safe triggers that resolve the newest successful
-# Live Scan artifact. Truth rules remain in the scan/validation lane.
+# Freshness-first serialized publishing lane. A newer publisher cancels an older
+# queued/running publisher, and immutable scan data can never overwrite a path
+# that main changed after the scan's source SHA.
 concurrency:
   group: wallet500-verified-snapshot-publisher
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   publish:
@@ -136,19 +136,16 @@ jobs:
           print(f'Validated immutable handoff: {len(items)} data paths')
           PY
 
-      - name: Publish verified snapshot atomically on latest main
+      - name: Publish verified snapshot atomically without stale path overwrite
         env:
           SNAPSHOT_DIR: ${{ runner.temp }}/wallet500-verified-snapshot
           SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Hash the immutable snapshot exactly once. Every race retry below only
-          # overlays these already-created blobs onto the newest main tree and
-          # creates a tiny tree+commit. This keeps the fail-closed fast-forward
-          # semantics while removing repeated hashing/copying of large truth files.
           python - <<'PY'
           import json, os, subprocess, tempfile, time
           from pathlib import Path
@@ -156,6 +153,8 @@ jobs:
           root=Path(os.environ['SNAPSHOT_DIR']).resolve()
           manifest=json.loads((root/'manifest.json').read_text(encoding='utf-8'))
           source_run=int(os.environ['SOURCE_RUN_ID'])
+          source_sha=str(os.environ['SOURCE_SHA']).strip()
+          watermark='data/publish-evidence.json'
 
           def git(*args, env=None, input_text=None, check=True):
               p=subprocess.run(
@@ -165,6 +164,11 @@ jobs:
               if check and p.returncode:
                   raise SystemExit(f"git {' '.join(args)} failed: {p.stderr.strip()}")
               return p
+
+          # The scan base is needed for path-level optimistic concurrency checks.
+          # If another workflow changed a path after this scan started, the current
+          # main copy wins and the stale snapshot is forbidden from overwriting it.
+          git('fetch','--no-tags','--depth=1','origin',source_sha)
 
           blobs={}
           for item in manifest['items']:
@@ -177,7 +181,7 @@ jobs:
           print(f'Prepared {len(blobs)} immutable Git blobs once for bounded retries')
 
           def published_run(parent):
-              p=git('show',f'{parent}:data/publish-evidence.json',check=False)
+              p=git('show',f'{parent}:{watermark}',check=False)
               if p.returncode:
                   return 0
               try:
@@ -185,17 +189,25 @@ jobs:
               except Exception:
                   return 0
 
+          def changed_on_main_since_scan(parent, rel):
+              p=git('diff','--quiet',source_sha,parent,'--',rel,check=False)
+              if p.returncode not in (0,1):
+                  raise SystemExit(f'Unable to compare freshness for {rel}: {p.stderr.strip()}')
+              return p.returncode == 1
+
           max_attempts=40
           for attempt in range(1,max_attempts+1):
               print(f'Publisher attempt {attempt}/{max_attempts} for source run {source_run}',flush=True)
               git('fetch','origin','main')
               parent=git('rev-parse','origin/main').stdout.strip()
               current=published_run(parent)
-              if current>source_run:
-                  print(f'Refusing stale verified snapshot {source_run}; main already has newer verified run {current}')
+              if current >= source_run:
+                  print(f'Refusing duplicate/stale verified snapshot {source_run}; main watermark is {current}')
                   raise SystemExit(0)
 
               index_path=Path(tempfile.gettempdir())/f'wallet500-publish-{os.getpid()}.index'
+              skipped=[]
+              applied=[]
               try:
                   index_path.unlink(missing_ok=True)
                   env=os.environ.copy()
@@ -203,24 +215,33 @@ jobs:
                   git('read-tree',parent,env=env)
                   for item in manifest['items']:
                       rel=item['path']
+                      # publish-evidence is the monotonic Live Scan watermark. All
+                      # other paths use path-level optimistic concurrency.
+                      if rel != watermark and changed_on_main_since_scan(parent, rel):
+                          skipped.append(rel)
+                          continue
                       if item['kind']=='file':
                           git('update-index','--add','--cacheinfo',f'100644,{blobs[rel]},{rel}',env=env)
                       else:
                           git('update-index','--force-remove','--',rel,env=env)
+                      applied.append(rel)
                   tree=git('write-tree',env=env).stdout.strip()
               finally:
                   index_path.unlink(missing_ok=True)
 
+              print(f'Freshness guard applied={len(applied)} preserved_newer_main={len(skipped)}')
+              if skipped:
+                  print('Preserved newer paths: ' + ', '.join(skipped[:40]))
               parent_tree=git('rev-parse',f'{parent}^{{tree}}').stdout.strip()
               if tree==parent_tree:
-                  print(f'Latest main already contains verified snapshot for source run {source_run}')
+                  print(f'Latest main already contains all safe data for source run {source_run}')
                   raise SystemExit(0)
 
               commit=git('commit-tree',tree,'-p',parent,
                          input_text=f'data: publish verified live scan {source_run}\n').stdout.strip()
               pushed=git('push','origin',f'{commit}:refs/heads/main',check=False)
               if pushed.returncode==0:
-                  print(f'Verified snapshot published successfully from source run {source_run}')
+                  print(f'Verified snapshot published safely from source run {source_run}')
                   raise SystemExit(0)
               print('Main moved during atomic publisher attempt; retrying on newest main',flush=True)
               time.sleep(0.15)
