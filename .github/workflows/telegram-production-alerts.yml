@@ -3,16 +3,22 @@ name: Wallet500 Production Telegram Alerts
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ["Wallet500 Multi-Chain Live Scan"]
+    workflows: ["Wallet500 Verified Snapshot Publisher"]
     types: [completed]
   push:
     branches: [main]
     paths:
       - '.github/workflows/telegram-production-alerts.yml'
+      - 'src/wallet500/telegram_alerts.py'
+      - 'src/wallet500/real_alert_10usd_tracker.py'
+      - 'tests/test_telegram_exact_pair.py'
+      - 'tests/test_real_alert_10usd_tracker.py'
 
 permissions:
   contents: write
 
+# Serialized post-publish lane: verified data must already be on main before any
+# user-facing Telegram delivery is attempted.
 concurrency:
   group: wallet500-production-telegram-alerts
   cancel-in-progress: false
@@ -21,26 +27,36 @@ jobs:
   deliver:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 1
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install and verify Telegram truth contracts
+
+      - name: Install and verify Telegram plus $10 tracking truth contracts
         run: |
           pip install -e . pytest
-          python -m pytest -q tests/test_telegram_exact_pair.py tests/test_real_alerts.py
-      - name: Deliver only gated Wallet500 production alerts
+          python -m pytest -q \
+            tests/test_telegram_exact_pair.py \
+            tests/test_real_alerts.py \
+            tests/test_real_alert_10usd_tracker.py
+
+      - name: Deliver only gated Wallet500 production alerts from verified main
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           WALLET500_ALERT_INPUT: active-qualified-candidates.json
+          WALLET500_REAL_ALERT_INPUT: real-alerts.json
         run: python -m wallet500.telegram_alerts
-      - name: Persist Telegram dedupe state and delivery report
+
+      # Persist Telegram dedupe state immediately after delivery. This protects
+      # against duplicate alerts even if a later tracker/dashboard step fails.
+      - name: Persist Telegram dedupe state and delivery report first
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
@@ -56,13 +72,74 @@ jobs:
             git add data/telegram-alert-state.json data/telegram-alert-report.json
             if git diff --cached --quiet; then
               echo 'No Telegram state changes to publish'
-              exit 0
+              break
             fi
             git commit -m 'telegram: persist production alert delivery state'
             if git push origin HEAD:main; then
-              exit 0
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo 'Telegram state publish failed after retries'
+              exit 1
             fi
             sleep 3
           done
-          echo 'Telegram state publish failed after retries'
-          exit 1
+
+      - name: Reconcile $10 paper cohort from newly delivered REAL ALERTs and mark all open positions
+        run: python -m wallet500.real_alert_10usd_tracker
+
+      - name: Persist $10 tracker state
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          cp data/real-alert-10usd-ledger.json "$tmp/ledger.json"
+          cp data/real-alert-10usd-summary.json "$tmp/summary.json"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/ledger.json" data/real-alert-10usd-ledger.json
+            cp "$tmp/summary.json" data/real-alert-10usd-summary.json
+            git add data/real-alert-10usd-ledger.json data/real-alert-10usd-summary.json
+            if git diff --cached --quiet; then
+              echo 'No $10 tracker changes to publish'
+              break
+            fi
+            git commit -m 'data: mark new REAL ALERT $10 paper cohort'
+            if git push origin HEAD:main; then
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo '$10 tracker publish failed after retries'
+              exit 1
+            fi
+            sleep 3
+          done
+
+      # Fail visibly only after state was safely persisted. Unsent alerts remain
+      # re-tryable on the next verified publish; successfully sent ones stay deduped.
+      - name: Validate delivery and tracking outcome
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report=json.loads(Path('data/telegram-alert-report.json').read_text())
+          summary=json.loads(Path('data/real-alert-10usd-summary.json').read_text())
+          if report.get('configured') is not True:
+              raise SystemExit('TELEGRAM_NOT_CONFIGURED_IN_PRODUCTION_LANE')
+          if int(report.get('error_count') or 0) > 0:
+              raise SystemExit(f"TELEGRAM_DELIVERY_ERRORS={report.get('error_count')}")
+          if summary.get('mode') != 'PAPER_ONLY_NO_REAL_MONEY':
+              raise SystemExit('REAL_ALERT_10USD_MODE_DRIFT')
+          if float(summary.get('position_size_usd') or 0) != 10.0:
+              raise SystemExit('REAL_ALERT_10USD_SIZE_DRIFT')
+          if summary.get('new_entry_trigger') != 'SUCCESSFULLY_DELIVERED_NEW_TELEGRAM_REAL_ALERT_AFTER_ACTIVATION_ONLY':
+              raise SystemExit('REAL_ALERT_10USD_TRIGGER_DRIFT')
+          print('TELEGRAM_AND_10USD_PIPELINE_OK', {
+              'delivered': report.get('delivered_count'),
+              'positions': summary.get('positions_total'),
+              'roi_pct': summary.get('roi_pct'),
+          })
+          PY
