@@ -133,7 +133,10 @@ jobs:
                       raise SystemExit(f'Delete item unexpectedly contains file: {path}')
               else:
                   raise SystemExit(f'Invalid snapshot item kind for {path}: {kind!r}')
-          print(f'Validated immutable handoff: {len(items)} data paths')
+          real_item=next((x for x in items if x.get('path')=='data/real-alerts.json' and x.get('kind')=='file'),None)
+          if not real_item or not real_item.get('sha256'):
+              raise SystemExit('Verified snapshot missing immutable real-alerts.json digest')
+          print(f'Validated immutable handoff: {len(items)} data paths; real-alerts digest bound')
           PY
 
       - name: Publish verified snapshot atomically without stale path overwrite
@@ -147,14 +150,18 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           python - <<'PY'
-          import json, os, subprocess, tempfile, time
+          import hashlib, json, os, subprocess, tempfile, time
+          from datetime import datetime, timezone
           from pathlib import Path
 
           root=Path(os.environ['SNAPSHOT_DIR']).resolve()
-          manifest=json.loads((root/'manifest.json').read_text(encoding='utf-8'))
+          manifest_path=root/'manifest.json'
+          manifest_bytes=manifest_path.read_bytes()
+          manifest=json.loads(manifest_bytes.decode('utf-8'))
           source_run=int(os.environ['SOURCE_RUN_ID'])
           source_sha=str(os.environ['SOURCE_SHA']).strip()
           watermark='data/publish-evidence.json'
+          real_path='data/real-alerts.json'
 
           def git(*args, env=None, input_text=None, check=True):
               p=subprocess.run(
@@ -170,15 +177,37 @@ jobs:
           # main copy wins and the stale snapshot is forbidden from overwriting it.
           git('fetch','--no-tags','--depth=1','origin',source_sha)
 
+          real_item=next((x for x in manifest['items'] if x.get('path')==real_path and x.get('kind')=='file'),None)
+          if not real_item or not real_item.get('sha256'):
+              raise SystemExit('Verified snapshot missing immutable real-alerts digest')
+          real_digest=str(real_item['sha256'])
+          generation_id=f'live-scan:{source_run}:{source_sha}'
+          proof={
+              'version':2,
+              'created_at':datetime.now(timezone.utc).isoformat(),
+              'status':'VERIFIED_PUBLISHED_SNAPSHOT',
+              'run_id':source_run,
+              'source_run_id':source_run,
+              'source_sha':source_sha,
+              'generation_id':generation_id,
+              'strict_validation':'PASS',
+              'scope':'data/',
+              'real_alerts_sha256':real_digest,
+              'manifest_sha256':hashlib.sha256(manifest_bytes).hexdigest(),
+              'proof_rule':'ATOMIC_WITH_VERIFIED_SNAPSHOT_AND_BOUND_TO_REAL_ALERTS_SHA256',
+          }
+          proof_text=json.dumps(proof,indent=2,sort_keys=True)+'\n'
+          proof_blob=git('hash-object','-w','--stdin',input_text=proof_text).stdout.strip()
+
           blobs={}
           for item in manifest['items']:
-              if item['kind']!='file':
+              if item['kind']!='file' or item['path']==watermark:
                   continue
               rel=item['path']
               src=root/'files'/rel
               p=git('hash-object','-w',str(src))
               blobs[rel]=p.stdout.strip()
-          print(f'Prepared {len(blobs)} immutable Git blobs once for bounded retries')
+          print(f'Prepared {len(blobs)} immutable data blobs plus atomic publication proof')
 
           def published_run(parent):
               p=git('show',f'{parent}:{watermark}',check=False)
@@ -215,9 +244,11 @@ jobs:
                   git('read-tree',parent,env=env)
                   for item in manifest['items']:
                       rel=item['path']
-                      # publish-evidence is the monotonic Live Scan watermark. All
-                      # other paths use path-level optimistic concurrency.
-                      if rel != watermark and changed_on_main_since_scan(parent, rel):
+                      if rel==watermark:
+                          git('update-index','--add','--cacheinfo',f'100644,{proof_blob},{rel}',env=env)
+                          applied.append(rel)
+                          continue
+                      if changed_on_main_since_scan(parent, rel):
                           skipped.append(rel)
                           continue
                       if item['kind']=='file':
@@ -229,6 +260,8 @@ jobs:
               finally:
                   index_path.unlink(missing_ok=True)
 
+              if real_path in skipped:
+                  raise SystemExit('REAL_ALERTS_CHANGED_ON_MAIN_AFTER_SOURCE_SCAN; refusing mismatched publication proof')
               print(f'Freshness guard applied={len(applied)} preserved_newer_main={len(skipped)}')
               if skipped:
                   print('Preserved newer paths: ' + ', '.join(skipped[:40]))
@@ -241,7 +274,7 @@ jobs:
                          input_text=f'data: publish verified live scan {source_run}\n').stdout.strip()
               pushed=git('push','origin',f'{commit}:refs/heads/main',check=False)
               if pushed.returncode==0:
-                  print(f'Verified snapshot published safely from source run {source_run}')
+                  print(f'VERIFIED_PUBLISH_PROOF_OK generation={generation_id} real_alerts_sha256={real_digest}')
                   raise SystemExit(0)
               print('Main moved during atomic publisher attempt; retrying on newest main',flush=True)
               time.sleep(0.15)
