@@ -29,6 +29,14 @@ def _num(v, default=None):
         return default
 
 
+def _identity_key(row: dict) -> tuple[str, str, str]:
+    return (
+        str(row.get("chain") or row.get("network") or "").strip().lower(),
+        str(row.get("token_address") or row.get("token") or row.get("mint") or "").strip().lower(),
+        str(row.get("pair_address") or row.get("dex_pair_address") or row.get("exact_pair") or "").strip().lower(),
+    )
+
+
 def annotate_row(row: dict) -> dict:
     out = dict(row)
     truth = liquidity_truth(out)
@@ -46,7 +54,6 @@ def annotate_row(row: dict) -> dict:
     out["provider_reported_pool_value_usd"] = round(reported, 2) if reported is not None else None
 
     if truth.get("concentrated_liquidity_pool") and not truth.get("execution_depth_verified"):
-        # Critical safety rule: TVL/reserve inventory must never masquerade as executable depth.
         out["pool_tvl_usd"] = truth.get("pool_tvl_usd") or (round(reported, 2) if reported is not None else None)
         out["execution_pool_liquidity_usd"] = None
         out["liquidity_usd"] = None
@@ -82,8 +89,38 @@ def sanitize_cex_radar(path: Path = DATA / "cex-revival-radar.json") -> dict:
     return payload["liquidity_truth_counts"]
 
 
-def _demote_row(row: dict) -> dict:
-    out = annotate_row(row)
+def _cex_pair_metadata(real_alert_path: Path) -> dict[tuple[str, str, str], dict]:
+    radar = _load(real_alert_path.parent / "cex-revival-radar.json", {})
+    out: dict[tuple[str, str, str], dict] = {}
+    for row in radar.get("alerts") or []:
+        if not isinstance(row, dict):
+            continue
+        key = _identity_key(row)
+        if not all(key):
+            continue
+        out[key] = row
+    return out
+
+
+def _merge_liquidity_metadata(row: dict, source: dict | None) -> dict:
+    if not source:
+        return dict(row)
+    out = dict(row)
+    for key in (
+        "dex", "pool_type", "protocol", "market_protocol", "market_program",
+        "pool_tvl_usd", "provider_reported_pool_value_usd",
+        "active_liquidity_usd", "execution_depth_usd_1pct", "execution_depth_usd_2pct",
+        "execution_depth_usd_5pct", "execution_depth_verified", "execution_depth_source",
+        "concentrated_liquidity_pool", "liquidity_execution_gate_eligible",
+        "liquidity_execution_gate_status", "liquidity_semantics_version",
+    ):
+        if out.get(key) in (None, "") and source.get(key) not in (None, ""):
+            out[key] = source.get(key)
+    return out
+
+
+def _demote_row(row: dict, metadata: dict | None = None) -> dict:
+    out = annotate_row(_merge_liquidity_metadata(row, metadata))
     if out.get("concentrated_liquidity_pool") is True and out.get("execution_depth_verified") is not True:
         blockers = list(out.get("blockers") or [])
         if CONCENTRATED_BLOCKER not in blockers:
@@ -96,28 +133,24 @@ def _demote_row(row: dict) -> dict:
 
 def sanitize_real_alerts(path: Path = DATA / "real-alerts.json") -> dict:
     payload = _load(path, {})
+    metadata = _cex_pair_metadata(path)
     original_alerts = [x for x in payload.get("alerts") or [] if isinstance(x, dict)]
     original_watch = [x for x in payload.get("verified_watch") or [] if isinstance(x, dict)]
 
     alerts = []
     demoted = []
     for row in original_alerts:
-        clean = _demote_row(row)
+        clean = _demote_row(row, metadata.get(_identity_key(row)))
         if CONCENTRATED_BLOCKER in (clean.get("blockers") or []):
             demoted.append(clean)
         else:
             alerts.append(clean)
-    watch = [_demote_row(x) for x in original_watch] + demoted
+    watch = [_demote_row(x, metadata.get(_identity_key(x))) for x in original_watch] + demoted
 
-    # Unique by exact identity/pair; keep first occurrence.
     seen = set()
     uniq_watch = []
     for row in watch:
-        key = (
-            str(row.get("chain") or "").lower(),
-            str(row.get("token_address") or "").lower(),
-            str(row.get("pair_address") or "").lower(),
-        )
+        key = _identity_key(row)
         if key in seen:
             continue
         seen.add(key)
@@ -142,18 +175,13 @@ def sanitize_real_alerts(path: Path = DATA / "real-alerts.json") -> dict:
         "version": "LIQUIDITY_TRUTH_GUARD_V1",
         "demoted_real_alerts": len(demoted),
         "concentrated_depth_unverified_blocker": CONCENTRATED_BLOCKER,
+        "exact_pair_metadata_join": True,
     }
     _write(path, payload)
     return {"real_alerts": len(alerts), "verified_watch": len(uniq_watch), "demoted": len(demoted)}
 
 
 def safe_production_liquidity(candidate: dict) -> tuple[float, str, bool]:
-    """Return production gate value while hard-blocking unverified concentrated depth.
-
-    Verified 5% execution depth is preferred. Concentrated pools without it return zero.
-    Non-concentrated legacy rows retain the existing exact-pair reserve gate for backward
-    compatibility, clearly labeled as legacy until a depth provider is available.
-    """
     truth = liquidity_truth(candidate)
     if truth.get("execution_depth_verified") is True:
         return float(truth.get("execution_depth_usd_5pct") or 0), "VERIFIED_EXECUTION_DEPTH_USD_5PCT", True
