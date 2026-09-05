@@ -53,6 +53,9 @@ jobs:
           tests/test_system_health.py
           tests/test_production_status.py
           tests/test_hot_email_alerts.py
+          tests/test_signal_intelligence.py
+          tests/test_signal_alert_guard.py
+          tests/test_paper_signal_enrichment.py
 
       - name: Refresh fast veteran CEX identity lane
         env:
@@ -151,8 +154,12 @@ jobs:
       # after all current-run upstream evidence is present in the workspace.
       - name: Build canonical Candidate Evidence Envelope
         run: python -m wallet500.candidate_evidence_envelope
+      - name: Build prospective Signal DNA and self-learning shadow intelligence
+        run: python -m wallet500.signal_intelligence
       - name: Build evidence-aware fail-closed REAL ALERT feed
         run: python -m wallet500.real_alerts
+      - name: Apply fail-closed signal data health guard and enrich alerts
+        run: python -m wallet500.signal_alert_guard
       - name: Build evidence-promotion funnel diagnostics
         run: python -m wallet500.revival_funnel_diagnostics
       - name: Validate coherent decision snapshot
@@ -161,6 +168,7 @@ jobs:
           import json
           from pathlib import Path
           e=json.loads(Path('data/candidate-evidence-envelope.json').read_text())
+          s=json.loads(Path('data/signal-intelligence.json').read_text())
           r=json.loads(Path('data/real-alerts.json').read_text())
           f=json.loads(Path('data/revival-funnel-diagnostics.json').read_text())
           ec=e.get('counts') or {}; rc=r.get('counts') or {}; ep=(f.get('lanes') or {}).get('evidence_promotion') or {}
@@ -169,9 +177,17 @@ jobs:
           if int(ep.get('evidence_ready') or 0) != ready: raise SystemExit('LIVE_FUNNEL_EVIDENCE_COUNT_SKEW')
           if e.get('production_change') is not False or e.get('automatic_buy') is not False: raise SystemExit('LIVE_ENVELOPE_PRODUCTION_LEAK')
           if (e.get('truth_contract') or {}).get('minimum_market_age_days') != 180: raise SystemExit('LIVE_VETERAN_SCOPE_DRIFT')
+          if s.get('automatic_buy') is not False: raise SystemExit('LIVE_SIGNAL_INTELLIGENCE_AUTO_BUY_LEAK')
+          st=s.get('truth_contract') or {}
+          if st.get('self_learning_requires_holdout_validation') is not True: raise SystemExit('LIVE_SELF_LEARNING_VALIDATION_CONTRACT_MISSING')
+          if st.get('self_learning_never_weakens_hard_gates') is not True: raise SystemExit('LIVE_SELF_LEARNING_HARD_GATE_LEAK')
+          rt=r.get('truth_contract') or {}
+          if rt.get('signal_intelligence_data_health_required') is not True: raise SystemExit('LIVE_SIGNAL_DATA_HEALTH_GUARD_MISSING')
+          sh=s.get('data_health') or {}
+          if sh.get('production_safe') is not True and int(rc.get('real_alerts') or 0) != 0: raise SystemExit('LIVE_STALE_SIGNAL_DATA_NOT_FAIL_CLOSED')
           age=json.loads(Path('data/active-qualified-age-gate.json').read_text())
           if age.get('status')=='QUARANTINED_FAIL_CLOSED_UNAPPROVED_POLICY': raise SystemExit('LIVE_STALE_7D_AGE_POLICY')
-          print('LIVE_DECISION_SNAPSHOT_COHERENT', {'evidence_ready':ready,'verified_watch':rc.get('verified_watch_not_real'),'real_alerts':rc.get('real_alerts')})
+          print('LIVE_DECISION_SNAPSHOT_COHERENT', {'evidence_ready':ready,'verified_watch':rc.get('verified_watch_not_real'),'real_alerts':rc.get('real_alerts'),'signal_health':sh.get('status'),'learning_model':(s.get('self_learning_model') or {}).get('status')})
           PY
 
       - name: Send gated Telegram alerts
