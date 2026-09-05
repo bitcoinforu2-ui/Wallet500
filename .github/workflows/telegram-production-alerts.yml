@@ -46,6 +46,46 @@ jobs:
             tests/test_real_alerts.py \
             tests/test_real_alert_10usd_tracker.py
 
+      - name: Verify fresh strict production snapshot before user-facing delivery
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          def parse_ts(v):
+              s=str(v or '').strip()
+              if not s:
+                  raise SystemExit('MISSING_SNAPSHOT_TIMESTAMP')
+              if s.endswith('Z'):
+                  s=s[:-1]+'+00:00'
+              d=datetime.fromisoformat(s)
+              if d.tzinfo is None:
+                  d=d.replace(tzinfo=timezone.utc)
+              return d.astimezone(timezone.utc)
+
+          real=json.loads(Path('data/real-alerts.json').read_text())
+          proof=json.loads(Path('data/publish-evidence.json').read_text())
+          if proof.get('strict_validation') != 'PASS':
+              raise SystemExit('TELEGRAM_SOURCE_STRICT_VALIDATION_NOT_PASS')
+          if (real.get('truth_contract') or {}).get('minimum_market_age_days') != 180:
+              raise SystemExit('TELEGRAM_SOURCE_VETERAN_SCOPE_DRIFT')
+          if (real.get('truth_contract') or {}).get('exact_dex_pair_required') is not True:
+              raise SystemExit('TELEGRAM_SOURCE_EXACT_PAIR_CONTRACT_DRIFT')
+          now=datetime.now(timezone.utc)
+          real_age=(now-parse_ts(real.get('generated_at'))).total_seconds()
+          proof_age=(now-parse_ts(proof.get('created_at'))).total_seconds()
+          if real_age < -120 or proof_age < -120:
+              raise SystemExit('TELEGRAM_SOURCE_TIMESTAMP_FROM_FUTURE')
+          if real_age > 35*60 or proof_age > 35*60:
+              raise SystemExit(f'TELEGRAM_SOURCE_STALE real_age={real_age:.0f}s proof_age={proof_age:.0f}s')
+          print('TELEGRAM_SOURCE_FRESH_STRICT_OK', {
+              'real_alerts': (real.get('counts') or {}).get('real_alerts'),
+              'real_age_seconds': round(real_age,1),
+              'proof_age_seconds': round(proof_age,1),
+          })
+          PY
+
       - name: Deliver only gated Wallet500 production alerts from verified main
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
