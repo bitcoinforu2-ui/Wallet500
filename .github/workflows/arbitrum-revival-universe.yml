@@ -1,0 +1,62 @@
+name: Wallet500 Arbitrum Revival Universe
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '16,46 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/arbitrum_revival_universe.py'
+      - 'tests/test_arbitrum_revival_universe.py'
+      - '.github/workflows/arbitrum-revival-universe.yml'
+permissions:
+  contents: write
+concurrency:
+  group: wallet500-arbitrum-revival
+  cancel-in-progress: true
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 1}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Install
+        run: pip install -e . pytest
+      - name: Test Arbitrum truth gates
+        run: python -m pytest -q tests/test_arbitrum_revival_universe.py tests/test_multichain_veteran_revival.py
+      - name: Scan Arbitrum veteran universe through Wallet500 filter
+        run: python -m wallet500.arbitrum_revival_universe
+      - name: Validate output
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('data/arbitrum-revival-universe.json').read_text())
+          if d.get('mode')!='RESEARCH_ONLY_ARBITRUM_REVIVAL_UNIVERSE_V1': raise SystemExit('ARBITRUM_MODE_INVALID')
+          if d.get('network')!='arbitrum' or d.get('automatic_buy') is not False: raise SystemExit('ARBITRUM_BOUNDARY_INVALID')
+          c=d.get('filter_contract') or {}
+          if c.get('minimum_market_age_days')!=180 or float(c.get('minimum_live_liquidity_usd') or 0)<50000: raise SystemExit('ARBITRUM_HARD_GATE_DRIFT')
+          for x in d.get('tokens') or []:
+            if x.get('actionable') is not False or x.get('production_portfolio_impact')!='NONE': raise SystemExit('ARBITRUM_PRODUCTION_LEAK')
+            if not x.get('blockers') and (x.get('market_age_verified') is not True or x.get('exact_pair_verified') is not True or float(x.get('liquidity_usd') or 0)<50000): raise SystemExit('ARBITRUM_FILTER_FALSE_PASS')
+          print('ARBITRUM_FILTER_OK',d.get('counts'))
+          PY
+      - name: Publish Arbitrum research feed
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"; cp data/arbitrum-revival-universe.json data/arbitrum-revival-state.json "$tmp/"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main; git reset --hard origin/main
+            cp "$tmp/arbitrum-revival-universe.json" data/; cp "$tmp/arbitrum-revival-state.json" data/
+            git add data/arbitrum-revival-universe.json data/arbitrum-revival-state.json
+            if git diff --cached --quiet; then echo ARBITRUM_NO_CHANGE; exit 0; fi
+            git commit -m 'data: refresh Arbitrum revival universe'
+            if git push origin HEAD:main; then echo ARBITRUM_PUBLISH_OK; exit 0; fi
+            sleep 2
+          done
+          exit 1
