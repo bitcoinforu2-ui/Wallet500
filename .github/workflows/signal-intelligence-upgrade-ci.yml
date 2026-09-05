@@ -1,0 +1,37 @@
+name: Wallet500 Signal Intelligence Upgrade CI
+
+on:
+  push:
+    branches:
+      - 'upgrade/self-learning-signal-intelligence'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wallet500-signal-intelligence-upgrade-ci
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Compile new modules
+        run: python -m py_compile src/wallet500/signal_intelligence.py src/wallet500/signal_alert_guard.py src/wallet500/paper_signal_enrichment.py
+      - name: Run upgrade and adjacent truth-contract tests
+        run: >-
+          python -m pytest -q
+          tests/test_signal_intelligence.py
+          tests/test_signal_alert_guard.py
+          tests/test_paper_signal_enrichment.py
+          tests/test_real_alerts.py
+          tests/test_real_alert_10usd_tracker.py
+          tests/test_revival_funnel_diagnostics.py
+          tests/test_candidate_evidence_envelope.py
