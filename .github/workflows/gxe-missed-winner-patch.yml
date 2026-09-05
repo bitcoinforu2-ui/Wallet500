@@ -1,0 +1,328 @@
+name: GXE Missed Winner Patch
+
+on:
+  push:
+    branches: [fix/gxe-missed-winner-cex-identity]
+    paths:
+      - '.github/workflows/gxe-missed-winner-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/gxe-missed-winner-cex-identity
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply deterministic engine patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('src/wallet500/multichain_veteran_revival.py')
+          s=p.read_text(encoding='utf-8')
+          old='''def _discover_spot_registry_candidates(data_dir: Path) -> list[dict]:
+              """Translate current Spot watches to exact on-chain candidates only via registry identity.
+
+              A symbol alone can never inject a DEX candidate. The base symbol merely selects
+              a pre-existing exact registry record, whose chain+contract is the actual identity.
+              """
+              spot = _load(data_dir / "cex-spot-revival-radar.json", {})
+              registry = _load(data_dir / "cex-identity-registry.json", {})
+              symbols = registry.get("symbols") if isinstance(registry, dict) else {}
+              symbols = symbols if isinstance(symbols, dict) else {}
+              watch_bases = {
+                  _spot_base_symbol(row.get("symbol"))
+                  for row in (spot.get("watchlist") or [])
+                  if isinstance(row, dict) and _spot_base_symbol(row.get("symbol"))
+              }
+              rows = []
+              for symbol, meta in symbols.items():
+                  if not isinstance(meta, dict):
+                      continue
+                  canonical_symbol = str(symbol or "").upper().strip()
+                  if canonical_symbol not in watch_bases:
+                      continue
+                  chain = str(meta.get("chain") or "").lower().strip()
+                  token = str(meta.get("token_address") or "").strip()
+                  if chain not in CORE_NETWORKS or not token or _blocked(chain, token, canonical_symbol):
+                      continue
+                  rows.append({
+                      "chain": chain,
+                      "token": token,
+                      "symbol": canonical_symbol,
+                      "name": meta.get("name"),
+                      "discovery_sources": ["cex-spot-exact-registry-trigger"],
+                      "source_pool_addresses": [],
+                      "registry_identity_verified": True,
+                      "market_age_evidence_at": meta.get("market_age_evidence_at"),
+                      "market_age_evidence_source": meta.get("evidence_source") or "EXACT_IDENTITY_REGISTRY",
+                      "coingecko_id": meta.get("coingecko_id"),
+                  })
+              return rows
+          '''
+          new='''def _discover_spot_registry_candidates(data_dir: Path) -> list[dict]:
+              """Translate Spot watches to exact on-chain candidates without symbol-only promotion.
+
+              Dynamic Spot identity is preferred when it has independently passed veteran age,
+              exact chain+contract and exact DEX-pair verification. The manual registry remains
+              a deterministic fallback. Neither path makes the CEX signal actionable by itself.
+              """
+              spot = _load(data_dir / "cex-spot-revival-radar.json", {})
+              dynamic = _load(data_dir / "cex-spot-identity-radar.json", {})
+              registry = _load(data_dir / "cex-identity-registry.json", {})
+              symbols = registry.get("symbols") if isinstance(registry, dict) else {}
+              symbols = symbols if isinstance(symbols, dict) else {}
+              watch_bases = {
+                  _spot_base_symbol(row.get("symbol"))
+                  for row in (spot.get("watchlist") or [])
+                  if isinstance(row, dict) and _spot_base_symbol(row.get("symbol"))
+              }
+              rows = []
+
+              for meta in dynamic.get("candidates") or []:
+                  if not isinstance(meta, dict):
+                      continue
+                  if meta.get("identity_status") != "DEX_VERIFIED" or meta.get("market_age_verified") is not True:
+                      continue
+                  canonical_symbol = _spot_base_symbol(meta.get("symbol"))
+                  if canonical_symbol not in watch_bases:
+                      continue
+                  chain = str(meta.get("chain") or "").lower().strip()
+                  token = str(meta.get("token_address") or "").strip()
+                  if chain not in CORE_NETWORKS or not token or _blocked(chain, token, canonical_symbol):
+                      continue
+                  pair = str(meta.get("pair_address") or "").strip()
+                  rows.append({
+                      "chain": chain,
+                      "token": token,
+                      "symbol": canonical_symbol,
+                      "name": meta.get("name"),
+                      "discovery_sources": ["cex-spot-dynamic-exact-identity"],
+                      "source_pool_addresses": [pair] if pair else [],
+                      "dynamic_cex_spot_identity_verified": True,
+                      "market_age_evidence_at": meta.get("market_age_evidence_at"),
+                      "market_age_evidence_source": meta.get("market_age_evidence_source") or "DYNAMIC_CEX_SPOT_EXACT_IDENTITY",
+                      "coingecko_id": meta.get("coingecko_id"),
+                  })
+
+              for symbol, meta in symbols.items():
+                  if not isinstance(meta, dict):
+                      continue
+                  canonical_symbol = str(symbol or "").upper().strip()
+                  if canonical_symbol not in watch_bases:
+                      continue
+                  chain = str(meta.get("chain") or "").lower().strip()
+                  token = str(meta.get("token_address") or "").strip()
+                  if chain not in CORE_NETWORKS or not token or _blocked(chain, token, canonical_symbol):
+                      continue
+                  rows.append({
+                      "chain": chain,
+                      "token": token,
+                      "symbol": canonical_symbol,
+                      "name": meta.get("name"),
+                      "discovery_sources": ["cex-spot-exact-registry-trigger"],
+                      "source_pool_addresses": [],
+                      "registry_identity_verified": True,
+                      "market_age_evidence_at": meta.get("market_age_evidence_at"),
+                      "market_age_evidence_source": meta.get("evidence_source") or "EXACT_IDENTITY_REGISTRY",
+                      "coingecko_id": meta.get("coingecko_id"),
+                  })
+              return rows
+          '''
+          if old not in s:
+              raise SystemExit('discover spot identity patch anchor not found')
+          s=s.replace(old,new)
+          s=s.replace(
+              '"symbol", "name", "registry_identity_verified", "market_age_evidence_at",\n        "market_age_evidence_source", "coingecko_id",',
+              '"symbol", "name", "registry_identity_verified", "dynamic_cex_spot_identity_verified", "market_age_evidence_at",\n        "market_age_evidence_source", "coingecko_id",'
+          )
+          old2='''def _spot_exact_confirmation(data_dir: Path, chain: str, token: str) -> dict:
+              registry = _load(data_dir / "cex-identity-registry.json", {})
+              symbols = registry.get("symbols") if isinstance(registry, dict) else {}
+              exact_symbol = None
+              for symbol, meta in (symbols or {}).items():
+                  if not isinstance(meta, dict):
+                      continue
+                  if str(meta.get("chain") or "").lower() != chain:
+                      continue
+                  if _norm(chain, meta.get("token_address")) == _norm(chain, token):
+                      exact_symbol = str(symbol or "").upper().strip()
+                      break
+              if not exact_symbol:
+                  return {"verified": False, "reason": "NO_EXACT_IDENTITY_REGISTRY_MAPPING"}
+
+              spot = _load(data_dir / "cex-spot-revival-radar.json", {})
+              matches = []
+              for row in spot.get("watchlist") or []:
+                  if _spot_base_symbol(row.get("symbol")) == exact_symbol:
+                      matches.append(row)
+              if not matches:
+                  return {"verified": False, "reason": "NO_CURRENT_SPOT_WATCH_FOR_EXACT_REGISTRY_IDENTITY", "symbol": exact_symbol}
+              best = max(matches, key=lambda x: _finite(x.get("spot_revival_score")))
+              return {
+                  "verified": True,
+                  "reason": "EXACT_REGISTRY_IDENTITY_PLUS_CEX_SPOT_WATCH",
+                  "symbol": exact_symbol,
+                  "spot_revival_score": best.get("spot_revival_score"),
+                  "exchanges": best.get("exchanges") or [],
+                  "coherent_confirmations": best.get("coherent_confirmations", 0),
+              }
+          '''
+          new2='''def _spot_exact_confirmation(data_dir: Path, chain: str, token: str) -> dict:
+              spot = _load(data_dir / "cex-spot-revival-radar.json", {})
+              dynamic = _load(data_dir / "cex-spot-identity-radar.json", {})
+              for row in dynamic.get("candidates") or []:
+                  if not isinstance(row, dict) or row.get("identity_status") != "DEX_VERIFIED":
+                      continue
+                  if str(row.get("chain") or "").lower() != chain:
+                      continue
+                  if _norm(chain, row.get("token_address")) != _norm(chain, token):
+                      continue
+                  exact_symbol = _spot_base_symbol(row.get("symbol"))
+                  matches = [x for x in (spot.get("watchlist") or []) if _spot_base_symbol(x.get("symbol")) == exact_symbol]
+                  if not matches:
+                      return {"verified": False, "reason": "NO_CURRENT_SPOT_WATCH_FOR_DYNAMIC_EXACT_IDENTITY", "symbol": exact_symbol}
+                  best = max(matches, key=lambda x: _finite(x.get("spot_revival_score")))
+                  return {
+                      "verified": True,
+                      "reason": "DYNAMIC_EXACT_IDENTITY_PLUS_CEX_SPOT_WATCH",
+                      "symbol": exact_symbol,
+                      "spot_revival_score": best.get("spot_revival_score"),
+                      "exchanges": best.get("exchanges") or [],
+                      "coherent_confirmations": best.get("coherent_confirmations", 0),
+                  }
+
+              registry = _load(data_dir / "cex-identity-registry.json", {})
+              symbols = registry.get("symbols") if isinstance(registry, dict) else {}
+              exact_symbol = None
+              for symbol, meta in (symbols or {}).items():
+                  if not isinstance(meta, dict):
+                      continue
+                  if str(meta.get("chain") or "").lower() != chain:
+                      continue
+                  if _norm(chain, meta.get("token_address")) == _norm(chain, token):
+                      exact_symbol = str(symbol or "").upper().strip()
+                      break
+              if not exact_symbol:
+                  return {"verified": False, "reason": "NO_EXACT_DYNAMIC_OR_REGISTRY_IDENTITY_MAPPING"}
+              matches = [x for x in (spot.get("watchlist") or []) if _spot_base_symbol(x.get("symbol")) == exact_symbol]
+              if not matches:
+                  return {"verified": False, "reason": "NO_CURRENT_SPOT_WATCH_FOR_EXACT_REGISTRY_IDENTITY", "symbol": exact_symbol}
+              best = max(matches, key=lambda x: _finite(x.get("spot_revival_score")))
+              return {
+                  "verified": True,
+                  "reason": "EXACT_REGISTRY_IDENTITY_PLUS_CEX_SPOT_WATCH",
+                  "symbol": exact_symbol,
+                  "spot_revival_score": best.get("spot_revival_score"),
+                  "exchanges": best.get("exchanges") or [],
+                  "coherent_confirmations": best.get("coherent_confirmations", 0),
+              }
+          '''
+          if old2 not in s:
+              raise SystemExit('spot confirmation patch anchor not found')
+          s=s.replace(old2,new2)
+          old3='''    registry_age_days = None
+              if row.get("registry_identity_verified") is True:
+                  registry_age_days = _evidence_age_days(row.get("market_age_evidence_at"), now_dt)
+              age_candidates = [x for x in (pair_age_days, registry_age_days) if x is not None]
+              age_days = max(age_candidates) if age_candidates else None
+              if registry_age_days is not None and (pair_age_days is None or registry_age_days >= pair_age_days):
+                  age_source = row.get("market_age_evidence_source") or "EXACT_IDENTITY_REGISTRY"
+              else:
+                  age_source = "EXACT_SELECTED_PAIR_CREATED_AT_LOWER_BOUND"
+          '''
+          new3='''    identity_age_days = None
+              if row.get("registry_identity_verified") is True or row.get("dynamic_cex_spot_identity_verified") is True:
+                  identity_age_days = _evidence_age_days(row.get("market_age_evidence_at"), now_dt)
+              age_candidates = [x for x in (pair_age_days, identity_age_days) if x is not None]
+              age_days = max(age_candidates) if age_candidates else None
+              if identity_age_days is not None and (pair_age_days is None or identity_age_days >= pair_age_days):
+                  age_source = row.get("market_age_evidence_source") or "EXACT_VERIFIED_CEX_SPOT_IDENTITY"
+              else:
+                  age_source = "EXACT_SELECTED_PAIR_CREATED_AT_LOWER_BOUND"
+          '''
+          if old3 not in s:
+              raise SystemExit('dynamic age patch anchor not found')
+          s=s.replace(old3,new3)
+          p.write_text(s,encoding='utf-8')
+
+          w=Path('.github/workflows/live-scan.yml')
+          y=w.read_text(encoding='utf-8')
+          y=y.replace(
+              '          tests/test_cex_fast_lane_collection.py\n          tests/test_candidate_evidence_envelope.py',
+              '          tests/test_cex_fast_lane_collection.py\n          tests/test_cex_spot_identity.py\n          tests/test_cex_spot_dynamic_identity_bridge.py\n          tests/test_candidate_evidence_envelope.py'
+          )
+          first='''      - name: Refresh fast veteran CEX identity lane
+              env:
+                COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+              run: python -m wallet500.cex_fast_lane
+
+              - name: Publish fast CEX identity only
+          '''
+          first_new='''      - name: Refresh fast veteran CEX identity lane
+              env:
+                COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+              run: python -m wallet500.cex_fast_lane
+              - name: Resolve dynamic veteran CEX Spot identities
+              env:
+                COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+              run: python -m wallet500.cex_spot_identity
+
+              - name: Publish fast CEX identity only
+          '''
+          if first not in y:
+              raise SystemExit('first spot identity workflow anchor not found')
+          y=y.replace(first,first_new)
+          y=y.replace(
+              '            git add data/cex-revival-radar.json data/cex-learning.json || true\n            git add data/cex-state.json data/cex-state.json.gz 2>/dev/null || true',
+              '            git add data/cex-revival-radar.json data/cex-learning.json data/cex-spot-revival-radar.json data/cex-spot-identity-radar.json || true\n            git add data/cex-state.json data/cex-state.json.gz data/cex-spot-state.json data/cex-spot-state.json.gz 2>/dev/null || true'
+          )
+          second='''      - name: Reconfirm provider-resilient exact CEX identity
+              env:
+                COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+              run: python -m wallet500.cex_fast_lane
+              - name: Apply universal live survival gate
+          '''
+          second_new='''      - name: Reconfirm provider-resilient exact CEX identity
+              env:
+                COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+              run: python -m wallet500.cex_fast_lane
+              - name: Reconfirm dynamic veteran CEX Spot identities
+              env:
+                COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+              run: python -m wallet500.cex_spot_identity
+              - name: Apply universal live survival gate
+          '''
+          if second not in y:
+              raise SystemExit('second spot identity workflow anchor not found')
+          y=y.replace(second,second_new)
+          w.write_text(y,encoding='utf-8')
+          PY
+      - name: Install
+        run: pip install -e . pytest
+      - name: Verify patch
+        run: |
+          python -m py_compile src/wallet500/cex_spot_identity.py src/wallet500/multichain_veteran_revival.py
+          python -m pytest -q \
+            tests/test_cex_spot_identity.py \
+            tests/test_cex_spot_dynamic_identity_bridge.py \
+            tests/test_multichain_veteran_revival.py \
+            tests/test_cex_fast_lane_collection.py \
+            tests/test_cex_identity_preflight.py \
+            tests/test_cex_identity.py
+      - name: Commit verified patch and remove one-shot workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/gxe-missed-winner-patch.yml
+          git add src/wallet500/multichain_veteran_revival.py .github/workflows/live-scan.yml
+          git commit -m "fix: close CEX spot missed-winner identity and freshness gaps"
+          git push origin HEAD:fix/gxe-missed-winner-cex-identity
