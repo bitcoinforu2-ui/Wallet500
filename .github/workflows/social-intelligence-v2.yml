@@ -56,7 +56,7 @@ jobs:
         env:
           SOCIAL_SCAN_BUDGET: '24'
           SOCIAL_SCAN_PRIORITY_SLOTS: '8'
-          X_DIRECT_SLOTS: '6'
+          X_DIRECT_SLOTS: '1'
           YOUTUBE_DIRECT_SLOTS: '1'
           REDDIT_DIRECT_SLOTS: '6'
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
@@ -104,7 +104,7 @@ jobs:
               if key not in cfg or not isinstance(cfg[key], bool): raise SystemExit('DIRECT_PROVIDER_CONFIG_INVALID:'+key)
           budget=s.get('direct_provider_budget') or {}
           calls=s.get('direct_provider_calls_used') or {}
-          expected={'x':6,'youtube':1,'reddit':6}
+          expected={'x':1,'youtube':1,'reddit':6}
           for key,limit in expected.items():
               if budget.get(key)!=limit: raise SystemExit('DIRECT_PROVIDER_BUDGET_INVALID:'+key)
               used=calls.get(key)
