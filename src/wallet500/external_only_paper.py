@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from wallet500.entry_quality import evaluate_entry_quality
 
-DATA=Path('data'); LEDGER=DATA/'external-only-paper-ledger.json'; SUMMARY=DATA/'external-only-paper-summary.json'; POS=10.0
+DATA=Path('data'); LEDGER=DATA/'external-only-paper-ledger.json'; SUMMARY=DATA/'external-only-paper-summary.json'; POS=10.0; DISPLAY_POS=10.0
 EVM={'ethereum','eth','bsc','bnb','base','arbitrum','polygon','optimism','avalanche'}; IDV=2
 
 def load(p,d):
@@ -36,12 +36,15 @@ def run():
     if not state: state={'version':'EXTERNAL_ONLY_PAPER_V3_IDENTITY','created_at':now,'position_size_usd':POS,'max_positions':None,'production_change':False,'entries':[]}
     else:
         state['version']='EXTERNAL_ONLY_PAPER_V3_IDENTITY'; state['max_positions']=None
-    # Forward-only sizing policy: existing ledger entries keep their original
-    # immutable cost/quantity. Only entries created from this run onward use POS.
+    # Raw truth stays immutable: historical cost/quantity are never rewritten.
+    # New entries use $10. A separate normalized comparator presents every
+    # historical position as an equal $10 allocation without changing history.
     state['position_size_usd']=POS
     state['position_size_policy']='FORWARD_ONLY_NEW_ENTRIES'
     state.setdefault('position_size_10usd_effective_at',now)
     state['legacy_entry_costs_preserved']=True
+    state['normalized_display_position_size_usd']=DISPLAY_POS
+    state['normalized_display_only']=True
     entries=state.setdefault('entries',[]); existing={e.get('key') for e in entries if isinstance(e,dict)}
     sources={}
     for r in (ext.get('records') or {}).values():
@@ -69,10 +72,6 @@ def run():
     for e in entries:
         r=current.get(e.get('key')); mark=current_v2_mark(r,e.get('pair_address')) if r else None
         if e.get('price_identity_contract_version')!=IDV:
-            # Pair base/quote side is immutable. A current V2 BASE proof can
-            # therefore validate the old entry's use of DexScreener priceUsd
-            # without rewriting its historical price. Quote-side legacy entry
-            # prices cannot be reconstructed safely and remain quarantined.
             if mark and str(mark.get('target_token_side') or '').upper().startswith('BASE'):
                 e['price_identity_contract_version']=IDV; e['entry_token_identity_verified']=True; e['entry_target_token_side']='BASE'; e['entry_identity_upgrade']='RETRO_BASE_SIDE_IDENTITY_PROVEN_NO_PRICE_REWRITE'; upgraded_legacy_base+=1
             else:
@@ -86,9 +85,34 @@ def run():
             e['status']='UNRESOLVED'; e['valuation_status']='QUARANTINED_NONFINITE_VALUE'; e['current_price_usd']=None; e['current_value_usd']=None; e['return_pct']=None; continue
         e['current_price_usd']=px; e['current_value_usd']=round(val,10); e['return_pct']=round((val/cost-1)*100,6); e['status']='LIVE'; e['valuation_status']='FRESH_IDENTITY_VERIFIED_EXACT_PAIR'; e['last_mark_at']=now
     state['updated_at']=now; state['price_identity_contract_version']=IDV; write(LEDGER,state)
-    invested=sum(float(e.get('cost_usd') or 0) for e in entries); verified=[e for e in entries if e.get('price_identity_contract_version')==IDV and e.get('valuation_status')=='FRESH_IDENTITY_VERIFIED_EXACT_PAIR' and e.get('current_value_usd') is not None]; covered_inv=sum(float(e.get('cost_usd') or 0) for e in verified); covered_value=sum(float(e.get('current_value_usd') or 0) for e in verified); complete=len(verified)==len(entries)
-    value=covered_value if complete else None; pnl=(value-invested) if value is not None else None; roi=((value/invested)-1)*100 if value is not None and invested else None; by={}
+
+    invested=sum(float(e.get('cost_usd') or 0) for e in entries)
+    verified=[e for e in entries if e.get('price_identity_contract_version')==IDV and e.get('valuation_status')=='FRESH_IDENTITY_VERIFIED_EXACT_PAIR' and e.get('current_value_usd') is not None]
+    covered_inv=sum(float(e.get('cost_usd') or 0) for e in verified); covered_value=sum(float(e.get('current_value_usd') or 0) for e in verified); complete=len(verified)==len(entries)
+    value=covered_value if complete else None; pnl=(value-invested) if value is not None else None; roi=((value/invested)-1)*100 if value is not None and invested else None
+
+    # $10 normalized comparator: equal $10 weight per position. This changes
+    # display/accounting scale only; original entry price, timestamp, quantity
+    # and raw cost remain untouched in the immutable ledger.
+    normalized_invested=len(entries)*DISPLAY_POS
+    normalized_covered_value=0.0
+    normalized_verified_count=0
+    for e in verified:
+        try:
+            raw_cost=float(e.get('cost_usd') or 0); raw_value=float(e.get('current_value_usd') or 0)
+        except: continue
+        if raw_cost>0 and math.isfinite(raw_cost) and math.isfinite(raw_value):
+            normalized_covered_value += raw_value*(DISPLAY_POS/raw_cost)
+            normalized_verified_count += 1
+    normalized_complete=normalized_verified_count==len(entries)
+    normalized_value=normalized_covered_value if normalized_complete else None
+    normalized_pnl=(normalized_value-normalized_invested) if normalized_value is not None else None
+    normalized_roi=((normalized_value/normalized_invested)-1)*100 if normalized_value is not None and normalized_invested else None
+    normalized_covered_inv=normalized_verified_count*DISPLAY_POS
+    normalized_covered_roi=((normalized_covered_value/normalized_covered_inv)-1)*100 if normalized_covered_inv else None
+
+    by={}
     for e in entries:
         for s in e.get('external_sources') or []: by[s]=by.get(s,0)+1
-    summary={'updated_at':now,'method':'EXTERNAL_ONLY_PAPER_V3_TOKEN_IDENTITY_FAIL_CLOSED','price_identity_contract_version':IDV,'position_size_usd_for_new_entries':POS,'position_size_policy':'FORWARD_ONLY_NEW_ENTRIES','legacy_entry_costs_preserved':True,'max_positions':None,'positions':len(entries),'paper_invested_usd':round(invested,6),'paper_current_value_usd':round(value,6) if value is not None else None,'paper_pnl_usd':round(pnl,6) if pnl is not None else None,'paper_roi_pct':round(roi,4) if roi is not None else None,'aggregate_current_roi_status':'VERIFIED_COMPLETE_CURRENT_COVERAGE' if complete else 'WITHHELD_PARTIAL_OR_UNVERIFIED_COVERAGE','verified_current_count':len(verified),'verified_current_investment_usd':round(covered_inv,6),'verified_current_value_usd':round(covered_value,6),'verified_current_roi_pct':round(((covered_value/covered_inv)-1)*100,4) if covered_inv else None,'upgraded_legacy_base_entries':upgraded_legacy_base,'quarantined_legacy_entry_count':quarantined_legacy_entry,'live':sum(e.get('status')=='LIVE' for e in entries),'failed':sum(e.get('status')=='FAILED_SURVIVAL' for e in entries),'unresolved':sum(e.get('status')=='UNRESOLVED' for e in entries),'source_attribution':by,'production_change':False,'truth_note':'Forward-only paper sizing: every NEW eligible entry uses $10. Historical entries preserve their original immutable cost and quantity. Aggregate current ROI is withheld unless every historical entry has proven token-side identity and every position has a current identity-verified exact-pair mark. No historical entry price is rewritten.'}; write(SUMMARY,summary); print(json.dumps(summary,indent=2)); return summary
+    summary={'updated_at':now,'method':'EXTERNAL_ONLY_PAPER_V3_TOKEN_IDENTITY_FAIL_CLOSED','price_identity_contract_version':IDV,'position_size_usd_for_new_entries':POS,'position_size_policy':'FORWARD_ONLY_NEW_ENTRIES','legacy_entry_costs_preserved':True,'normalized_display_only':True,'normalized_position_size_usd':DISPLAY_POS,'normalized_positions':len(entries),'normalized_paper_invested_usd':round(normalized_invested,6),'normalized_current_value_usd':round(normalized_value,6) if normalized_value is not None else None,'normalized_pnl_usd':round(normalized_pnl,6) if normalized_pnl is not None else None,'normalized_roi_pct':round(normalized_roi,4) if normalized_roi is not None else None,'normalized_current_coverage_count':normalized_verified_count,'normalized_current_coverage_total':len(entries),'normalized_covered_value_usd':round(normalized_covered_value,6),'normalized_covered_roi_pct':round(normalized_covered_roi,4) if normalized_covered_roi is not None else None,'normalized_aggregate_status':'VERIFIED_COMPLETE_CURRENT_COVERAGE' if normalized_complete else 'WITHHELD_PARTIAL_OR_UNVERIFIED_COVERAGE','max_positions':None,'positions':len(entries),'paper_invested_usd':round(invested,6),'paper_current_value_usd':round(value,6) if value is not None else None,'paper_pnl_usd':round(pnl,6) if pnl is not None else None,'paper_roi_pct':round(roi,4) if roi is not None else None,'aggregate_current_roi_status':'VERIFIED_COMPLETE_CURRENT_COVERAGE' if complete else 'WITHHELD_PARTIAL_OR_UNVERIFIED_COVERAGE','verified_current_count':len(verified),'verified_current_investment_usd':round(covered_inv,6),'verified_current_value_usd':round(covered_value,6),'verified_current_roi_pct':round(((covered_value/covered_inv)-1)*100,4) if covered_inv else None,'upgraded_legacy_base_entries':upgraded_legacy_base,'quarantined_legacy_entry_count':quarantined_legacy_entry,'live':sum(e.get('status')=='LIVE' for e in entries),'failed':sum(e.get('status')=='FAILED_SURVIVAL' for e in entries),'unresolved':sum(e.get('status')=='UNRESOLVED' for e in entries),'source_attribution':by,'production_change':False,'truth_note':'Raw ledger is immutable. New eligible entries use $10. Historical entries keep original cost/quantity, while normalized_* fields present every position as an equal $10 allocation for apples-to-apples display. Individual return percentages are unchanged. No historical entry price, time or quantity is rewritten.'}; write(SUMMARY,summary); print(json.dumps(summary,indent=2)); return summary
 if __name__=='__main__':run()
