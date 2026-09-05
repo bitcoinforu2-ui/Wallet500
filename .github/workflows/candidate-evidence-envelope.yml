@@ -9,12 +9,16 @@ on:
     paths:
       - 'src/wallet500/candidate_evidence_envelope.py'
       - 'src/wallet500/decision_snapshot_guard.py'
+      - 'src/wallet500/solana_mintability_gate.py'
+      - 'src/wallet500/solana_mintability_public_guard.py'
       - 'src/wallet500/real_alerts.py'
       - 'src/wallet500/revival_funnel_diagnostics.py'
       - 'src/wallet500/production_age_governance.py'
       - 'src/wallet500/cex_fast_lane.py'
       - 'tests/test_candidate_evidence_envelope.py'
       - 'tests/test_decision_snapshot_guard.py'
+      - 'tests/test_solana_mintability_gate.py'
+      - 'tests/test_solana_mintability_public_guard.py'
       - 'tests/test_real_alerts.py'
       - 'tests/test_real_alerts_revival_bridge.py'
       - 'tests/test_revival_funnel_diagnostics.py'
@@ -54,6 +58,8 @@ jobs:
           python -m pytest -q \
             tests/test_candidate_evidence_envelope.py \
             tests/test_decision_snapshot_guard.py \
+            tests/test_solana_mintability_gate.py \
+            tests/test_solana_mintability_public_guard.py \
             tests/test_real_alerts.py \
             tests/test_real_alerts_revival_bridge.py \
             tests/test_revival_funnel_diagnostics.py \
@@ -83,9 +89,12 @@ jobs:
           if truth.get('missing_evidence_never_positive') is not True: raise SystemExit('ENVELOPE_MISSING_EVIDENCE_GUARD')
           if truth.get('stale_evidence_never_positive') is not True: raise SystemExit('ENVELOPE_STALE_EVIDENCE_GUARD')
           if truth.get('concentration_is_risk_context_only') is not True: raise SystemExit('ENVELOPE_CONCENTRATION_GUARD')
+          if truth.get('solana_mintable_tokens_allowed') is not False: raise SystemExit('ENVELOPE_MINTABLE_GUARD_MISSING')
+          if truth.get('solana_unknown_mintability_allowed') is not False: raise SystemExit('ENVELOPE_UNKNOWN_MINTABILITY_GUARD_MISSING')
           if g.get('passed') is not True: raise SystemExit('DECISION_SNAPSHOT_GUARD_FAILED')
           if int(r.get('version') or 0)<3: raise SystemExit('REAL_ALERT_V3_MISSING')
           if (r.get('truth_contract') or {}).get('evidence_ready_is_visible_but_does_not_auto_promote_to_real_alert') is not True: raise SystemExit('REAL_ALERT_EVIDENCE_GUARD_MISSING')
+          if (r.get('truth_contract') or {}).get('solana_mintable_tokens_allowed') is not False: raise SystemExit('REAL_ALERT_MINTABLE_GUARD_MISSING')
           if int(f.get('version') or 0)<2 or 'evidence_promotion' not in (f.get('lanes') or {}): raise SystemExit('FUNNEL_EVIDENCE_LANE_MISSING')
           print('CANDIDATE_EVIDENCE_TRUTH_OK',e.get('counts'))
           print('DECISION_SNAPSHOT_GUARD_OK',g.get('counts'))
