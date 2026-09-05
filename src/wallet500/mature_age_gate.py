@@ -3,9 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
+import time
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -13,7 +16,8 @@ from .market_data import token_pairs
 
 DATA = Path("data")
 MIN_MARKET_AGE_DAYS = 180
-UA = {"User-Agent": "Wallet500/1.5", "Accept": "application/json"}
+UA = {"User-Agent": "Wallet500/1.6", "Accept": "application/json"}
+CACHE_PATH = DATA / "mature-age-evidence-cache.json"
 
 
 def now_utc() -> datetime:
@@ -60,10 +64,38 @@ def _headers() -> dict:
     return h
 
 
-def _get_json(url: str, timeout: int = 25):
-    req = Request(url, headers=_headers())
-    with urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+def _retry_delay(exc: Exception, attempt: int) -> float:
+    if isinstance(exc, HTTPError):
+        raw = exc.headers.get("Retry-After") if exc.headers else None
+        try:
+            if raw is not None:
+                return min(90.0, max(2.0, float(raw)))
+        except Exception:
+            pass
+    return min(60.0, 4.0 * (2 ** (attempt - 1)) + random.uniform(0.5, 2.5))
+
+
+def _get_json(url: str, timeout: int = 25, attempts: int = 5):
+    last: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            req = Request(url, headers=_headers())
+            with urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except HTTPError as exc:
+            last = exc
+            if exc.code not in {429, 500, 502, 503, 504} or attempt == attempts:
+                raise
+        except (URLError, TimeoutError) as exc:
+            last = exc
+            if attempt == attempts:
+                raise
+        delay = _retry_delay(last, attempt)
+        print(f"mature-age provider retry {attempt}/{attempts} in {delay:.1f}s: {last}")
+        time.sleep(delay)
+    if last:
+        raise last
+    raise RuntimeError("provider retry loop ended unexpectedly")
 
 
 def _cg_markets(params: dict) -> list[dict]:
@@ -91,6 +123,8 @@ def fetch_by_ids(ids: list[str]) -> dict[str, dict]:
             coin_id = str(row.get("id") or "").strip()
             if coin_id:
                 out[coin_id] = row
+        if start + 180 < len(clean):
+            time.sleep(1.25)
     return out
 
 
@@ -112,7 +146,28 @@ def fetch_by_symbols(symbols: list[str]) -> dict[str, list[dict]]:
             sym = str(row.get("symbol") or "").strip().upper()
             if sym:
                 grouped[sym].append(row)
+        if start + 45 < len(clean):
+            time.sleep(1.25)
     return grouped
+
+
+def _load_cache() -> dict:
+    try:
+        raw = json.loads(CACHE_PATH.read_text(encoding="utf-8")) if CACHE_PATH.exists() else {}
+        return raw if isinstance(raw, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_cache(cache: dict) -> None:
+    DATA.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": 1,
+        "updated_at": now_utc().isoformat(),
+        "rule": "ONLY_POSITIVE_EXACT_ID_180D_PLUS_EVIDENCE_IS_CACHED; CACHE_NEVER_CREATES_AGE_PROOF",
+        "coins": cache.get("coins", {}),
+    }
+    CACHE_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _base_symbol(symbol: object) -> str:
@@ -137,6 +192,20 @@ def _verified_meta_from_market(row: dict, source: str) -> dict | None:
     }
 
 
+def _cached_exact_meta(coin_id: str, cache: dict) -> dict | None:
+    row = (cache.get("coins") or {}).get(coin_id)
+    if not isinstance(row, dict) or row.get("market_age_verified") is not True:
+        return None
+    days = age_days_from_evidence(row.get("market_age_evidence_at"), now_utc())
+    if days is None or days < MIN_MARKET_AGE_DAYS:
+        return None
+    return {
+        **row,
+        "market_age_min_days": days,
+        "market_age_evidence_source": "CACHED_" + str(row.get("market_age_evidence_source") or "COINGECKO_EXACT_ID"),
+    }
+
+
 def enforce_cex(path: Path = DATA / "cex-revival-radar.json") -> dict:
     if not path.exists():
         raise SystemExit("CEX_REVIVAL_RADAR_MISSING")
@@ -144,51 +213,23 @@ def enforce_cex(path: Path = DATA / "cex-revival-radar.json") -> dict:
     raw = list(payload.get("alerts") or [])
     symbols = [_base_symbol(x.get("symbol")) for x in raw]
     market_by_symbol = fetch_by_symbols(symbols) if symbols else {}
-
-    kept = []
-    rejected = []
+    kept, rejected = [], []
     for alert in raw:
         base = _base_symbol(alert.get("symbol"))
         matches = market_by_symbol.get(base) or []
         if len(matches) != 1:
-            rejected.append({
-                "symbol": alert.get("symbol"),
-                "base_symbol": base,
-                "reason": "AGE_IDENTITY_AMBIGUOUS" if len(matches) > 1 else "AGE_IDENTITY_NOT_FOUND",
-                "coingecko_matches": len(matches),
-            })
+            rejected.append({"symbol": alert.get("symbol"), "base_symbol": base, "reason": "AGE_IDENTITY_AMBIGUOUS" if len(matches) > 1 else "AGE_IDENTITY_NOT_FOUND", "coingecko_matches": len(matches)})
             continue
-        meta = _verified_meta_from_market(
-            matches[0],
-            "COINGECKO_ATH_OR_ATL_HISTORICAL_EVIDENCE_UNIQUE_SYMBOL",
-        )
+        meta = _verified_meta_from_market(matches[0], "COINGECKO_ATH_OR_ATL_HISTORICAL_EVIDENCE_UNIQUE_SYMBOL")
         if not meta:
             evidence_at, age_days = earliest_market_evidence(matches[0])
-            rejected.append({
-                "symbol": alert.get("symbol"),
-                "base_symbol": base,
-                "reason": "UNDER_180_DAYS" if age_days is not None else "AGE_UNVERIFIED",
-                "market_age_min_days": age_days,
-                "market_age_evidence_at": evidence_at,
-                "coingecko_id": matches[0].get("id"),
-            })
+            rejected.append({"symbol": alert.get("symbol"), "base_symbol": base, "reason": "UNDER_180_DAYS" if age_days is not None else "AGE_UNVERIFIED", "market_age_min_days": age_days, "market_age_evidence_at": evidence_at, "coingecko_id": matches[0].get("id")})
             continue
         kept.append({**alert, **meta})
-
     payload["version"] = max(int(payload.get("version") or 0), 7)
-    payload["alerts"] = kept
-    payload["alerts_count"] = len(kept)
+    payload["alerts"], payload["alerts_count"] = kept, len(kept)
     payload["raw_alerts_before_age_gate"] = len(raw)
-    payload["age_gate"] = {
-        "status": "ENFORCED_FAIL_CLOSED",
-        "minimum_market_age_days": MIN_MARKET_AGE_DAYS,
-        "accepted": len(kept),
-        "rejected": len(rejected),
-        "identity_rule": "CEX_SYMBOL_MUST_MAP_TO_EXACTLY_ONE_COINGECKO_MARKET",
-        "evidence_rule": "EARLIEST_ATH_OR_ATL_DATE_MUST_PROVE_AT_LEAST_180_DAYS_OF_MARKET_HISTORY",
-        "unknown_or_ambiguous_age": "REJECT",
-        "rejections": rejected[:100],
-    }
+    payload["age_gate"] = {"status": "ENFORCED_FAIL_CLOSED", "minimum_market_age_days": MIN_MARKET_AGE_DAYS, "accepted": len(kept), "rejected": len(rejected), "identity_rule": "CEX_SYMBOL_MUST_MAP_TO_EXACTLY_ONE_COINGECKO_MARKET", "evidence_rule": "EARLIEST_ATH_OR_ATL_DATE_MUST_PROVE_AT_LEAST_180_DAYS_OF_MARKET_HISTORY", "unknown_or_ambiguous_age": "REJECT", "rejections": rejected[:100]}
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return payload["age_gate"]
 
@@ -202,12 +243,7 @@ def _pair_age_meta(coin: dict) -> dict | None:
         return None
     now = now_utc()
     evidence = datetime.fromtimestamp(now.timestamp() - age * 86400, tz=timezone.utc)
-    return {
-        "market_age_verified": True,
-        "market_age_min_days": int(age),
-        "market_age_evidence_at": evidence.isoformat(),
-        "market_age_evidence_source": "DEXSCREENER_PAIR_CREATED_AT_LOWER_BOUND",
-    }
+    return {"market_age_verified": True, "market_age_min_days": int(age), "market_age_evidence_at": evidence.isoformat(), "market_age_evidence_source": "DEXSCREENER_PAIR_CREATED_AT_LOWER_BOUND"}
 
 
 def _recompute_revival_counts(payload: dict) -> None:
@@ -215,22 +251,14 @@ def _recompute_revival_counts(payload: dict) -> None:
     counts = payload.setdefault("counts", {})
     counts["universe"] = len(coins)
     counts["dex_verified_pairs"] = sum(1 for x in coins if x.get("dex_link_type") == "DEXSCREENER_VERIFIED_PAIR")
-    counts["core_drawdown_watch"] = sum(
-        1 for x in coins if 70 <= float(x.get("drawdown_from_ath_pct") or -1) <= 95
-    )
+    counts["core_drawdown_watch"] = sum(1 for x in coins if 70 <= float(x.get("drawdown_from_ath_pct") or -1) <= 95)
     counts["waking_market_only"] = sum(1 for x in coins if x.get("watch_status") == "WAKING_MARKET_ONLY")
-    counts["absorption_proxy_watch"] = sum(
-        1 for x in coins if (x.get("order_flow_absorption") or {}).get("signal") is True
-    )
+    counts["absorption_proxy_watch"] = sum(1 for x in coins if (x.get("order_flow_absorption") or {}).get("signal") is True)
     counts["absorption_candidate_proxy_watch"] = sum(1 for x in coins if x.get("absorption_candidate_proxy") is True)
     expansion = [x for x in coins if x.get("source") == "revival_discovery_state+dexscreener_absorption_expansion"]
     counts["absorption_discovery_expansion_added"] = len(expansion)
-    counts["absorption_discovery_strict_added"] = sum(
-        1 for x in expansion if (x.get("order_flow_absorption") or {}).get("signal") is True
-    )
-    counts["absorption_discovery_candidate_added"] = sum(
-        1 for x in expansion if x.get("watch_status") == "ABSORPTION_CANDIDATE_DISCOVERY_EXPANSION"
-    )
+    counts["absorption_discovery_strict_added"] = sum(1 for x in expansion if (x.get("order_flow_absorption") or {}).get("signal") is True)
+    counts["absorption_discovery_candidate_added"] = sum(1 for x in expansion if x.get("watch_status") == "ABSORPTION_CANDIDATE_DISCOVERY_EXPANSION")
 
 
 def enforce_revival(path: Path = DATA / "revival-1000-latest.json") -> dict:
@@ -238,16 +266,22 @@ def enforce_revival(path: Path = DATA / "revival-1000-latest.json") -> dict:
         raise SystemExit("REVIVAL_1000_LATEST_MISSING")
     payload = json.loads(path.read_text(encoding="utf-8"))
     raw = list(payload.get("coins") or [])
-    exact_ids = [
-        str(x.get("id") or "") for x in raw
-        if x.get("source") != "revival_discovery_state+dexscreener_absorption_expansion"
-        and str(x.get("id") or "").strip()
-        and not str(x.get("id") or "").startswith("discovery:")
-    ]
-    market_by_id = fetch_by_ids(exact_ids) if exact_ids else {}
-
-    kept = []
-    rejected = []
+    cache = _load_cache()
+    cache.setdefault("coins", {})
+    exact_ids = list(dict.fromkeys(str(x.get("id") or "").strip() for x in raw if x.get("source") != "revival_discovery_state+dexscreener_absorption_expansion" and str(x.get("id") or "").strip() and not str(x.get("id") or "").startswith("discovery:")))
+    cached_ids = {coin_id for coin_id in exact_ids if _cached_exact_meta(coin_id, cache)}
+    missing_ids = [coin_id for coin_id in exact_ids if coin_id not in cached_ids]
+    market_by_id: dict[str, dict] = {}
+    provider_error = None
+    if missing_ids:
+        try:
+            market_by_id = fetch_by_ids(missing_ids)
+        except Exception as exc:
+            provider_error = f"{type(exc).__name__}:{exc}"
+            print(f"mature-age exact-id provider degraded after bounded retries; fail-closed cache fallback: {provider_error}")
+    kept, rejected = [], []
+    cache_changed = False
+    cache_hits = 0
     for coin in raw:
         is_expansion = coin.get("source") == "revival_discovery_state+dexscreener_absorption_expansion"
         meta = _pair_age_meta(coin) if is_expansion else None
@@ -255,21 +289,20 @@ def enforce_revival(path: Path = DATA / "revival-1000-latest.json") -> dict:
             coin_id = str(coin.get("id") or "").strip()
             market = market_by_id.get(coin_id)
             if market:
-                meta = _verified_meta_from_market(
-                    market,
-                    "COINGECKO_ATH_OR_ATL_HISTORICAL_EVIDENCE_EXACT_ID",
-                )
+                meta = _verified_meta_from_market(market, "COINGECKO_ATH_OR_ATL_HISTORICAL_EVIDENCE_EXACT_ID")
+                if meta:
+                    cache["coins"][coin_id] = meta
+                    cache_changed = True
+            if meta is None:
+                meta = _cached_exact_meta(coin_id, cache)
+                if meta:
+                    cache_hits += 1
         if not meta:
-            rejected.append({
-                "symbol": coin.get("symbol"),
-                "id": coin.get("id"),
-                "source": coin.get("source"),
-                "pair_age_days": coin.get("pair_age_days"),
-                "reason": "UNDER_180_DAYS_OR_AGE_UNVERIFIED",
-            })
+            rejected.append({"symbol": coin.get("symbol"), "id": coin.get("id"), "source": coin.get("source"), "pair_age_days": coin.get("pair_age_days"), "reason": "UNDER_180_DAYS_OR_AGE_UNVERIFIED"})
             continue
         kept.append({**coin, **meta})
-
+    if cache_changed:
+        _save_cache(cache)
     payload["coins"] = kept
     payload["asset_age_filter"] = "VERIFIED_MARKET_AGE_GTE_180_DAYS_ONLY"
     payload["age_gate"] = {
@@ -279,10 +312,10 @@ def enforce_revival(path: Path = DATA / "revival-1000-latest.json") -> dict:
         "accepted": len(kept),
         "rejected": len(rejected),
         "unknown_age": "REJECT",
-        "evidence_sources": [
-            "COINGECKO_ATH_OR_ATL_HISTORICAL_EVIDENCE_EXACT_ID",
-            "DEXSCREENER_PAIR_CREATED_AT_LOWER_BOUND",
-        ],
+        "provider_degraded": provider_error is not None,
+        "provider_error": provider_error,
+        "verified_cache_hits": cache_hits,
+        "evidence_sources": ["COINGECKO_ATH_OR_ATL_HISTORICAL_EVIDENCE_EXACT_ID", "CACHED_COINGECKO_ATH_OR_ATL_HISTORICAL_EVIDENCE_EXACT_ID", "DEXSCREENER_PAIR_CREATED_AT_LOWER_BOUND"],
         "rejections": rejected[:100],
     }
     _recompute_revival_counts(payload)
@@ -295,8 +328,7 @@ def enforce_revival(path: Path = DATA / "revival-1000-latest.json") -> dict:
 
 
 def _same_address(chain: str, left: object, right: object) -> bool:
-    a = str(left or "").strip()
-    b = str(right or "").strip()
+    a, b = str(left or "").strip(), str(right or "").strip()
     if not a or not b:
         return False
     if chain.lower() in {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "polygon"}:
@@ -318,12 +350,7 @@ def _meta_from_pair_created_at(pair_created_at: object, source: str) -> dict | N
     age_days = int((now - evidence).total_seconds() // 86400)
     if age_days < MIN_MARKET_AGE_DAYS:
         return None
-    return {
-        "market_age_verified": True,
-        "market_age_min_days": age_days,
-        "market_age_evidence_at": evidence.isoformat(),
-        "market_age_evidence_source": source,
-    }
+    return {"market_age_verified": True, "market_age_min_days": age_days, "market_age_evidence_at": evidence.isoformat(), "market_age_evidence_source": source}
 
 
 def _oldest_exact_token_pair_meta(row: dict) -> dict | None:
@@ -331,82 +358,47 @@ def _oldest_exact_token_pair_meta(row: dict) -> dict | None:
     token = str(row.get("token") or row.get("mint") or row.get("token_address") or "").strip()
     pair = str(row.get("pair_address") or "").strip()
     locked = str(row.get("locked_pair_address") or "").strip()
-    if not chain or not token or not pair or not locked:
+    if not chain or not token or not pair or not locked or row.get("pair_identity_locked") is not True or not _same_address(chain, pair, locked):
         return None
-    if row.get("pair_identity_locked") is not True or not _same_address(chain, pair, locked):
-        return None
-
-    meta = _meta_from_pair_created_at(
-        row.get("pair_created_at"),
-        "DEXSCREENER_EXACT_LOCKED_PAIR_CREATED_AT",
-    )
+    meta = _meta_from_pair_created_at(row.get("pair_created_at"), "DEXSCREENER_EXACT_LOCKED_PAIR_CREATED_AT")
     if meta:
         return meta
-
     pairs = token_pairs(chain, token)
-    oldest_ms = None
-    oldest_pair = None
+    oldest_ms, oldest_pair = None, None
     for candidate in pairs or []:
         base = (candidate.get("baseToken") or {}).get("address")
-        quote_token = (candidate.get("quoteToken") or {}).get("address")
-        if not (_same_address(chain, token, base) or _same_address(chain, token, quote_token)):
+        quote = (candidate.get("quoteToken") or {}).get("address")
+        if not (_same_address(chain, token, base) or _same_address(chain, token, quote)):
             continue
         try:
             ms = float(candidate.get("pairCreatedAt") or 0)
         except (TypeError, ValueError):
             continue
         if ms > 0 and (oldest_ms is None or ms < oldest_ms):
-            oldest_ms = ms
-            oldest_pair = candidate.get("pairAddress")
-    meta = _meta_from_pair_created_at(
-        oldest_ms,
-        "DEXSCREENER_OLDEST_CURRENT_EXACT_TOKEN_PAIR_CREATED_AT",
-    )
+            oldest_ms, oldest_pair = ms, candidate.get("pairAddress")
+    meta = _meta_from_pair_created_at(oldest_ms, "DEXSCREENER_OLDEST_CURRENT_EXACT_TOKEN_PAIR_CREATED_AT")
     if meta:
         meta["market_age_evidence_pair_address"] = oldest_pair
     return meta
 
 
-def enforce_active_candidates(
-    path: Path = DATA / "active-qualified-candidates.json",
-    audit_path: Path = DATA / "active-qualified-age-gate.json",
-) -> dict:
+def enforce_active_candidates(path: Path = DATA / "active-qualified-candidates.json", audit_path: Path = DATA / "active-qualified-age-gate.json") -> dict:
     if not path.exists():
         raise SystemExit("ACTIVE_QUALIFIED_CANDIDATES_MISSING")
     raw = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, list):
         raise SystemExit("ACTIVE_QUALIFIED_CANDIDATES_NOT_LIST")
-
-    kept = []
-    rejected = []
+    kept, rejected = [], []
     for row in raw:
         if not isinstance(row, dict):
             continue
         meta = _oldest_exact_token_pair_meta(row)
         if not meta:
-            rejected.append({
-                "chain": row.get("chain"),
-                "token": row.get("token") or row.get("mint") or row.get("token_address"),
-                "pair_address": row.get("pair_address"),
-                "reason": "UNDER_180_DAYS_OR_EXACT_MARKET_AGE_UNVERIFIED",
-            })
+            rejected.append({"chain": row.get("chain"), "token": row.get("token") or row.get("mint") or row.get("token_address"), "pair_address": row.get("pair_address"), "reason": "UNDER_180_DAYS_OR_EXACT_MARKET_AGE_UNVERIFIED"})
             continue
         kept.append({**row, **meta})
-
     path.write_text(json.dumps(kept, ensure_ascii=False, indent=2), encoding="utf-8")
-    report = {
-        "version": 1,
-        "generated_at": now_utc().isoformat(),
-        "status": "ENFORCED_FAIL_CLOSED",
-        "minimum_market_age_days": MIN_MARKET_AGE_DAYS,
-        "raw_active_before_age_gate": len(raw),
-        "accepted": len(kept),
-        "rejected": len(rejected),
-        "identity_rule": "EXACT_CHAIN_TOKEN_AND_LOCKED_PAIR_REQUIRED; SYMBOL_NOT_USED",
-        "evidence_rule": "EXACT_LOCKED_PAIR_OR_OLDEST_CURRENT_EXACT_TOKEN_PAIR_MUST_PROVE_AT_LEAST_180_DAYS",
-        "unknown_age": "REJECT",
-        "rejections": rejected[:500],
-    }
+    report = {"version": 1, "generated_at": now_utc().isoformat(), "status": "ENFORCED_FAIL_CLOSED", "minimum_market_age_days": MIN_MARKET_AGE_DAYS, "raw_active_before_age_gate": len(raw), "accepted": len(kept), "rejected": len(rejected), "identity_rule": "EXACT_CHAIN_TOKEN_AND_LOCKED_PAIR_REQUIRED; SYMBOL_NOT_USED", "evidence_rule": "EXACT_LOCKED_PAIR_OR_OLDEST_CURRENT_EXACT_TOKEN_PAIR_MUST_PROVE_AT_LEAST_180_DAYS", "unknown_age": "REJECT", "rejections": rejected[:500]}
     audit_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return report
 
@@ -438,9 +430,7 @@ def main() -> None:
     p.add_argument("--active", action="store_true")
     args = p.parse_args()
     selected = args.cex or args.revival or args.active
-    do_cex = args.cex or not selected
-    do_revival = args.revival or not selected
-    do_active = args.active or not selected
+    do_cex, do_revival, do_active = args.cex or not selected, args.revival or not selected, args.active or not selected
     report = {"minimum_market_age_days": MIN_MARKET_AGE_DAYS}
     if do_cex:
         report["cex"] = enforce_cex()
