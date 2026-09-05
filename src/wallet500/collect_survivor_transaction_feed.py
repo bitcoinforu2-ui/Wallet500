@@ -9,7 +9,7 @@ from urllib.request import Request, urlopen
 DATA = Path("data")
 WATCH = DATA / "survivor-wave-watch.json"
 OUT = DATA / "wallet-transaction-observations.json"
-BITQUERY_ENDPOINT = os.getenv("BITQUERY_ENDPOINT", "https://streaming.bitquery.io/graphql")
+BITQUERY_ENDPOINT = os.getenv("BITQUERY_ENDPOINT", "").strip() or "https://streaming.bitquery.io/graphql"
 NETWORK = {
     "solana": "Solana",
     "ethereum": "Ethereum",
