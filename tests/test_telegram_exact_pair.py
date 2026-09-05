@@ -1,3 +1,5 @@
+import json
+
 from wallet500.telegram_alerts import (
     _fmt_israel_time,
     _is_actionable_real_alert,
@@ -5,6 +7,7 @@ from wallet500.telegram_alerts import (
     _message,
     _pair_key,
     _tier,
+    run,
 )
 
 
@@ -96,10 +99,17 @@ def test_dedupe_key_contains_pair_and_message_exposes_manual_promotion_dex_and_t
     row = _row()
     assert _pair_key(row) == "bsc:0xabc:0xpair"
     display = _merge_display_context(row, _real_alert())
-    msg = _message(display, "HIGH_CONVICTION", sent_at="2026-09-05T14:30:00+00:00")
+    msg = _message(
+        display,
+        "HIGH_CONVICTION",
+        sent_at="2026-09-05T14:30:00+00:00",
+        alert_event_id="abc123",
+    )
     assert "HIGH-CONVICTION BUY REVIEW" in msg
+    assert "🆕 NEW REAL ALERT" in msg
     assert "תאריך ושעת שליחת ההתראה (ישראל): 05/09/2026 17:30:00" in msg
     assert "T0 אות מקורי (ישראל): 01/09/2026 21:17:38" in msg
+    assert "Alert ID: abc123" in msg
     assert "MANUAL DECISION ONLY" in msg
     assert "Promotion: EVIDENCE_READY → ACTIONABLE" in msg
     assert "Token: ARC" in msg
@@ -111,3 +121,34 @@ def test_dedupe_key_contains_pair_and_message_exposes_manual_promotion_dex_and_t
     assert "Positive evidence: VERIFIED_SOCIAL" in msg
     assert "Verified evidence: SMART_MONEY, VERIFIED_SOCIAL" in msg
     assert "OPEN DEX: https://dexscreener.com/bsc/0xpair" in msg
+
+
+def test_unconfigured_scan_lane_cannot_overwrite_production_telegram_truth(tmp_path, monkeypatch):
+    existing_report = {
+        "version": 10,
+        "configured": True,
+        "delivered_count": 1,
+        "delivered": [{"alert_event_id": "keep-me"}],
+    }
+    existing_state = {
+        "sent": {
+            "bsc:0xabc:0xpair": {
+                "actionable": True,
+                "alert_event_id": "keep-me",
+            }
+        }
+    }
+    (tmp_path / "telegram-alert-report.json").write_text(json.dumps(existing_report), encoding="utf-8")
+    (tmp_path / "telegram-alert-state.json").write_text(json.dumps(existing_state), encoding="utf-8")
+    (tmp_path / "active-qualified-candidates.json").write_text("[]", encoding="utf-8")
+    (tmp_path / "real-alerts.json").write_text('{"alerts": []}', encoding="utf-8")
+
+    monkeypatch.setenv("WALLET500_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+
+    result = run()
+
+    assert result == existing_report
+    assert json.loads((tmp_path / "telegram-alert-report.json").read_text()) == existing_report
+    assert json.loads((tmp_path / "telegram-alert-state.json").read_text()) == existing_state
