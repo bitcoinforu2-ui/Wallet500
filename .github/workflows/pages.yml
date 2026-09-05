@@ -22,6 +22,7 @@ on:
       - 'dashboard-social.html'
       - 'dashboard-live-price.js'
       - 'dashboard-reference-fix.js'
+      - 'wallet500-auth.js'
       - '.github/workflows/pages.yml'
 
 permissions:
@@ -62,32 +63,42 @@ jobs:
           cp dashboard-social.html _site/social/index.html
           cp dashboard-live-price.js _site/dashboard-live-price.js
           cp dashboard-reference-fix.js _site/dashboard-reference-fix.js
+          cp wallet500-auth.js _site/wallet500-auth.js
           cp -r data _site/data
 
           python - <<'PY'
           from pathlib import Path
           import re
+          auth_tag='<script src="/Wallet500/wallet500-auth.js"></script>'
           for page in Path('_site').rglob('*.html'):
               s=page.read_text(encoding='utf-8')
               s=re.sub(r'<style id="w500-sticky-rubric-source">.*?</style>', '', s, flags=re.S|re.I)
               s=re.sub(r'<style id="w500-rubric-style">.*?</style>', '', s, flags=re.S|re.I)
               s=re.sub(r'<nav id="w500-experiment-rubric"[^>]*>.*?</nav>', '', s, flags=re.S|re.I)
+              if auth_tag not in s:
+                  if re.search(r'</head\s*>', s, flags=re.I):
+                      s=re.sub(r'</head\s*>', auth_tag+'\n</head>', s, count=1, flags=re.I)
+                  else:
+                      s=auth_tag+'\n'+s
               page.write_text(s,encoding='utf-8')
           PY
 
           touch _site/.nojekyll
           printf '%s\n' "$GITHUB_SHA" > _site/build.txt
 
-          for f in _site/index.html _site/live/index.html _site/alerts/index.html _site/revival/index.html _site/performance/index.html _site/control/index.html _site/terminal/index.html _site/social/index.html _site/data/real-alerts.json _site/data/case-study-doge1.json _site/data/revival-1000-latest.json; do
+          for f in _site/index.html _site/live/index.html _site/alerts/index.html _site/revival/index.html _site/performance/index.html _site/control/index.html _site/terminal/index.html _site/social/index.html _site/wallet500-auth.js _site/data/real-alerts.json _site/data/case-study-doge1.json _site/data/revival-1000-latest.json; do
             check_file "$f"
           done
           check_text _site/index.html 'WALLET500 · מסך החלטה'
           check_text _site/index.html 'VETERAN REVIVAL ONLY'
           check_text _site/index.html 'FUSION HOT/WARM'
+          check_text _site/index.html '/Wallet500/wallet500-auth.js'
           check_text _site/social/index.html 'SOCIAL INTELLIGENCE V2'
           check_text _site/live/index.html 'LIVE RADAR'
           check_text _site/revival/index.html 'REVIVAL'
           check_text _site/performance/index.html 'LIVE PRICE 5s'
+          check_text _site/wallet500-auth.js '639379001638-uc8gc79gokfoe2ltmt29880g56durdmi.apps.googleusercontent.com'
+          check_text _site/wallet500-auth.js 'bitcoinforu2@gmail.com'
           if grep -R -Fq '/Wallet500/kol/' _site/*.html _site/*/index.html 2>/dev/null; then
             fail 'retired KOL research link leaked into published site'
           fi
@@ -115,8 +126,9 @@ jobs:
             build="$(curl -fsSL --max-time 20 "${BASE}build.txt?v=${GITHUB_SHA}" 2>/dev/null || true)"
             root="$(curl -fsSL --max-time 20 "${BASE}?v=${GITHUB_SHA}" 2>/dev/null || true)"
             social="$(curl -fsSL --max-time 20 "${BASE}social/?v=${GITHUB_SHA}" 2>/dev/null || true)"
+            auth="$(curl -fsSL --max-time 20 "${BASE}wallet500-auth.js?v=${GITHUB_SHA}" 2>/dev/null || true)"
             feed="$(curl -fsSL --max-time 20 "${BASE}data/real-alerts.json?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'WALLET500 · מסך החלטה' <<<"$root" && grep -Fq 'SOCIAL INTELLIGENCE V2' <<<"$social" && python -c 'import json,sys; json.load(sys.stdin)' <<<"$feed" >/dev/null 2>&1; then
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'WALLET500 · מסך החלטה' <<<"$root" && grep -Fq '/Wallet500/wallet500-auth.js' <<<"$root" && grep -Fq 'google.accounts.id.initialize' <<<"$auth" && grep -Fq 'SOCIAL INTELLIGENCE V2' <<<"$social" && python -c 'import json,sys; json.load(sys.stdin)' <<<"$feed" >/dev/null 2>&1; then
               ok=1
               break
             fi
