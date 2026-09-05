@@ -130,18 +130,64 @@ jobs:
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
+            source_sha="$(git rev-parse HEAD)"
+            export SOURCE_SHA="$source_sha"
             python -m wallet500.candidate_evidence_envelope
             python -m wallet500.real_alerts
             python -m wallet500.revival_funnel_diagnostics
             python -m wallet500.cross_signal_fusion_v2
             python -m wallet500.decision_snapshot_guard
 
+            python - <<'PY'
+          import hashlib, json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          files={
+              'candidate_evidence':'data/candidate-evidence-envelope.json',
+              'real_alerts':'data/real-alerts.json',
+              'revival_funnel':'data/revival-funnel-diagnostics.json',
+              'cross_signal_fusion':'data/cross-signal-fusion-v2.json',
+              'decision_integrity':'data/decision-snapshot-integrity.json',
+          }
+          payloads={k:Path(v).read_bytes() for k,v in files.items()}
+          guard=json.loads(payloads['decision_integrity'].decode('utf-8'))
+          real=json.loads(payloads['real_alerts'].decode('utf-8'))
+          if guard.get('passed') is not True:
+              raise SystemExit('DECISION_PUBLICATION_GUARD_NOT_PASS')
+          truth=real.get('truth_contract') or {}
+          if truth.get('minimum_market_age_days') != 180 or truth.get('exact_dex_pair_required') is not True:
+              raise SystemExit('DECISION_PUBLICATION_REAL_ALERT_TRUTH_DRIFT')
+          run_id=str(os.environ.get('GITHUB_RUN_ID') or '').strip()
+          source_sha=str(os.environ.get('SOURCE_SHA') or '').strip()
+          if not run_id or len(source_sha)!=40:
+              raise SystemExit('DECISION_PUBLICATION_SOURCE_ID_INVALID')
+          proof={
+              'version':1,
+              'created_at':datetime.now(timezone.utc).isoformat(),
+              'status':'VERIFIED_COHERENT_DECISION_SNAPSHOT',
+              'producer':'CANDIDATE_EVIDENCE_ENVELOPE',
+              'workflow_run_id':run_id,
+              'source_sha':source_sha,
+              'generation_id':f'candidate-evidence:{run_id}:{source_sha}',
+              'decision_validation':'PASS',
+              'minimum_market_age_days':180,
+              'exact_pair_required':True,
+              'hashes':{k:hashlib.sha256(v).hexdigest() for k,v in payloads.items()},
+              'proof_rule':'ATOMIC_COMMIT_BINDS_REAL_ALERTS_TO_COHERENT_DECISION_SNAPSHOT',
+          }
+          Path('data/decision-publish-evidence.json').write_text(
+              json.dumps(proof,ensure_ascii=False,indent=2,sort_keys=True)+'\n',encoding='utf-8')
+          print('DECISION_PUBLICATION_PROOF_READY',proof['generation_id'],proof['hashes']['real_alerts'])
+          PY
+
             git add \
               data/candidate-evidence-envelope.json \
               data/real-alerts.json \
               data/revival-funnel-diagnostics.json \
               data/cross-signal-fusion-v2.json \
-              data/decision-snapshot-integrity.json
+              data/decision-snapshot-integrity.json \
+              data/decision-publish-evidence.json
             if git diff --cached --quiet; then
               echo 'CANDIDATE_EVIDENCE_NO_DATA_CHANGE'
               exit 0
