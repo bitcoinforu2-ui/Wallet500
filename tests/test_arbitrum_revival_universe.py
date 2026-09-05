@@ -18,6 +18,9 @@ def test_liquidity_floor_never_relaxed():
     r=a.classify({'token':'0x'+'2'*40},snap(liq=49999),datetime(2026,9,6,tzinfo=timezone.utc))
     assert 'LIVE_LIQUIDITY_LT_50K' in r['blockers']
 
-def test_no_pair_fails_closed():
+def test_no_pair_fails_closed_and_stays_research_only():
     r=a.classify({'token':'0x'+'2'*40},None,datetime(2026,9,6,tzinfo=timezone.utc))
     assert r['blockers']==['NO_VERIFIED_EXACT_PAIR']
+    assert r['exact_pair_verified'] is False and r['market_age_verified'] is False
+    assert r['revival_signal'] is False and r['research_only'] is True
+    assert r['actionable'] is False and r['production_portfolio_impact']=='NONE'
