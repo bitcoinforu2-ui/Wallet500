@@ -87,7 +87,7 @@ def evaluate(candidate,outcomes):
     _, liquidity_source, liquidity_eligible = safe_production_liquidity(candidate)
     if not liquidity_eligible and liquidity_source=='CONCENTRATED_POOL_DEPTH_UNVERIFIED_FAIL_CLOSED':
         critical.append('CONCENTRATED_POOL_EXECUTION_DEPTH_UNVERIFIED_HARD_BLOCK')
-    if current<MIN_TRADABLE_LIQUIDITY_USD: critical.append('EXECUTION_LIQUIDITY_BELOW_50K_HARD_BLOCK')
+    if current<MIN_TRADABLE_LIQUIDITY_USD: critical.append('EXECUTION_POOL_LIQUIDITY_BELOW_50K_HARD_BLOCK')
     if previous>=MIN_TRADABLE_LIQUIDITY_USD and current>0:
         rp=current/previous
         if rp<=MAX_LIQUIDITY_DROP_FROM_PREV: critical.append('LIQUIDITY_EVACUATION_GT_55PCT_ONE_OBSERVATION')
@@ -107,8 +107,6 @@ def evaluate(candidate,outcomes):
 
 def apply(output_dir='data'):
     out=Path(output_dir)
-    # Solana candidates are removed before any production scoring unless the
-    # on-chain mint account proves mintAuthority == null. Unknown also fails closed.
     enforce_active(out)
     outcomes=_load(out/'outcome-tracker.json',{}); active=_load(out/'active-qualified-candidates.json',[]); watch=_load(out/'watchlist.json',[]); existing=_load(out/'pump-dump-risk.json',[]); summary=_load(out/'run-summary.json',{})
     evaluations=[evaluate(x,outcomes) for x in active]; passed=[x for x in evaluations if not x.get('production_risk_blocked')]; blocked=[x for x in evaluations if x.get('production_risk_blocked')]
