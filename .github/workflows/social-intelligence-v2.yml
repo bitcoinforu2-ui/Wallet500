@@ -56,6 +56,9 @@ jobs:
         env:
           SOCIAL_SCAN_BUDGET: '24'
           SOCIAL_SCAN_PRIORITY_SLOTS: '8'
+          X_DIRECT_SLOTS: '6'
+          YOUTUBE_DIRECT_SLOTS: '1'
+          REDDIT_DIRECT_SLOTS: '6'
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
@@ -99,6 +102,13 @@ jobs:
           cfg=s.get('direct_provider_config') or {}
           for key in ('x','youtube','reddit_oauth','telegram_public_direct'):
               if key not in cfg or not isinstance(cfg[key], bool): raise SystemExit('DIRECT_PROVIDER_CONFIG_INVALID:'+key)
+          budget=s.get('direct_provider_budget') or {}
+          calls=s.get('direct_provider_calls_used') or {}
+          expected={'x':6,'youtube':1,'reddit':6}
+          for key,limit in expected.items():
+              if budget.get(key)!=limit: raise SystemExit('DIRECT_PROVIDER_BUDGET_INVALID:'+key)
+              used=calls.get(key)
+              if not isinstance(used,int) or used<0 or used>limit: raise SystemExit('DIRECT_PROVIDER_CALL_OVER_BUDGET:'+key)
           for row in i.get('tokens') or []:
               a=row.get('availability') or {}; scores=row.get('scores') or {}
               if a.get('social_momentum') is False and scores.get('social_momentum') is not None: raise SystemExit('SOCIAL_UNKNOWN_RENDERED_AS_ZERO')
@@ -107,7 +117,7 @@ jobs:
           for row in f.get('tokens') or []:
               if row.get('production_effect') is not False or row.get('automatic_buy') is not False: raise SystemExit('FUSION_ROW_PRODUCTION_LEAK')
               if row.get('risk',{}).get('hard_blockers') and row.get('fusion_status')!='HARD_TRUTH_BLOCKED': raise SystemExit('HARD_BLOCKER_OVERRIDE')
-          print('SOCIAL_DIRECT_V3_OK', s.get('direct_provider_config'), i.get('counts'), f.get('counts'))
+          print('SOCIAL_DIRECT_V3_OK', cfg, 'budget=', budget, 'calls=', calls, 'breakers=', s.get('direct_provider_circuit_breakers'), i.get('counts'), f.get('counts'))
           PY
 
       - name: Publish social intelligence snapshot
