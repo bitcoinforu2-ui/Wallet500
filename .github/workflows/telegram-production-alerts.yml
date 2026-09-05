@@ -49,6 +49,7 @@ jobs:
       - name: Verify fresh strict production snapshot before user-facing delivery
         run: |
           python - <<'PY'
+          import hashlib
           import json
           from datetime import datetime, timezone
           from pathlib import Path
@@ -64,10 +65,33 @@ jobs:
                   d=d.replace(tzinfo=timezone.utc)
               return d.astimezone(timezone.utc)
 
-          real=json.loads(Path('data/real-alerts.json').read_text())
-          proof=json.loads(Path('data/publish-evidence.json').read_text())
+          real_path=Path('data/real-alerts.json')
+          proof_path=Path('data/publish-evidence.json')
+          real_bytes=real_path.read_bytes()
+          real=json.loads(real_bytes.decode('utf-8'))
+          proof=json.loads(proof_path.read_text())
+
           if proof.get('strict_validation') != 'PASS':
               raise SystemExit('TELEGRAM_SOURCE_STRICT_VALIDATION_NOT_PASS')
+          if proof.get('status') != 'VERIFIED_PUBLISHED_SNAPSHOT':
+              raise SystemExit('TELEGRAM_SOURCE_PUBLICATION_PROOF_STATUS_INVALID')
+          source_run=int(proof.get('source_run_id') or 0)
+          if source_run <= 0 or int(proof.get('run_id') or 0) != source_run:
+              raise SystemExit('TELEGRAM_SOURCE_PUBLICATION_PROOF_RUN_INVALID')
+          source_sha=str(proof.get('source_sha') or '').strip()
+          generation_id=str(proof.get('generation_id') or '').strip()
+          if len(source_sha) != 40 or generation_id != f'live-scan:{source_run}:{source_sha}':
+              raise SystemExit('TELEGRAM_SOURCE_PUBLICATION_PROOF_GENERATION_INVALID')
+
+          actual_real_sha=hashlib.sha256(real_bytes).hexdigest()
+          bound_real_sha=str(proof.get('real_alerts_sha256') or '').strip()
+          if not bound_real_sha:
+              raise SystemExit('TELEGRAM_SOURCE_PUBLICATION_PROOF_UNBOUND')
+          if actual_real_sha != bound_real_sha:
+              raise SystemExit(
+                  f'TELEGRAM_SOURCE_PUBLICATION_PROOF_MISMATCH expected={bound_real_sha} actual={actual_real_sha}'
+              )
+
           if (real.get('truth_contract') or {}).get('minimum_market_age_days') != 180:
               raise SystemExit('TELEGRAM_SOURCE_VETERAN_SCOPE_DRIFT')
           if (real.get('truth_contract') or {}).get('exact_dex_pair_required') is not True:
@@ -80,7 +104,9 @@ jobs:
           if real_age > 35*60 or proof_age > 35*60:
               raise SystemExit(f'TELEGRAM_SOURCE_STALE real_age={real_age:.0f}s proof_age={proof_age:.0f}s')
           print('TELEGRAM_SOURCE_FRESH_STRICT_OK', {
+              'generation_id': generation_id,
               'real_alerts': (real.get('counts') or {}).get('real_alerts'),
+              'real_alerts_sha256': actual_real_sha,
               'real_age_seconds': round(real_age,1),
               'proof_age_seconds': round(proof_age,1),
           })
