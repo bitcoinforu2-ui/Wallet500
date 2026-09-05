@@ -8,9 +8,13 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/social_feed_scan.py'
+      - 'src/wallet500/social_feed_scan_v2.py'
       - 'src/wallet500/social_intelligence_v2.py'
+      - 'src/wallet500/social_coverage_hardening.py'
       - 'src/wallet500/cross_signal_fusion_v2.py'
       - 'tests/test_social_intelligence_v2.py'
+      - 'tests/test_social_feed_scan_v2.py'
+      - 'tests/test_social_coverage_hardening.py'
       - 'tests/test_cross_signal_fusion_v2.py'
       - '.github/workflows/social-intelligence-v2.yml'
 
@@ -24,7 +28,7 @@ concurrency:
 jobs:
   social:
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 22
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,21 +41,31 @@ jobs:
         run: pip install -e . pytest
 
       - name: Unit tests
-        run: python -m pytest -q tests/test_social_intelligence_v2.py tests/test_cross_signal_fusion_v2.py tests/test_social_organic_acceleration.py
+        run: >-
+          python -m pytest -q
+          tests/test_social_intelligence_v2.py
+          tests/test_social_feed_scan_v2.py
+          tests/test_social_coverage_hardening.py
+          tests/test_cross_signal_fusion_v2.py
+          tests/test_social_organic_acceleration.py
 
-      - name: Scan public social and news sources
+      - name: Scan public social and news sources with rotation and fallbacks
         env:
-          SOCIAL_SCAN_BUDGET: '12'
+          SOCIAL_SCAN_BUDGET: '24'
+          SOCIAL_SCAN_PRIORITY_SLOTS: '8'
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
-        run: python -m wallet500.social_feed_scan
+        run: python -m wallet500.social_feed_scan_v2
 
       - name: Recompute organic acceleration
         run: python -m wallet500.social_organic_acceleration
 
       - name: Build Social Intelligence V2
         run: python -m wallet500.social_intelligence_v2
+
+      - name: Harden missing channels as unknown not zero
+        run: python -m wallet500.social_coverage_hardening
 
       - name: Build research-only cross-signal fusion
         run: python -m wallet500.cross_signal_fusion_v2
@@ -68,7 +82,14 @@ jobs:
           if i.get('mode')!='RESEARCH_ONLY_SOCIAL_INTELLIGENCE_V2': raise SystemExit('SOCIAL_INTELLIGENCE_MODE_INVALID')
           if f.get('mode')!='RESEARCH_ONLY_CROSS_SIGNAL_FUSION_V2': raise SystemExit('FUSION_MODE_INVALID')
           if i.get('automatic_buy') is not False or f.get('automatic_buy') is not False: raise SystemExit('SOCIAL_PRODUCTION_LEAK')
+          if (i.get('truth_contract') or {}).get('missing_channel_is_unknown_not_zero') is not True: raise SystemExit('UNKNOWN_ZERO_TRUTH_MISSING')
           if (f.get('truth_contract') or {}).get('does_not_modify_real_alert_gate') is not True: raise SystemExit('REAL_ALERT_GATE_LEAK')
+          if (s.get('selection_policy') or {}).get('rotation_enabled') is not True: raise SystemExit('SOCIAL_ROTATION_MISSING')
+          for row in i.get('tokens') or []:
+              a=row.get('availability') or {}; scores=row.get('scores') or {}
+              if a.get('social_momentum') is False and scores.get('social_momentum') is not None: raise SystemExit('SOCIAL_UNKNOWN_RENDERED_AS_ZERO')
+              if a.get('kol_quality') is False and scores.get('kol_quality') is not None: raise SystemExit('KOL_UNKNOWN_RENDERED_AS_ZERO')
+              if a.get('news_catalyst') is False and scores.get('news_catalyst') is not None: raise SystemExit('NEWS_UNKNOWN_RENDERED_AS_ZERO')
           for row in f.get('tokens') or []:
               if row.get('production_effect') is not False or row.get('automatic_buy') is not False: raise SystemExit('FUSION_ROW_PRODUCTION_LEAK')
               if row.get('risk',{}).get('hard_blockers') and row.get('fusion_status')!='HARD_TRUTH_BLOCKED': raise SystemExit('HARD_BLOCKER_OVERRIDE')
@@ -88,6 +109,7 @@ jobs:
             git reset --hard origin/main
             for f in social-source-scan.json social-catalyst-ledger.json social-organic-acceleration.json social-intelligence-v2.json cross-signal-fusion-v2.json; do cp "$tmp/$f" "data/$f"; done
             python -m wallet500.social_intelligence_v2
+            python -m wallet500.social_coverage_hardening
             python -m wallet500.cross_signal_fusion_v2
             git add data/social-source-scan.json data/social-catalyst-ledger.json data/social-organic-acceleration.json data/social-intelligence-v2.json data/cross-signal-fusion-v2.json
             if git diff --cached --quiet; then echo 'SOCIAL_V2_NO_DATA_CHANGE'; exit 0; fi
