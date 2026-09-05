@@ -10,7 +10,7 @@ def _write(path: Path, value) -> None:
     path.write_text(json.dumps(value), encoding="utf-8")
 
 
-def test_diagnostics_exposes_evidence_promotion_and_upstream_blockers(tmp_path: Path) -> None:
+def test_diagnostics_separates_hard_blockers_from_pending_confirmations(tmp_path: Path) -> None:
     _write(tmp_path / "revival-1000-latest.json", {
         "generated_at": "2026-09-04T10:00:00Z",
         "age_gate": {"status": "ENFORCED_FAIL_CLOSED", "minimum_market_age_days": 180},
@@ -25,9 +25,19 @@ def test_diagnostics_exposes_evidence_promotion_and_upstream_blockers(tmp_path: 
         "counts": {
             "universe_with_exact_pair": 100,
             "evidence_ready": 2,
-            "verified_watch": 5,
-            "deep_watch": 80,
+            "verified_watch": 15,
+            "deep_watch": 70,
             "blocked_truth": 13,
+            "pre_waking_evidence_ready": 4,
+            "anomaly_watch": 6,
+            "waking_market_watch": 5,
+            "baseline_deep_watch": 70,
+            "market_confirmation_pending": 80,
+            "independent_evidence_pending": 60,
+            "adaptive_anomaly_positive": 10,
+            "adaptive_velocity_positive": 8,
+            "adaptive_persistence_positive": 30,
+            "rescue_shadow_eligible": 12,
             "with_verified_holder_growth_lane": 10,
             "with_positive_holder_growth": 3,
             "with_verified_wallet_lane": 8,
@@ -36,8 +46,20 @@ def test_diagnostics_exposes_evidence_promotion_and_upstream_blockers(tmp_path: 
             "with_positive_cex": 1,
         },
         "candidates": [
-            {"status": "VERIFIED_WATCH", "blockers": ["NO_INDEPENDENT_POSITIVE_EVIDENCE"]},
-            {"status": "BLOCKED_TRUTH", "blockers": ["EXECUTION_LIQUIDITY_LT_50K"]},
+            {
+                "status": "VERIFIED_WATCH",
+                "discovery_tier": "ANOMALY_WATCH",
+                "blockers": [],
+                "pending_confirmations": ["MARKET_CONFIRMATION_PENDING", "INDEPENDENT_EVIDENCE_PENDING"],
+                "rescue_shadow": {"eligible": False},
+            },
+            {
+                "status": "BLOCKED_TRUTH",
+                "discovery_tier": "HARD_TRUTH_BLOCKED",
+                "blockers": ["EXECUTION_LIQUIDITY_LT_50K"],
+                "pending_confirmations": [],
+                "rescue_shadow": {"eligible": True},
+            },
         ],
     })
     _write(tmp_path / "revival-precursor-latest.json", {
@@ -71,16 +93,23 @@ def test_diagnostics_exposes_evidence_promotion_and_upstream_blockers(tmp_path: 
     })
 
     out = rfd.build(tmp_path)
-    codes = {x["code"] for x in out["blockers"]}
+    hard_codes = {x["code"] for x in out["blockers"]}
+    pending_codes = {x["code"] for x in out["pending_confirmations"]}
 
-    assert out["version"] == 2
+    assert out["version"] == 3
     assert out["production_change"] is False
     assert out["lanes"]["solana_veteran_revival"]["minimum_market_age_days"] == 180
     assert out["lanes"]["evidence_promotion"]["evidence_ready"] == 2
+    assert out["lanes"]["evidence_promotion"]["pre_waking_evidence_ready"] == 4
+    assert out["lanes"]["evidence_promotion"]["anomaly_watch"] == 6
     assert out["lanes"]["evidence_promotion"]["positive_holder_growth"] == 3
+    assert out["lanes"]["adaptive_discovery"]["market_waking_is_early_gate"] is False
     assert out["lanes"]["reawakening_recovery"]["eligible_liquidity_only_rejects"] == 388
-    assert "NO_INDEPENDENT_POSITIVE_EVIDENCE" in codes
-    assert "EXECUTION_LIQUIDITY_LT_50K" in codes
-    assert "REAWAKENING_FORWARD_TRACKER_EMPTY_AFTER_ACTIVATION" in codes
-    assert "NO_ACTIVE_QUALIFIED_BEFORE_AGE_GOVERNANCE" in codes
-    assert "EVIDENCE_READY_IS_RESEARCH_PROMOTION_NOT_BUY_SIGNAL" in out["truth_rules"]
+    assert "MARKET_CONFIRMATION_PENDING" not in hard_codes
+    assert "INDEPENDENT_EVIDENCE_PENDING" not in hard_codes
+    assert "MARKET_CONFIRMATION_PENDING" in pending_codes
+    assert "INDEPENDENT_EVIDENCE_PENDING" in pending_codes
+    assert "EXECUTION_LIQUIDITY_LT_50K" in hard_codes
+    assert "REAWAKENING_FORWARD_TRACKER_EMPTY_AFTER_ACTIVATION" in hard_codes
+    assert "NO_ACTIVE_QUALIFIED_BEFORE_AGE_GOVERNANCE" in hard_codes
+    assert "MARKET_WAKING_IS_LATE_CONFIRMATION_NOT_EARLY_DISCOVERY_GATE" in out["truth_rules"]
