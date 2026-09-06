@@ -17,6 +17,7 @@ on:
       - 'src/wallet500/social_mesh_public_index.py'
       - 'src/wallet500/social_telegram_truth_hardening.py'
       - 'src/wallet500/social_source_health_history.py'
+      - 'src/wallet500/social_provider_budget_advisor.py'
       - 'src/wallet500/social_intelligence_v2.py'
       - 'src/wallet500/social_mesh_intelligence_enrichment.py'
       - 'src/wallet500/social_mesh_index_intelligence_enrichment.py'
@@ -32,6 +33,7 @@ on:
       - 'tests/test_social_telegram_truth_hardening.py'
       - 'tests/test_social_source_health.py'
       - 'tests/test_social_source_health_history.py'
+      - 'tests/test_social_provider_budget_advisor.py'
       - 'tests/test_social_coverage_hardening.py'
       - 'tests/test_cross_signal_fusion_v2.py'
       - 'tests/test_social_organic_acceleration.py'
@@ -49,6 +51,7 @@ on:
       - 'src/wallet500/social_mesh_public_index.py'
       - 'src/wallet500/social_telegram_truth_hardening.py'
       - 'src/wallet500/social_source_health_history.py'
+      - 'src/wallet500/social_provider_budget_advisor.py'
       - 'src/wallet500/social_intelligence_v2.py'
       - 'src/wallet500/social_mesh_intelligence_enrichment.py'
       - 'src/wallet500/social_mesh_index_intelligence_enrichment.py'
@@ -64,6 +67,7 @@ on:
       - 'tests/test_social_telegram_truth_hardening.py'
       - 'tests/test_social_source_health.py'
       - 'tests/test_social_source_health_history.py'
+      - 'tests/test_social_provider_budget_advisor.py'
       - 'tests/test_social_coverage_hardening.py'
       - 'tests/test_cross_signal_fusion_v2.py'
       - 'tests/test_social_organic_acceleration.py'
@@ -103,6 +107,7 @@ jobs:
           tests/test_social_telegram_truth_hardening.py
           tests/test_social_source_health.py
           tests/test_social_source_health_history.py
+          tests/test_social_provider_budget_advisor.py
           tests/test_social_coverage_hardening.py
           tests/test_cross_signal_fusion_v2.py
           tests/test_social_organic_acceleration.py
@@ -141,6 +146,9 @@ jobs:
       - name: Record observability-only provider health history
         run: python -m wallet500.social_source_health_history
 
+      - name: Build observability-only provider budget advisor
+        run: python -m wallet500.social_provider_budget_advisor
+
       - name: Recompute organic acceleration
         run: python -m wallet500.social_organic_acceleration
 
@@ -166,18 +174,35 @@ jobs:
           from pathlib import Path
           s=json.loads(Path('data/social-source-scan.json').read_text())
           h=json.loads(Path('data/social-source-health-history.json').read_text())
+          a=json.loads(Path('data/social-provider-budget-advisor.json').read_text())
           o=json.loads(Path('data/social-organic-acceleration.json').read_text())
           i=json.loads(Path('data/social-intelligence-v2.json').read_text())
           f=json.loads(Path('data/cross-signal-fusion-v2.json').read_text())
           if s.get('mode')!='RESEARCH_ONLY_SOCIAL_SOURCE_SCAN_V1': raise SystemExit('SOCIAL_SCAN_MODE_INVALID')
-          if h.get('mode')!='SOCIAL_SOURCE_HEALTH_HISTORY_OBSERVABILITY_ONLY_V1': raise SystemExit('SOURCE_HEALTH_HISTORY_MODE_INVALID')
+          if h.get('mode')!='SOCIAL_SOURCE_HEALTH_HISTORY_OBSERVABILITY_ONLY_V2': raise SystemExit('SOURCE_HEALTH_HISTORY_MODE_INVALID')
           if h.get('observability_only') is not True or h.get('production_effect') is not False or h.get('automatic_buy') is not False: raise SystemExit('SOURCE_HEALTH_HISTORY_PRODUCTION_LEAK')
           htruth=h.get('truth_contract') or {}
-          for key in ('provider_health_never_modifies_token_scores','provider_health_never_modifies_alert_gate','provider_health_never_auto_changes_api_budgets','single_run_never_changes_provider_policy','secret_values_never_stored','unknown_is_not_zero','configuration_is_not_evidence'):
+          for key in ('provider_health_never_modifies_token_scores','provider_health_never_modifies_alert_gate','provider_health_never_auto_changes_api_budgets','single_run_never_changes_provider_policy','secret_values_never_stored','unknown_is_not_zero','configuration_is_not_evidence','call_efficiency_is_observability_only'):
               if htruth.get(key) is not True: raise SystemExit('SOURCE_HEALTH_HISTORY_TRUTH_MISSING:'+key)
           if int(h.get('runs_count') or 0)<1: raise SystemExit('SOURCE_HEALTH_HISTORY_EMPTY')
           for provider,row in (h.get('provider_rollup') or {}).items():
               if row.get('budget_recommendation_effect')!='NONE_OBSERVE_ONLY': raise SystemExit('SOURCE_HEALTH_HISTORY_BUDGET_POLICY_LEAK:'+provider)
+
+          if a.get('mode')!='SOCIAL_PROVIDER_BUDGET_ADVISOR_OBSERVABILITY_ONLY_V1': raise SystemExit('SOCIAL_BUDGET_ADVISOR_MODE_INVALID')
+          if a.get('observability_only') is not True or a.get('production_effect') is not False or a.get('automatic_budget_changes') is not False or a.get('automatic_buy') is not False: raise SystemExit('SOCIAL_BUDGET_ADVISOR_PRODUCTION_LEAK')
+          if int(a.get('history_runs_count') or 0)!=int(h.get('runs_count') or 0): raise SystemExit('SOCIAL_BUDGET_ADVISOR_HISTORY_SKEW')
+          atruth=a.get('truth_contract') or {}
+          for key in ('recommendations_never_modify_api_budgets','recommendations_never_modify_token_scores','recommendations_never_modify_alert_gate','single_run_never_produces_budget_change_advice','unknown_is_not_zero','not_configured_is_not_bad_evidence','indexed_context_never_counts_as_direct_efficiency'):
+              if atruth.get(key) is not True: raise SystemExit('SOCIAL_BUDGET_ADVISOR_TRUTH_MISSING:'+key)
+          for row in a.get('providers') or []:
+              if row.get('automatic_change') is not False: raise SystemExit('SOCIAL_BUDGET_ADVISOR_AUTO_CHANGE_LEAK')
+              if row.get('suggested_budget_delta') is not None: raise SystemExit('SOCIAL_BUDGET_ADVISOR_NUMERIC_DELTA_LEAK')
+              if row.get('score_effect')!='NONE_PROVIDER_POLICY_ADVICE_ONLY': raise SystemExit('SOCIAL_BUDGET_ADVISOR_SCORE_LEAK')
+              if row.get('alert_gate_effect')!='NONE': raise SystemExit('SOCIAL_BUDGET_ADVISOR_ALERT_LEAK')
+          if int(h.get('runs_count') or 0)<int(a.get('minimum_runs_for_policy_advice') or 6):
+              forbidden={'CANDIDATE_INCREASE_AFTER_HUMAN_REVIEW','CANDIDATE_DECREASE_AFTER_HUMAN_REVIEW'}
+              if any(row.get('recommendation') in forbidden for row in (a.get('providers') or [])): raise SystemExit('SOCIAL_BUDGET_ADVISOR_EARLY_POLICY_ADVICE')
+
           if i.get('mode')!='RESEARCH_ONLY_SOCIAL_INTELLIGENCE_V2': raise SystemExit('SOCIAL_INTELLIGENCE_MODE_INVALID')
           if f.get('mode')!='RESEARCH_ONLY_CROSS_SIGNAL_FUSION_V2': raise SystemExit('FUSION_MODE_INVALID')
           if i.get('automatic_buy') is not False or f.get('automatic_buy') is not False: raise SystemExit('SOCIAL_PRODUCTION_LEAK')
@@ -252,14 +277,14 @@ jobs:
           formats=set(o.get('timestamp_formats_supported') or [])
           if not {'ISO8601','UNIX_EPOCH','RFC2822'} <= formats: raise SystemExit('SOCIAL_TIMESTAMP_FORMAT_SUPPORT_MISSING')
           for row in i.get('tokens') or []:
-              a=row.get('availability') or {}; scores=row.get('scores') or {}
-              if a.get('social_momentum') is False and scores.get('social_momentum') is not None: raise SystemExit('SOCIAL_UNKNOWN_RENDERED_AS_ZERO')
-              if a.get('kol_quality') is False and scores.get('kol_quality') is not None: raise SystemExit('KOL_UNKNOWN_RENDERED_AS_ZERO')
-              if a.get('news_catalyst') is False and scores.get('news_catalyst') is not None: raise SystemExit('NEWS_UNKNOWN_RENDERED_AS_ZERO')
+              av=row.get('availability') or {}; scores=row.get('scores') or {}
+              if av.get('social_momentum') is False and scores.get('social_momentum') is not None: raise SystemExit('SOCIAL_UNKNOWN_RENDERED_AS_ZERO')
+              if av.get('kol_quality') is False and scores.get('kol_quality') is not None: raise SystemExit('KOL_UNKNOWN_RENDERED_AS_ZERO')
+              if av.get('news_catalyst') is False and scores.get('news_catalyst') is not None: raise SystemExit('NEWS_UNKNOWN_RENDERED_AS_ZERO')
           for row in f.get('tokens') or []:
               if row.get('production_effect') is not False or row.get('automatic_buy') is not False: raise SystemExit('FUSION_ROW_PRODUCTION_LEAK')
               if row.get('risk',{}).get('hard_blockers') and row.get('fusion_status')!='HARD_TRUTH_BLOCKED': raise SystemExit('HARD_BLOCKER_OVERRIDE')
-          print('SOCIAL_MESH_V9_OK', 'history_runs=', h.get('runs_count'), 'telegram_truth=', tg, 'source_health=', health.get('summary'), 'mesh_cfg=', mesh_cfg, 'mesh_breakers=', s.get('mesh_provider_circuit_breakers'), 'index=', index_meta, i.get('counts'), f.get('counts'))
+          print('SOCIAL_MESH_V10_OK', 'history_runs=', h.get('runs_count'), 'advisor=', a.get('counts'), 'telegram_truth=', tg, 'source_health=', health.get('summary'), 'mesh_cfg=', mesh_cfg, 'mesh_breakers=', s.get('mesh_provider_circuit_breakers'), 'index=', index_meta, i.get('counts'), f.get('counts'))
           PY
 
       - name: Publish social intelligence snapshot
@@ -276,17 +301,18 @@ jobs:
             git reset --hard origin/main
             for f in social-source-scan.json social-catalyst-ledger.json social-organic-acceleration.json social-intelligence-v2.json cross-signal-fusion-v2.json; do cp "$tmp/$f" "data/$f"; done
             python -m wallet500.social_source_health_history
+            python -m wallet500.social_provider_budget_advisor
             python -m wallet500.social_intelligence_v2
             python -m wallet500.social_coverage_hardening
             python -m wallet500.social_mesh_intelligence_enrichment
             python -m wallet500.social_mesh_index_intelligence_enrichment
             python -m wallet500.cross_signal_fusion_v2
-            git add data/social-source-scan.json data/social-source-health-history.json data/social-catalyst-ledger.json data/social-organic-acceleration.json data/social-intelligence-v2.json data/cross-signal-fusion-v2.json
-            if git diff --cached --quiet; then echo 'SOCIAL_V9_NO_DATA_CHANGE'; exit 0; fi
-            git commit -m 'data: refresh social intelligence and provider health history v9'
-            if git push origin HEAD:main; then echo 'SOCIAL_MESH_V9_PUBLISH_OK'; exit 0; fi
-            echo "SOCIAL_MESH_V9_RETRY attempt=$attempt"
+            git add data/social-source-scan.json data/social-source-health-history.json data/social-provider-budget-advisor.json data/social-catalyst-ledger.json data/social-organic-acceleration.json data/social-intelligence-v2.json data/cross-signal-fusion-v2.json
+            if git diff --cached --quiet; then echo 'SOCIAL_V10_NO_DATA_CHANGE'; exit 0; fi
+            git commit -m 'data: refresh social intelligence and provider budget advisor v10'
+            if git push origin HEAD:main; then echo 'SOCIAL_MESH_V10_PUBLISH_OK'; exit 0; fi
+            echo "SOCIAL_MESH_V10_RETRY attempt=$attempt"
             sleep 3
           done
-          echo '::error::SOCIAL_MESH_V9_PUBLISH_RACE_EXHAUSTED'
+          echo '::error::SOCIAL_MESH_V10_PUBLISH_RACE_EXHAUSTED'
           exit 1
