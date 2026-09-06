@@ -10,13 +10,15 @@ from urllib.request import Request, urlopen
 
 from .revival_1000 import looks_like_solana_address
 from .social_catalyst import _normalize
-from .waking_confirmation import _identity, _scan_news, _scan_reddit, _scan_x, _scan_youtube
+from .waking_confirmation import _identity as _waking_identity, _scan_news, _scan_reddit, _scan_x, _scan_youtube
 
 DATA = Path("data")
 OUTPUT = DATA / "social-source-scan.json"
 LEDGER = DATA / "social-catalyst-ledger.json"
 MODE = "RESEARCH_ONLY_SOCIAL_SOURCE_SCAN_V1"
 NETWORK = "solana"
+IDENTITY_BREAKER_FAILURES = {"HTTP_401", "HTTP_402", "HTTP_403", "HTTP_429"}
+_IDENTITY_BREAKERS: dict[str, str] = {}
 
 
 def _load(path: Path, default):
@@ -31,6 +33,44 @@ def _load(path: Path, default):
 def _write(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _reset_identity_runtime_state() -> None:
+    _IDENTITY_BREAKERS.clear()
+
+
+def _identity(coin: dict) -> tuple[dict, list[dict]]:
+    """Resolve identity while circuit-breaking exhausted optional metadata providers.
+
+    DexScreener exact-pair identity remains available. CoinGecko only enriches official
+    links, so a quota/auth failure must be UNKNOWN for the rest of the run rather than
+    causing repeated calls or being mistaken for a zero/negative social signal.
+    """
+    coin_id = str(coin.get("id") or "").strip()
+    breaker = _IDENTITY_BREAKERS.get("coingecko_identity")
+    if breaker and coin_id:
+        reduced = dict(coin)
+        reduced["id"] = None
+        identity, statuses = _waking_identity(reduced)
+        identity = dict(identity or {})
+        identity["coingecko_id"] = coin_id
+        statuses = list(statuses or [])
+        statuses.append({
+            "provider": "coingecko_identity",
+            "status": f"CIRCUIT_BREAKER_{breaker}",
+            "meaning": "UNKNOWN_NOT_ZERO",
+        })
+        return identity, statuses
+
+    identity, statuses = _waking_identity(coin)
+    for status in statuses or []:
+        if str(status.get("provider") or "") != "coingecko_identity":
+            continue
+        status_text = str(status.get("status") or "UNKNOWN")
+        if status_text in IDENTITY_BREAKER_FAILURES:
+            _IDENTITY_BREAKERS["coingecko_identity"] = status_text
+            break
+    return identity, statuses
 
 
 def _official_handle(url: str | None) -> str | None:
@@ -140,6 +180,7 @@ def _merge_exact_social_events(scan_targets: list[dict], observed_at: str, data_
 
 
 def run(output_dir: str | Path = "data") -> dict:
+    _reset_identity_runtime_state()
     data = Path(output_dir)
     observed_at = datetime.now(timezone.utc).isoformat()
     envelope = _load(data / "candidate-evidence-envelope.json", {})
@@ -193,7 +234,7 @@ def run(output_dir: str | Path = "data") -> dict:
 
     merged = _merge_exact_social_events(targets, observed_at, data)
     payload = {
-        "version": 1,
+        "version": 2,
         "mode": MODE,
         "generated_at": observed_at,
         "network": NETWORK,
@@ -204,11 +245,14 @@ def run(output_dir: str | Path = "data") -> dict:
         "targets_scanned": len(targets),
         "new_exact_social_events_merged": merged,
         "provider_status_counts": provider_counts,
+        "identity_provider_circuit_breakers": dict(_IDENTITY_BREAKERS),
         "rules": [
             "EXACT_CONTRACT_OR_OFFICIAL_CONTEXT_REQUIRED_BEFORE_SOCIAL_LEDGER_MERGE",
             "NAME_SYMBOL_CONTEXT_IS_VISIBLE_RESEARCH_CONTEXT_BUT_NOT_ORGANIC_PROOF",
             "OFFICIAL_PROJECT_POSTS_ARE_DISCOUNTED_BY_ORGANIC_ACCELERATION",
             "MISSING_PROVIDER_IS_UNKNOWN_NOT_ZERO",
+            "COINGECKO_IDENTITY_QUOTA_OR_AUTH_FAILURE_CIRCUIT_BREAKS_FOR_REMAINDER_OF_RUN",
+            "DEXSCREENER_EXACT_PAIR_IDENTITY_CONTINUES_WHEN_OPTIONAL_COINGECKO_METADATA_IS_UNAVAILABLE",
         ],
         "targets": targets,
     }
@@ -218,7 +262,7 @@ def run(output_dir: str | Path = "data") -> dict:
 
 def main() -> None:
     p = run()
-    print(json.dumps({"targets": p["targets_scanned"], "merged": p["new_exact_social_events_merged"], "providers": p["provider_status_counts"]}, ensure_ascii=False))
+    print(json.dumps({"targets": p["targets_scanned"], "merged": p["new_exact_social_events_merged"], "providers": p["provider_status_counts"], "identity_breakers": p.get("identity_provider_circuit_breakers")}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
