@@ -7,6 +7,10 @@ from .liquidity_truth import liquidity_truth
 
 DATA = Path("data")
 CONCENTRATED_BLOCKER = "EXECUTION_DEPTH_UNVERIFIED_CONCENTRATED_POOL"
+DORMANT_ACTIVITY_BLOCKER = "DEX_EXACT_PAIR_DORMANT_NO_ACTIVITY"
+MIN_ACTIVITY_VOLUME_H24_USD = 10_000.0
+MIN_ACTIVITY_VOLUME_H1_USD = 1_000.0
+MIN_ACTIVITY_TURNOVER_H24 = 0.005
 
 
 def _load(path: Path, default):
@@ -113,21 +117,61 @@ def _merge_liquidity_metadata(row: dict, source: dict | None) -> dict:
         "execution_depth_usd_5pct", "execution_depth_verified", "execution_depth_source",
         "concentrated_liquidity_pool", "liquidity_execution_gate_eligible",
         "liquidity_execution_gate_status", "liquidity_semantics_version",
+        "dex_volume_h1", "dex_volume_h24", "buys_h1", "sells_h1", "buys_h24", "sells_h24",
     ):
         if out.get(key) in (None, "") and source.get(key) not in (None, ""):
             out[key] = source.get(key)
     return out
 
 
+def _activity_truth(row: dict, metadata: dict | None = None) -> tuple[bool, dict]:
+    merged = _merge_liquidity_metadata(row, metadata)
+    volume_h24 = _num(merged.get("dex_volume_h24"))
+    volume_h1 = _num(merged.get("dex_volume_h1"))
+    liquidity = _num(merged.get("execution_pool_liquidity_usd"))
+    if liquidity is None:
+        liquidity = _num(merged.get("liquidity_usd"))
+    turnover_h24 = (volume_h24 / liquidity) if volume_h24 is not None and liquidity and liquidity > 0 else None
+
+    blockers = []
+    if volume_h24 is None:
+        blockers.append("DEX_ACTIVITY_H24_MISSING")
+    elif volume_h24 < MIN_ACTIVITY_VOLUME_H24_USD:
+        blockers.append(f"DEX_ACTIVITY_H24_VOLUME_LT_{int(MIN_ACTIVITY_VOLUME_H24_USD/1000)}K")
+    if volume_h1 is not None and volume_h1 < MIN_ACTIVITY_VOLUME_H1_USD:
+        blockers.append(f"DEX_ACTIVITY_H1_VOLUME_LT_{int(MIN_ACTIVITY_VOLUME_H1_USD/1000)}K")
+    if turnover_h24 is None:
+        blockers.append("DEX_ACTIVITY_TURNOVER_H24_UNVERIFIED")
+    elif turnover_h24 < MIN_ACTIVITY_TURNOVER_H24:
+        blockers.append("DEX_ACTIVITY_TURNOVER_H24_LT_0_5PCT")
+
+    return not blockers, {
+        "volume_h24_usd": volume_h24,
+        "volume_h1_usd": volume_h1,
+        "turnover_h24": round(turnover_h24, 8) if turnover_h24 is not None else None,
+        "minimum_volume_h24_usd": MIN_ACTIVITY_VOLUME_H24_USD,
+        "minimum_volume_h1_usd_when_available": MIN_ACTIVITY_VOLUME_H1_USD,
+        "minimum_turnover_h24": MIN_ACTIVITY_TURNOVER_H24,
+        "blockers": blockers,
+    }
+
+
 def _demote_row(row: dict, metadata: dict | None = None) -> dict:
     out = annotate_row(_merge_liquidity_metadata(row, metadata))
+    blockers = list(out.get("blockers") or [])
     if out.get("concentrated_liquidity_pool") is True and out.get("execution_depth_verified") is not True:
-        blockers = list(out.get("blockers") or [])
-        if CONCENTRATED_BLOCKER not in blockers:
-            blockers.append(CONCENTRATED_BLOCKER)
-        out["blockers"] = sorted(set(blockers))
+        blockers.append(CONCENTRATED_BLOCKER)
+    activity_ok, activity = _activity_truth(out, metadata)
+    out["dex_activity_truth"] = activity
+    if not activity_ok:
+        blockers.append(DORMANT_ACTIVITY_BLOCKER)
+    out["blockers"] = sorted(set(blockers))
+    if CONCENTRATED_BLOCKER in out["blockers"]:
         out["actionable_research_alert"] = False
         out["status"] = "VERIFIED_WATCH_NOT_REAL_ALERT"
+    if DORMANT_ACTIVITY_BLOCKER in out["blockers"]:
+        out["actionable_research_alert"] = False
+        out["status"] = "DORMANT_NO_ACTIVITY_NOT_VERIFIED_WATCH"
     return out
 
 
@@ -139,13 +183,24 @@ def sanitize_real_alerts(path: Path = DATA / "real-alerts.json") -> dict:
 
     alerts = []
     demoted = []
+    dormant = []
     for row in original_alerts:
         clean = _demote_row(row, metadata.get(_identity_key(row)))
-        if CONCENTRATED_BLOCKER in (clean.get("blockers") or []):
+        if DORMANT_ACTIVITY_BLOCKER in (clean.get("blockers") or []):
+            dormant.append(clean)
+        elif CONCENTRATED_BLOCKER in (clean.get("blockers") or []):
             demoted.append(clean)
         else:
             alerts.append(clean)
-    watch = [_demote_row(x, metadata.get(_identity_key(x))) for x in original_watch] + demoted
+
+    watch = []
+    for row in original_watch:
+        clean = _demote_row(row, metadata.get(_identity_key(row)))
+        if DORMANT_ACTIVITY_BLOCKER in (clean.get("blockers") or []):
+            dormant.append(clean)
+        else:
+            watch.append(clean)
+    watch += demoted
 
     seen = set()
     uniq_watch = []
@@ -156,11 +211,22 @@ def sanitize_real_alerts(path: Path = DATA / "real-alerts.json") -> dict:
         seen.add(key)
         uniq_watch.append(row)
 
+    seen_dormant = set()
+    uniq_dormant = []
+    for row in dormant:
+        key = _identity_key(row)
+        if key in seen_dormant:
+            continue
+        seen_dormant.add(key)
+        uniq_dormant.append(row)
+
     payload["alerts"] = alerts
     payload["verified_watch"] = uniq_watch[:50]
+    payload["dormant_no_activity"] = uniq_dormant[:100]
     counts = payload.get("counts") if isinstance(payload.get("counts"), dict) else {}
     counts["real_alerts"] = len(alerts)
     counts["verified_watch_not_real"] = len(uniq_watch)
+    counts["dormant_no_activity"] = len(uniq_dormant)
     payload["counts"] = counts
     payload["latest_real_alert"] = alerts[0] if alerts else None
     truth = payload.get("truth_contract") if isinstance(payload.get("truth_contract"), dict) else {}
@@ -169,16 +235,28 @@ def sanitize_real_alerts(path: Path = DATA / "real-alerts.json") -> dict:
         "concentrated_pool_requires_verified_execution_depth": True,
         "unverified_concentrated_depth_policy": "FAIL_CLOSED_NO_REAL_ALERT",
         "liquidity_gate_metric": "VERIFIED_EXECUTION_DEPTH_USD_5PCT_OR_NON_CONCENTRATED_LEGACY_GATE",
+        "liquidity_never_substitutes_for_market_activity": True,
+        "dormant_exact_pair_policy": "FAIL_CLOSED_NOT_REAL_ALERT_AND_NOT_VERIFIED_WATCH",
+        "minimum_exact_pair_volume_h24_usd": MIN_ACTIVITY_VOLUME_H24_USD,
+        "minimum_exact_pair_volume_h1_usd_when_available": MIN_ACTIVITY_VOLUME_H1_USD,
+        "minimum_exact_pair_turnover_h24": MIN_ACTIVITY_TURNOVER_H24,
     })
     payload["truth_contract"] = truth
     payload["liquidity_truth_guard"] = {
-        "version": "LIQUIDITY_TRUTH_GUARD_V1",
+        "version": "LIQUIDITY_TRUTH_GUARD_V2_ACTIVITY_FAIL_CLOSED",
         "demoted_real_alerts": len(demoted),
+        "dormant_no_activity": len(uniq_dormant),
         "concentrated_depth_unverified_blocker": CONCENTRATED_BLOCKER,
+        "dormant_activity_blocker": DORMANT_ACTIVITY_BLOCKER,
         "exact_pair_metadata_join": True,
     }
     _write(path, payload)
-    return {"real_alerts": len(alerts), "verified_watch": len(uniq_watch), "demoted": len(demoted)}
+    return {
+        "real_alerts": len(alerts),
+        "verified_watch": len(uniq_watch),
+        "demoted": len(demoted),
+        "dormant_no_activity": len(uniq_dormant),
+    }
 
 
 def safe_production_liquidity(candidate: dict) -> tuple[float, str, bool]:
