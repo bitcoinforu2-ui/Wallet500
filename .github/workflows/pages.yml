@@ -6,6 +6,7 @@ on:
     workflows:
       - "Wallet500 Candidate Evidence Envelope"
       - "Wallet500 Social Intelligence V2"
+      - "Wallet500 Catalyst Wire"
     types: [completed]
   schedule:
     - cron: '*/5 * * * *'
@@ -20,6 +21,7 @@ on:
       - 'dashboard-engine-control.html'
       - 'dashboard-terminal.html'
       - 'dashboard-social.html'
+      - 'dashboard-catalyst-wire.html'
       - 'dashboard-live-price.js'
       - 'dashboard-reference-fix.js'
       - 'wallet500-auth.js'
@@ -52,12 +54,11 @@ jobs:
           check_text(){ grep -Fq "$2" "$1" || fail "missing marker [$2] in $1"; }
 
           rm -rf _site
-          mkdir -p _site/live _site/status _site/alerts _site/revival _site/performance _site/control _site/terminal _site/social
+          mkdir -p _site/live _site/catalyst _site/status _site/alerts _site/revival _site/performance _site/control _site/terminal _site/social
 
-          # Live Radar is the default landing page. Keep the previous decision/status
-          # dashboard available under /status/ so no functionality is lost.
           cp dashboard-live.html _site/index.html
           cp dashboard-live.html _site/live/index.html
+          cp dashboard-catalyst-wire.html _site/catalyst/index.html
           cp index.html _site/status/index.html
           cp dashboard-real-alerts.html _site/alerts/index.html
           cp dashboard-revival1000.html _site/revival/index.html
@@ -75,19 +76,15 @@ jobs:
           import re
 
           auth_tag='<script src="/Wallet500/wallet500-auth.js"></script>'
-          live_nav='''<nav class="nav"><a href="/Wallet500/">🔥 Live</a><a href="/Wallet500/alerts/">🚨 Alerts</a><a href="/Wallet500/status/">📊 מצב הפרויקט</a><a href="/Wallet500/revival/">♻ Revival</a><a href="/Wallet500/performance/">💵 ביצועים</a><a href="/Wallet500/social/">📡 Social</a><a href="/Wallet500/control/">⚙ Control</a><a href="/Wallet500/terminal/">🖥 Terminal</a></nav>'''
+          live_nav='''<nav class="nav"><a href="/Wallet500/">🔥 Live</a><a href="/Wallet500/catalyst/">⚡ Catalyst</a><a href="/Wallet500/alerts/">🚨 Alerts</a><a href="/Wallet500/status/">📊 מצב הפרויקט</a><a href="/Wallet500/revival/">♻ Revival</a><a href="/Wallet500/performance/">💵 ביצועים</a><a href="/Wallet500/social/">📡 Social</a><a href="/Wallet500/control/">⚙ Control</a><a href="/Wallet500/terminal/">🖥 Terminal</a></nav>'''
 
           for page in Path('_site').rglob('*.html'):
               s=page.read_text(encoding='utf-8')
               s=re.sub(r'<style id="w500-sticky-rubric-source">.*?</style>', '', s, flags=re.S|re.I)
               s=re.sub(r'<style id="w500-rubric-style">.*?</style>', '', s, flags=re.S|re.I)
               s=re.sub(r'<nav id="w500-experiment-rubric"[^>]*>.*?</nav>', '', s, flags=re.S|re.I)
-
-              # The two Live copies get the same complete, Live-first navigation.
-              # Accept both the legacy <div class="nav"> and semantic <nav class="nav">.
               if page.as_posix() in {'_site/index.html', '_site/live/index.html'}:
                   s=re.sub(r'<div class="nav">.*?</div>|<nav class="nav">.*?</nav>', live_nav, s, count=1, flags=re.S|re.I)
-
               if auth_tag not in s:
                   if re.search(r'</head\s*>', s, flags=re.I):
                       s=re.sub(r'</head\s*>', auth_tag+'\n</head>', s, count=1, flags=re.I)
@@ -99,13 +96,15 @@ jobs:
           touch _site/.nojekyll
           printf '%s\n' "$GITHUB_SHA" > _site/build.txt
 
-          for f in _site/index.html _site/live/index.html _site/status/index.html _site/alerts/index.html _site/revival/index.html _site/performance/index.html _site/control/index.html _site/terminal/index.html _site/social/index.html _site/wallet500-auth.js _site/data/real-alerts.json _site/data/case-study-doge1.json _site/data/revival-1000-latest.json; do
+          for f in _site/index.html _site/live/index.html _site/catalyst/index.html _site/status/index.html _site/alerts/index.html _site/revival/index.html _site/performance/index.html _site/control/index.html _site/terminal/index.html _site/social/index.html _site/wallet500-auth.js _site/data/real-alerts.json _site/data/case-study-doge1.json _site/data/revival-1000-latest.json _site/data/catalyst-wire-live.json; do
             check_file "$f"
           done
           check_text _site/index.html 'LIVE RADAR'
+          check_text _site/index.html '/Wallet500/catalyst/'
           check_text _site/index.html '/Wallet500/status/'
           check_text _site/index.html '/Wallet500/wallet500-auth.js'
           check_text _site/live/index.html 'LIVE RADAR'
+          check_text _site/catalyst/index.html 'CATALYST WIRE LIVE'
           check_text _site/status/index.html 'WALLET500 · מסך החלטה'
           check_text _site/status/index.html 'VETERAN REVIVAL ONLY'
           check_text _site/status/index.html 'FUSION HOT/WARM'
@@ -120,6 +119,7 @@ jobs:
           python -m json.tool _site/data/real-alerts.json >/dev/null
           python -m json.tool _site/data/case-study-doge1.json >/dev/null
           python -m json.tool _site/data/revival-1000-latest.json >/dev/null
+          python -m json.tool _site/data/catalyst-wire-live.json >/dev/null
           if test -s _site/data/social-intelligence-v2.json; then python -m json.tool _site/data/social-intelligence-v2.json >/dev/null; fi
           if test -s _site/data/cross-signal-fusion-v2.json; then python -m json.tool _site/data/cross-signal-fusion-v2.json >/dev/null; fi
           echo 'BUILD_VERIFY_OK'
@@ -142,9 +142,11 @@ jobs:
             root="$(curl -fsSL --max-time 20 "${BASE}?v=${GITHUB_SHA}" 2>/dev/null || true)"
             status="$(curl -fsSL --max-time 20 "${BASE}status/?v=${GITHUB_SHA}" 2>/dev/null || true)"
             social="$(curl -fsSL --max-time 20 "${BASE}social/?v=${GITHUB_SHA}" 2>/dev/null || true)"
+            catalyst="$(curl -fsSL --max-time 20 "${BASE}catalyst/?v=${GITHUB_SHA}" 2>/dev/null || true)"
             auth="$(curl -fsSL --max-time 20 "${BASE}wallet500-auth.js?v=${GITHUB_SHA}" 2>/dev/null || true)"
             feed="$(curl -fsSL --max-time 20 "${BASE}data/real-alerts.json?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'LIVE RADAR' <<<"$root" && grep -Fq '/Wallet500/status/' <<<"$root" && grep -Fq '/Wallet500/wallet500-auth.js' <<<"$root" && grep -Fq 'WALLET500 · מסך החלטה' <<<"$status" && grep -Fq 'google.accounts.id.initialize' <<<"$auth" && grep -Fq 'SOCIAL INTELLIGENCE V2' <<<"$social" && python -c 'import json,sys; json.load(sys.stdin)' <<<"$feed" >/dev/null 2>&1; then
+            cfeed="$(curl -fsSL --max-time 20 "${BASE}data/catalyst-wire-live.json?v=${GITHUB_SHA}" 2>/dev/null || true)"
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'LIVE RADAR' <<<"$root" && grep -Fq '/Wallet500/catalyst/' <<<"$root" && grep -Fq 'WALLET500 · מסך החלטה' <<<"$status" && grep -Fq 'google.accounts.id.initialize' <<<"$auth" && grep -Fq 'SOCIAL INTELLIGENCE V2' <<<"$social" && grep -Fq 'CATALYST WIRE LIVE' <<<"$catalyst" && python -c 'import json,sys; json.load(sys.stdin)' <<<"$feed" >/dev/null 2>&1 && python -c 'import json,sys; json.load(sys.stdin)' <<<"$cfeed" >/dev/null 2>&1; then
               ok=1
               break
             fi

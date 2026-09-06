@@ -1,0 +1,108 @@
+name: Wallet500 Catalyst Wire
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/wallet500/catalyst_wire.py'
+      - 'src/wallet500/global_listing_intelligence.py'
+      - 'tests/test_catalyst_wire.py'
+      - 'tests/test_global_listing_evm_core.py'
+      - '.github/workflows/catalyst-wire.yml'
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_run:
+    workflows:
+      - "Wallet500 Social Intelligence V2"
+      - "Wallet500 Global Listing Intelligence"
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/catalyst_wire.py'
+      - 'src/wallet500/global_listing_intelligence.py'
+      - 'tests/test_catalyst_wire.py'
+      - 'tests/test_global_listing_evm_core.py'
+      - '.github/workflows/catalyst-wire.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-catalyst-wire
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Wallet500 and test dependency
+        run: pip install -e . pytest
+      - name: Lock Catalyst Wire and EVM listing truth policy
+        run: pytest -q tests/test_catalyst_wire.py tests/test_global_listing_evm_core.py
+
+  wire:
+    needs: test
+    if: github.event_name != 'pull_request' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Wallet500
+        run: pip install -e .
+      - name: Run official Catalyst Wire and Telegram edge alerts
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m wallet500.catalyst_wire
+      - name: Validate event feed boundaries
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/catalyst-wire-live.json')
+          d=json.loads(p.read_text())
+          assert d['mode']=='CATALYST_WIRE_EVENT_FIRST_NO_MOMENTUM_WEIGHT'
+          assert d['automatic_trade'] is False
+          assert set(d['policy']['event_lane_zero_weight'])=={'volume_acceleration','liquidity_growth','holder_growth','wallet_growth'}
+          assert d['policy']['official_source_required'] is True
+          assert d['policy']['source_link_required_for_telegram'] is True
+          for e in d.get('events',[]):
+              if e.get('alert_eligible'):
+                  assert e.get('preliminary_filter_pass') is True
+                  assert e.get('forward_new') is True
+                  assert e.get('source_url')
+          print('CATALYST_WIRE_TRUTH_OK', d.get('counts'))
+          PY
+      - name: Persist forward-only Catalyst Wire state
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-catalyst-bot'
+          git config user.email 'wallet500-catalyst-bot@users.noreply.github.com'
+          git add data/catalyst-wire-live.json data/catalyst-wire-ledger.json data/catalyst-wire-state.json
+          if git diff --cached --quiet; then
+            echo 'No Catalyst Wire state change'
+            exit 0
+          fi
+          git commit -m 'data: refresh Catalyst Wire [skip ci]'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo 'CATALYST_WIRE_PUBLISH_REJECTED: rebase conflict'
+              exit 1
+            fi
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 3
+          done
+          exit 1
