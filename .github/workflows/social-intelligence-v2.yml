@@ -12,6 +12,7 @@ on:
       - 'src/wallet500/social_feed_scan_v3.py'
       - 'src/wallet500/social_direct_providers.py'
       - 'src/wallet500/social_mesh_providers.py'
+      - 'src/wallet500/social_bluesky_resilient.py'
       - 'src/wallet500/social_intelligence_v2.py'
       - 'src/wallet500/social_mesh_intelligence_enrichment.py'
       - 'src/wallet500/social_organic_acceleration.py'
@@ -21,6 +22,7 @@ on:
       - 'tests/test_social_feed_scan_v2.py'
       - 'tests/test_social_direct_providers.py'
       - 'tests/test_social_mesh_providers.py'
+      - 'tests/test_social_bluesky_resilient.py'
       - 'tests/test_social_coverage_hardening.py'
       - 'tests/test_cross_signal_fusion_v2.py'
       - 'tests/test_social_organic_acceleration.py'
@@ -33,6 +35,7 @@ on:
       - 'src/wallet500/social_feed_scan_v3.py'
       - 'src/wallet500/social_direct_providers.py'
       - 'src/wallet500/social_mesh_providers.py'
+      - 'src/wallet500/social_bluesky_resilient.py'
       - 'src/wallet500/social_intelligence_v2.py'
       - 'src/wallet500/social_mesh_intelligence_enrichment.py'
       - 'src/wallet500/social_organic_acceleration.py'
@@ -42,6 +45,7 @@ on:
       - 'tests/test_social_feed_scan_v2.py'
       - 'tests/test_social_direct_providers.py'
       - 'tests/test_social_mesh_providers.py'
+      - 'tests/test_social_bluesky_resilient.py'
       - 'tests/test_social_coverage_hardening.py'
       - 'tests/test_cross_signal_fusion_v2.py'
       - 'tests/test_social_organic_acceleration.py'
@@ -76,6 +80,7 @@ jobs:
           tests/test_social_feed_scan_v2.py
           tests/test_social_direct_providers.py
           tests/test_social_mesh_providers.py
+          tests/test_social_bluesky_resilient.py
           tests/test_social_coverage_hardening.py
           tests/test_cross_signal_fusion_v2.py
           tests/test_social_organic_acceleration.py
@@ -105,6 +110,8 @@ jobs:
           DISCORD_GUILD_IDS: ${{ vars.DISCORD_GUILD_IDS }}
           DISCORD_CHANNEL_IDS: ${{ vars.DISCORD_CHANNEL_IDS }}
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          BSKY_IDENTIFIER: ${{ secrets.BSKY_IDENTIFIER }}
+          BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: python -m wallet500.social_feed_scan_v3
 
