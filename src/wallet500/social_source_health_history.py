@@ -130,11 +130,16 @@ def _aggregate(runs: list[dict]) -> dict:
         indexed_events = 0
         tokens_exact_total = 0
         observations = 0
+
         metric_runs = 0
+        exposure_runs = 0
+        exposure_exact_runs = 0
+        exposure_degraded_runs = 0
         calls_total = 0
         budget_total = 0
-        metric_exact_events = 0
-        metric_tokens_exact = 0
+        exposure_exact_events = 0
+        exposure_tokens_exact = 0
+
         latest_budget = None
         latest_calls_used = None
         latest_state = "UNKNOWN"
@@ -172,16 +177,23 @@ def _aggregate(runs: list[dict]) -> dict:
                 metric_runs += 1
                 budget_total += budget
                 calls_total += calls
-                metric_exact_events += direct
-                metric_tokens_exact += tokens_exact
+                if calls > 0:
+                    exposure_runs += 1
+                    exposure_exact_events += direct
+                    exposure_tokens_exact += tokens_exact
+                    if direct > 0:
+                        exposure_exact_runs += 1
+                    if state == "DEGRADED_UNKNOWN":
+                        exposure_degraded_runs += 1
             latest_budget = budget
             latest_calls_used = calls
             latest_state = state
             latest_at = run.get("generated_at")
 
         denom = max(1, observations)
-        exact_per_call = round(metric_exact_events / calls_total, 4) if calls_total > 0 else None
-        tokens_per_call = round(metric_tokens_exact / calls_total, 4) if calls_total > 0 else None
+        exposure_denom = max(1, exposure_runs)
+        exact_per_call = round(exposure_exact_events / calls_total, 4) if calls_total > 0 else None
+        tokens_per_call = round(exposure_tokens_exact / calls_total, 4) if calls_total > 0 else None
         utilization = round(calls_total / budget_total, 4) if budget_total > 0 else None
         providers[provider] = {
             "runs_observed": observations,
@@ -198,10 +210,15 @@ def _aggregate(runs: list[dict]) -> dict:
             "indexed_exact_context_events_total": indexed_events,
             "tokens_with_exact_evidence_total": tokens_exact_total,
             "call_metric_runs": metric_runs,
+            "call_exposure_runs": exposure_runs,
+            "call_exposure_exact_runs": exposure_exact_runs,
+            "call_exposure_degraded_runs": exposure_degraded_runs,
+            "call_exposure_exact_evidence_run_ratio": round(exposure_exact_runs / exposure_denom, 4) if exposure_runs else None,
+            "call_exposure_degraded_run_ratio": round(exposure_degraded_runs / exposure_denom, 4) if exposure_runs else None,
             "calls_used_total": calls_total if metric_runs else None,
             "call_budget_total": budget_total if metric_runs else None,
-            "call_metric_exact_events_total": metric_exact_events if metric_runs else None,
-            "call_metric_tokens_with_exact_evidence_total": metric_tokens_exact if metric_runs else None,
+            "call_metric_exact_events_total": exposure_exact_events if metric_runs else None,
+            "call_metric_tokens_with_exact_evidence_total": exposure_tokens_exact if metric_runs else None,
             "latest_call_budget": latest_budget,
             "latest_calls_used": latest_calls_used,
             "call_utilization_ratio": utilization,
@@ -245,6 +262,7 @@ def build(scan: dict, previous: dict | None = None) -> dict:
             "configuration_is_not_evidence": True,
             "call_efficiency_is_observability_only": True,
             "call_efficiency_uses_only_same_run_measured_events": True,
+            "budget_policy_samples_require_positive_call_exposure": True,
         },
         "provider_rollup": _aggregate(runs),
         "runs": runs,
@@ -265,8 +283,10 @@ def main() -> None:
     compact = {
         name: {
             "latest": row.get("latest_state"),
-            "exact_ratio": row.get("exact_evidence_run_ratio"),
-            "degraded_ratio": row.get("degraded_run_ratio"),
+            "history_exact_ratio": row.get("exact_evidence_run_ratio"),
+            "measured_runs": row.get("call_exposure_runs"),
+            "measured_exact_ratio": row.get("call_exposure_exact_evidence_run_ratio"),
+            "measured_degraded_ratio": row.get("call_exposure_degraded_run_ratio"),
             "exact_per_call": row.get("exact_events_per_call"),
         }
         for name, row in (payload.get("provider_rollup") or {}).items()
