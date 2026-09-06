@@ -10,6 +10,7 @@ on:
       - '.github/workflows/aobs-price-watch.yml'
       - 'src/wallet500/aobs_price_watch.py'
       - 'src/wallet500/aobs_price_watch_v2.py'
+      - 'src/wallet500/aobs_price_watch_v3.py'
 
 permissions:
   contents: write
@@ -36,8 +37,8 @@ jobs:
       - name: Validate watcher logic
         run: |
           set -euo pipefail
-          python -m py_compile src/wallet500/aobs_price_watch.py src/wallet500/aobs_price_watch_v2.py
-          python src/wallet500/aobs_price_watch_v2.py --self-test
+          python -m py_compile src/wallet500/aobs_price_watch.py src/wallet500/aobs_price_watch_v2.py src/wallet500/aobs_price_watch_v3.py
+          python src/wallet500/aobs_price_watch_v3.py --self-test
 
       - name: Fetch exact AOBS pool plus holders and send edge-triggered Telegram alert
         env:
@@ -47,7 +48,7 @@ jobs:
           AOBS_HOLDER_LEDGER_PATH: data/aobs-holder-ledger.json
         run: |
           set -euo pipefail
-          python src/wallet500/aobs_price_watch_v2.py
+          python src/wallet500/aobs_price_watch_v3.py
 
       - name: Persist AOBS price and holder state without CI fan-out
         run: |
@@ -58,7 +59,10 @@ jobs:
           fi
           git config user.name 'wallet500-aobs-bot'
           git config user.email 'wallet500-aobs-bot@users.noreply.github.com'
-          git add data/aobs-price-watch.json data/aobs-holder-ledger.json
+          git add data/aobs-price-watch.json
+          if [ -f data/aobs-holder-ledger.json ]; then
+            git add data/aobs-holder-ledger.json
+          fi
           git commit -m 'data: persist AOBS price and holder state [skip ci]'
           git fetch --depth=20 origin main
           git rebase origin/main
