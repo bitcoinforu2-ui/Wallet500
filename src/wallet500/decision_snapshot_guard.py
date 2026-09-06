@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .evidence_ready_visibility import repair as repair_evidence_ready_visibility
 from .solana_mintability_public_guard import sanitize_real_alerts
 
 DATA = Path("data")
@@ -201,6 +202,10 @@ def run(data_dir: Path = DATA, fail_on_error: bool = True) -> dict:
     # Sanitize first so stale precursor/waking rows cannot keep a mintable token
     # visible after the canonical Revival universe has correctly rejected it.
     sanitize_real_alerts(data_dir)
+    # The generic watch surface is display-capped. Re-materialize any canonical
+    # Evidence Ready row that was displaced by higher-priority watch rows before
+    # testing snapshot coherence. This never changes alert or production truth.
+    repair_evidence_ready_visibility(data_dir)
     payload = build(data_dir)
     (data_dir / OUTPUT.name).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if fail_on_error and not payload["passed"]:
