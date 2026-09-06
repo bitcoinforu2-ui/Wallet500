@@ -1,0 +1,106 @@
+name: Wallet500 Genesis Radar Live
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '4,19,34,49 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/genesis_radar.py'
+      - 'src/wallet500/genesis_live.py'
+      - 'src/wallet500/genesis_telegram.py'
+      - 'tests/test_genesis_radar.py'
+      - 'tests/test_genesis_live.py'
+      - 'docs/GENESIS_RADAR_POLICY.md'
+      - '.github/workflows/genesis-radar.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-genesis-radar-live
+  cancel-in-progress: false
+
+jobs:
+  genesis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python -m pip install -e . pytest
+      - name: Lock Genesis truth contracts
+        run: python -m pytest -q tests/test_genesis_radar.py tests/test_genesis_live.py
+      - name: Run isolated live new-coin radar and $5 paper ledger
+        env:
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+          BIRDEYE_API_KEY: ${{ secrets.BIRDEYE_API_KEY }}
+          GENESIS_DISCOVERY_LIMIT_PER_CHAIN: '120'
+          GENESIS_MAX_SNAPSHOTS: '90'
+          GENESIS_MAX_SOLANA_DEEP: '18'
+          GENESIS_HOLDER_TIMEOUT: '18'
+        run: python -m wallet500.genesis_live
+      - name: Publish Genesis state without touching Revival truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "wallet500-genesis-bot"
+          git config user.email "wallet500-genesis-bot@users.noreply.github.com"
+          git add data/genesis-state.json data/genesis-paper.json data/genesis-radar.json data/genesis-health.json
+          if git diff --cached --quiet; then
+            echo "No Genesis data changes"
+          else
+            git commit -m "data: refresh live Genesis Radar and $5 paper ledger"
+            pushed=0
+            for attempt in 1 2 3 4; do
+              git fetch origin main
+              if ! git rebase origin/main; then
+                git rebase --abort || true
+                echo "Genesis rebase conflict; refusing to overwrite newer truth"
+                exit 1
+              fi
+              if git push origin HEAD:main; then
+                pushed=1
+                break
+              fi
+              sleep $((attempt * 2))
+            done
+            test "$pushed" -eq 1
+          fi
+      - name: Send only fresh Genesis $5 paper alerts
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m wallet500.genesis_telegram
+      - name: Persist Telegram dedupe state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add data/genesis-alert-state.json || true
+          if git diff --cached --quiet; then
+            echo "No Genesis Telegram state changes"
+            exit 0
+          fi
+          git commit -m "data: persist Genesis Telegram dedupe state"
+          pushed=0
+          for attempt in 1 2 3 4; do
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo "Telegram state rebase conflict; keeping delivered alert safe from overwrite"
+              exit 1
+            fi
+            if git push origin HEAD:main; then
+              pushed=1
+              break
+            fi
+            sleep $((attempt * 2))
+          done
+          test "$pushed" -eq 1
