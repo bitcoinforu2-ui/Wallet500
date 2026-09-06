@@ -1,20 +1,21 @@
 {
   "version": 1,
   "mode": "INDEPENDENT_OBSERVABILITY_NO_TRADING_POLICY_EFFECT",
-  "updated_at": "2026-09-06T17:07:09.158281+00:00",
+  "updated_at": "2026-09-06T17:36:03.865525+00:00",
   "overall": "CRITICAL",
   "incident_count": 4,
   "critical_count": 1,
   "high_count": 3,
   "new_notifications": [
     {
-      "code": "LIVE_SCAN_LATEST_FAILED",
+      "code": "TELEGRAM_REPORT_STALE",
       "severity": "HIGH",
-      "detail": "latest Live Scan conclusion=failure",
-      "run_id": 34047339285
+      "detail": "telegram-alert-report.json age=3763.4s max=3600s"
     }
   ],
-  "recovered_codes": [],
+  "recovered_codes": [
+    "LIVE_SCAN_LATEST_FAILED"
+  ],
   "real_alert_transitions_entered": [],
   "incidents": [
     {
@@ -24,66 +25,65 @@
       "run_id": null
     },
     {
-      "code": "LIVE_SCAN_LATEST_FAILED",
-      "severity": "HIGH",
-      "detail": "latest Live Scan conclusion=failure",
-      "run_id": 34047339285
-    },
-    {
       "code": "SCHEDULER_TELEMETRY_STALE",
       "severity": "HIGH",
-      "detail": "scheduler-health.json age=121408.0s max=2700s"
+      "detail": "scheduler-health.json age=123142.7s max=2700s"
     },
     {
       "code": "SYSTEM_HEALTH_STALE",
       "severity": "HIGH",
-      "detail": "system-health.json age=121408.0s max=2700s"
+      "detail": "system-health.json age=123142.7s max=2700s"
+    },
+    {
+      "code": "TELEGRAM_REPORT_STALE",
+      "severity": "HIGH",
+      "detail": "telegram-alert-report.json age=3763.4s max=3600s"
     }
   ],
   "checks": {
     "real-alerts.json": {
-      "timestamp": "2026-09-06T16:53:28.860554+00:00",
-      "age_seconds": 820.3,
+      "timestamp": "2026-09-06T17:27:36.248209+00:00",
+      "age_seconds": 507.6,
       "max_age_seconds": 2700,
       "ok": true
     },
     "system-health.json": {
       "timestamp": "2026-09-05T07:23:41.128885+00:00",
-      "age_seconds": 121408.0,
+      "age_seconds": 123142.7,
       "max_age_seconds": 2700,
       "ok": false
     },
     "scheduler-health.json": {
       "timestamp": "2026-09-05T07:23:41.174634+00:00",
-      "age_seconds": 121408.0,
+      "age_seconds": 123142.7,
       "max_age_seconds": 2700,
       "ok": false
     },
     "telegram-alert-report.json": {
       "timestamp": "2026-09-06T16:33:20.468473+00:00",
-      "age_seconds": 2028.7,
+      "age_seconds": 3763.4,
       "max_age_seconds": 3600,
-      "ok": true
+      "ok": false
     },
     "real-alert-10usd-summary.json": {
-      "timestamp": "2026-09-06T16:50:02.790766+00:00",
-      "age_seconds": 1026.4,
+      "timestamp": "2026-09-06T17:22:28.157889+00:00",
+      "age_seconds": 815.7,
       "max_age_seconds": 3600,
       "ok": true
     },
     "github_live_scan": {
-      "latest_status": "completed",
-      "latest_conclusion": "failure",
-      "latest_created_at": "2026-09-06T17:02:28Z",
-      "latest_updated_at": "2026-09-06T17:04:50Z",
-      "latest_run_id": 34047339285,
+      "latest_status": "in_progress",
+      "latest_conclusion": null,
+      "latest_created_at": "2026-09-06T17:34:38Z",
+      "latest_updated_at": "2026-09-06T17:36:04Z",
+      "latest_run_id": 34049031274,
       "last_success_at": null,
       "last_success_run_id": null
     },
     "public_surface": {
       "dashboard_ok": true,
       "real_feed_ok": true,
-      "real_feed_generated_at": "2026-09-06T16:53:28.860554+00:00"
+      "real_feed_generated_at": "2026-09-06T17:27:36.248209+00:00"
     }
   },
   "truth_contract": [
@@ -96,6 +96,6 @@
   "notification": {
     "attempted": true,
     "sent": true,
-    "message_id": 109
+    "message_id": 112
   }
 }
