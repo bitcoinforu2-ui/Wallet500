@@ -50,6 +50,14 @@ def test_revival_dex_pair_fields_feed_verified_watch(tmp_path):
     assert row["liquidity_truth_source"] == "LEGACY_EXACT_PAIR:dex_pair_liquidity_usd"
     assert "REVIVAL_MARKET_STRUCTURE" in row["source_lanes"]
     assert "NO_STRONG_DECISION_LANE" in row["blockers"]
+    assert row["signal_score"] == 70
+    assert row["signal_leader"] == "REVIVAL_VERIFIED"
+    assert row["confirmation_count"] == 1
+    assert row["confirmation_total"] == 5
+    assert row["readiness_passed"] == 5
+    assert row["readiness_total"] == 7
+    assert row["radar_tier"] == "VERIFIED_WATCH"
+    assert row["score_semantics"] == "MAX_AVAILABLE_SIGNAL_NOT_PROBABILITY"
 
 
 def test_evidence_ready_is_visible_but_does_not_auto_become_real_alert(tmp_path):
@@ -86,3 +94,34 @@ def test_evidence_ready_is_visible_but_does_not_auto_become_real_alert(tmp_path)
     assert row["status"] == "EVIDENCE_READY_NOT_REAL_ALERT"
     assert row["evidence_ready"] is True
     assert row["evidence_positive_lanes"] == ["WALLET_ACCUMULATION"]
+    assert row["evidence_verified_count"] == 1
+    assert row["evidence_positive_count"] == 1
+
+
+def test_two_independent_signal_lanes_with_one_missing_decision_gate_are_near_alert(tmp_path):
+    seed_empty(tmp_path)
+    write(tmp_path, "revival-1000-latest.json", {"coins": [revival_row()]})
+    write(tmp_path, "candidate-evidence-envelope.json", {"candidates": []})
+    write(tmp_path, "cex-revival-radar.json", {
+        "alerts": [{
+            "network": "solana",
+            "token_address": TOKEN,
+            "symbol": "OLDUSDT",
+            "pair_address": PAIR,
+            "identity_status": "DEX_VERIFIED",
+            "market_age_verified": True,
+            "market_age_min_days": 900,
+            "cex_revival_score": 100,
+            "coherent_confirmations": 4,
+        }],
+    })
+    result = build(tmp_path)
+    assert result["counts"]["near_alert_not_real"] == 1
+    row = result["verified_watch"][0]
+    assert row["radar_tier"] == "NEAR_ALERT"
+    assert row["signal_score"] == 100
+    assert row["signal_leader"] == "CEX_REVIVAL"
+    assert row["confirmation_count"] == 2
+    assert row["readiness_passed"] == 6
+    assert row["missing_gates"] == ["STRONG_DECISION_LANE"]
+    assert row["blockers"] == ["NO_STRONG_DECISION_LANE"]
