@@ -1,7 +1,7 @@
 import wallet500.social_feed_scan_v4 as scan
 
 
-def test_source_health_separates_config_from_evidence():
+def test_source_health_separates_config_direct_and_index_evidence():
     payload = {
         "direct_provider_config": {
             "x": True,
@@ -36,16 +36,25 @@ def test_source_health_separates_config_from_evidence():
         }],
     }
     health = scan._source_health(payload)
+    assert health["version"] == 2
     assert health["providers"]["telegram_official"]["state"] == "ACTIVE_OFFICIAL_CONTEXT"
     assert health["providers"]["telegram_mtproto"]["state"] == "NOT_CONFIGURED"
     assert health["providers"]["bluesky"]["state"] == "ACTIVE_EXACT_EVIDENCE"
     assert health["providers"]["x"]["state"] == "INDEX_CONTEXT_ONLY"
     assert health["providers"]["x"]["indexed_exact_context_events"] == 1
+    assert health["providers"]["x"]["exact_direct_events"] == 0
+    assert health["providers"]["x"]["tokens_with_exact_evidence"] == 1
+    assert health["providers"]["x"]["tokens_with_direct_exact_evidence"] == 0
+    assert health["providers"]["x"]["tokens_with_indexed_exact_context"] == 1
+    assert health["providers"]["bluesky"]["tokens_with_direct_exact_evidence"] == 1
+    assert health["providers"]["bluesky"]["tokens_with_indexed_exact_context"] == 0
     assert health["providers"]["social_mesh_public_index"]["state"] == "INDEX_CONTEXT_ONLY"
     assert health["providers"]["social_mesh_public_index"]["indexed_exact_context_events"] == 1
-    assert health["providers"]["x"]["exact_direct_events"] == 0
+    assert health["providers"]["social_mesh_public_index"]["tokens_with_direct_exact_evidence"] == 0
+    assert health["providers"]["social_mesh_public_index"]["tokens_with_indexed_exact_context"] == 1
     assert health["truth"]["provider_health_does_not_modify_token_scores"] is True
     assert health["truth"]["secret_values_never_exposed"] is True
+    assert health["truth"]["direct_and_indexed_exact_token_counts_are_separate"] is True
 
 
 def test_mtproto_event_is_not_misclassified_as_public_telegram():
@@ -68,4 +77,6 @@ def test_mtproto_event_is_not_misclassified_as_public_telegram():
     }
     health = scan._source_health(payload)
     assert health["providers"]["telegram_mtproto"]["exact_direct_events"] == 1
+    assert health["providers"]["telegram_mtproto"]["tokens_with_direct_exact_evidence"] == 1
     assert health["providers"]["telegram_official"]["exact_direct_events"] == 0
+    assert health["providers"]["telegram_official"]["tokens_with_direct_exact_evidence"] == 0
