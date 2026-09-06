@@ -1,6 +1,7 @@
 from urllib.error import HTTPError
 
 import wallet500.social_bluesky_resilient as bsky
+import wallet500.social_feed_scan_v3 as scan
 
 
 IDENTITY = {
@@ -110,3 +111,30 @@ def test_auth_fallback_after_both_public_paths_fail(monkeypatch):
     assert status["official_public_status"] == "HTTP_403"
     assert status["legacy_public_status"] == "HTTP_403"
     assert status["auth_fallback"] == "USED"
+
+
+def test_public_search_block_creates_explicit_unknown_circuit_breaker(monkeypatch):
+    scan._reset_runtime_state()
+    monkeypatch.setattr(scan, "_configured", lambda provider: True)
+    monkeypatch.setattr(scan, "_budget", lambda provider: 12)
+    calls = {"n": 0}
+
+    def blocked(identity):
+        calls["n"] += 1
+        return [], {
+            "provider": "bluesky",
+            "status": bsky.PUBLIC_SEARCH_BLOCKED,
+            "meaning": "UNKNOWN_NOT_ZERO",
+            "auth_fallback": "NOT_CONFIGURED",
+        }
+
+    monkeypatch.setattr(scan.bluesky_resilient, "scan_bluesky_resilient", blocked)
+    rows1, status1 = scan._scan_provider("bluesky", IDENTITY)
+    rows2, status2 = scan._scan_provider("bluesky", IDENTITY)
+
+    assert rows1 == [] and rows2 == []
+    assert status1["status"] == "PUBLIC_SEARCH_BLOCKED_AUTH_REQUIRED"
+    assert status1["meaning"] == "UNKNOWN_NOT_ZERO"
+    assert status2["status"] == "CIRCUIT_BREAKER_PUBLIC_SEARCH_BLOCKED_AUTH_REQUIRED"
+    assert status2["meaning"] == "UNKNOWN_NOT_ZERO"
+    assert calls["n"] == 1
