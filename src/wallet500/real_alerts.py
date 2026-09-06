@@ -78,7 +78,7 @@ def _row_pair(row: dict) -> str | None:
 def _row_pair_exact(row: dict) -> bool:
     truth = row.get("truth") if isinstance(row.get("truth"), dict) else {}
     return bool(
-        row.get("identity_status") == "DEX_VERIFIED"
+        str(row.get("identity_status") or "").startswith("DEX_VERIFIED")
         or row.get("exact_pair_verified") is True
         or truth.get("exact_pair_verified") is True
         or row.get("dex_link_type") == "DEXSCREENER_VERIFIED_PAIR"
@@ -141,7 +141,7 @@ def _identity_truth(*rows: dict) -> tuple[str | None, str | None, bool]:
         chain = str(_first(row.get("chain"), row.get("network")) or "").strip().lower()
         token = str(_first(row.get("token_address"), row.get("token"), row.get("mint")) or "").strip()
         exact = (
-            row.get("identity_status") == "DEX_VERIFIED"
+            str(row.get("identity_status") or "").startswith("DEX_VERIFIED")
             or row.get("identity_verified") is True
             or identity.get("exact_mint_verified") is True
             or truth.get("exact_identity_verified") is True
@@ -359,7 +359,7 @@ def build(data_dir: Path = DATA) -> dict:
 
     identity_pending = []
     for row in cex_rows:
-        if row.get("identity_status") == "DEX_VERIFIED":
+        if str(row.get("identity_status") or "").startswith("DEX_VERIFIED"):
             continue
         identity_pending.append({
             "symbol": _symbol(row),
@@ -411,9 +411,21 @@ def build(data_dir: Path = DATA) -> dict:
 
 
 def run(data_dir: Path = DATA) -> dict:
+    # Production-facing REAL ALERT files are never left in their raw derived state.
+    # The liquidity truth sanitizer runs in the same producer process before any
+    # workflow can publish the snapshot to main, eliminating the previous race window.
+    from .liquidity_truth_guard import sanitize_real_alerts
+
+    path = data_dir / "real-alerts.json"
     payload = build(data_dir)
-    (data_dir / "real-alerts.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return payload["counts"]
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    sanitize_real_alerts(path)
+    final_payload = _load(path, {})
+    truth = final_payload.get("truth_contract") if isinstance(final_payload.get("truth_contract"), dict) else {}
+    truth["producer_liquidity_sanitized_before_publish"] = True
+    final_payload["truth_contract"] = truth
+    path.write_text(json.dumps(final_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return final_payload.get("counts") or {}
 
 
 if __name__ == "__main__":
