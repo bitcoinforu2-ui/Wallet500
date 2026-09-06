@@ -1,0 +1,90 @@
+name: Wallet500 Broad Wallet Coverage Probe
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/revival_wallet_coverage_probe.py'
+      - 'tests/test_revival_wallet_coverage_probe.py'
+      - '.github/workflows/revival-wallet-coverage-probe.yml'
+      - 'data/revival-1000-latest.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-broad-wallet-coverage-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Unit test
+        run: python -m pytest -q tests/test_revival_wallet_coverage_probe.py
+      - name: Probe exact-pair wallet coverage
+        env:
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+          REVIVAL_WALLET_PROBE_MAX_TARGETS: '96'
+          REVIVAL_WALLET_PROBE_FRESH_SECONDS: '7200'
+        run: |
+          if [ -z "${SOLANA_RPC_URL:-}" ]; then
+            export SOLANA_RPC_URL='https://solana-rpc.publicnode.com'
+            echo 'Using verified public Solana RPC fallback'
+          fi
+          python -m wallet500.revival_wallet_coverage_probe
+      - name: Validate probe truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('data/revival-wallet-coverage-probe.json').read_text())
+          if p.get('version')!='REVIVAL_WALLET_COVERAGE_PROBE_V1': raise SystemExit('WALLET_PROBE_VERSION_INVALID')
+          if p.get('mode')!='RESEARCH_ONLY_EXACT_PAIR_WALLET_COVERAGE_PROBE': raise SystemExit('WALLET_PROBE_MODE_INVALID')
+          if p.get('production_portfolio_impact')!='NONE' or p.get('automatic_buy') is not False: raise SystemExit('WALLET_PROBE_PRODUCTION_LEAK')
+          t=p.get('truth_contract') or {}
+          if t.get('minimum_market_age_days')!=180: raise SystemExit('WALLET_PROBE_AGE_INVALID')
+          if t.get('exact_pair_required') is not True: raise SystemExit('WALLET_PROBE_PAIR_GUARD_MISSING')
+          if t.get('probe_is_coverage_only_not_accumulation_alpha') is not True: raise SystemExit('WALLET_PROBE_ROLE_INVALID')
+          if t.get('probe_verified_never_counts_as_positive_wallet_accumulation') is not True: raise SystemExit('WALLET_PROBE_POSITIVE_LEAK')
+          if t.get('probe_never_changes_candidate_promotion') is not True: raise SystemExit('WALLET_PROBE_PROMOTION_LEAK')
+          if t.get('probe_never_changes_real_alert_gate') is not True: raise SystemExit('WALLET_PROBE_ALERT_LEAK')
+          if t.get('unresolved_target_mint_touch_fails_closed') is not True: raise SystemExit('WALLET_PROBE_FAIL_CLOSED_MISSING')
+          if any(row.get('positive') is not False or row.get('promotion_eligible') is not False for row in p.get('tokens') or []):
+              raise SystemExit('WALLET_PROBE_ROW_ALPHA_LEAK')
+          print('WALLET_COVERAGE_PROBE_OK', p.get('candidate_universe'), p.get('published_fresh_rows'), p.get('coverage_verified'), p.get('coverage_partial'))
+          PY
+      - name: Publish probe state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-wallet-probe-bot'
+          git config user.email 'wallet500-wallet-probe-bot@users.noreply.github.com'
+          git add data/revival-wallet-coverage-probe.json data/revival-wallet-coverage-probe-state.json
+          if git diff --cached --quiet; then
+            echo 'WALLET_PROBE_NO_DATA_CHANGE'
+            exit 0
+          fi
+          git commit -m 'data: refresh broad wallet coverage probe'
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo 'WALLET_PROBE_PUBLISH_OK'
+              exit 0
+            fi
+            git rebase --abort || true
+            sleep 3
+          done
+          echo '::error::WALLET_PROBE_PUBLISH_RACE_EXHAUSTED'
+          exit 1
