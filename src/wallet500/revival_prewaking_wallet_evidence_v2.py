@@ -5,6 +5,7 @@ import time
 
 from . import cyberleek_wallet_flow as rpcbase
 from . import revival_prewaking_wallet_evidence as pre
+from . import revival_prewaking_wallet_retention as retention
 from . import revival_wallet_evidence as collector
 
 
@@ -41,19 +42,16 @@ def _fetch_transactions_resilient(rows: list[dict], mint: str) -> tuple[list[dic
         if not isinstance(tx, dict):
             unresolved += 1
         elif (tx.get("meta") or {}).get("err") is not None:
-            # A failed transaction did not become a successful swap; exclude it.
             pass
         else:
             deltas = rpcbase._mint_owner_deltas(tx, mint)
             if not deltas:
-                # Proven unrelated pair traffic: no target-mint balance delta.
                 pass
             else:
                 event = collector._extract_trade(tx, signature, mint, row.get("blockTime"))
                 if event:
                     events.append(event)
                 else:
-                    # Target mint moved, but signed-owner attribution was not provable.
                     unresolved += 1
 
         if index + 1 < len(valid):
@@ -73,6 +71,7 @@ def run() -> dict:
     payload["truth_contract"] = truth
     payload["resolution_policy"] = "EXACT_MINT_TOUCH_DENOMINATOR_V2"
     collector._write(pre.LATEST, payload)
+    payload = retention.retain_fresh_rotation_evidence(payload)
     return payload
 
 
@@ -81,8 +80,10 @@ def main() -> None:
     print(json.dumps({
         "version": payload.get("version"),
         "targets": payload.get("targets"),
+        "published_wallet_evidence_rows": payload.get("published_wallet_evidence_rows"),
         "resolution_policy": payload.get("resolution_policy"),
         "selection_policy": payload.get("selection_policy"),
+        "rotation_retention": payload.get("rotation_retention"),
     }, ensure_ascii=False))
 
 
