@@ -41,65 +41,69 @@ def _int(value: Any) -> int:
         return 0
 
 
-def _confidence(runs: int) -> str:
-    if runs >= 16:
+def _confidence(measured_runs: int) -> str:
+    if measured_runs >= 16:
         return "HIGH"
-    if runs >= MIN_RUNS_FOR_POLICY_ADVICE:
+    if measured_runs >= MIN_RUNS_FOR_POLICY_ADVICE:
         return "MEDIUM"
     return "LOW"
 
 
-def _efficiency_score(row: dict) -> float | None:
+def _efficiency_score(provider: str, row: dict) -> float | None:
     state = str(row.get("latest_state") or "UNKNOWN")
     calls_used = row.get("calls_used_total")
-    if state in {"NOT_CONFIGURED", "INDEX_CONTEXT_ONLY"}:
+    measured_runs = _int(row.get("call_exposure_runs"))
+    if provider == "social_mesh_public_index" or state in {"NOT_CONFIGURED", "INDEX_CONTEXT_ONLY"}:
         return None
-    if row.get("latest_call_budget") is None or calls_used is None or _int(calls_used) <= 0:
+    if row.get("latest_call_budget") is None or calls_used is None or _int(calls_used) <= 0 or measured_runs <= 0:
         return None
-    exact_ratio = min(1.0, max(0.0, _num(row.get("exact_evidence_run_ratio"))))
-    reliability = 1.0 - min(1.0, max(0.0, _num(row.get("degraded_run_ratio"))))
+    exact_ratio = min(1.0, max(0.0, _num(row.get("call_exposure_exact_evidence_run_ratio"))))
+    reliability = 1.0 - min(1.0, max(0.0, _num(row.get("call_exposure_degraded_run_ratio"))))
     exact_per_call = min(1.0, max(0.0, _num(row.get("exact_events_per_call"))))
     tokens_per_call = min(1.0, max(0.0, _num(row.get("tokens_with_exact_evidence_per_call")) / 0.25))
-    return round(45.0 * exact_ratio + 25.0 * reliability + 20.0 * exact_per_call + 10.0 * tokens_per_call, 2)
+    yield_score = 55.0 * exact_ratio + 30.0 * exact_per_call + 15.0 * tokens_per_call
+    return round(yield_score * reliability, 2)
 
 
 def _recommend(provider: str, row: dict) -> tuple[str, list[str]]:
-    runs = _int(row.get("runs_observed"))
+    measured_runs = _int(row.get("call_exposure_runs"))
     state = str(row.get("latest_state") or "UNKNOWN")
-    degraded = _num(row.get("degraded_run_ratio"))
-    exact_ratio = _num(row.get("exact_evidence_run_ratio"))
+    degraded = _num(row.get("call_exposure_degraded_run_ratio"))
+    exact_ratio = _num(row.get("call_exposure_exact_evidence_run_ratio"))
     exact_per_call = row.get("exact_events_per_call")
     tokens_per_call = row.get("tokens_with_exact_evidence_per_call")
     latest_budget = row.get("latest_call_budget")
-    exact_total = _int(row.get("exact_direct_events_total"))
+    exact_total = _int(row.get("call_metric_exact_events_total"))
 
     if state == "NOT_CONFIGURED":
-        return "CONNECT_PROVIDER_FIRST", ["provider_not_configured", "budget_cannot_be_evaluated_without_direct_runs"]
+        return "CONNECT_PROVIDER_FIRST", ["provider_not_configured", "budget_cannot_be_evaluated_without_direct_calls"]
+    if provider == "social_mesh_public_index":
+        return "OBSERVE_CONTEXT_ONLY_SOURCE", ["context_only_source", "never_grade_as_direct_evidence_efficiency"]
     if latest_budget is None:
         return "OBSERVE_NON_BUDGETED_SOURCE", ["no_explicit_call_budget", "keep_as_observability_source"]
-    if runs < MIN_RUNS_FOR_POLICY_ADVICE:
-        return "COLLECT_MORE_HISTORY", [f"runs_observed={runs}", f"minimum_required={MIN_RUNS_FOR_POLICY_ADVICE}"]
+    if measured_runs < MIN_RUNS_FOR_POLICY_ADVICE:
+        return "COLLECT_MORE_MEASURED_HISTORY", [f"call_exposure_runs={measured_runs}", f"minimum_required={MIN_RUNS_FOR_POLICY_ADVICE}"]
     if degraded >= 0.5:
-        return "FIX_RELIABILITY_BEFORE_SPEND", [f"degraded_run_ratio={round(degraded,4)}", "do_not_reward_unreliable_provider"]
+        return "FIX_RELIABILITY_BEFORE_SPEND", [f"measured_degraded_run_ratio={round(degraded,4)}", "do_not_reward_unreliable_provider"]
 
     exact_per_call_n = _num(exact_per_call)
     tokens_per_call_n = _num(tokens_per_call)
     if exact_ratio >= 0.5 and exact_per_call_n >= 0.25 and tokens_per_call_n >= 0.05:
         return "CANDIDATE_INCREASE_AFTER_HUMAN_REVIEW", [
-            f"exact_evidence_run_ratio={round(exact_ratio,4)}",
+            f"measured_exact_evidence_run_ratio={round(exact_ratio,4)}",
             f"exact_events_per_call={round(exact_per_call_n,4)}",
             f"tokens_with_exact_evidence_per_call={round(tokens_per_call_n,4)}",
         ]
-    if runs >= MIN_RUNS_FOR_DECREASE_ADVICE and exact_ratio <= 0.1 and exact_total == 0:
+    if measured_runs >= MIN_RUNS_FOR_DECREASE_ADVICE and exact_ratio <= 0.1 and exact_total == 0:
         return "CANDIDATE_DECREASE_AFTER_HUMAN_REVIEW", [
-            f"runs_observed={runs}",
-            f"exact_evidence_run_ratio={round(exact_ratio,4)}",
-            "zero_exact_direct_events_across_observed_window",
+            f"call_exposure_runs={measured_runs}",
+            f"measured_exact_evidence_run_ratio={round(exact_ratio,4)}",
+            "zero_exact_direct_events_across_measured_window",
         ]
     return "HOLD_CURRENT_BUDGET", [
-        f"exact_evidence_run_ratio={round(exact_ratio,4)}",
-        f"degraded_run_ratio={round(degraded,4)}",
-        "evidence_not_strong_enough_for_budget_change",
+        f"measured_exact_evidence_run_ratio={round(exact_ratio,4)}",
+        f"measured_degraded_run_ratio={round(degraded,4)}",
+        "measured_evidence_not_strong_enough_for_budget_change",
     ]
 
 
@@ -110,20 +114,23 @@ def build(history: dict) -> dict:
         if not isinstance(raw, dict):
             continue
         recommendation, reasons = _recommend(str(provider), raw)
-        runs = _int(raw.get("runs_observed"))
+        history_runs = _int(raw.get("runs_observed"))
+        measured_runs = _int(raw.get("call_exposure_runs"))
         rows.append({
             "provider": str(provider),
             "recommendation": recommendation,
-            "confidence": _confidence(runs),
-            "runs_observed": runs,
+            "confidence": _confidence(measured_runs),
+            "runs_observed": history_runs,
+            "measured_runs_for_policy": measured_runs,
             "latest_state": raw.get("latest_state") or "UNKNOWN",
             "latest_call_budget": raw.get("latest_call_budget"),
             "calls_used_total": raw.get("calls_used_total"),
-            "exact_evidence_run_ratio": raw.get("exact_evidence_run_ratio"),
-            "degraded_run_ratio": raw.get("degraded_run_ratio"),
+            "historical_exact_evidence_run_ratio": raw.get("exact_evidence_run_ratio"),
+            "measured_exact_evidence_run_ratio": raw.get("call_exposure_exact_evidence_run_ratio"),
+            "measured_degraded_run_ratio": raw.get("call_exposure_degraded_run_ratio"),
             "exact_events_per_call": raw.get("exact_events_per_call"),
             "tokens_with_exact_evidence_per_call": raw.get("tokens_with_exact_evidence_per_call"),
-            "evidence_efficiency_score": _efficiency_score(raw),
+            "evidence_efficiency_score": _efficiency_score(str(provider), raw),
             "reasons": reasons,
             "suggested_budget_delta": None,
             "automatic_change": False,
@@ -137,8 +144,9 @@ def build(history: dict) -> dict:
         "CANDIDATE_INCREASE_AFTER_HUMAN_REVIEW": 2,
         "CANDIDATE_DECREASE_AFTER_HUMAN_REVIEW": 3,
         "HOLD_CURRENT_BUDGET": 4,
-        "COLLECT_MORE_HISTORY": 5,
-        "OBSERVE_NON_BUDGETED_SOURCE": 6,
+        "COLLECT_MORE_MEASURED_HISTORY": 5,
+        "OBSERVE_CONTEXT_ONLY_SOURCE": 6,
+        "OBSERVE_NON_BUDGETED_SOURCE": 7,
     }
     rows.sort(key=lambda r: (priority.get(str(r.get("recommendation")), 99), -(r.get("evidence_efficiency_score") or 0), r.get("provider") or ""))
 
@@ -153,8 +161,8 @@ def build(history: dict) -> dict:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "history_mode": history.get("mode"),
         "history_runs_count": _int(history.get("runs_count")),
-        "minimum_runs_for_policy_advice": MIN_RUNS_FOR_POLICY_ADVICE,
-        "minimum_runs_for_decrease_advice": MIN_RUNS_FOR_DECREASE_ADVICE,
+        "minimum_measured_runs_for_policy_advice": MIN_RUNS_FOR_POLICY_ADVICE,
+        "minimum_measured_runs_for_decrease_advice": MIN_RUNS_FOR_DECREASE_ADVICE,
         "observability_only": True,
         "production_effect": False,
         "automatic_budget_changes": False,
@@ -168,6 +176,9 @@ def build(history: dict) -> dict:
             "not_configured_is_not_bad_evidence": True,
             "indexed_context_never_counts_as_direct_efficiency": True,
             "no_direct_calls_means_no_efficiency_score": True,
+            "budget_advice_uses_only_positive_call_exposure_runs": True,
+            "zero_direct_yield_means_zero_efficiency_score": True,
+            "public_index_never_gets_direct_budget_advice": True,
         },
         "counts": counts,
         "providers": rows,
@@ -188,7 +199,12 @@ def main() -> None:
         "history_runs": payload.get("history_runs_count"),
         "counts": payload.get("counts"),
         "top": [
-            {"provider": x.get("provider"), "recommendation": x.get("recommendation"), "score": x.get("evidence_efficiency_score")}
+            {
+                "provider": x.get("provider"),
+                "recommendation": x.get("recommendation"),
+                "measured_runs": x.get("measured_runs_for_policy"),
+                "score": x.get("evidence_efficiency_score"),
+            }
             for x in (payload.get("providers") or [])[:5]
         ],
     }, ensure_ascii=False))
