@@ -5,7 +5,9 @@ on:
   pull_request:
     paths:
       - 'src/wallet500/coin_intelligence_profiles.py'
+      - 'src/wallet500/coin_profile_quality_guard.py'
       - 'tests/test_coin_intelligence_profiles.py'
+      - 'tests/test_coin_profile_quality_guard.py'
       - '.github/workflows/coin-intelligence-profiles.yml'
   schedule:
     - cron: '*/5 * * * *'
@@ -22,7 +24,9 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/coin_intelligence_profiles.py'
+      - 'src/wallet500/coin_profile_quality_guard.py'
       - 'tests/test_coin_intelligence_profiles.py'
+      - 'tests/test_coin_profile_quality_guard.py'
       - '.github/workflows/coin-intelligence-profiles.yml'
 
 permissions:
@@ -51,11 +55,13 @@ jobs:
           python-version: '3.12'
       - name: Install Wallet500 and tests
         run: pip install -e . pytest
-      - name: Lock profile identity, persistence and research-only truth rules
-        run: pytest -q tests/test_coin_intelligence_profiles.py
+      - name: Lock profile identity, persistence and quality quarantine truth rules
+        run: pytest -q tests/test_coin_intelligence_profiles.py tests/test_coin_profile_quality_guard.py
       - name: Build persistent multi-source coin dossiers and DNA library
         run: python -m wallet500.coin_intelligence_profiles
-      - name: Validate profile truth contract
+      - name: Quarantine conflicting metrics from learning DNA
+        run: python -m wallet500.coin_profile_quality_guard
+      - name: Validate profile truth and data quality contract
         run: |
           python - <<'PY'
           import json
@@ -65,6 +71,7 @@ jobs:
           ledger=json.loads(Path('data/coin-intelligence-profile-ledger.json').read_text())
           archive=json.loads(Path('data/coin-intelligence-profile-archive.json').read_text())
           dna=json.loads(Path('data/coin-profile-dna-library.json').read_text())
+          quality=json.loads(Path('data/coin-profile-data-quality.json').read_text())
 
           if latest.get('mode') != 'COIN_INTELLIGENCE_PROFILE_V1':
               raise SystemExit('COIN_PROFILE_MODE_DRIFT')
@@ -78,6 +85,7 @@ jobs:
               'material_duplicate_events_are_deduplicated',
               'missing_fingerprint_dimensions_remain_unobserved',
               'profile_never_bypasses_production_gates',
+              'quarantined_metrics_excluded_from_dna',
           )
           if not all(truth.get(k) is True for k in required):
               raise SystemExit('COIN_PROFILE_TRUTH_CONTRACT_MISSING')
@@ -90,13 +98,29 @@ jobs:
                   raise SystemExit('COIN_PROFILE_PRODUCTION_EFFECT_LEAK')
               fp=p.get('fingerprint') or {}
               if fp.get('truth_rule') != 'MISSING_DIMENSIONS_REMAIN_UNOBSERVED':
-                  raise SystemExit('COIN_PROFILE_FINGERPRINT_TRUTH_DRIFT')
+                  raise SystemExit('COIN_PROFILE_RAW_FINGERPRINT_TRUTH_DRIFT')
+              learning=p.get('learning_fingerprint') or {}
+              if learning.get('truth_rule') != 'MISSING_OR_QUARANTINED_DIMENSIONS_REMAIN_UNOBSERVED':
+                  raise SystemExit('COIN_PROFILE_LEARNING_FINGERPRINT_TRUTH_DRIFT')
+              q=p.get('data_quality') or {}
+              if q.get('status') not in {'CLEAN','CONFLICT_QUARANTINED'}:
+                  raise SystemExit('COIN_PROFILE_DATA_QUALITY_MISSING')
+              if q.get('status') == 'CONFLICT_QUARANTINED' and p.get('research_similarity_eligible') is not False:
+                  raise SystemExit('COIN_PROFILE_QUARANTINED_SIMILARITY_LEAK')
           if dna.get('automatic_trade') is not False or dna.get('production_effect') != 'NONE':
               raise SystemExit('COIN_PROFILE_DNA_PRODUCTION_LEAK')
-          if (dna.get('truth_contract') or {}).get('hard_gates_never_weaken_from_profile_similarity') is not True:
+          dt=dna.get('truth_contract') or {}
+          if dt.get('hard_gates_never_weaken_from_profile_similarity') is not True:
               raise SystemExit('COIN_PROFILE_DNA_HARD_GATE_LEAK')
+          if dt.get('quarantined_metrics_excluded_from_similarity') is not True:
+              raise SystemExit('COIN_PROFILE_DNA_QUALITY_QUARANTINE_MISSING')
+          if quality.get('mode') != 'COIN_PROFILE_DATA_QUALITY_GUARD_V1':
+              raise SystemExit('COIN_PROFILE_QUALITY_MODE_DRIFT')
+          if quality.get('automatic_trade') is not False or quality.get('production_change') is not False:
+              raise SystemExit('COIN_PROFILE_QUALITY_PRODUCTION_LEAK')
           print('COIN_PROFILE_TRUTH_OK', latest.get('counts'))
           print('COIN_PROFILE_DNA_OK', dna.get('counts'), 'archive', len(archive.get('entries') or {}))
+          print('COIN_PROFILE_QUALITY_OK', quality.get('counts'))
           PY
       - name: Persist profile state without mutating source truth
         if: github.event_name != 'pull_request'
@@ -118,7 +142,8 @@ jobs:
             data/coin-intelligence-profiles.json \
             data/coin-intelligence-profile-ledger.json \
             data/coin-intelligence-profile-archive.json \
-            data/coin-profile-dna-library.json
+            data/coin-profile-dna-library.json \
+            data/coin-profile-data-quality.json
           if git diff --cached --quiet; then
             echo 'No coin profile state change'
             exit 0
