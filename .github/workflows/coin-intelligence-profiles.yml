@@ -30,7 +30,7 @@ permissions:
 
 # Profiles are derived research state. Newer runs may supersede older builders
 # because every build starts from persistent source ledgers plus the prior profile
-# ledger; cancelling an older pending/running derivation cannot delete source truth.
+# ledger; cancelling an older derivation cannot delete source truth.
 concurrency:
   group: wallet500-coin-intelligence-profile-builder
   cancel-in-progress: true
@@ -43,7 +43,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          # This repository has high-frequency data commits. Full-history checkout
+          # is unnecessary for a derived profile build and can become a bottleneck.
+          fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -102,6 +104,16 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-profile-bot'
           git config user.email 'wallet500-profile-bot@users.noreply.github.com'
+
+          # A profile is a pure derivation. Never rebase an already-computed
+          # profile commit over newer source truth: if main moved, discard this
+          # stale derivation and let the next scheduled/workflow_run build recompute.
+          git fetch --depth=1 origin main
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+            echo 'COIN_PROFILE_BUILD_SUPERSEDED_BEFORE_PUBLISH: main advanced; next build will recompute from newer truth'
+            exit 0
+          fi
+
           git add \
             data/coin-intelligence-profiles.json \
             data/coin-intelligence-profile-ledger.json \
@@ -112,14 +124,7 @@ jobs:
             exit 0
           fi
           git commit -m 'data: refresh persistent coin intelligence profiles [skip ci]'
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            if ! git rebase origin/main; then
-              git rebase --abort || true
-              echo 'COIN_PROFILE_PUBLISH_SUPERSEDED: profile output conflict; next derivation will rebuild from persistent source truth'
-              exit 0
-            fi
-            if git push origin HEAD:main; then exit 0; fi
-            sleep 3
-          done
-          exit 1
+          if ! git push origin HEAD:main; then
+            echo 'COIN_PROFILE_BUILD_SUPERSEDED_DURING_PUBLISH: main advanced; refusing stale profile overwrite'
+            exit 0
+          fi
