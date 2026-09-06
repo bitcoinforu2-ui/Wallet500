@@ -1,0 +1,74 @@
+name: Wallet500 Narrative Intelligence
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '8,38 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/narrative_decision.py'
+      - 'tests/test_narrative_decision.py'
+      - 'dashboard-narrative.html'
+      - '.github/workflows/narrative-intelligence.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-narrative-intelligence-main
+  cancel-in-progress: true
+
+jobs:
+  narrative:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Truth tests
+        run: python -m pytest -q tests/test_narrative_decision.py
+      - name: Require upstream Social Intelligence snapshot
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/social-intelligence-v2.json')
+          if not p.exists() or not p.stat().st_size: raise SystemExit('SOCIAL_INTELLIGENCE_MISSING_OR_EMPTY')
+          d=json.loads(p.read_text())
+          if d.get('mode')!='RESEARCH_ONLY_SOCIAL_INTELLIGENCE_V2': raise SystemExit('UPSTREAM_MODE_INVALID')
+          if d.get('automatic_buy') is not False: raise SystemExit('UPSTREAM_PRODUCTION_LEAK')
+          PY
+      - name: Build narrative traffic light
+        run: python -m wallet500.narrative_decision
+      - name: Validate fail-closed research contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('data/narrative-decision.json').read_text())
+          if d.get('mode')!='RESEARCH_ONLY_NARRATIVE_DECISION_V1': raise SystemExit('NARRATIVE_MODE_INVALID')
+          if d.get('production_effect') is not False or d.get('automatic_buy') is not False: raise SystemExit('NARRATIVE_PRODUCTION_LEAK')
+          t=d.get('truth_contract') or {}
+          for k in ('research_only','social_never_overrides_production_gates','exact_pair_identity_is_inherited_not_rewritten','green_is_context_not_buy_signal','thresholds_do_not_modify_wallet500_production_truth'):
+              if t.get(k) is not True: raise SystemExit('NARRATIVE_TRUTH_MISSING:'+k)
+          for r in d.get('tokens') or []:
+              if r.get('traffic_light') not in {'GREEN','ORANGE','RED'}: raise SystemExit('NARRATIVE_LIGHT_INVALID')
+              if r.get('production_effect') is not False or r.get('automatic_buy') is not False: raise SystemExit('ROW_PRODUCTION_LEAK')
+          PY
+      - name: Publish research snapshot
+        run: |
+          git config user.name 'wallet500-bot'
+          git config user.email 'wallet500-bot@users.noreply.github.com'
+          git add data/narrative-decision.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'data: refresh 30m narrative intelligence'
+          git pull --rebase origin main
+          git push origin HEAD:main
