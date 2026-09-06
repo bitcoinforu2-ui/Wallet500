@@ -96,6 +96,8 @@ def _snapshot(scan: dict) -> dict:
             "official_context_events": _int(raw.get("official_context_events")),
             "indexed_exact_context_events": _int(raw.get("indexed_exact_context_events")),
             "tokens_with_exact_evidence": _int(raw.get("tokens_with_exact_evidence")),
+            "tokens_with_direct_exact_evidence": _int(raw.get("tokens_with_direct_exact_evidence")),
+            "tokens_with_indexed_exact_context": _int(raw.get("tokens_with_indexed_exact_context")),
             "call_budget": budget,
             "calls_used": calls_used,
         }
@@ -129,6 +131,8 @@ def _aggregate(runs: list[dict]) -> dict:
         official_events = 0
         indexed_events = 0
         tokens_exact_total = 0
+        tokens_direct_exact_total = 0
+        tokens_index_exact_total = 0
         observations = 0
 
         metric_runs = 0
@@ -138,7 +142,7 @@ def _aggregate(runs: list[dict]) -> dict:
         calls_total = 0
         budget_total = 0
         exposure_exact_events = 0
-        exposure_tokens_exact = 0
+        exposure_direct_tokens_exact = 0
 
         latest_budget = None
         latest_calls_used = None
@@ -158,10 +162,14 @@ def _aggregate(runs: list[dict]) -> dict:
             official = _int(row.get("official_context_events"))
             indexed = _int(row.get("indexed_exact_context_events"))
             tokens_exact = _int(row.get("tokens_with_exact_evidence"))
+            tokens_direct = _int(row.get("tokens_with_direct_exact_evidence"))
+            tokens_indexed = _int(row.get("tokens_with_indexed_exact_context"))
             exact_events += direct
             official_events += official
             indexed_events += indexed
             tokens_exact_total += tokens_exact
+            tokens_direct_exact_total += tokens_direct
+            tokens_index_exact_total += tokens_indexed
             if direct > 0:
                 exact_runs += 1
             if official > 0:
@@ -180,7 +188,7 @@ def _aggregate(runs: list[dict]) -> dict:
                 if calls > 0:
                     exposure_runs += 1
                     exposure_exact_events += direct
-                    exposure_tokens_exact += tokens_exact
+                    exposure_direct_tokens_exact += tokens_direct
                     if direct > 0:
                         exposure_exact_runs += 1
                     if state == "DEGRADED_UNKNOWN":
@@ -193,7 +201,7 @@ def _aggregate(runs: list[dict]) -> dict:
         denom = max(1, observations)
         exposure_denom = max(1, exposure_runs)
         exact_per_call = round(exposure_exact_events / calls_total, 4) if calls_total > 0 else None
-        tokens_per_call = round(exposure_tokens_exact / calls_total, 4) if calls_total > 0 else None
+        direct_tokens_per_call = round(exposure_direct_tokens_exact / calls_total, 4) if calls_total > 0 else None
         utilization = round(calls_total / budget_total, 4) if budget_total > 0 else None
         providers[provider] = {
             "runs_observed": observations,
@@ -209,6 +217,8 @@ def _aggregate(runs: list[dict]) -> dict:
             "official_context_events_total": official_events,
             "indexed_exact_context_events_total": indexed_events,
             "tokens_with_exact_evidence_total": tokens_exact_total,
+            "tokens_with_direct_exact_evidence_total": tokens_direct_exact_total,
+            "tokens_with_indexed_exact_context_total": tokens_index_exact_total,
             "call_metric_runs": metric_runs,
             "call_exposure_runs": exposure_runs,
             "call_exposure_exact_runs": exposure_exact_runs,
@@ -218,12 +228,14 @@ def _aggregate(runs: list[dict]) -> dict:
             "calls_used_total": calls_total if metric_runs else None,
             "call_budget_total": budget_total if metric_runs else None,
             "call_metric_exact_events_total": exposure_exact_events if metric_runs else None,
-            "call_metric_tokens_with_exact_evidence_total": exposure_tokens_exact if metric_runs else None,
+            "call_metric_tokens_with_exact_evidence_total": exposure_direct_tokens_exact if metric_runs else None,
+            "call_metric_direct_tokens_with_exact_evidence_total": exposure_direct_tokens_exact if metric_runs else None,
             "latest_call_budget": latest_budget,
             "latest_calls_used": latest_calls_used,
             "call_utilization_ratio": utilization,
             "exact_events_per_call": exact_per_call,
-            "tokens_with_exact_evidence_per_call": tokens_per_call,
+            "tokens_with_exact_evidence_per_call": direct_tokens_per_call,
+            "direct_tokens_with_exact_evidence_per_call": direct_tokens_per_call,
             "budget_recommendation_effect": "NONE_OBSERVE_ONLY",
         }
     return providers
@@ -263,6 +275,8 @@ def build(scan: dict, previous: dict | None = None) -> dict:
             "call_efficiency_is_observability_only": True,
             "call_efficiency_uses_only_same_run_measured_events": True,
             "budget_policy_samples_require_positive_call_exposure": True,
+            "direct_token_efficiency_excludes_indexed_context": True,
+            "legacy_combined_token_counts_never_enter_direct_efficiency": True,
         },
         "provider_rollup": _aggregate(runs),
         "runs": runs,
@@ -288,6 +302,7 @@ def main() -> None:
             "measured_exact_ratio": row.get("call_exposure_exact_evidence_run_ratio"),
             "measured_degraded_ratio": row.get("call_exposure_degraded_run_ratio"),
             "exact_per_call": row.get("exact_events_per_call"),
+            "direct_tokens_per_call": row.get("direct_tokens_with_exact_evidence_per_call"),
         }
         for name, row in (payload.get("provider_rollup") or {}).items()
     }
