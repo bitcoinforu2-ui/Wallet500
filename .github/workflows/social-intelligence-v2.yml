@@ -10,11 +10,14 @@ on:
       - 'src/wallet500/social_feed_scan.py'
       - 'src/wallet500/social_feed_scan_v2.py'
       - 'src/wallet500/social_feed_scan_v3.py'
+      - 'src/wallet500/social_feed_scan_v4.py'
       - 'src/wallet500/social_direct_providers.py'
       - 'src/wallet500/social_mesh_providers.py'
       - 'src/wallet500/social_bluesky_resilient.py'
+      - 'src/wallet500/social_mesh_public_index.py'
       - 'src/wallet500/social_intelligence_v2.py'
       - 'src/wallet500/social_mesh_intelligence_enrichment.py'
+      - 'src/wallet500/social_mesh_index_intelligence_enrichment.py'
       - 'src/wallet500/social_organic_acceleration.py'
       - 'src/wallet500/social_coverage_hardening.py'
       - 'src/wallet500/cross_signal_fusion_v2.py'
@@ -23,6 +26,7 @@ on:
       - 'tests/test_social_direct_providers.py'
       - 'tests/test_social_mesh_providers.py'
       - 'tests/test_social_bluesky_resilient.py'
+      - 'tests/test_social_mesh_public_index.py'
       - 'tests/test_social_coverage_hardening.py'
       - 'tests/test_cross_signal_fusion_v2.py'
       - 'tests/test_social_organic_acceleration.py'
@@ -33,11 +37,14 @@ on:
       - 'src/wallet500/social_feed_scan.py'
       - 'src/wallet500/social_feed_scan_v2.py'
       - 'src/wallet500/social_feed_scan_v3.py'
+      - 'src/wallet500/social_feed_scan_v4.py'
       - 'src/wallet500/social_direct_providers.py'
       - 'src/wallet500/social_mesh_providers.py'
       - 'src/wallet500/social_bluesky_resilient.py'
+      - 'src/wallet500/social_mesh_public_index.py'
       - 'src/wallet500/social_intelligence_v2.py'
       - 'src/wallet500/social_mesh_intelligence_enrichment.py'
+      - 'src/wallet500/social_mesh_index_intelligence_enrichment.py'
       - 'src/wallet500/social_organic_acceleration.py'
       - 'src/wallet500/social_coverage_hardening.py'
       - 'src/wallet500/cross_signal_fusion_v2.py'
@@ -46,6 +53,7 @@ on:
       - 'tests/test_social_direct_providers.py'
       - 'tests/test_social_mesh_providers.py'
       - 'tests/test_social_bluesky_resilient.py'
+      - 'tests/test_social_mesh_public_index.py'
       - 'tests/test_social_coverage_hardening.py'
       - 'tests/test_cross_signal_fusion_v2.py'
       - 'tests/test_social_organic_acceleration.py'
@@ -81,11 +89,12 @@ jobs:
           tests/test_social_direct_providers.py
           tests/test_social_mesh_providers.py
           tests/test_social_bluesky_resilient.py
+          tests/test_social_mesh_public_index.py
           tests/test_social_coverage_hardening.py
           tests/test_cross_signal_fusion_v2.py
           tests/test_social_organic_acceleration.py
 
-      - name: Scan direct social providers and Social Mesh
+      - name: Scan direct social providers, Social Mesh and public index
         env:
           SOCIAL_SCAN_BUDGET: '24'
           SOCIAL_SCAN_PRIORITY_SLOTS: '8'
@@ -97,6 +106,7 @@ jobs:
           DISCORD_DIRECT_SLOTS: '6'
           THREADS_DIRECT_SLOTS: '6'
           BLUESKY_DIRECT_SLOTS: '12'
+          MESH_PUBLIC_INDEX_SLOTS: '8'
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
@@ -113,7 +123,7 @@ jobs:
           BSKY_IDENTIFIER: ${{ secrets.BSKY_IDENTIFIER }}
           BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
-        run: python -m wallet500.social_feed_scan_v3
+        run: python -m wallet500.social_feed_scan_v4
 
       - name: Recompute organic acceleration
         run: python -m wallet500.social_organic_acceleration
@@ -126,6 +136,9 @@ jobs:
 
       - name: Enrich intelligence with Social Mesh exact evidence
         run: python -m wallet500.social_mesh_intelligence_enrichment
+
+      - name: Enrich indexed mesh context without score credit
+        run: python -m wallet500.social_mesh_index_intelligence_enrichment
 
       - name: Build research-only cross-signal fusion
         run: python -m wallet500.cross_signal_fusion_v2
@@ -149,6 +162,8 @@ jobs:
           if truth.get('social_mesh_sources_enabled') is not True: raise SystemExit('SOCIAL_MESH_TRUTH_MISSING')
           if truth.get('mesh_name_symbol_context_is_not_organic') is not True: raise SystemExit('SOCIAL_MESH_CONTEXT_LEAK')
           if truth.get('telegram_official_context_requires_author_match') is not True: raise SystemExit('TELEGRAM_OFFICIAL_ATTRIBUTION_WEAK')
+          if truth.get('mesh_public_index_is_context_only_not_organic') is not True: raise SystemExit('MESH_INDEX_ORGANIC_LEAK')
+          if truth.get('mesh_public_index_never_grants_kol_credit') is not True: raise SystemExit('MESH_INDEX_KOL_LEAK')
           if (f.get('truth_contract') or {}).get('does_not_modify_real_alert_gate') is not True: raise SystemExit('REAL_ALERT_GATE_LEAK')
           if (s.get('selection_policy') or {}).get('rotation_enabled') is not True: raise SystemExit('SOCIAL_ROTATION_MISSING')
           q=s.get('identity_query_contract') or {}
@@ -184,6 +199,10 @@ jobs:
           mesh_meta=s.get('social_mesh') or {}
           if mesh_meta.get('enabled') is not True: raise SystemExit('SOCIAL_MESH_NOT_ENABLED')
           if mesh_meta.get('official_telegram_requires_author_match') is not True: raise SystemExit('TELEGRAM_AUTHOR_MATCH_DISABLED')
+          index_meta=s.get('mesh_public_index') or {}
+          if index_meta.get('enabled') is not True: raise SystemExit('MESH_PUBLIC_INDEX_DISABLED')
+          if index_meta.get('organic_eligible') is not False: raise SystemExit('MESH_PUBLIC_INDEX_ORGANIC_LEAK')
+          if index_meta.get('budget')!=8: raise SystemExit('MESH_PUBLIC_INDEX_BUDGET_INVALID')
 
           formats=set(o.get('timestamp_formats_supported') or [])
           if not {'ISO8601','UNIX_EPOCH','RFC2822'} <= formats: raise SystemExit('SOCIAL_TIMESTAMP_FORMAT_SUPPORT_MISSING')
@@ -195,7 +214,7 @@ jobs:
           for row in f.get('tokens') or []:
               if row.get('production_effect') is not False or row.get('automatic_buy') is not False: raise SystemExit('FUSION_ROW_PRODUCTION_LEAK')
               if row.get('risk',{}).get('hard_blockers') and row.get('fusion_status')!='HARD_TRUTH_BLOCKED': raise SystemExit('HARD_BLOCKER_OVERRIDE')
-          print('SOCIAL_MESH_V5_OK', mesh_cfg, 'mesh_budget=', mesh_budget, 'mesh_calls=', mesh_calls, 'mesh_breakers=', s.get('mesh_provider_circuit_breakers'), 'mesh_merged=', s.get('new_mesh_social_events_merged'), i.get('counts'), f.get('counts'))
+          print('SOCIAL_MESH_V6_OK', mesh_cfg, 'mesh_budget=', mesh_budget, 'mesh_calls=', mesh_calls, 'mesh_breakers=', s.get('mesh_provider_circuit_breakers'), 'index=', index_meta, i.get('counts'), f.get('counts'))
           PY
 
       - name: Publish social intelligence snapshot
@@ -214,13 +233,14 @@ jobs:
             python -m wallet500.social_intelligence_v2
             python -m wallet500.social_coverage_hardening
             python -m wallet500.social_mesh_intelligence_enrichment
+            python -m wallet500.social_mesh_index_intelligence_enrichment
             python -m wallet500.cross_signal_fusion_v2
             git add data/social-source-scan.json data/social-catalyst-ledger.json data/social-organic-acceleration.json data/social-intelligence-v2.json data/cross-signal-fusion-v2.json
             if git diff --cached --quiet; then echo 'SOCIAL_V2_NO_DATA_CHANGE'; exit 0; fi
-            git commit -m 'data: refresh social intelligence v2 and social mesh'
-            if git push origin HEAD:main; then echo 'SOCIAL_MESH_PUBLISH_OK'; exit 0; fi
-            echo "SOCIAL_MESH_RETRY attempt=$attempt"
+            git commit -m 'data: refresh social intelligence v2 and social mesh v6'
+            if git push origin HEAD:main; then echo 'SOCIAL_MESH_V6_PUBLISH_OK'; exit 0; fi
+            echo "SOCIAL_MESH_V6_RETRY attempt=$attempt"
             sleep 3
           done
-          echo '::error::SOCIAL_MESH_PUBLISH_RACE_EXHAUSTED'
+          echo '::error::SOCIAL_MESH_V6_PUBLISH_RACE_EXHAUSTED'
           exit 1
