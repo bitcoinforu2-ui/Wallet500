@@ -8,7 +8,9 @@ from urllib.request import Request, urlopen
 
 from . import social_mesh_providers as mesh
 
-USER_AGENT = "Wallet500-Bluesky/1.0"
+USER_AGENT = "Wallet500-Bluesky/1.1"
+PUBLIC_APPVIEW = "https://public.api.bsky.app"
+LEGACY_PUBLIC_APPVIEW = "https://api.bsky.app"
 
 
 def _safe_error(exc: BaseException) -> str:
@@ -27,6 +29,18 @@ def _post_json(url: str, payload: dict, timeout: int = 18) -> dict:
         headers={
             "Accept": "application/json",
             "Content-Type": "application/json",
+            "User-Agent": USER_AGENT,
+        },
+    )
+    with urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _get_public_json(url: str, timeout: int = 18) -> dict:
+    req = Request(
+        url,
+        headers={
+            "Accept": "application/json",
             "User-Agent": USER_AGENT,
         },
     )
@@ -89,16 +103,83 @@ def _map_posts(payload: dict, seen: set[str]) -> list[dict]:
     return rows
 
 
+def _scan_official_public_appview(identity: dict):
+    queries = _queries(identity)
+    if not queries:
+        return [], {
+            "provider": "bluesky",
+            "status": "NO_QUERY_IDENTITY",
+            "endpoint": PUBLIC_APPVIEW,
+            "meaning": "UNKNOWN_NOT_ZERO",
+        }
+
+    rows: list[dict] = []
+    seen: set[str] = set()
+    errors: list[str] = []
+    successful_queries = 0
+    for query in queries:
+        params = urlencode({"q": query, "limit": 15, "sort": "latest"})
+        try:
+            payload = _get_public_json(
+                PUBLIC_APPVIEW + "/xrpc/app.bsky.feed.searchPosts?" + params,
+            )
+            successful_queries += 1
+            rows.extend(_map_posts(payload, seen))
+        except Exception as exc:
+            errors.append(_safe_error(exc))
+
+    if successful_queries > 0:
+        return rows[:30], {
+            "provider": "bluesky",
+            "status": "OK_DIRECT_PUBLIC_OFFICIAL_APPVIEW",
+            "count": len(rows),
+            "queries": len(queries),
+            "successful_queries": successful_queries,
+            "endpoint": PUBLIC_APPVIEW,
+            "query_identity": "EXACT_MINT_PLUS_SYMBOL_OR_NAME_LATEST",
+            "auth_required": False,
+            "meaning": None,
+        }
+
+    return [], {
+        "provider": "bluesky",
+        "status": errors[0] if errors else "PUBLIC_APPVIEW_UNKNOWN_FAILURE",
+        "errors": sorted(set(errors))[:4],
+        "queries": len(queries),
+        "successful_queries": 0,
+        "endpoint": PUBLIC_APPVIEW,
+        "auth_required": False,
+        "meaning": "UNKNOWN_NOT_ZERO",
+    }
+
+
 def scan_bluesky_resilient(identity: dict):
-    public_rows, public_status = mesh.scan_bluesky(identity)
+    public_rows, public_status = _scan_official_public_appview(identity)
     public_status = dict(public_status or {})
     if str(public_status.get("status") or "").startswith("OK"):
         public_status["auth_fallback"] = "NOT_NEEDED"
+        public_status["legacy_public_fallback"] = "NOT_NEEDED"
         return public_rows, public_status
+
+    # Compatibility fallback only. The official unauthenticated AppView above is
+    # authoritative for public reads; the legacy path must never turn a failure
+    # into zero evidence.
+    legacy_rows, legacy_status = mesh.scan_bluesky(identity)
+    legacy_status = dict(legacy_status or {})
+    if str(legacy_status.get("status") or "").startswith("OK"):
+        legacy_status["status"] = "OK_DIRECT_PUBLIC_LEGACY_FALLBACK"
+        legacy_status["official_public_status"] = public_status.get("status")
+        legacy_status["official_public_endpoint"] = PUBLIC_APPVIEW
+        legacy_status["legacy_public_endpoint"] = LEGACY_PUBLIC_APPVIEW
+        legacy_status["auth_fallback"] = "NOT_NEEDED"
+        legacy_status["legacy_public_fallback"] = "USED"
+        return legacy_rows, legacy_status
 
     identifier = (os.getenv("BSKY_IDENTIFIER") or "").strip()
     app_password = (os.getenv("BSKY_APP_PASSWORD") or "").strip()
     if not identifier or not app_password:
+        public_status["legacy_public_status"] = legacy_status.get("status")
+        public_status["legacy_public_fallback"] = "FAILED"
         public_status["auth_fallback"] = "NOT_CONFIGURED"
         public_status["meaning"] = "UNKNOWN_NOT_ZERO"
         return public_rows, public_status
@@ -113,14 +194,16 @@ def scan_bluesky_resilient(identity: dict):
             return [], {
                 "provider": "bluesky",
                 "status": "AUTH_NO_ACCESS_JWT",
-                "public_status": public_status.get("status"),
+                "official_public_status": public_status.get("status"),
+                "legacy_public_status": legacy_status.get("status"),
                 "meaning": "UNKNOWN_NOT_ZERO",
             }
     except Exception as exc:
         return [], {
             "provider": "bluesky",
             "status": "AUTH_SESSION_" + _safe_error(exc),
-            "public_status": public_status.get("status"),
+            "official_public_status": public_status.get("status"),
+            "legacy_public_status": legacy_status.get("status"),
             "meaning": "UNKNOWN_NOT_ZERO",
         }
 
@@ -146,13 +229,15 @@ def scan_bluesky_resilient(identity: dict):
             "count": len(rows),
             "queries": len(queries),
             "query_identity": "EXACT_MINT_PLUS_SYMBOL_OR_NAME_LATEST",
-            "public_status": public_status.get("status"),
+            "official_public_status": public_status.get("status"),
+            "legacy_public_status": legacy_status.get("status"),
             "auth_fallback": "USED",
         }
     return [], {
         "provider": "bluesky",
         "status": errors[0],
-        "public_status": public_status.get("status"),
+        "official_public_status": public_status.get("status"),
+        "legacy_public_status": legacy_status.get("status"),
         "auth_fallback": "FAILED",
         "meaning": "UNKNOWN_NOT_ZERO",
     }
