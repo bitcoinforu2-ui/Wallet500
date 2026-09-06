@@ -26,7 +26,7 @@ concurrency:
 jobs:
   repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,6 +41,10 @@ jobs:
         run: |
           pip install -e . pytest
           python -m pytest -q tests/test_liquidity_truth_guard.py
+
+      - name: Full regression on code or manual repair changes
+        if: github.event_name != 'schedule'
+        run: python -m pytest -q
 
       - name: Sanitize latest main and publish with race-safe retries
         shell: bash
