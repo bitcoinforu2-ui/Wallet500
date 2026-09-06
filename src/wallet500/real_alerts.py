@@ -10,6 +10,7 @@ DATA = Path("data")
 REAL_PRECURSOR_STATUSES = {"HIGH_CONVICTION_PRECURSOR", "PRE_BREAKOUT_CANDIDATE", "EARLY_REVIVAL_WATCH"}
 REAL_WAKING_STATUSES = {"WAKING_CONFIRMED_RESEARCH", "WAKING_STRONG_RESEARCH"}
 EVM_CHAINS = {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche", "fantom", "linea", "zksync", "mantle", "scroll", "blast"}
+SOURCE_LANE_TOTAL = 5
 
 
 def _load(path: Path, default):
@@ -34,6 +35,15 @@ def _num(v, default=0.0) -> float:
         return float(v if v is not None else default)
     except (TypeError, ValueError):
         return float(default)
+
+
+def _opt_num(v) -> float | None:
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
 
 
 def _first(*values):
@@ -119,7 +129,6 @@ def _execution_liquidity_truth(*rows: dict) -> tuple[float, float | None, str | 
             explicit.append((execution, total_value, pair, "EXECUTION_POOL_LIQUIDITY_USD"))
             continue
 
-        # Exact-pair compatibility fields only. Aggregate token liquidity is never used.
         for key in ("dex_pair_liquidity_usd", "dex_liquidity_usd", "liquidity_usd", "current_liquidity_usd"):
             value = _num(row.get(key), -1)
             if value >= 0:
@@ -231,6 +240,58 @@ def _risk_blocked(*rows: dict) -> tuple[bool, list[str]]:
     return bool(reasons), sorted(set(reasons))
 
 
+def _signal_context(precursor: dict, waking: dict, cex: dict, revival: dict, envelope: dict) -> tuple[float, str | None, dict]:
+    market = envelope.get("market") if isinstance(envelope.get("market"), dict) else {}
+    components = {
+        "PRECURSOR_CONFIDENCE": _opt_num(precursor.get("confidence_adjusted_score")),
+        "PRECURSOR_AVAILABLE_EVIDENCE": _opt_num(precursor.get("normalized_score_available_evidence")),
+        "CEX_REVIVAL": _opt_num(cex.get("cex_revival_score")),
+        "REVIVAL_VERIFIED": _opt_num(revival.get("revival_score_verified")),
+        "REVIVAL_RAW": _opt_num(revival.get("revival_score")),
+        "WAKING_CONFIRMATION": _opt_num(waking.get("confirmation_score")),
+        "ENVELOPE_MARKET_VERIFIED": _opt_num(market.get("revival_score_verified")),
+    }
+    present = {k: v for k, v in components.items() if v is not None}
+    leader = max(present, key=present.get) if present else None
+    signal = max(present.values(), default=0.0)
+    clean = {k: (round(v, 2) if v is not None else None) for k, v in components.items()}
+    return round(signal, 2), leader, clean
+
+
+def _readiness(
+    *,
+    exact_identity: bool,
+    exact_pair: bool,
+    age_ok: bool,
+    liquidity_ok: bool,
+    risk_clear: bool,
+    strong_decision: bool,
+    independent_confirmation: bool,
+) -> tuple[dict[str, bool], int]:
+    gates = {
+        "EXACT_IDENTITY": bool(exact_identity),
+        "EXACT_DEX_PAIR": bool(exact_pair),
+        "VETERAN_AGE_180D": bool(age_ok),
+        "EXECUTION_LIQUIDITY": bool(liquidity_ok),
+        "RISK_CLEAR": bool(risk_clear),
+        "STRONG_DECISION_LANE": bool(strong_decision),
+        "INDEPENDENT_CONFIRMATION": bool(independent_confirmation),
+    }
+    return gates, sum(1 for passed in gates.values() if passed)
+
+
+def _clarity_tier(blockers: list[str], risk_reasons: list[str], liquidity_ok: bool) -> tuple[str, str]:
+    if not blockers:
+        return "REAL_ALERT", "CLEAR"
+    if risk_reasons:
+        return "BLOCKED", "HIGH"
+    if not liquidity_ok:
+        return "BLOCKED", "MEDIUM"
+    if len(set(blockers)) == 1 and blockers[0] in {"NO_STRONG_DECISION_LANE", "INDEPENDENT_CONFIRMATION_LT_2"}:
+        return "NEAR_ALERT", "CLEAR"
+    return "VERIFIED_WATCH", "CLEAR"
+
+
 def build(data_dir: Path = DATA) -> dict:
     cfg = Settings()
     now = datetime.now(timezone.utc).isoformat()
@@ -285,6 +346,10 @@ def build(data_dir: Path = DATA) -> dict:
         evidence_positive_lanes = list(envelope_coverage.get("positive_independent_lanes") or [])
         evidence_verified_lanes = list(envelope_coverage.get("verified_independent_lanes") or [])
 
+        liquidity_ok = execution_liq >= cfg.verified_min_liquidity_usd
+        strong_decision = production_pass or precursor_pass
+        independent_confirmation = production_pass or lane_count >= 2
+
         blockers = []
         if not exact_identity:
             blockers.append("EXACT_IDENTITY_REQUIRED")
@@ -292,25 +357,29 @@ def build(data_dir: Path = DATA) -> dict:
             blockers.append("EXACT_DEX_PAIR_REQUIRED")
         if not age_ok:
             blockers.append("VERIFIED_MARKET_AGE_180D_REQUIRED")
-        if execution_liq < cfg.verified_min_liquidity_usd:
+        if not liquidity_ok:
             blockers.append(f"EXECUTION_POOL_LIQUIDITY_LT_{int(cfg.verified_min_liquidity_usd/1000)}K")
         if blocked:
             blockers.extend(risk_reasons)
-        if not production_pass and not precursor_pass:
+        if not strong_decision:
             blockers.append("NO_STRONG_DECISION_LANE")
-        if not production_pass and lane_count < 2:
+        if not independent_confirmation:
             blockers.append("INDEPENDENT_CONFIRMATION_LT_2")
+        blockers = sorted(set(blockers))
 
-        score_parts = [
-            _num(precursor.get("confidence_adjusted_score")),
-            _num(precursor.get("normalized_score_available_evidence")),
-            _num(cex.get("cex_revival_score")),
-            _num(revival.get("revival_score_verified")),
-            _num(revival.get("revival_score")),
-            _num(waking.get("confirmation_score")),
-            _num((envelope.get("market") or {}).get("revival_score_verified")),
-        ]
-        score = max(score_parts, default=0.0)
+        signal_score, signal_leader, score_components = _signal_context(precursor, waking, cex, revival, envelope)
+        readiness_gates, readiness_passed = _readiness(
+            exact_identity=exact_identity,
+            exact_pair=exact_pair,
+            age_ok=age_ok,
+            liquidity_ok=liquidity_ok,
+            risk_clear=not blocked,
+            strong_decision=strong_decision,
+            independent_confirmation=independent_confirmation,
+        )
+        radar_tier, risk_level = _clarity_tier(blockers, risk_reasons, liquidity_ok)
+        missing_gates = [name for name, passed in readiness_gates.items() if not passed]
+
         item = {
             "symbol": _symbol(active, precursor, waking, cex, revival, envelope),
             "chain": chain,
@@ -325,9 +394,16 @@ def build(data_dir: Path = DATA) -> dict:
             "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
             "liquidity_truth_source": liquidity_source,
             "market_age_days": age_days,
-            "score": round(score, 2),
+            "score": signal_score,
+            "signal_score": signal_score,
+            "signal_leader": signal_leader,
+            "score_semantics": "MAX_AVAILABLE_SIGNAL_NOT_PROBABILITY",
+            "score_components": score_components,
             "source_lanes": sorted(set(lanes)),
             "source_lane_count": lane_count,
+            "source_lane_total": SOURCE_LANE_TOTAL,
+            "confirmation_count": lane_count,
+            "confirmation_total": SOURCE_LANE_TOTAL,
             "precursor_status": precursor_status,
             "waking_status": waking.get("confirmation_status"),
             "cex_score": cex.get("cex_revival_score"),
@@ -336,11 +412,22 @@ def build(data_dir: Path = DATA) -> dict:
             "evidence_ready": envelope_status == "EVIDENCE_READY",
             "evidence_positive_lanes": evidence_positive_lanes,
             "evidence_verified_lanes": evidence_verified_lanes,
+            "evidence_positive_count": int(envelope_coverage.get("positive_independent_count") or len(evidence_positive_lanes)),
+            "evidence_verified_count": int(envelope_coverage.get("verified_independent_count") or len(evidence_verified_lanes)),
+            "readiness_gates": readiness_gates,
+            "readiness_passed": readiness_passed,
+            "readiness_total": len(readiness_gates),
+            "readiness_pct": round(100.0 * readiness_passed / max(1, len(readiness_gates)), 1),
+            "missing_gates": missing_gates,
+            "radar_tier": radar_tier,
+            "risk_level": risk_level,
+            "risk_reasons": risk_reasons,
+            "why_now": sorted(set(lanes)),
             "first_alert_at": _first((cex.get("milestones") or {}).get("first_alert", {}).get("observed_at"), precursor.get("t0", {}).get("observed_at"), active.get("qualified_at")),
             "exact_identity_verified": exact_identity,
             "exact_pair_verified": exact_pair,
             "market_age_verified": age_ok,
-            "blockers": sorted(set(blockers)),
+            "blockers": blockers,
         }
         if not blockers:
             item["status"] = "REAL_ALERT"
@@ -369,18 +456,39 @@ def build(data_dir: Path = DATA) -> dict:
             "identity_status": row.get("identity_status") or "IDENTITY_PENDING",
             "identity_blocker": row.get("identity_blocker") or "EXACT_IDENTITY_NOT_VERIFIED",
             "status": "IDENTITY_PENDING_NOT_ACTIONABLE",
+            "radar_tier": "IDENTITY_PENDING",
             "actionable_research_alert": False,
         })
 
-    real_alerts.sort(key=lambda x: (x.get("score") or 0, x.get("source_lane_count") or 0, x.get("execution_pool_liquidity_usd") or 0), reverse=True)
-    verified_watch.sort(key=lambda x: (x.get("evidence_ready") is True, x.get("source_lane_count") or 0, x.get("score") or 0), reverse=True)
+    tier_priority = {"NEAR_ALERT": 3, "VERIFIED_WATCH": 2, "BLOCKED": 1}
+    real_alerts.sort(key=lambda x: (x.get("signal_score") or 0, x.get("source_lane_count") or 0, x.get("execution_pool_liquidity_usd") or 0), reverse=True)
+    verified_watch.sort(
+        key=lambda x: (
+            tier_priority.get(x.get("radar_tier"), 0),
+            x.get("readiness_passed") or 0,
+            x.get("evidence_ready") is True,
+            x.get("source_lane_count") or 0,
+            x.get("signal_score") or 0,
+        ),
+        reverse=True,
+    )
     identity_pending.sort(key=lambda x: (x.get("cex_score") or 0, x.get("coherent_confirmations") or 0), reverse=True)
 
     evidence_ready_count = sum(1 for row in envelope_rows if isinstance(row, dict) and row.get("status") == "EVIDENCE_READY")
+    near_count = sum(1 for row in verified_watch if row.get("radar_tier") == "NEAR_ALERT")
+    blocked_count = sum(1 for row in verified_watch if row.get("radar_tier") == "BLOCKED")
+    plain_watch_count = sum(1 for row in verified_watch if row.get("radar_tier") == "VERIFIED_WATCH")
     return {
         "version": 3,
         "generated_at": now,
         "mode": "FAIL_CLOSED_REAL_ALERT_FEED_V3_EVIDENCE_ENVELOPE",
+        "score_contract": {
+            "signal_score_semantics": "maximum currently available subsystem signal; not a probability and not overall conviction",
+            "confirmation_total_lanes": SOURCE_LANE_TOTAL,
+            "readiness_gate_total": 7,
+            "readiness_is_gate_completion_not_profit_probability": True,
+            "radar_tiers": ["REAL_ALERT", "NEAR_ALERT", "VERIFIED_WATCH", "BLOCKED", "IDENTITY_PENDING"],
+        },
         "truth_contract": {
             "focus": "VETERAN_COIN_REVIVAL_ONLY",
             "minimum_market_age_days": 180,
@@ -399,6 +507,9 @@ def build(data_dir: Path = DATA) -> dict:
         },
         "counts": {
             "real_alerts": len(real_alerts),
+            "near_alert_not_real": near_count,
+            "verified_watch_core": plain_watch_count,
+            "blocked_verified_watch": blocked_count,
             "verified_watch_not_real": len(verified_watch),
             "evidence_ready_research": evidence_ready_count,
             "identity_pending_not_actionable": len(identity_pending),
@@ -411,9 +522,6 @@ def build(data_dir: Path = DATA) -> dict:
 
 
 def run(data_dir: Path = DATA) -> dict:
-    # Production-facing REAL ALERT files are never left in their raw derived state.
-    # The liquidity truth sanitizer runs in the same producer process before any
-    # workflow can publish the snapshot to main, eliminating the previous race window.
     from .liquidity_truth_guard import sanitize_real_alerts
 
     path = data_dir / "real-alerts.json"
