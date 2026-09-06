@@ -69,7 +69,7 @@ def test_legacy_public_is_only_compatibility_fallback_after_official_failure(mon
     assert status["legacy_public_fallback"] == "USED"
 
 
-def test_both_public_403_without_credentials_stays_unknown(monkeypatch):
+def test_both_public_403_without_credentials_is_explicit_auth_boundary(monkeypatch):
     monkeypatch.delenv("BSKY_IDENTIFIER", raising=False)
     monkeypatch.delenv("BSKY_APP_PASSWORD", raising=False)
     monkeypatch.setattr(bsky, "_get_public_json", _raise_403)
@@ -80,10 +80,15 @@ def test_both_public_403_without_credentials_stays_unknown(monkeypatch):
     )
     rows, status = bsky.scan_bluesky_resilient(IDENTITY)
     assert rows == []
-    assert status["status"] == "HTTP_403"
+    assert status["status"] == "PUBLIC_SEARCH_BLOCKED_AUTH_REQUIRED"
     assert status["endpoint"] == "https://public.api.bsky.app"
+    assert status["official_public_status"] == "HTTP_403"
     assert status["legacy_public_status"] == "HTTP_403"
+    assert status["public_search_blocked"] is True
+    assert status["public_search_observation"] == "BOTH_PUBLIC_APPVIEW_SEARCH_PATHS_HTTP_403"
     assert status["auth_fallback"] == "NOT_CONFIGURED"
+    assert status["activation_required"] == "CONFIGURE_BSKY_IDENTIFIER_AND_BSKY_APP_PASSWORD"
+    assert status["auth_required_for_reliable_search"] is True
     assert status["meaning"] == "UNKNOWN_NOT_ZERO"
 
 
