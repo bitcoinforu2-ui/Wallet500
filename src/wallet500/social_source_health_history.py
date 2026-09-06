@@ -22,6 +22,21 @@ VALID_STATES = {
     "UNKNOWN",
 }
 
+REQUIRED_TRUTH = {
+    "provider_health_never_modifies_token_scores",
+    "provider_health_never_modifies_alert_gate",
+    "provider_health_never_auto_changes_api_budgets",
+    "single_run_never_changes_provider_policy",
+    "secret_values_never_stored",
+    "unknown_is_not_zero",
+    "configuration_is_not_evidence",
+    "call_efficiency_is_observability_only",
+    "call_efficiency_uses_only_same_run_measured_events",
+    "budget_policy_samples_require_positive_call_exposure",
+    "direct_token_efficiency_excludes_indexed_context",
+    "legacy_combined_token_counts_never_enter_direct_efficiency",
+}
+
 
 def _load(path: Path, default: Any) -> Any:
     try:
@@ -122,30 +137,13 @@ def _aggregate(runs: list[dict]) -> dict:
     })
     for provider in names:
         state_counts = Counter()
-        configured_runs = 0
-        exact_runs = 0
-        official_runs = 0
-        index_runs = 0
-        degraded_runs = 0
-        exact_events = 0
-        official_events = 0
-        indexed_events = 0
-        tokens_exact_total = 0
-        tokens_direct_exact_total = 0
-        tokens_index_exact_total = 0
+        configured_runs = exact_runs = official_runs = index_runs = degraded_runs = 0
+        exact_events = official_events = indexed_events = 0
+        tokens_exact_total = tokens_direct_exact_total = tokens_index_exact_total = 0
         observations = 0
-
-        metric_runs = 0
-        exposure_runs = 0
-        exposure_exact_runs = 0
-        exposure_degraded_runs = 0
-        calls_total = 0
-        budget_total = 0
-        exposure_exact_events = 0
-        exposure_direct_tokens_exact = 0
-
-        latest_budget = None
-        latest_calls_used = None
+        metric_runs = exposure_runs = exposure_exact_runs = exposure_degraded_runs = 0
+        calls_total = budget_total = exposure_exact_events = exposure_direct_tokens_exact = 0
+        latest_budget = latest_calls_used = None
         latest_state = "UNKNOWN"
         latest_at = None
 
@@ -156,8 +154,7 @@ def _aggregate(runs: list[dict]) -> dict:
             observations += 1
             state = str(row.get("state") or "UNKNOWN")
             state_counts[state] += 1
-            if row.get("configured") is True:
-                configured_runs += 1
+            configured_runs += int(row.get("configured") is True)
             direct = _int(row.get("exact_direct_events"))
             official = _int(row.get("official_context_events"))
             indexed = _int(row.get("indexed_exact_context_events"))
@@ -170,14 +167,10 @@ def _aggregate(runs: list[dict]) -> dict:
             tokens_exact_total += tokens_exact
             tokens_direct_exact_total += tokens_direct
             tokens_index_exact_total += tokens_indexed
-            if direct > 0:
-                exact_runs += 1
-            if official > 0:
-                official_runs += 1
-            if indexed > 0:
-                index_runs += 1
-            if state == "DEGRADED_UNKNOWN":
-                degraded_runs += 1
+            exact_runs += int(direct > 0)
+            official_runs += int(official > 0)
+            index_runs += int(indexed > 0)
+            degraded_runs += int(state == "DEGRADED_UNKNOWN")
 
             budget = _optional_int(row.get("call_budget"))
             calls = _optional_int(row.get("calls_used"))
@@ -189,10 +182,8 @@ def _aggregate(runs: list[dict]) -> dict:
                     exposure_runs += 1
                     exposure_exact_events += direct
                     exposure_direct_tokens_exact += tokens_direct
-                    if direct > 0:
-                        exposure_exact_runs += 1
-                    if state == "DEGRADED_UNKNOWN":
-                        exposure_degraded_runs += 1
+                    exposure_exact_runs += int(direct > 0)
+                    exposure_degraded_runs += int(state == "DEGRADED_UNKNOWN")
             latest_budget = budget
             latest_calls_used = calls
             latest_state = state
@@ -283,11 +274,63 @@ def build(scan: dict, previous: dict | None = None) -> dict:
     }
 
 
+def validate(payload: dict) -> None:
+    if payload.get("mode") != MODE:
+        raise ValueError("SOURCE_HEALTH_HISTORY_MODE_INVALID")
+    if payload.get("observability_only") is not True or payload.get("production_effect") is not False or payload.get("automatic_buy") is not False:
+        raise ValueError("SOURCE_HEALTH_HISTORY_PRODUCTION_LEAK")
+    truth = payload.get("truth_contract") if isinstance(payload.get("truth_contract"), dict) else {}
+    for key in REQUIRED_TRUTH:
+        if truth.get(key) is not True:
+            raise ValueError(f"SOURCE_HEALTH_HISTORY_TRUTH_MISSING:{key}")
+
+    rollup = payload.get("provider_rollup") if isinstance(payload.get("provider_rollup"), dict) else {}
+    if rollup and _int(payload.get("runs_count")) < 1:
+        raise ValueError("SOURCE_HEALTH_HISTORY_EMPTY")
+    for provider, row in rollup.items():
+        if not isinstance(row, dict):
+            raise ValueError(f"SOURCE_HEALTH_HISTORY_ROW_INVALID:{provider}")
+        observed = _int(row.get("runs_observed"))
+        metric = _int(row.get("call_metric_runs"))
+        exposure = _int(row.get("call_exposure_runs"))
+        exact_exposure = _int(row.get("call_exposure_exact_runs"))
+        degraded_exposure = _int(row.get("call_exposure_degraded_runs"))
+        if not (exposure <= metric <= observed):
+            raise ValueError(f"SOURCE_HEALTH_HISTORY_EXPOSURE_ORDER_INVALID:{provider}")
+        if exact_exposure > exposure or degraded_exposure > exposure:
+            raise ValueError(f"SOURCE_HEALTH_HISTORY_EXPOSURE_COUNTS_INVALID:{provider}")
+        if row.get("budget_recommendation_effect") != "NONE_OBSERVE_ONLY":
+            raise ValueError(f"SOURCE_HEALTH_HISTORY_BUDGET_POLICY_LEAK:{provider}")
+
+        combined_tokens = _int(row.get("tokens_with_exact_evidence_total"))
+        direct_tokens = _int(row.get("tokens_with_direct_exact_evidence_total"))
+        if direct_tokens > combined_tokens:
+            raise ValueError(f"SOURCE_HEALTH_HISTORY_DIRECT_TOKEN_GT_COMBINED:{provider}")
+        if row.get("call_metric_tokens_with_exact_evidence_total") != row.get("call_metric_direct_tokens_with_exact_evidence_total"):
+            raise ValueError(f"SOURCE_HEALTH_HISTORY_DIRECT_TOKEN_ALIAS_SKEW:{provider}")
+        if row.get("tokens_with_exact_evidence_per_call") != row.get("direct_tokens_with_exact_evidence_per_call"):
+            raise ValueError(f"SOURCE_HEALTH_HISTORY_DIRECT_TOKEN_RATE_ALIAS_SKEW:{provider}")
+
+        exact_per_call = row.get("exact_events_per_call")
+        direct_tokens_per_call = row.get("direct_tokens_with_exact_evidence_per_call")
+        if exposure == 0 and (exact_per_call is not None or direct_tokens_per_call is not None):
+            raise ValueError(f"SOURCE_HEALTH_HISTORY_ZERO_EXPOSURE_HAS_RATE:{provider}")
+        if exact_per_call is not None and float(exact_per_call) == 0.0 and direct_tokens_per_call is not None and float(direct_tokens_per_call) > 0.0:
+            raise ValueError(f"SOURCE_HEALTH_HISTORY_TOKEN_YIELD_WITHOUT_EXACT_EVENT:{provider}")
+
+        if provider == "social_mesh_public_index":
+            if _int(row.get("exact_direct_events_total")) != 0 or direct_tokens != 0:
+                raise ValueError("SOURCE_HEALTH_HISTORY_PUBLIC_INDEX_DIRECT_EVIDENCE_LEAK")
+            if direct_tokens_per_call not in (None, 0, 0.0):
+                raise ValueError("SOURCE_HEALTH_HISTORY_PUBLIC_INDEX_DIRECT_RATE_LEAK")
+
+
 def run(data_dir: str | Path = DATA) -> dict:
     data = Path(data_dir)
     scan = _load(data / SCAN.name, {})
     previous = _load(data / OUTPUT.name, {})
     payload = build(scan, previous)
+    validate(payload)
     _write(data / OUTPUT.name, payload)
     return payload
 
@@ -306,11 +349,7 @@ def main() -> None:
         }
         for name, row in (payload.get("provider_rollup") or {}).items()
     }
-    print(json.dumps({
-        "runs": payload.get("runs_count"),
-        "appended": payload.get("new_run_appended"),
-        "providers": compact,
-    }, ensure_ascii=False))
+    print(json.dumps({"runs": payload.get("runs_count"), "appended": payload.get("new_run_appended"), "providers": compact}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
