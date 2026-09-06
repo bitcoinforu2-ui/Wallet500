@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import math
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -37,9 +38,27 @@ def _n(v, default=0.0):
 
 
 def _dt(v) -> datetime | None:
+    if v in (None, ""):
+        return None
+    if isinstance(v, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(v), tz=timezone.utc)
+        except (ValueError, OSError, OverflowError):
+            return None
+    s = str(v).strip()
     try:
-        d = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        if s.replace(".", "", 1).isdigit() and len(s.split(".", 1)[0]) >= 9:
+            return datetime.fromtimestamp(float(s), tz=timezone.utc)
+    except (ValueError, OSError, OverflowError):
+        pass
+    try:
+        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
         return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except Exception:
+        pass
+    try:
+        d = parsedate_to_datetime(s)
+        return d.astimezone(timezone.utc) if d.tzinfo else d.replace(tzinfo=timezone.utc)
     except Exception:
         return None
 
@@ -69,8 +88,6 @@ def _revival_map(payload: dict) -> dict[str, dict]:
 
 
 def _influencer_forward_reputation(ledger: dict) -> dict[str, dict]:
-    # Reputation is intentionally unavailable until timestamp-safe forward outcomes exist.
-    # Observed reach/mentions can describe coverage but never become historical skill.
     out = {}
     for row in ledger.get("influencers") or []:
         if not isinstance(row, dict):
@@ -101,14 +118,19 @@ def _catalyst_terms(events: list[dict]) -> tuple[list[str], list[str]]:
 def score_token(token: str, scan: dict | None, organic: dict | None, reputation: dict[str, dict], revival: dict | None, now: datetime) -> dict:
     scan = scan or {}; organic = organic or {}; revival = revival or {}
     events = [x for x in (scan.get("events") or []) if isinstance(x, dict)]
-    social_events = [x for x in events if str(x.get("source") or "") in {"x","youtube","reddit","telegram"}]
+    direct_social_sources = {"x","youtube","reddit","telegram"}
+    indexed_social_sources = {"x_index","youtube_index","reddit_index"}
+    exact_identity_attrs = {"EXACT_CONTRACT", "EXACT_PAIR"}
+    social_events = [x for x in events if str(x.get("source") or "") in direct_social_sources]
+    indexed_social_events = [x for x in events if str(x.get("source") or "") in indexed_social_sources]
     news_events = [x for x in events if str(x.get("source") or "") in {"news","google_news","google_news_rss"}]
 
     social_score = _n(organic.get("organic_acceleration_score"), 0.0)
     organic_available = bool(organic)
     contamination = max(0.0, min(1.0, _n(organic.get("contamination_ratio_24h"), 0.0))) if organic_available else None
 
-    exact_social = [x for x in social_events if x.get("attribution") == "EXACT_CONTRACT"]
+    exact_social = [x for x in social_events if x.get("attribution") in exact_identity_attrs]
+    indexed_exact = [x for x in indexed_social_events if x.get("attribution") in exact_identity_attrs]
     independent_authors = {f"{x.get('source')}:{x.get('author')}" for x in exact_social if x.get("author")}
     independent_sources = {str(x.get("source")) for x in exact_social if x.get("source")}
     rep_scores = []
@@ -122,12 +144,11 @@ def score_token(token: str, scan: dict | None, organic: dict | None, reputation:
         kol_score = min(100.0, sum(rep_scores) / len(rep_scores) * 0.7 + min(30.0, len(independent_authors) * 6.0))
         kol_conf = "MEASURED_FORWARD_HISTORY"
     else:
-        # Unknown influencers may create attention, but cannot receive a high skill score.
         kol_score = min(45.0, len(independent_authors) * 8.0 + len(independent_sources) * 5.0)
         kol_conf = "ATTENTION_ONLY_NO_FORWARD_REPUTATION"
 
     pos, neg = _catalyst_terms(news_events + [x for x in social_events if x.get("attribution") == "OFFICIAL_CHANNEL_CONTEXT"])
-    exact_news = sum(1 for x in news_events if x.get("attribution") == "EXACT_CONTRACT")
+    exact_news = sum(1 for x in news_events if x.get("attribution") in exact_identity_attrs)
     context_news = sum(1 for x in news_events if x.get("attribution") == "NAME_SYMBOL_CONTEXT")
     news_sources = {str(x.get("author") or x.get("source") or "") for x in news_events}
     news_score = min(100.0, exact_news * 18.0 + context_news * 6.0 + len(news_sources) * 5.0 + len(pos) * 10.0)
@@ -152,8 +173,10 @@ def score_token(token: str, scan: dict | None, organic: dict | None, reputation:
     narrative = max(0.0, min(100.0, narrative - manipulation * 0.25))
 
     freshness_values = []
-    if organic_available: freshness_values.append(_freshness_score(organic.get("latest_event_at") or organic.get("updated_at"), now))
-    for e in events[:20]: freshness_values.append(_freshness_score(e.get("published_at") or scan.get("generated_at"), now))
+    if organic_available:
+        freshness_values.append(_freshness_score(organic.get("latest_event_at") or organic.get("updated_at"), now))
+    for e in events[:20]:
+        freshness_values.append(_freshness_score(e.get("published_at") or scan.get("generated_at"), now))
     freshness = round(sum(freshness_values) / len(freshness_values), 1) if freshness_values else 0.0
     coverage = round(sum(1 for x in available.values() if x) / 3.0 * 100.0, 1)
     confidence = round(min(100.0, coverage * 0.65 + freshness * 0.35), 1)
@@ -161,6 +184,7 @@ def score_token(token: str, scan: dict | None, organic: dict | None, reputation:
     reasons = []
     if social_score >= 60: reasons.append(f"ORGANIC_SOCIAL_{social_score:.0f}")
     if len(independent_authors) >= 2: reasons.append(f"INDEPENDENT_KOL_AUTHORS_{len(independent_authors)}")
+    if indexed_exact: reasons.append(f"INDEXED_EXACT_IDENTITY_CONTEXT_{len(indexed_exact)}")
     if pos: reasons.append("POSITIVE_CATALYST:" + ",".join(pos[:4]))
     if neg: reasons.append("NEGATIVE_CATALYST:" + ",".join(neg[:4]))
     if manipulation >= 40: reasons.append(f"MANIPULATION_RISK_{manipulation:.0f}")
@@ -190,6 +214,10 @@ def score_token(token: str, scan: dict | None, organic: dict | None, reputation:
             "freshness_score": freshness,
             "organic_social_available": organic_available,
             "exact_social_events": len(exact_social),
+            "exact_contract_social_events": sum(1 for x in exact_social if x.get("attribution") == "EXACT_CONTRACT"),
+            "exact_pair_social_events": sum(1 for x in exact_social if x.get("attribution") == "EXACT_PAIR"),
+            "indexed_exact_context_events": len(indexed_exact),
+            "indexed_exact_context_is_organic": False,
             "independent_authors": len(independent_authors),
             "independent_sources": len(independent_sources),
             "news_events": len(news_events),
@@ -234,7 +262,7 @@ def build(data_dir: Path = DATA) -> dict:
         for provider, status in (row.get("provider_status") or {}).items():
             providers[f"{provider}:{status}"] += 1
     return {
-        "version": 2,
+        "version": 3,
         "mode": MODE,
         "generated_at": now.isoformat(),
         "network": "solana",
@@ -246,6 +274,8 @@ def build(data_dir: Path = DATA) -> dict:
             "unknown_influencer_never_receives_high_reputation": True,
             "forward_outcomes_required_for_influencer_skill": True,
             "name_symbol_news_context_is_lower_confidence_than_exact_contract": True,
+            "indexed_exact_mentions_are_context_only_not_organic": True,
+            "exact_locked_pair_mentions_are_valid_identity_evidence": True,
             "social_never_overrides_identity_liquidity_security_or_pair_survival": True,
             "narrative_score_is_shadow_research_only": True,
         },
@@ -254,6 +284,7 @@ def build(data_dir: Path = DATA) -> dict:
             "narrative_ge_60": sum(1 for x in tokens if x["scores"]["narrative"] >= 60),
             "social_momentum_ge_60": sum(1 for x in tokens if x["scores"]["social_momentum"] >= 60),
             "manipulation_risk_ge_40": sum(1 for x in tokens if x["scores"]["hype_manipulation_risk"] >= 40),
+            "indexed_exact_context_events": sum(int((x.get("coverage") or {}).get("indexed_exact_context_events") or 0) for x in tokens),
         },
         "provider_status_counts": dict(providers),
         "tokens": tokens,
