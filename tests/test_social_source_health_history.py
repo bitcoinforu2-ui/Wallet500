@@ -2,6 +2,7 @@ import wallet500.social_source_health_history as hist
 
 
 def _scan(ts, x_state="ACTIVE_EXACT_EVIDENCE", x_exact=2, bluesky_state="DEGRADED_UNKNOWN", x_calls=1, bluesky_calls=2):
+    x_direct_tokens = 1 if x_exact else 0
     return {
         "version": 8,
         "generated_at": ts,
@@ -19,7 +20,9 @@ def _scan(ts, x_state="ACTIVE_EXACT_EVIDENCE", x_exact=2, bluesky_state="DEGRADE
                     "exact_direct_events": x_exact,
                     "official_context_events": 0,
                     "indexed_exact_context_events": 0,
-                    "tokens_with_exact_evidence": 1 if x_exact else 0,
+                    "tokens_with_exact_evidence": x_direct_tokens,
+                    "tokens_with_direct_exact_evidence": x_direct_tokens,
+                    "tokens_with_indexed_exact_context": 0,
                     "credential_requirements": ["SHOULD_NOT_BE_STORED"],
                 },
                 "bluesky": {
@@ -29,6 +32,8 @@ def _scan(ts, x_state="ACTIVE_EXACT_EVIDENCE", x_exact=2, bluesky_state="DEGRADE
                     "official_context_events": 0,
                     "indexed_exact_context_events": 0,
                     "tokens_with_exact_evidence": 0,
+                    "tokens_with_direct_exact_evidence": 0,
+                    "tokens_with_indexed_exact_context": 0,
                 },
                 "social_mesh_public_index": {
                     "state": "ACTIVE_NO_EXACT_EVIDENCE",
@@ -37,6 +42,8 @@ def _scan(ts, x_state="ACTIVE_EXACT_EVIDENCE", x_exact=2, bluesky_state="DEGRADE
                     "official_context_events": 0,
                     "indexed_exact_context_events": 0,
                     "tokens_with_exact_evidence": 0,
+                    "tokens_with_direct_exact_evidence": 0,
+                    "tokens_with_indexed_exact_context": 0,
                 },
                 "telegram_official": {
                     "state": "ACTIVE_OFFICIAL_CONTEXT",
@@ -45,6 +52,8 @@ def _scan(ts, x_state="ACTIVE_EXACT_EVIDENCE", x_exact=2, bluesky_state="DEGRADE
                     "official_context_events": 5,
                     "indexed_exact_context_events": 0,
                     "tokens_with_exact_evidence": 0,
+                    "tokens_with_direct_exact_evidence": 0,
+                    "tokens_with_indexed_exact_context": 0,
                 },
             }
         },
@@ -63,19 +72,20 @@ def test_history_deduplicates_same_scan_and_never_stores_secret_metadata():
     assert second["truth_contract"]["call_efficiency_is_observability_only"] is True
     assert second["truth_contract"]["call_efficiency_uses_only_same_run_measured_events"] is True
     assert second["truth_contract"]["budget_policy_samples_require_positive_call_exposure"] is True
+    assert second["truth_contract"]["direct_token_efficiency_excludes_indexed_context"] is True
+    assert second["truth_contract"]["legacy_combined_token_counts_never_enter_direct_efficiency"] is True
 
 
-def test_history_rollup_measures_multi_run_yield_without_policy_effect():
+def test_history_rollup_measures_multi_run_direct_yield_without_policy_effect():
     first = hist.build(_scan("2026-09-06T05:00:00+00:00"), {})
-    second = hist.build(
-        _scan("2026-09-06T05:30:00+00:00", x_state="ACTIVE_NO_EXACT_EVIDENCE", x_exact=0),
-        first,
-    )
+    second = hist.build(_scan("2026-09-06T05:30:00+00:00", x_state="ACTIVE_NO_EXACT_EVIDENCE", x_exact=0), first)
     x = second["provider_rollup"]["x"]
     assert second["runs_count"] == 2
     assert x["runs_observed"] == 2
     assert x["exact_evidence_run_ratio"] == 0.5
     assert x["exact_direct_events_total"] == 2
+    assert x["tokens_with_direct_exact_evidence_total"] == 1
+    assert x["tokens_with_indexed_exact_context_total"] == 0
     assert x["call_metric_runs"] == 2
     assert x["call_exposure_runs"] == 2
     assert x["call_exposure_exact_runs"] == 1
@@ -85,12 +95,35 @@ def test_history_rollup_measures_multi_run_yield_without_policy_effect():
     assert x["call_budget_total"] == 2
     assert x["call_metric_exact_events_total"] == 2
     assert x["call_metric_tokens_with_exact_evidence_total"] == 1
+    assert x["call_metric_direct_tokens_with_exact_evidence_total"] == 1
     assert x["call_utilization_ratio"] == 1.0
     assert x["exact_events_per_call"] == 1.0
     assert x["tokens_with_exact_evidence_per_call"] == 0.5
+    assert x["direct_tokens_with_exact_evidence_per_call"] == 0.5
     assert x["budget_recommendation_effect"] == "NONE_OBSERVE_ONLY"
     assert second["production_effect"] is False
     assert second["automatic_buy"] is False
+
+
+def test_indexed_exact_token_context_never_enters_direct_efficiency():
+    scan = _scan("2026-09-06T05:00:00+00:00", x_state="INDEX_CONTEXT_ONLY", x_exact=0, x_calls=1)
+    x_raw = scan["source_health"]["providers"]["x"]
+    x_raw["indexed_exact_context_events"] = 3
+    x_raw["tokens_with_exact_evidence"] = 1
+    x_raw["tokens_with_direct_exact_evidence"] = 0
+    x_raw["tokens_with_indexed_exact_context"] = 1
+    payload = hist.build(scan, {})
+    x = payload["provider_rollup"]["x"]
+    assert x["indexed_exact_context_events_total"] == 3
+    assert x["tokens_with_exact_evidence_total"] == 1
+    assert x["tokens_with_direct_exact_evidence_total"] == 0
+    assert x["tokens_with_indexed_exact_context_total"] == 1
+    assert x["call_exposure_runs"] == 1
+    assert x["call_metric_exact_events_total"] == 0
+    assert x["call_metric_tokens_with_exact_evidence_total"] == 0
+    assert x["exact_events_per_call"] == 0.0
+    assert x["tokens_with_exact_evidence_per_call"] == 0.0
+    assert x["direct_tokens_with_exact_evidence_per_call"] == 0.0
 
 
 def test_history_tracks_degraded_ratio_in_positive_call_exposure_window():
@@ -105,6 +138,7 @@ def test_history_tracks_degraded_ratio_in_positive_call_exposure_window():
     assert bsky["calls_used_total"] == 4
     assert bsky["call_budget_total"] == 24
     assert bsky["call_metric_exact_events_total"] == 0
+    assert bsky["call_metric_direct_tokens_with_exact_evidence_total"] == 0
     assert bsky["call_utilization_ratio"] == 0.1667
     assert second["truth_contract"]["single_run_never_changes_provider_policy"] is True
 
@@ -114,6 +148,8 @@ def test_legacy_events_without_call_metrics_never_inflate_efficiency():
     legacy = first["runs"][0]["providers"]["bluesky"]
     legacy["exact_direct_events"] = 27
     legacy["tokens_with_exact_evidence"] = 4
+    legacy.pop("tokens_with_direct_exact_evidence", None)
+    legacy.pop("tokens_with_indexed_exact_context", None)
     legacy.pop("call_budget", None)
     legacy.pop("calls_used", None)
 
@@ -121,6 +157,7 @@ def test_legacy_events_without_call_metrics_never_inflate_efficiency():
     bsky = second["provider_rollup"]["bluesky"]
     assert bsky["exact_direct_events_total"] == 27
     assert bsky["tokens_with_exact_evidence_total"] == 4
+    assert bsky["tokens_with_direct_exact_evidence_total"] == 0
     assert bsky["call_metric_runs"] == 1
     assert bsky["call_exposure_runs"] == 1
     assert bsky["calls_used_total"] == 2
