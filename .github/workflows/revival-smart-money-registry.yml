@@ -9,10 +9,12 @@ on:
     paths:
       - 'src/wallet500/revival_prewaking_wallet_evidence.py'
       - 'src/wallet500/revival_prewaking_wallet_evidence_v2.py'
+      - 'src/wallet500/revival_prewaking_wallet_retention.py'
       - 'src/wallet500/revival_wallet_registry.py'
       - 'tests/test_revival_wallet_registry.py'
       - 'tests/test_revival_prewaking_rotation.py'
       - 'tests/test_revival_prewaking_wallet_evidence_v2.py'
+      - 'tests/test_revival_prewaking_wallet_retention.py'
       - '.github/workflows/revival-smart-money-registry.yml'
 
 permissions:
@@ -41,7 +43,8 @@ jobs:
             tests/test_revival_wallet_evidence.py \
             tests/test_revival_wallet_registry.py \
             tests/test_revival_prewaking_rotation.py \
-            tests/test_revival_prewaking_wallet_evidence_v2.py
+            tests/test_revival_prewaking_wallet_evidence_v2.py \
+            tests/test_revival_prewaking_wallet_retention.py
       - name: Start PRE-WAKING exact-pair wallet evidence
         env:
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
@@ -84,6 +87,12 @@ jobs:
               raise SystemExit('PREWAKING_NONTRADE_DENOMINATOR_GUARD_MISSING')
           if truth.get('target_mint_touch_without_signed_owner_remains_unresolved') is not True:
               raise SystemExit('PREWAKING_UNRESOLVED_GUARD_MISSING')
+          if truth.get('retained_rotation_rows_require_current_exact_pair') is not True:
+              raise SystemExit('PREWAKING_RETENTION_PAIR_GUARD_MISSING')
+          if truth.get('retained_rotation_rows_require_fresh_last_run') is not True:
+              raise SystemExit('PREWAKING_RETENTION_FRESHNESS_GUARD_MISSING')
+          if truth.get('retained_rotation_rows_never_change_positive_status') is not True:
+              raise SystemExit('PREWAKING_RETENTION_POSITIVITY_GUARD_MISSING')
           sel=pre.get('selection_policy') or {}
           if sel.get('status_required')!='DEEP_WATCH': raise SystemExit('PREWAKING_STATUS_POLICY_INVALID')
           if sel.get('exact_pair_required') is not True: raise SystemExit('PREWAKING_PAIR_POLICY_INVALID')
@@ -94,6 +103,14 @@ jobs:
           if int(sel.get('max_targets') or 0)!=24: raise SystemExit('PREWAKING_TARGET_POLICY_INVALID')
           if int(sel.get('priority_slots') or 0)!=8: raise SystemExit('PREWAKING_PRIORITY_POLICY_INVALID')
           if int(pre.get('targets') or 0) > int(sel.get('max_targets') or 0): raise SystemExit('PREWAKING_TARGET_CAP_BREACH')
+          selected=pre.get('selected_target_tokens') or []
+          if len(selected)!=int(pre.get('targets') or 0): raise SystemExit('PREWAKING_SELECTED_TARGET_COUNT_MISMATCH')
+          if len(set(selected))!=len(selected): raise SystemExit('PREWAKING_SELECTED_TARGET_DUPLICATE')
+          if int(pre.get('published_wallet_evidence_rows') or 0)!=len(pre.get('tokens') or []):
+              raise SystemExit('PREWAKING_PUBLISHED_ROW_COUNT_MISMATCH')
+          retention=pre.get('rotation_retention') or {}
+          if retention.get('enabled') is not True: raise SystemExit('PREWAKING_RETENTION_DISABLED')
+          if retention.get('production_effect') is not False: raise SystemExit('PREWAKING_RETENTION_PRODUCTION_LEAK')
           limits=pre.get('collector_limits') or {}
           if int(limits.get('max_signatures_per_token_per_run') or 0)!=15: raise SystemExit('PREWAKING_SIGNATURE_DEPTH_INVALID')
           if int(limits.get('max_signature_budget_per_run') or 10**9)>360: raise SystemExit('PREWAKING_RPC_BUDGET_BREACH')
@@ -159,7 +176,7 @@ jobs:
               if exposure.get('signal_side')!='BUY': raise SystemExit('REGISTRY_NONBUY_TIER_EXPOSURE')
               if exposure.get('eligible_for_future_tiers') is not True: raise SystemExit('REGISTRY_EXPOSURE_NOT_FUTURE_ONLY')
 
-          print('PREWAKING_WALLET_EVIDENCE_OK', pre.get('targets'), sel, limits)
+          print('PREWAKING_WALLET_EVIDENCE_OK', pre.get('targets'), pre.get('published_wallet_evidence_rows'), sel, limits, retention)
           print('REVIVAL_WALLET_REGISTRY_OK', reg.get('counts'))
           PY
       - name: Publish PRE-WAKING evidence and registry
