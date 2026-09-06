@@ -111,5 +111,6 @@ def test_diagnostics_separates_hard_blockers_from_pending_confirmations(tmp_path
     assert "INDEPENDENT_EVIDENCE_PENDING" in pending_codes
     assert "EXECUTION_LIQUIDITY_LT_50K" in hard_codes
     assert "REAWAKENING_FORWARD_TRACKER_EMPTY_AFTER_ACTIVATION" in hard_codes
-    assert "NO_ACTIVE_QUALIFIED_BEFORE_AGE_GOVERNANCE" in hard_codes
+    assert "NO_ACTIVE_QUALIFIED_BEFORE_AGE_GOVERNANCE" not in hard_codes
+    assert "active_qualification" not in out["lanes"]
     assert "MARKET_WAKING_IS_LATE_CONFIRMATION_NOT_EARLY_DISCOVERY_GATE" in out["truth_rules"]
