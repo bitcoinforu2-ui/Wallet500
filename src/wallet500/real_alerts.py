@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from .config import Settings
 
@@ -11,6 +12,9 @@ REAL_PRECURSOR_STATUSES = {"HIGH_CONVICTION_PRECURSOR", "PRE_BREAKOUT_CANDIDATE"
 REAL_WAKING_STATUSES = {"WAKING_CONFIRMED_RESEARCH", "WAKING_STRONG_RESEARCH"}
 EVM_CHAINS = {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche", "fantom", "linea", "zksync", "mantle", "scroll", "blast"}
 SOURCE_LANE_TOTAL = 5
+WATCH_TRACKING_VERSION = 1
+WATCH_NEW_TTL_HOURS = 24
+WATCH_DISPLAY_TZ = ZoneInfo("Asia/Jerusalem")
 
 
 def _load(path: Path, default):
@@ -51,6 +55,36 @@ def _first(*values):
         if value not in (None, "", [], {}):
             return value
     return None
+
+
+def _parse_dt(value: object) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def _watch_is_new_24h(watch_added_at: object, now_dt: datetime) -> bool:
+    observed = _parse_dt(watch_added_at)
+    if observed is None:
+        return False
+    age_seconds = (now_dt - observed).total_seconds()
+    return 0 <= age_seconds < WATCH_NEW_TTL_HOURS * 3600
+
+
+def _watch_label(watch_added_at: object) -> str:
+    observed = _parse_dt(watch_added_at)
+    if observed is None:
+        return ""
+    return observed.astimezone(WATCH_DISPLAY_TZ).strftime("%d/%m %H:%M IL")
 
 
 def _age_ok(*rows: dict) -> tuple[bool, int | None]:
@@ -294,7 +328,14 @@ def _clarity_tier(blockers: list[str], risk_reasons: list[str], liquidity_ok: bo
 
 def build(data_dir: Path = DATA) -> dict:
     cfg = Settings()
-    now = datetime.now(timezone.utc).isoformat()
+    now_dt = datetime.now(timezone.utc)
+    now = now_dt.isoformat()
+    previous_payload = _load(data_dir / "real-alerts.json", {})
+    previous_tracking = previous_payload.get("watch_tracking") if isinstance(previous_payload.get("watch_tracking"), dict) else {}
+    tracking_initialized = int(previous_tracking.get("version") or 0) == WATCH_TRACKING_VERSION
+    previous_registry = previous_tracking.get("active_registry") if isinstance(previous_tracking.get("active_registry"), dict) else {}
+    previous_watch_rows = _index_rows(list(previous_payload.get("verified_watch") or []))
+
     cex_payload = _load(data_dir / "cex-revival-radar.json", {})
     precursor_payload = _load(data_dir / "revival-precursor-latest.json", {})
     waking_payload = _load(data_dir / "waking-confirmation-latest.json", {})
@@ -440,6 +481,18 @@ def build(data_dir: Path = DATA) -> dict:
                 or revival.get("watch_status") == "WAKING_MARKET_ONLY"
             )
             if exact_identity and exact_pair and age_ok and watch_interest:
+                if tracking_initialized:
+                    watch_added_at = previous_registry.get(k) or now
+                    watch_is_new = _watch_is_new_24h(watch_added_at, now_dt)
+                else:
+                    legacy_row = previous_watch_rows.get(k) or {}
+                    watch_added_at = _first(legacy_row.get("watch_added_at"), legacy_row.get("first_alert_at"), item.get("first_alert_at"), now)
+                    watch_is_new = False
+                item["watch_added_at"] = watch_added_at
+                item["watch_is_new_24h"] = watch_is_new
+                item["watch_entered_label"] = _watch_label(watch_added_at)
+                if watch_is_new:
+                    item["why_now"] = [f"🆕 NEW WATCH · {_watch_label(watch_added_at)}", *sorted(set(lanes))]
                 item["status"] = "EVIDENCE_READY_NOT_REAL_ALERT" if envelope_status == "EVIDENCE_READY" else "VERIFIED_WATCH_NOT_REAL_ALERT"
                 item["actionable_research_alert"] = False
                 verified_watch.append(item)
@@ -465,6 +518,8 @@ def build(data_dir: Path = DATA) -> dict:
     verified_watch.sort(
         key=lambda x: (
             tier_priority.get(x.get("radar_tier"), 0),
+            x.get("watch_is_new_24h") is True,
+            str(x.get("watch_added_at") or ""),
             x.get("readiness_passed") or 0,
             x.get("evidence_ready") is True,
             x.get("source_lane_count") or 0,
@@ -478,6 +533,13 @@ def build(data_dir: Path = DATA) -> dict:
     near_count = sum(1 for row in verified_watch if row.get("radar_tier") == "NEAR_ALERT")
     blocked_count = sum(1 for row in verified_watch if row.get("radar_tier") == "BLOCKED")
     plain_watch_count = sum(1 for row in verified_watch if row.get("radar_tier") == "VERIFIED_WATCH")
+    new_watch_count = sum(1 for row in verified_watch if row.get("watch_is_new_24h") is True)
+    active_registry = {}
+    for row in verified_watch:
+        rk = _key(row.get("chain"), row.get("token_address"))
+        if rk and row.get("watch_added_at"):
+            active_registry[rk] = row.get("watch_added_at")
+
     return {
         "version": 3,
         "generated_at": now,
@@ -505,12 +567,20 @@ def build(data_dir: Path = DATA) -> dict:
             "late_move_or_pump_dump_never_real_alert": True,
             "label_meaning": "REAL_ALERT means the system's strict research alert criteria are met; it is not a guarantee of profit or an instruction to buy.",
         },
+        "watch_tracking": {
+            "version": WATCH_TRACKING_VERSION,
+            "new_watch_ttl_hours": WATCH_NEW_TTL_HOURS,
+            "display_timezone": "Asia/Jerusalem",
+            "new_watch_24h_count": new_watch_count,
+            "active_registry": active_registry,
+        },
         "counts": {
             "real_alerts": len(real_alerts),
             "near_alert_not_real": near_count,
             "verified_watch_core": plain_watch_count,
             "blocked_verified_watch": blocked_count,
             "verified_watch_not_real": len(verified_watch),
+            "new_watch_24h": new_watch_count,
             "evidence_ready_research": evidence_ready_count,
             "identity_pending_not_actionable": len(identity_pending),
         },
