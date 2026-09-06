@@ -35,7 +35,7 @@ def candidate(*, market_observed=True, verified_independent=1):
     }
 
 
-def probe(*, verified=True, promotion=False, positive=False, pair="PairA"):
+def probe(*, verified=True, promotion=False, positive=False, pair="PairA", unresolved=False):
     return {
         "version": "REVIVAL_WALLET_COVERAGE_PROBE_V1",
         "mode": "RESEARCH_ONLY_EXACT_PAIR_WALLET_COVERAGE_PROBE",
@@ -44,6 +44,7 @@ def probe(*, verified=True, promotion=False, positive=False, pair="PairA"):
             "probe_is_coverage_only_not_accumulation_alpha": True,
             "probe_never_changes_candidate_promotion": True,
             "probe_never_changes_real_alert_gate": True,
+            "unresolved_target_mint_touch_fails_closed": True,
         },
         "tokens": [{
             "token_address": "MintA",
@@ -51,7 +52,10 @@ def probe(*, verified=True, promotion=False, positive=False, pair="PairA"):
             "coverage_verified": verified,
             "promotion_eligible": promotion,
             "positive": positive,
-            "status": "VERIFIED_LATEST_PAIR_TRANSACTION_NOT_TARGET_MINT",
+            "target_mint_touched": unresolved,
+            "unresolved_target_touch": unresolved,
+            "resolved_signed_owner": verified and not unresolved,
+            "status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED" if unresolved else "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
         }],
     }
 
@@ -85,16 +89,42 @@ def test_non_promoting_wallet_probe_closes_only_wallet_pending():
     assert payload["truth_contract"]["normalizer_changes_real_alert_gate"] is False
 
 
+def test_verified_attribution_gap_is_fail_closed_not_pending():
+    row = candidate()
+    payload = normalize(
+        {"counts": {}, "truth_contract": {}, "candidates": [row]},
+        probe(verified=False, unresolved=True),
+        now=NOW,
+    )
+    assert "WALLET_COVERAGE_PENDING" not in row["pending_confirmations"]
+    assert "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED" in row["verification_outcomes"]
+    assert row["coverage"]["wallet_coverage_observed"] is True
+    assert row["coverage"]["wallet_attribution_resolved"] is False
+    assert row["coverage"]["wallet_attribution_gap_fail_closed"] is True
+    assert row["coverage"]["positive_independent_count"] == 0
+    assert row["coverage"]["evidence_ready"] is False
+    assert row["status"] == "DEEP_WATCH"
+    assert payload["counts"]["wallet_attribution_gap_verified_fail_closed"] == 1
+    assert payload["truth_contract"]["verified_wallet_attribution_gap_is_not_pending_and_never_positive"] is True
+    assert payload["truth_contract"]["normalizer_changes_candidate_promotion"] is False
+    assert payload["truth_contract"]["normalizer_changes_real_alert_gate"] is False
+
+
 def test_probe_with_wrong_pair_or_alpha_flags_cannot_close_pending():
     for bad in (
         probe(pair="WrongPair"),
         probe(promotion=True),
         probe(positive=True),
-        probe(verified=False),
     ):
         row = candidate()
         normalize({"counts": {}, "truth_contract": {}, "candidates": [row]}, bad, now=NOW)
         assert "WALLET_COVERAGE_PENDING" in row["pending_confirmations"]
+
+
+def test_unverified_without_proven_attribution_gap_stays_pending():
+    row = candidate()
+    normalize({"counts": {}, "truth_contract": {}, "candidates": [row]}, probe(verified=False), now=NOW)
+    assert "WALLET_COVERAGE_PENDING" in row["pending_confirmations"]
 
 
 def test_missing_evidence_stays_pending():
