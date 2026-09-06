@@ -1,7 +1,9 @@
 import wallet500.social_provider_budget_advisor as adv
 
 
-def _history(runs=1, state="ACTIVE_EXACT_EVIDENCE", exact_ratio=1.0, degraded=0.0, exact_total=8, exact_per_call=1.0, tokens_per_call=0.25, budget=4):
+def _history(runs=1, state="ACTIVE_EXACT_EVIDENCE", exact_ratio=1.0, degraded=0.0, exact_total=8, exact_per_call=1.0, tokens_per_call=0.25, budget=4, calls_used=None):
+    if calls_used is None:
+        calls_used = runs * 2
     return {
         "mode": "SOCIAL_SOURCE_HEALTH_HISTORY_OBSERVABILITY_ONLY_V2",
         "runs_count": runs,
@@ -10,7 +12,7 @@ def _history(runs=1, state="ACTIVE_EXACT_EVIDENCE", exact_ratio=1.0, degraded=0.
                 "runs_observed": runs,
                 "latest_state": state,
                 "latest_call_budget": budget,
-                "calls_used_total": runs * 2,
+                "calls_used_total": calls_used,
                 "exact_evidence_run_ratio": exact_ratio,
                 "degraded_run_ratio": degraded,
                 "exact_direct_events_total": exact_total,
@@ -57,15 +59,17 @@ def test_zero_yield_needs_longer_window_before_decrease_candidate():
     assert late["providers"][0]["recommendation"] == "CANDIDATE_DECREASE_AFTER_HUMAN_REVIEW"
 
 
-def test_not_configured_is_connection_gap_not_bad_evidence():
-    payload = adv.build(_history(runs=20, state="NOT_CONFIGURED", exact_ratio=0.0, exact_total=0, exact_per_call=0.0, tokens_per_call=0.0, budget=6))
+def test_not_configured_is_connection_gap_not_bad_evidence_and_has_no_efficiency_score():
+    payload = adv.build(_history(runs=20, state="NOT_CONFIGURED", exact_ratio=0.0, exact_total=0, exact_per_call=0.0, tokens_per_call=0.0, budget=6, calls_used=0))
     row = payload["providers"][0]
     assert row["recommendation"] == "CONNECT_PROVIDER_FIRST"
+    assert row["evidence_efficiency_score"] is None
     assert payload["truth_contract"]["not_configured_is_not_bad_evidence"] is True
+    assert payload["truth_contract"]["no_direct_calls_means_no_efficiency_score"] is True
 
 
 def test_non_budgeted_official_source_remains_observability_only():
-    payload = adv.build(_history(runs=20, state="ACTIVE_OFFICIAL_CONTEXT", exact_ratio=0.5, exact_total=10, exact_per_call=0.0, tokens_per_call=0.0, budget=None))
+    payload = adv.build(_history(runs=20, state="ACTIVE_OFFICIAL_CONTEXT", exact_ratio=0.5, exact_total=10, exact_per_call=0.0, tokens_per_call=0.0, budget=None, calls_used=0))
     row = payload["providers"][0]
     assert row["recommendation"] == "OBSERVE_NON_BUDGETED_SOURCE"
     assert row["evidence_efficiency_score"] is None
