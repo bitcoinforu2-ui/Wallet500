@@ -1,0 +1,63 @@
+name: AOBS 5m Telegram Price Watch
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/aobs-price-watch.yml'
+      - 'src/wallet500/aobs_price_watch.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aobs-price-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate watcher logic
+        run: |
+          set -euo pipefail
+          python -m py_compile src/wallet500/aobs_price_watch.py
+          python src/wallet500/aobs_price_watch.py --self-test
+
+      - name: Fetch exact AOBS pool and send edge-triggered Telegram alert
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          AOBS_STATE_PATH: data/aobs-price-watch.json
+        run: |
+          set -euo pipefail
+          python src/wallet500/aobs_price_watch.py
+
+      - name: Persist AOBS trigger state without CI fan-out
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- data/aobs-price-watch.json && git ls-files --error-unmatch data/aobs-price-watch.json >/dev/null 2>&1; then
+            echo 'AOBS state unchanged'
+            exit 0
+          fi
+          git config user.name 'wallet500-aobs-bot'
+          git config user.email 'wallet500-aobs-bot@users.noreply.github.com'
+          git add data/aobs-price-watch.json
+          git commit -m 'data: persist AOBS price alert state [skip ci]'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
