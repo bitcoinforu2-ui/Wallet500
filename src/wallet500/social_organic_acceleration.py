@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import re
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -50,9 +50,25 @@ def _write(path: Path, payload: dict) -> None:
 def _dt(v: Any) -> datetime | None:
     if v in (None, ""):
         return None
+    if isinstance(v, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(v), tz=timezone.utc)
+        except (ValueError, OSError, OverflowError):
+            return None
+    s = str(v).strip()
     try:
-        d = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        if s.replace(".", "", 1).isdigit() and len(s.split(".", 1)[0]) >= 9:
+            return datetime.fromtimestamp(float(s), tz=timezone.utc)
+    except (ValueError, OSError, OverflowError):
+        pass
+    try:
+        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
         return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except Exception:
+        pass
+    try:
+        d = parsedate_to_datetime(s)
+        return d.astimezone(timezone.utc) if d.tzinfo else d.replace(tzinfo=timezone.utc)
     except Exception:
         return None
 
@@ -80,8 +96,6 @@ def _event_time(event: dict) -> datetime | None:
 
 def _normalized_text(event: dict) -> str:
     text = str(event.get("text") or "").lower()
-    # Strip exact CAs and URLs before clone detection. Copy-pasted campaign wording
-    # should still cluster even when the same template carries different tracking URLs.
     text = re.sub(r"https?://\S+", " ", text)
     text = re.sub(r"0x[a-f0-9]{40}", " <ca> ", text)
     text = re.sub(r"[1-9A-HJ-NP-Za-km-z]{32,44}", " <ca> ", text)
@@ -117,11 +131,6 @@ def _is_paid_or_incentivized(event: dict) -> tuple[bool, str | None]:
 
 
 def classify_event(event: dict, *, clone_count: int = 1, author_recent_count: int = 1) -> dict:
-    """Classify one exact-contract social event without deleting raw evidence.
-
-    Weighting is intentionally conservative. Paid/project/clone events remain visible
-    in raw counts, but cannot masquerade as independent organic acceleration.
-    """
     contract = str(event.get("contract") or "")
     exact_contract = _valid_contract(event.get("chain"), contract)
     project_owned = _is_project_owned(event)
@@ -144,13 +153,9 @@ def classify_event(event: dict, *, clone_count: int = 1, author_recent_count: in
         weight *= 0.05
         reasons.append(paid_reason or "PAID_OR_INCENTIVIZED")
     if clone:
-        # A clone campaign is still evidence that promotion exists, not evidence of
-        # many independent discoveries. Preserve it with tiny weight instead of zero.
         weight *= 0.10
         reasons.append("COPY_PASTE_CLUSTER")
     if author_recent_count > 3:
-        # Cap burst spam from one author. The first few observations are preserved;
-        # repeated hourly flooding gets rapidly discounted.
         weight *= max(0.05, 3.0 / float(author_recent_count))
         reasons.append("SAME_AUTHOR_BURST")
 
@@ -191,7 +196,6 @@ def _status(current: dict, baseline_per_hour: float, contamination_ratio: float)
     sources = int(current.get("independent_sources") or 0)
     ratio = weighted / max(0.25, baseline_per_hour)
 
-    # Raw post volume is deliberately absent from the promotion conditions.
     if weighted >= 6 and authors >= 5 and sources >= 2 and ratio >= 3.0 and contamination_ratio <= 0.40:
         status = "STRONG_ORGANIC_ACCELERATION"
     elif weighted >= 3 and authors >= 3 and ratio >= 2.0 and contamination_ratio <= 0.60:
@@ -299,16 +303,17 @@ def run(output_dir: str | Path = "data", now: str | None = None) -> dict:
     reference = reference or datetime.now(timezone.utc)
     tokens = analyze_events(events if isinstance(events, list) else [], reference)
     payload = {
-        "version": 1,
+        "version": 2,
         "mode": MODE,
         "updated_at": reference.isoformat(),
         "input": "social-catalyst-ledger.json",
         "raw_evidence_mutated": False,
         "rule": RULE,
         "method_note": (
-            "Raw mentions are preserved. Organic acceleration requires exact-contract attribution, independent authors, "
+            "Raw mentions are preserved. Organic acceleration requires exact-token identity carried by the immutable ledger, independent authors, "
             "and time acceleration. Project-owned, paid/incentivized, copy-paste, and same-author burst activity is discounted."
         ),
+        "timestamp_formats_supported": ["ISO8601", "UNIX_EPOCH", "RFC2822"],
         "thresholds_are_research_heuristics": True,
         "token_count": len(tokens),
         "strong_count": sum(1 for x in tokens if x["status"] == "STRONG_ORGANIC_ACCELERATION"),
