@@ -1,3 +1,7 @@
+import copy
+
+import pytest
+
 import wallet500.social_source_health_history as hist
 
 
@@ -74,6 +78,7 @@ def test_history_deduplicates_same_scan_and_never_stores_secret_metadata():
     assert second["truth_contract"]["budget_policy_samples_require_positive_call_exposure"] is True
     assert second["truth_contract"]["direct_token_efficiency_excludes_indexed_context"] is True
     assert second["truth_contract"]["legacy_combined_token_counts_never_enter_direct_efficiency"] is True
+    hist.validate(second)
 
 
 def test_history_rollup_measures_multi_run_direct_yield_without_policy_effect():
@@ -124,6 +129,7 @@ def test_indexed_exact_token_context_never_enters_direct_efficiency():
     assert x["exact_events_per_call"] == 0.0
     assert x["tokens_with_exact_evidence_per_call"] == 0.0
     assert x["direct_tokens_with_exact_evidence_per_call"] == 0.0
+    hist.validate(payload)
 
 
 def test_history_tracks_degraded_ratio_in_positive_call_exposure_window():
@@ -166,6 +172,7 @@ def test_legacy_events_without_call_metrics_never_inflate_efficiency():
     assert bsky["call_exposure_exact_evidence_run_ratio"] == 0.0
     assert bsky["exact_events_per_call"] == 0.0
     assert bsky["tokens_with_exact_evidence_per_call"] == 0.0
+    hist.validate(second)
 
 
 def test_zero_call_run_never_becomes_budget_policy_sample_or_efficiency_numerator():
@@ -179,9 +186,10 @@ def test_zero_call_run_never_becomes_budget_policy_sample_or_efficiency_numerato
     assert x["call_metric_tokens_with_exact_evidence_total"] == 0
     assert x["exact_events_per_call"] is None
     assert x["tokens_with_exact_evidence_per_call"] is None
+    hist.validate(payload)
 
 
-def test_history_keeps_unknown_call_metrics_null_for_non_budgeted_sources():
+def test_history_keeps_unknown_call_metrics_null_for_nonbudgeted_sources():
     payload = hist.build(_scan("2026-09-06T05:00:00+00:00"), {})
     telegram = payload["provider_rollup"]["telegram_official"]
     assert telegram["calls_used_total"] is None
@@ -190,3 +198,35 @@ def test_history_keeps_unknown_call_metrics_null_for_non_budgeted_sources():
     assert telegram["call_exposure_exact_evidence_run_ratio"] is None
     assert telegram["exact_events_per_call"] is None
     assert telegram["call_utilization_ratio"] is None
+    hist.validate(payload)
+
+
+def test_validate_fails_if_direct_token_yield_exists_without_exact_event_yield():
+    payload = hist.build(_scan("2026-09-06T05:00:00+00:00", x_state="ACTIVE_NO_EXACT_EVIDENCE", x_exact=0), {})
+    bad = copy.deepcopy(payload)
+    bad["provider_rollup"]["x"]["direct_tokens_with_exact_evidence_per_call"] = 1.0
+    bad["provider_rollup"]["x"]["tokens_with_exact_evidence_per_call"] = 1.0
+    bad["provider_rollup"]["x"]["call_metric_tokens_with_exact_evidence_total"] = 1
+    bad["provider_rollup"]["x"]["call_metric_direct_tokens_with_exact_evidence_total"] = 1
+    with pytest.raises(ValueError, match="TOKEN_YIELD_WITHOUT_EXACT_EVENT"):
+        hist.validate(bad)
+
+
+def test_validate_fails_if_public_index_gets_direct_evidence():
+    payload = hist.build(_scan("2026-09-06T05:00:00+00:00"), {})
+    bad = copy.deepcopy(payload)
+    row = bad["provider_rollup"]["social_mesh_public_index"]
+    row["exact_direct_events_total"] = 1
+    row["tokens_with_exact_evidence_total"] = 1
+    row["tokens_with_direct_exact_evidence_total"] = 1
+    with pytest.raises(ValueError, match="PUBLIC_INDEX_DIRECT_EVIDENCE_LEAK"):
+        hist.validate(bad)
+
+
+def test_validate_fails_on_exposure_order_corruption():
+    payload = hist.build(_scan("2026-09-06T05:00:00+00:00"), {})
+    bad = copy.deepcopy(payload)
+    bad["provider_rollup"]["x"]["call_exposure_runs"] = 2
+    bad["provider_rollup"]["x"]["call_metric_runs"] = 1
+    with pytest.raises(ValueError, match="EXPOSURE_ORDER_INVALID"):
+        hist.validate(bad)
