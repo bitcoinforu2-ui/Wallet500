@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from wallet500.liquidity_truth import liquidity_truth
-from wallet500.liquidity_truth_guard import annotate_row, sanitize_real_alerts
+from wallet500.liquidity_truth_guard import annotate_row, sanitize_cex_radar, sanitize_real_alerts
 from wallet500.production_risk_gate import evaluate
 
 
@@ -19,6 +19,23 @@ def test_meteora_tvl_is_not_execution_depth():
     assert out['execution_pool_liquidity_usd'] is None
     assert out['liquidity_execution_gate_eligible'] is False
     assert out['liquidity_execution_gate_status']=='CONCENTRATED_POOL_DEPTH_UNVERIFIED_FAIL_CLOSED'
+
+
+def test_dormant_verified_meteora_is_sanitized_in_cex_radar(tmp_path: Path):
+    p=tmp_path/'cex-revival-radar.json'
+    p.write_text(json.dumps({'alerts':[{
+        'identity_status':'DEX_VERIFIED_DORMANT','chain':'solana','token_address':'MINT','pair_address':'PAIR',
+        'dex':'Meteora','dex_liquidity_usd':143_345.3,'execution_pool_liquidity_usd':143_345.3,
+    }]}), encoding='utf-8')
+    counts=sanitize_cex_radar(p)
+    data=json.loads(p.read_text())
+    row=data['alerts'][0]
+    assert counts['concentrated_depth_unverified']==1
+    assert row['concentrated_liquidity_pool'] is True
+    assert row['execution_pool_liquidity_usd'] is None
+    assert row['dex_liquidity_usd'] is None
+    assert row['pool_tvl_usd']==143_345.3
+    assert data['liquidity_truth_contract']['all_dex_verified_activity_states_sanitized'] is True
 
 
 def test_verified_depth_can_pass_semantics():
@@ -83,9 +100,11 @@ def test_real_alert_is_demoted_when_concentrated_depth_is_unverified(tmp_path: P
     result=sanitize_real_alerts(p)
     data=json.loads(p.read_text())
     assert result['demoted']==1
+    assert result['dormant_no_activity']==0
     assert data['counts']['real_alerts']==0
     assert data['verified_watch'][0]['actionable_research_alert'] is False
     assert 'EXECUTION_DEPTH_UNVERIFIED_CONCENTRATED_POOL' in data['verified_watch'][0]['blockers']
+    assert 'DEX_EXACT_PAIR_DORMANT_NO_ACTIVITY' not in data['verified_watch'][0]['blockers']
 
 
 def test_sushi_like_deep_but_dead_pair_is_not_verified_watch(tmp_path: Path):
