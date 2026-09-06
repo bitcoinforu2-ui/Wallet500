@@ -16,6 +16,7 @@ on:
       - 'src/wallet500/social_bluesky_resilient.py'
       - 'src/wallet500/social_mesh_public_index.py'
       - 'src/wallet500/social_telegram_truth_hardening.py'
+      - 'src/wallet500/social_source_health_history.py'
       - 'src/wallet500/social_intelligence_v2.py'
       - 'src/wallet500/social_mesh_intelligence_enrichment.py'
       - 'src/wallet500/social_mesh_index_intelligence_enrichment.py'
@@ -30,6 +31,7 @@ on:
       - 'tests/test_social_mesh_public_index.py'
       - 'tests/test_social_telegram_truth_hardening.py'
       - 'tests/test_social_source_health.py'
+      - 'tests/test_social_source_health_history.py'
       - 'tests/test_social_coverage_hardening.py'
       - 'tests/test_cross_signal_fusion_v2.py'
       - 'tests/test_social_organic_acceleration.py'
@@ -46,6 +48,7 @@ on:
       - 'src/wallet500/social_bluesky_resilient.py'
       - 'src/wallet500/social_mesh_public_index.py'
       - 'src/wallet500/social_telegram_truth_hardening.py'
+      - 'src/wallet500/social_source_health_history.py'
       - 'src/wallet500/social_intelligence_v2.py'
       - 'src/wallet500/social_mesh_intelligence_enrichment.py'
       - 'src/wallet500/social_mesh_index_intelligence_enrichment.py'
@@ -60,6 +63,7 @@ on:
       - 'tests/test_social_mesh_public_index.py'
       - 'tests/test_social_telegram_truth_hardening.py'
       - 'tests/test_social_source_health.py'
+      - 'tests/test_social_source_health_history.py'
       - 'tests/test_social_coverage_hardening.py'
       - 'tests/test_cross_signal_fusion_v2.py'
       - 'tests/test_social_organic_acceleration.py'
@@ -98,6 +102,7 @@ jobs:
           tests/test_social_mesh_public_index.py
           tests/test_social_telegram_truth_hardening.py
           tests/test_social_source_health.py
+          tests/test_social_source_health_history.py
           tests/test_social_coverage_hardening.py
           tests/test_cross_signal_fusion_v2.py
           tests/test_social_organic_acceleration.py
@@ -133,6 +138,9 @@ jobs:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: python -m wallet500.social_feed_scan_v4
 
+      - name: Record observability-only provider health history
+        run: python -m wallet500.social_source_health_history
+
       - name: Recompute organic acceleration
         run: python -m wallet500.social_organic_acceleration
 
@@ -157,10 +165,19 @@ jobs:
           import json
           from pathlib import Path
           s=json.loads(Path('data/social-source-scan.json').read_text())
+          h=json.loads(Path('data/social-source-health-history.json').read_text())
           o=json.loads(Path('data/social-organic-acceleration.json').read_text())
           i=json.loads(Path('data/social-intelligence-v2.json').read_text())
           f=json.loads(Path('data/cross-signal-fusion-v2.json').read_text())
           if s.get('mode')!='RESEARCH_ONLY_SOCIAL_SOURCE_SCAN_V1': raise SystemExit('SOCIAL_SCAN_MODE_INVALID')
+          if h.get('mode')!='SOCIAL_SOURCE_HEALTH_HISTORY_OBSERVABILITY_ONLY_V1': raise SystemExit('SOURCE_HEALTH_HISTORY_MODE_INVALID')
+          if h.get('observability_only') is not True or h.get('production_effect') is not False or h.get('automatic_buy') is not False: raise SystemExit('SOURCE_HEALTH_HISTORY_PRODUCTION_LEAK')
+          htruth=h.get('truth_contract') or {}
+          for key in ('provider_health_never_modifies_token_scores','provider_health_never_modifies_alert_gate','provider_health_never_auto_changes_api_budgets','single_run_never_changes_provider_policy','secret_values_never_stored','unknown_is_not_zero','configuration_is_not_evidence'):
+              if htruth.get(key) is not True: raise SystemExit('SOURCE_HEALTH_HISTORY_TRUTH_MISSING:'+key)
+          if int(h.get('runs_count') or 0)<1: raise SystemExit('SOURCE_HEALTH_HISTORY_EMPTY')
+          for provider,row in (h.get('provider_rollup') or {}).items():
+              if row.get('budget_recommendation_effect')!='NONE_OBSERVE_ONLY': raise SystemExit('SOURCE_HEALTH_HISTORY_BUDGET_POLICY_LEAK:'+provider)
           if i.get('mode')!='RESEARCH_ONLY_SOCIAL_INTELLIGENCE_V2': raise SystemExit('SOCIAL_INTELLIGENCE_MODE_INVALID')
           if f.get('mode')!='RESEARCH_ONLY_CROSS_SIGNAL_FUSION_V2': raise SystemExit('FUSION_MODE_INVALID')
           if i.get('automatic_buy') is not False or f.get('automatic_buy') is not False: raise SystemExit('SOCIAL_PRODUCTION_LEAK')
@@ -220,9 +237,9 @@ jobs:
           if tg.get('freshness_source')!='TELEGRAM_ORIGINAL_DATETIME': raise SystemExit('TELEGRAM_FRESHNESS_SOURCE_INVALID')
 
           health=s.get('source_health') or {}
-          htruth=health.get('truth') or {}
+          shealth_truth=health.get('truth') or {}
           for key in ('configuration_is_not_evidence','index_context_never_counts_as_organic','provider_health_does_not_modify_token_scores','secret_values_never_exposed'):
-              if htruth.get(key) is not True: raise SystemExit('SOURCE_HEALTH_TRUTH_MISSING:'+key)
+              if shealth_truth.get(key) is not True: raise SystemExit('SOURCE_HEALTH_TRUTH_MISSING:'+key)
           providers=health.get('providers') or {}
           expected_providers={'x','youtube','reddit','telegram_official','telegram_mtproto','farcaster','discord','threads','bluesky','social_mesh_public_index'}
           if not expected_providers <= set(providers): raise SystemExit('SOURCE_HEALTH_PROVIDER_COVERAGE_MISSING')
@@ -242,7 +259,7 @@ jobs:
           for row in f.get('tokens') or []:
               if row.get('production_effect') is not False or row.get('automatic_buy') is not False: raise SystemExit('FUSION_ROW_PRODUCTION_LEAK')
               if row.get('risk',{}).get('hard_blockers') and row.get('fusion_status')!='HARD_TRUTH_BLOCKED': raise SystemExit('HARD_BLOCKER_OVERRIDE')
-          print('SOCIAL_MESH_V8_OK', 'telegram_truth=', tg, 'source_health=', health.get('summary'), 'mesh_cfg=', mesh_cfg, 'mesh_breakers=', s.get('mesh_provider_circuit_breakers'), 'index=', index_meta, i.get('counts'), f.get('counts'))
+          print('SOCIAL_MESH_V9_OK', 'history_runs=', h.get('runs_count'), 'telegram_truth=', tg, 'source_health=', health.get('summary'), 'mesh_cfg=', mesh_cfg, 'mesh_breakers=', s.get('mesh_provider_circuit_breakers'), 'index=', index_meta, i.get('counts'), f.get('counts'))
           PY
 
       - name: Publish social intelligence snapshot
@@ -258,17 +275,18 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             for f in social-source-scan.json social-catalyst-ledger.json social-organic-acceleration.json social-intelligence-v2.json cross-signal-fusion-v2.json; do cp "$tmp/$f" "data/$f"; done
+            python -m wallet500.social_source_health_history
             python -m wallet500.social_intelligence_v2
             python -m wallet500.social_coverage_hardening
             python -m wallet500.social_mesh_intelligence_enrichment
             python -m wallet500.social_mesh_index_intelligence_enrichment
             python -m wallet500.cross_signal_fusion_v2
-            git add data/social-source-scan.json data/social-catalyst-ledger.json data/social-organic-acceleration.json data/social-intelligence-v2.json data/cross-signal-fusion-v2.json
-            if git diff --cached --quiet; then echo 'SOCIAL_V8_NO_DATA_CHANGE'; exit 0; fi
-            git commit -m 'data: refresh social intelligence v2 and social mesh v8'
-            if git push origin HEAD:main; then echo 'SOCIAL_MESH_V8_PUBLISH_OK'; exit 0; fi
-            echo "SOCIAL_MESH_V8_RETRY attempt=$attempt"
+            git add data/social-source-scan.json data/social-source-health-history.json data/social-catalyst-ledger.json data/social-organic-acceleration.json data/social-intelligence-v2.json data/cross-signal-fusion-v2.json
+            if git diff --cached --quiet; then echo 'SOCIAL_V9_NO_DATA_CHANGE'; exit 0; fi
+            git commit -m 'data: refresh social intelligence and provider health history v9'
+            if git push origin HEAD:main; then echo 'SOCIAL_MESH_V9_PUBLISH_OK'; exit 0; fi
+            echo "SOCIAL_MESH_V9_RETRY attempt=$attempt"
             sleep 3
           done
-          echo '::error::SOCIAL_MESH_V8_PUBLISH_RACE_EXHAUSTED'
+          echo '::error::SOCIAL_MESH_V9_PUBLISH_RACE_EXHAUSTED'
           exit 1
