@@ -11,6 +11,7 @@ on:
       - 'src/wallet500/social_feed_scan_v2.py'
       - 'src/wallet500/social_feed_scan_v3.py'
       - 'src/wallet500/social_feed_scan_v4.py'
+      - 'src/wallet500/social_feed_scan_v5.py'
       - 'src/wallet500/social_direct_providers.py'
       - 'src/wallet500/social_mesh_providers.py'
       - 'src/wallet500/social_bluesky_resilient.py'
@@ -45,6 +46,7 @@ on:
       - 'src/wallet500/social_feed_scan_v2.py'
       - 'src/wallet500/social_feed_scan_v3.py'
       - 'src/wallet500/social_feed_scan_v4.py'
+      - 'src/wallet500/social_feed_scan_v5.py'
       - 'src/wallet500/social_direct_providers.py'
       - 'src/wallet500/social_mesh_providers.py'
       - 'src/wallet500/social_bluesky_resilient.py'
@@ -112,6 +114,9 @@ jobs:
           tests/test_cross_signal_fusion_v2.py
           tests/test_social_organic_acceleration.py
 
+      - name: Social resilience V5 self-test
+        run: python -m wallet500.social_feed_scan_v5 --self-test
+
       - name: Scan direct social providers, Social Mesh and public index
         env:
           SOCIAL_SCAN_BUDGET: '24'
@@ -141,7 +146,7 @@ jobs:
           BSKY_IDENTIFIER: ${{ secrets.BSKY_IDENTIFIER }}
           BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
-        run: python -m wallet500.social_feed_scan_v4
+        run: python -m wallet500.social_feed_scan_v5
 
       - name: Record observability-only provider health history
         run: python -m wallet500.social_source_health_history
@@ -178,6 +183,7 @@ jobs:
           o=json.loads(Path('data/social-organic-acceleration.json').read_text())
           i=json.loads(Path('data/social-intelligence-v2.json').read_text())
           f=json.loads(Path('data/cross-signal-fusion-v2.json').read_text())
+          cache=json.loads(Path('data/social-identity-cache.json').read_text())
           if s.get('mode')!='RESEARCH_ONLY_SOCIAL_SOURCE_SCAN_V1': raise SystemExit('SOCIAL_SCAN_MODE_INVALID')
           if h.get('mode')!='SOCIAL_SOURCE_HEALTH_HISTORY_OBSERVABILITY_ONLY_V2': raise SystemExit('SOURCE_HEALTH_HISTORY_MODE_INVALID')
           if h.get('observability_only') is not True or h.get('production_effect') is not False or h.get('automatic_buy') is not False: raise SystemExit('SOURCE_HEALTH_HISTORY_PRODUCTION_LEAK')
@@ -263,7 +269,7 @@ jobs:
 
           health=s.get('source_health') or {}
           shealth_truth=health.get('truth') or {}
-          for key in ('configuration_is_not_evidence','index_context_never_counts_as_organic','provider_health_does_not_modify_token_scores','secret_values_never_exposed'):
+          for key in ('configuration_is_not_evidence','index_context_never_counts_as_organic','provider_health_does_not_modify_token_scores','secret_values_never_exposed','traffic_light_is_observability_only','not_configured_is_amber_not_failure','fallback_recovered_is_amber_not_green','red_requires_expected_failure_without_usable_recovery'):
               if shealth_truth.get(key) is not True: raise SystemExit('SOURCE_HEALTH_TRUTH_MISSING:'+key)
           providers=health.get('providers') or {}
           expected_providers={'x','youtube','reddit','telegram_official','telegram_mtproto','farcaster','discord','threads','bluesky','social_mesh_public_index'}
@@ -273,6 +279,14 @@ jobs:
               if row.get('state') not in valid_states: raise SystemExit('SOURCE_HEALTH_STATE_INVALID:'+provider)
               if row.get('unknown_is_not_zero') is not True: raise SystemExit('SOURCE_HEALTH_UNKNOWN_ZERO_LEAK:'+provider)
               if row.get('score_effect')!='NONE_PROVIDER_HEALTH_ONLY': raise SystemExit('SOURCE_HEALTH_SCORE_LEAK:'+provider)
+              if row.get('traffic_light') not in {'GREEN','AMBER','RED'}: raise SystemExit('SOURCE_HEALTH_TRAFFIC_LIGHT_INVALID:'+provider)
+          resilience=s.get('provider_resilience') or {}
+          if resilience.get('production_effect') is not False or resilience.get('automatic_buy') is not False: raise SystemExit('PROVIDER_RESILIENCE_PRODUCTION_LEAK')
+          rtruth=resilience.get('truth') or {}
+          for key in ('cache_never_overrides_exact_pair_identity','stale_cache_is_optional_metadata_only','index_recovery_never_counts_as_direct_organic_evidence','not_configured_is_unknown_not_zero','red_requires_failure_without_usable_recovery','provider_health_never_modifies_token_scores','provider_health_never_modifies_alert_gate'):
+              if rtruth.get(key) is not True: raise SystemExit('PROVIDER_RESILIENCE_TRUTH_MISSING:'+key)
+          if cache.get('secret_values_stored') is not False: raise SystemExit('IDENTITY_CACHE_SECRET_LEAK')
+          if int(cache.get('ttl_hours') or 0)!=24: raise SystemExit('IDENTITY_CACHE_TTL_INVALID')
 
           formats=set(o.get('timestamp_formats_supported') or [])
           if not {'ISO8601','UNIX_EPOCH','RFC2822'} <= formats: raise SystemExit('SOCIAL_TIMESTAMP_FORMAT_SUPPORT_MISSING')
@@ -284,7 +298,7 @@ jobs:
           for row in f.get('tokens') or []:
               if row.get('production_effect') is not False or row.get('automatic_buy') is not False: raise SystemExit('FUSION_ROW_PRODUCTION_LEAK')
               if row.get('risk',{}).get('hard_blockers') and row.get('fusion_status')!='HARD_TRUTH_BLOCKED': raise SystemExit('HARD_BLOCKER_OVERRIDE')
-          print('SOCIAL_MESH_V10_OK', 'history_runs=', h.get('runs_count'), 'advisor=', a.get('counts'), 'telegram_truth=', tg, 'source_health=', health.get('summary'), 'mesh_cfg=', mesh_cfg, 'mesh_breakers=', s.get('mesh_provider_circuit_breakers'), 'index=', index_meta, i.get('counts'), f.get('counts'))
+          print('SOCIAL_MESH_V11_OK', 'history_runs=', h.get('runs_count'), 'advisor=', a.get('counts'), 'telegram_truth=', tg, 'source_health=', health.get('summary'), 'traffic=', health.get('traffic_light_summary'), 'resilience=', resilience.get('identity_cache'), 'mesh_cfg=', mesh_cfg, 'mesh_breakers=', s.get('mesh_provider_circuit_breakers'), 'index=', index_meta, i.get('counts'), f.get('counts'))
           PY
 
       - name: Publish social intelligence snapshot
@@ -295,11 +309,11 @@ jobs:
           git config user.name 'wallet500-social-bot'
           git config user.email 'wallet500-social-bot@users.noreply.github.com'
           tmp="$(mktemp -d)"
-          for f in social-source-scan.json social-catalyst-ledger.json social-organic-acceleration.json social-intelligence-v2.json cross-signal-fusion-v2.json; do cp "data/$f" "$tmp/$f"; done
+          for f in social-source-scan.json social-identity-cache.json social-catalyst-ledger.json social-organic-acceleration.json social-intelligence-v2.json cross-signal-fusion-v2.json; do cp "data/$f" "$tmp/$f"; done
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
-            for f in social-source-scan.json social-catalyst-ledger.json social-organic-acceleration.json social-intelligence-v2.json cross-signal-fusion-v2.json; do cp "$tmp/$f" "data/$f"; done
+            for f in social-source-scan.json social-identity-cache.json social-catalyst-ledger.json social-organic-acceleration.json social-intelligence-v2.json cross-signal-fusion-v2.json; do cp "$tmp/$f" "data/$f"; done
             python -m wallet500.social_source_health_history
             python -m wallet500.social_provider_budget_advisor
             python -m wallet500.social_intelligence_v2
@@ -307,12 +321,12 @@ jobs:
             python -m wallet500.social_mesh_intelligence_enrichment
             python -m wallet500.social_mesh_index_intelligence_enrichment
             python -m wallet500.cross_signal_fusion_v2
-            git add data/social-source-scan.json data/social-source-health-history.json data/social-provider-budget-advisor.json data/social-catalyst-ledger.json data/social-organic-acceleration.json data/social-intelligence-v2.json data/cross-signal-fusion-v2.json
-            if git diff --cached --quiet; then echo 'SOCIAL_V10_NO_DATA_CHANGE'; exit 0; fi
-            git commit -m 'data: refresh social intelligence and provider budget advisor v10'
-            if git push origin HEAD:main; then echo 'SOCIAL_MESH_V10_PUBLISH_OK'; exit 0; fi
-            echo "SOCIAL_MESH_V10_RETRY attempt=$attempt"
+            git add data/social-source-scan.json data/social-identity-cache.json data/social-source-health-history.json data/social-provider-budget-advisor.json data/social-catalyst-ledger.json data/social-organic-acceleration.json data/social-intelligence-v2.json data/cross-signal-fusion-v2.json
+            if git diff --cached --quiet; then echo 'SOCIAL_V11_NO_DATA_CHANGE'; exit 0; fi
+            git commit -m 'data: refresh social resilience and provider health v11'
+            if git push origin HEAD:main; then echo 'SOCIAL_MESH_V11_PUBLISH_OK'; exit 0; fi
+            echo "SOCIAL_MESH_V11_RETRY attempt=$attempt"
             sleep 3
           done
-          echo '::error::SOCIAL_MESH_V10_PUBLISH_RACE_EXHAUSTED'
+          echo '::error::SOCIAL_MESH_V11_PUBLISH_RACE_EXHAUSTED'
           exit 1
