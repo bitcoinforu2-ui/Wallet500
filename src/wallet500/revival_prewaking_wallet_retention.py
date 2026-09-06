@@ -59,7 +59,8 @@ def retain_fresh_rotation_evidence(payload: dict) -> dict:
 
         summary = collector._summary_for(target, token_state, now)
         summary["target_reason"] = target.get("reason")
-        summary["selection_lane"] = "RETAINED_ROTATION_EVIDENCE"
+        summary["selection_lane"] = "ROTATION_COVERAGE"
+        summary["publication_lane"] = "RETAINED_ROTATION_EVIDENCE"
         summary["activity_tier"] = target.get("activity_tier")
         summary["activity_rank"] = target.get("activity_rank")
         summary["prewaking_rank_score"] = target.get("prewaking_rank_score")
@@ -73,9 +74,10 @@ def retain_fresh_rotation_evidence(payload: dict) -> dict:
         published[mint] = summary
         retained += 1
 
+    selected_set = set(selected_tokens)
     payload["selected_target_tokens"] = selected_tokens
     payload["tokens"] = current_rows + [
-        row for mint, row in published.items() if mint not in set(selected_tokens)
+        row for mint, row in published.items() if mint not in selected_set
     ]
     payload["published_wallet_evidence_rows"] = len(payload["tokens"])
     payload["rotation_retention"] = {
