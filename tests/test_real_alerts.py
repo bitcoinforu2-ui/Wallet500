@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from wallet500.real_alerts import build
+from wallet500.real_alerts import build, run
 
 
 def write(p: Path, name: str, payload):
@@ -9,6 +9,7 @@ def write(p: Path, name: str, payload):
 
 
 def base_cex(status="DEX_VERIFIED", liq=120000):
+    verified = str(status).startswith("DEX_VERIFIED")
     return {
         "symbol": "OLDUSDT",
         "cex_revival_score": 58,
@@ -16,10 +17,10 @@ def base_cex(status="DEX_VERIFIED", liq=120000):
         "market_age_verified": True,
         "market_age_min_days": 900,
         "identity_status": status,
-        "identity_verified": status == "DEX_VERIFIED",
-        "chain": "solana" if status == "DEX_VERIFIED" else None,
-        "token_address": "Mint111111111111111111111111111111111111111" if status == "DEX_VERIFIED" else None,
-        "pair_address": "Pair111111111111111111111111111111111111111" if status == "DEX_VERIFIED" else None,
+        "identity_verified": verified,
+        "chain": "solana" if verified else None,
+        "token_address": "Mint111111111111111111111111111111111111111" if verified else None,
+        "pair_address": "Pair111111111111111111111111111111111111111" if verified else None,
         "dex_liquidity_usd": liq,
         "dex_price_usd": 0.12,
         "milestones": {"first_alert": {"observed_at": "2026-09-02T10:00:00+00:00"}},
@@ -46,6 +47,7 @@ def seed(tmp_path, cex_rows=None, precursor_rows=None, active=None):
     write(tmp_path, "revival-precursor-latest.json", {"targets": precursor_rows or []})
     write(tmp_path, "waking-confirmation-latest.json", {"targets": []})
     write(tmp_path, "revival-1000-latest.json", {"coins": []})
+    write(tmp_path, "candidate-evidence-envelope.json", {"candidates": []})
     write(tmp_path, "active-qualified-candidates.json", active or [])
 
 
@@ -85,7 +87,6 @@ def test_under_180_days_fails_closed(tmp_path):
     seed(tmp_path, [cex], [p])
     result = build(tmp_path)
     assert result["counts"]["real_alerts"] == 0
-    # Under-age candidates are not even allowed into the visible verified-watch lane.
     assert result["counts"]["verified_watch_not_real"] == 0
 
 
@@ -133,3 +134,27 @@ def test_deep_exact_execution_pool_over_50k_passes_even_if_stale_thin_row_exists
     assert row["execution_pool_liquidity_usd"] == 1_100_000
     assert row["dex_total_liquidity_usd"] == 1_108_700
     assert row["liquidity_gate_metric"] == "EXECUTION_POOL_LIQUIDITY_USD"
+
+
+def test_run_sanitizes_concentrated_pool_before_real_alert_file_is_publishable(tmp_path):
+    cex = base_cex(status="DEX_VERIFIED_DORMANT", liq=143_345.3)
+    cex.update({
+        "dex": "Meteora",
+        "execution_pool_liquidity_usd": 143_345.3,
+        "dex_volume_h24": 100_000,
+        "dex_volume_h1": 5_000,
+    })
+    seed(tmp_path, [cex], [precursor()])
+
+    counts = run(tmp_path)
+    payload = json.loads((tmp_path / "real-alerts.json").read_text(encoding="utf-8"))
+
+    assert counts["real_alerts"] == 0
+    assert payload["truth_contract"]["producer_liquidity_sanitized_before_publish"] is True
+    assert payload["truth_contract"]["pool_tvl_never_equals_execution_depth"] is True
+    assert payload["verified_watch"]
+    row = payload["verified_watch"][0]
+    assert row["execution_pool_liquidity_usd"] is None
+    assert row["liquidity_usd"] is None
+    assert row["pool_tvl_usd"] == 143_345.3
+    assert "EXECUTION_DEPTH_UNVERIFIED_CONCENTRATED_POOL" in row["blockers"]
