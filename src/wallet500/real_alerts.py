@@ -488,11 +488,14 @@ def build(data_dir: Path = DATA) -> dict:
                     legacy_row = previous_watch_rows.get(k) or {}
                     watch_added_at = _first(legacy_row.get("watch_added_at"), legacy_row.get("first_alert_at"), item.get("first_alert_at"), now)
                     watch_is_new = False
+                watch_label = _watch_label(watch_added_at)
                 item["watch_added_at"] = watch_added_at
                 item["watch_is_new_24h"] = watch_is_new
-                item["watch_entered_label"] = _watch_label(watch_added_at)
+                item["watch_entered_label"] = watch_label
+                watch_context = [f"🕒 WATCH SINCE · {watch_label}", *sorted(set(lanes))]
                 if watch_is_new:
-                    item["why_now"] = [f"🆕 NEW WATCH · {_watch_label(watch_added_at)}", *sorted(set(lanes))]
+                    watch_context.insert(0, f"🆕 NEW WATCH · {watch_label}")
+                item["why_now"] = watch_context
                 item["status"] = "EVIDENCE_READY_NOT_REAL_ALERT" if envelope_status == "EVIDENCE_READY" else "VERIFIED_WATCH_NOT_REAL_ALERT"
                 item["actionable_research_alert"] = False
                 verified_watch.append(item)
