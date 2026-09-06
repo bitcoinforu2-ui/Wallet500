@@ -9,14 +9,18 @@ on:
     paths:
       - 'src/wallet500/social_feed_scan.py'
       - 'src/wallet500/social_feed_scan_v2.py'
+      - 'src/wallet500/social_feed_scan_v3.py'
       - 'src/wallet500/social_direct_providers.py'
+      - 'src/wallet500/social_mesh_providers.py'
       - 'src/wallet500/social_intelligence_v2.py'
+      - 'src/wallet500/social_mesh_intelligence_enrichment.py'
       - 'src/wallet500/social_organic_acceleration.py'
       - 'src/wallet500/social_coverage_hardening.py'
       - 'src/wallet500/cross_signal_fusion_v2.py'
       - 'tests/test_social_intelligence_v2.py'
       - 'tests/test_social_feed_scan_v2.py'
       - 'tests/test_social_direct_providers.py'
+      - 'tests/test_social_mesh_providers.py'
       - 'tests/test_social_coverage_hardening.py'
       - 'tests/test_cross_signal_fusion_v2.py'
       - 'tests/test_social_organic_acceleration.py'
@@ -26,14 +30,18 @@ on:
     paths:
       - 'src/wallet500/social_feed_scan.py'
       - 'src/wallet500/social_feed_scan_v2.py'
+      - 'src/wallet500/social_feed_scan_v3.py'
       - 'src/wallet500/social_direct_providers.py'
+      - 'src/wallet500/social_mesh_providers.py'
       - 'src/wallet500/social_intelligence_v2.py'
+      - 'src/wallet500/social_mesh_intelligence_enrichment.py'
       - 'src/wallet500/social_organic_acceleration.py'
       - 'src/wallet500/social_coverage_hardening.py'
       - 'src/wallet500/cross_signal_fusion_v2.py'
       - 'tests/test_social_intelligence_v2.py'
       - 'tests/test_social_feed_scan_v2.py'
       - 'tests/test_social_direct_providers.py'
+      - 'tests/test_social_mesh_providers.py'
       - 'tests/test_social_coverage_hardening.py'
       - 'tests/test_cross_signal_fusion_v2.py'
       - 'tests/test_social_organic_acceleration.py'
@@ -49,7 +57,7 @@ concurrency:
 jobs:
   social:
     runs-on: ubuntu-latest
-    timeout-minutes: 22
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,7 +67,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install
-        run: pip install -e . pytest
+        run: pip install -e . pytest 'telethon>=1.43,<2'
 
       - name: Unit tests
         run: >-
@@ -67,24 +75,38 @@ jobs:
           tests/test_social_intelligence_v2.py
           tests/test_social_feed_scan_v2.py
           tests/test_social_direct_providers.py
+          tests/test_social_mesh_providers.py
           tests/test_social_coverage_hardening.py
           tests/test_cross_signal_fusion_v2.py
           tests/test_social_organic_acceleration.py
 
-      - name: Scan direct social providers with exact mint and pair identity
+      - name: Scan direct social providers and Social Mesh
         env:
           SOCIAL_SCAN_BUDGET: '24'
           SOCIAL_SCAN_PRIORITY_SLOTS: '8'
           X_DIRECT_SLOTS: '1'
           YOUTUBE_DIRECT_SLOTS: '1'
           REDDIT_DIRECT_SLOTS: '6'
+          TELEGRAM_DIRECT_SLOTS: '4'
+          FARCASTER_DIRECT_SLOTS: '6'
+          DISCORD_DIRECT_SLOTS: '6'
+          THREADS_DIRECT_SLOTS: '6'
+          BLUESKY_DIRECT_SLOTS: '12'
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
           REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
           REDDIT_USER_AGENT: ${{ vars.REDDIT_USER_AGENT || 'Wallet500/3.1 by bitcoinforu2-ui' }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+          NEYNAR_API_KEY: ${{ secrets.NEYNAR_API_KEY }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_GUILD_IDS: ${{ vars.DISCORD_GUILD_IDS }}
+          DISCORD_CHANNEL_IDS: ${{ vars.DISCORD_CHANNEL_IDS }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
-        run: python -m wallet500.social_feed_scan_v2
+        run: python -m wallet500.social_feed_scan_v3
 
       - name: Recompute organic acceleration
         run: python -m wallet500.social_organic_acceleration
@@ -95,10 +117,13 @@ jobs:
       - name: Harden missing channels as unknown not zero
         run: python -m wallet500.social_coverage_hardening
 
+      - name: Enrich intelligence with Social Mesh exact evidence
+        run: python -m wallet500.social_mesh_intelligence_enrichment
+
       - name: Build research-only cross-signal fusion
         run: python -m wallet500.cross_signal_fusion_v2
 
-      - name: Validate truth contract and direct identity contract
+      - name: Validate truth contract, direct identity and Social Mesh
         run: |
           python - <<'PY'
           import json
@@ -111,8 +136,12 @@ jobs:
           if i.get('mode')!='RESEARCH_ONLY_SOCIAL_INTELLIGENCE_V2': raise SystemExit('SOCIAL_INTELLIGENCE_MODE_INVALID')
           if f.get('mode')!='RESEARCH_ONLY_CROSS_SIGNAL_FUSION_V2': raise SystemExit('FUSION_MODE_INVALID')
           if i.get('automatic_buy') is not False or f.get('automatic_buy') is not False: raise SystemExit('SOCIAL_PRODUCTION_LEAK')
-          if (i.get('truth_contract') or {}).get('missing_channel_is_unknown_not_zero') is not True: raise SystemExit('UNKNOWN_ZERO_TRUTH_MISSING')
-          if (i.get('truth_contract') or {}).get('indexed_exact_mentions_are_context_only_not_organic') is not True: raise SystemExit('INDEX_CONTEXT_TRUTH_MISSING')
+          truth=i.get('truth_contract') or {}
+          if truth.get('missing_channel_is_unknown_not_zero') is not True: raise SystemExit('UNKNOWN_ZERO_TRUTH_MISSING')
+          if truth.get('indexed_exact_mentions_are_context_only_not_organic') is not True: raise SystemExit('INDEX_CONTEXT_TRUTH_MISSING')
+          if truth.get('social_mesh_sources_enabled') is not True: raise SystemExit('SOCIAL_MESH_TRUTH_MISSING')
+          if truth.get('mesh_name_symbol_context_is_not_organic') is not True: raise SystemExit('SOCIAL_MESH_CONTEXT_LEAK')
+          if truth.get('telegram_official_context_requires_author_match') is not True: raise SystemExit('TELEGRAM_OFFICIAL_ATTRIBUTION_WEAK')
           if (f.get('truth_contract') or {}).get('does_not_modify_real_alert_gate') is not True: raise SystemExit('REAL_ALERT_GATE_LEAK')
           if (s.get('selection_policy') or {}).get('rotation_enabled') is not True: raise SystemExit('SOCIAL_ROTATION_MISSING')
           q=s.get('identity_query_contract') or {}
@@ -121,6 +150,7 @@ jobs:
           if q.get('indexed_exact_context_is_organic') is not False: raise SystemExit('INDEX_CONTEXT_ORGANIC_LEAK')
           accepted=set(q.get('accepted_into_social_ledger') or [])
           if not {'EXACT_CONTRACT','EXACT_PAIR','OFFICIAL_CHANNEL_CONTEXT'} <= accepted: raise SystemExit('SOCIAL_ATTRIBUTION_CONTRACT_MISSING')
+
           cfg=s.get('direct_provider_config') or {}
           for key in ('x','youtube','reddit_oauth','reddit_public','telegram_public_direct'):
               if key not in cfg or not isinstance(cfg[key], bool): raise SystemExit('DIRECT_PROVIDER_CONFIG_INVALID:'+key)
@@ -132,6 +162,22 @@ jobs:
               if budget.get(key)!=limit: raise SystemExit('DIRECT_PROVIDER_BUDGET_INVALID:'+key)
               used=calls.get(key)
               if not isinstance(used,int) or used<0 or used>limit: raise SystemExit('DIRECT_PROVIDER_CALL_OVER_BUDGET:'+key)
+
+          mesh_cfg=s.get('mesh_provider_config') or {}
+          for key in ('telegram_mtproto','farcaster_neynar','discord_watch','threads_keyword','bluesky_public'):
+              if key not in mesh_cfg or not isinstance(mesh_cfg[key], bool): raise SystemExit('MESH_PROVIDER_CONFIG_INVALID:'+key)
+          if mesh_cfg.get('bluesky_public') is not True: raise SystemExit('BLUESKY_PUBLIC_DISABLED')
+          mesh_budget=s.get('mesh_provider_budget') or {}
+          mesh_calls=s.get('mesh_provider_calls_used') or {}
+          mesh_expected={'telegram_mtproto':4,'farcaster':6,'discord':6,'threads':6,'bluesky':12}
+          for key,limit in mesh_expected.items():
+              if mesh_budget.get(key)!=limit: raise SystemExit('MESH_PROVIDER_BUDGET_INVALID:'+key)
+              used=mesh_calls.get(key)
+              if not isinstance(used,int) or used<0 or used>limit: raise SystemExit('MESH_PROVIDER_CALL_OVER_BUDGET:'+key)
+          mesh_meta=s.get('social_mesh') or {}
+          if mesh_meta.get('enabled') is not True: raise SystemExit('SOCIAL_MESH_NOT_ENABLED')
+          if mesh_meta.get('official_telegram_requires_author_match') is not True: raise SystemExit('TELEGRAM_AUTHOR_MATCH_DISABLED')
+
           formats=set(o.get('timestamp_formats_supported') or [])
           if not {'ISO8601','UNIX_EPOCH','RFC2822'} <= formats: raise SystemExit('SOCIAL_TIMESTAMP_FORMAT_SUPPORT_MISSING')
           for row in i.get('tokens') or []:
@@ -142,7 +188,7 @@ jobs:
           for row in f.get('tokens') or []:
               if row.get('production_effect') is not False or row.get('automatic_buy') is not False: raise SystemExit('FUSION_ROW_PRODUCTION_LEAK')
               if row.get('risk',{}).get('hard_blockers') and row.get('fusion_status')!='HARD_TRUTH_BLOCKED': raise SystemExit('HARD_BLOCKER_OVERRIDE')
-          print('SOCIAL_DIRECT_V4_OK', cfg, 'budget=', budget, 'calls=', calls, 'breakers=', s.get('direct_provider_circuit_breakers'), 'indexed=', s.get('indexed_exact_context'), i.get('counts'), f.get('counts'))
+          print('SOCIAL_MESH_V5_OK', mesh_cfg, 'mesh_budget=', mesh_budget, 'mesh_calls=', mesh_calls, 'mesh_breakers=', s.get('mesh_provider_circuit_breakers'), 'mesh_merged=', s.get('new_mesh_social_events_merged'), i.get('counts'), f.get('counts'))
           PY
 
       - name: Publish social intelligence snapshot
@@ -160,13 +206,14 @@ jobs:
             for f in social-source-scan.json social-catalyst-ledger.json social-organic-acceleration.json social-intelligence-v2.json cross-signal-fusion-v2.json; do cp "$tmp/$f" "data/$f"; done
             python -m wallet500.social_intelligence_v2
             python -m wallet500.social_coverage_hardening
+            python -m wallet500.social_mesh_intelligence_enrichment
             python -m wallet500.cross_signal_fusion_v2
             git add data/social-source-scan.json data/social-catalyst-ledger.json data/social-organic-acceleration.json data/social-intelligence-v2.json data/cross-signal-fusion-v2.json
             if git diff --cached --quiet; then echo 'SOCIAL_V2_NO_DATA_CHANGE'; exit 0; fi
-            git commit -m 'data: refresh social intelligence v2 and fusion'
-            if git push origin HEAD:main; then echo 'SOCIAL_V2_PUBLISH_OK'; exit 0; fi
-            echo "SOCIAL_V2_RETRY attempt=$attempt"
+            git commit -m 'data: refresh social intelligence v2 and social mesh'
+            if git push origin HEAD:main; then echo 'SOCIAL_MESH_PUBLISH_OK'; exit 0; fi
+            echo "SOCIAL_MESH_RETRY attempt=$attempt"
             sleep 3
           done
-          echo '::error::SOCIAL_V2_PUBLISH_RACE_EXHAUSTED'
+          echo '::error::SOCIAL_MESH_PUBLISH_RACE_EXHAUSTED'
           exit 1
