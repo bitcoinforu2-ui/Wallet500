@@ -8,16 +8,17 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/global_listing_intelligence.py'
+      - 'src/wallet500/cross_source_correlation.py'
+      - 'tests/test_global_listing_evm_core.py'
+      - 'tests/test_cross_source_correlation.py'
       - '.github/workflows/global-listing-intelligence.yml'
 
 permissions:
   contents: write
 
-# This workflow updates manual-watchlist.json, which is also consumed and may be
-# rewritten by the primary Live truth pipeline. Serialize both writers on the
-# same concurrency group so validated Live publication cannot race this feed.
-# Keep cancel-in-progress false: truth writers must finish or fail closed, never
-# be interrupted mid-publish.
+# manual-watchlist.json is shared with Live and cross-source correlation.
+# Serialize every writer on the same truth-publisher group and never cancel a
+# writer midway through publication.
 concurrency:
   group: wallet500-live-scan-publisher
   cancel-in-progress: false
@@ -33,10 +34,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Wallet500
-        run: pip install -e .
+      - name: Install Wallet500 and tests
+        run: pip install -e . pytest
+      - name: Lock listing and cross-source truth policy
+        run: pytest -q tests/test_global_listing_evm_core.py tests/test_cross_source_correlation.py
       - name: Run unified exchange pre-listing discovery
         run: python -m wallet500.global_listing_intelligence
+      - name: Correlate all persistent source evidence
+        run: python -m wallet500.cross_source_correlation
       - name: Reconcile immutable first-seen timestamps
         run: |
           python - <<'PY'
@@ -69,7 +74,8 @@ jobs:
           p=Path('data/global-listing-radar.json')
           l=Path('data/global-listing-ledger.json')
           w=Path('data/manual-watchlist.json')
-          for x in (p,l,w):
+          c=Path('data/cross-source-correlation.json')
+          for x in (p,l,w,c):
               if not x.exists(): raise SystemExit('FATAL missing '+str(x))
           d=json.loads(p.read_text())
           if d.get('mode')!='GLOBAL_EXCHANGE_PRELISTING_DISCOVERY_FORWARD_ONLY':
@@ -77,10 +83,17 @@ jobs:
           ledger=json.loads(l.read_text())
           if ledger.get('truth_label')!='PUBLIC_LISTING_DISCOVERY_EVIDENCE_ONLY':
               raise SystemExit('FATAL listing ledger promoted beyond discovery evidence')
+          corr=json.loads(c.read_text())
+          if corr.get('mode')!='CONTINUOUS_CROSS_SOURCE_CORRELATION_RESEARCH_ONLY':
+              raise SystemExit('FATAL cross-source correlation mode changed')
+          if corr.get('automatic_trade') is not False:
+              raise SystemExit('FATAL cross-source evidence promoted to automatic trade')
           records=ledger.get('records') or {}
           rows=json.loads(w.read_text())
           for r in rows:
-              if isinstance(r,dict) and r.get('source')=='GLOBAL_LISTING_INTELLIGENCE':
+              if not isinstance(r,dict):
+                  continue
+              if r.get('source')=='GLOBAL_LISTING_INTELLIGENCE':
                   if r.get('research_only_until_wallet500_gates_pass') is not True:
                       raise SystemExit('FATAL auto listing candidate bypass flag missing')
                   raw=f"{r.get('listing_source')}|{r.get('listing_surface')}|{r.get('token')}"
@@ -89,14 +102,17 @@ jobs:
                   first=rec.get('first_seen_at')
                   if not first or r.get('listing_first_observed_at') != first:
                       raise SystemExit('FATAL listing first-seen provenance drift')
+              if r.get('source')=='CROSS_SOURCE_CORRELATION' and r.get('research_only_until_wallet500_gates_pass') is not True:
+                  raise SystemExit('FATAL cross-source candidate bypass flag missing')
           print('LISTING RADAR:',d.get('sources_healthy'),'healthy sources,',d.get('observations'),'observations,',d.get('deep_scan_candidates'),'deep-scan candidates')
+          print('CROSS SOURCE:',corr.get('counts'))
           PY
       - name: Publish discovery evidence and feed deep scan
         run: |
           set -euo pipefail
           git config user.name 'wallet500-listing-bot'
           git config user.email 'wallet500-listing-bot@users.noreply.github.com'
-          git add data/global-listing-radar.json data/global-listing-ledger.json data/manual-watchlist.json
+          git add data/global-listing-radar.json data/global-listing-ledger.json data/cross-source-correlation.json data/manual-watchlist.json
           if ! git diff --cached --quiet; then
             git commit -m 'data: refresh global pre-listing intelligence'
             for attempt in 1 2 3 4 5; do
