@@ -1,0 +1,82 @@
+name: Wallet500 Liquidity Truth Repair
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '5,20,35,50 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/liquidity_truth.py'
+      - 'src/wallet500/liquidity_truth_guard.py'
+      - 'src/wallet500/cex_fast_lane.py'
+      - 'data/cex-revival-radar.json'
+      - 'data/real-alerts.json'
+      - 'tests/test_liquidity_truth_guard.py'
+      - 'tests/test_system_integrity_audit.py'
+      - '.github/workflows/liquidity-truth-repair.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-liquidity-truth-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install and test liquidity truth contracts
+        run: |
+          pip install -e . pytest
+          python -m pytest -q tests/test_liquidity_truth_guard.py
+
+      - name: Sanitize latest main and publish with race-safe retries
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-liquidity-truth-bot'
+          git config user.email 'wallet500-liquidity-truth-bot@users.noreply.github.com'
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+
+            python - <<'PY'
+          from wallet500.liquidity_truth_guard import sanitize_cex_radar, sanitize_real_alerts
+          print('CEX_LIQUIDITY_TRUTH', sanitize_cex_radar())
+          print('REAL_ALERT_LIQUIDITY_TRUTH', sanitize_real_alerts())
+          PY
+
+            # The repository integrity audit must pass on the exact files that will be committed.
+            python -m pytest -q tests/test_system_integrity_audit.py
+
+            git add data/cex-revival-radar.json data/real-alerts.json
+            if git diff --cached --quiet; then
+              echo 'LIQUIDITY_TRUTH_ALREADY_CLEAN'
+              exit 0
+            fi
+
+            git commit -m 'data: enforce liquidity truth on latest main'
+            if git push origin HEAD:main; then
+              echo 'LIQUIDITY_TRUTH_REPAIR_PUBLISHED'
+              exit 0
+            fi
+
+            echo "LIQUIDITY_TRUTH_RETRY attempt=$attempt"
+            sleep 3
+          done
+
+          echo '::error::LIQUIDITY_TRUTH_REPAIR_RACE_EXHAUSTED'
+          exit 1
