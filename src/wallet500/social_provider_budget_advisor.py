@@ -12,6 +12,25 @@ MODE = "SOCIAL_PROVIDER_BUDGET_ADVISOR_OBSERVABILITY_ONLY_V1"
 MIN_RUNS_FOR_POLICY_ADVICE = 6
 MIN_RUNS_FOR_DECREASE_ADVICE = 12
 
+REQUIRED_TRUTH = {
+    "recommendations_never_modify_api_budgets",
+    "recommendations_never_modify_token_scores",
+    "recommendations_never_modify_alert_gate",
+    "single_run_never_produces_budget_change_advice",
+    "unknown_is_not_zero",
+    "not_configured_is_not_bad_evidence",
+    "indexed_context_never_counts_as_direct_efficiency",
+    "no_direct_calls_means_no_efficiency_score",
+    "budget_advice_uses_only_positive_call_exposure_runs",
+    "zero_direct_yield_means_zero_efficiency_score",
+    "public_index_never_gets_direct_budget_advice",
+}
+
+CHANGE_RECOMMENDATIONS = {
+    "CANDIDATE_INCREASE_AFTER_HUMAN_REVIEW",
+    "CANDIDATE_DECREASE_AFTER_HUMAN_REVIEW",
+}
+
 
 def _load(path: Path, default: Any) -> Any:
     try:
@@ -60,7 +79,7 @@ def _efficiency_score(provider: str, row: dict) -> float | None:
     exact_ratio = min(1.0, max(0.0, _num(row.get("call_exposure_exact_evidence_run_ratio"))))
     reliability = 1.0 - min(1.0, max(0.0, _num(row.get("call_exposure_degraded_run_ratio"))))
     exact_per_call = min(1.0, max(0.0, _num(row.get("exact_events_per_call"))))
-    tokens_per_call = min(1.0, max(0.0, _num(row.get("tokens_with_exact_evidence_per_call")) / 0.25))
+    tokens_per_call = min(1.0, max(0.0, _num(row.get("direct_tokens_with_exact_evidence_per_call", row.get("tokens_with_exact_evidence_per_call"))) / 0.25))
     yield_score = 55.0 * exact_ratio + 30.0 * exact_per_call + 15.0 * tokens_per_call
     return round(yield_score * reliability, 2)
 
@@ -71,7 +90,7 @@ def _recommend(provider: str, row: dict) -> tuple[str, list[str]]:
     degraded = _num(row.get("call_exposure_degraded_run_ratio"))
     exact_ratio = _num(row.get("call_exposure_exact_evidence_run_ratio"))
     exact_per_call = row.get("exact_events_per_call")
-    tokens_per_call = row.get("tokens_with_exact_evidence_per_call")
+    tokens_per_call = row.get("direct_tokens_with_exact_evidence_per_call", row.get("tokens_with_exact_evidence_per_call"))
     latest_budget = row.get("latest_call_budget")
     exact_total = _int(row.get("call_metric_exact_events_total"))
 
@@ -92,7 +111,7 @@ def _recommend(provider: str, row: dict) -> tuple[str, list[str]]:
         return "CANDIDATE_INCREASE_AFTER_HUMAN_REVIEW", [
             f"measured_exact_evidence_run_ratio={round(exact_ratio,4)}",
             f"exact_events_per_call={round(exact_per_call_n,4)}",
-            f"tokens_with_exact_evidence_per_call={round(tokens_per_call_n,4)}",
+            f"direct_tokens_with_exact_evidence_per_call={round(tokens_per_call_n,4)}",
         ]
     if measured_runs >= MIN_RUNS_FOR_DECREASE_ADVICE and exact_ratio <= 0.1 and exact_total == 0:
         return "CANDIDATE_DECREASE_AFTER_HUMAN_REVIEW", [
@@ -116,6 +135,7 @@ def build(history: dict) -> dict:
         recommendation, reasons = _recommend(str(provider), raw)
         history_runs = _int(raw.get("runs_observed"))
         measured_runs = _int(raw.get("call_exposure_runs"))
+        direct_tokens_per_call = raw.get("direct_tokens_with_exact_evidence_per_call", raw.get("tokens_with_exact_evidence_per_call"))
         rows.append({
             "provider": str(provider),
             "recommendation": recommendation,
@@ -129,7 +149,8 @@ def build(history: dict) -> dict:
             "measured_exact_evidence_run_ratio": raw.get("call_exposure_exact_evidence_run_ratio"),
             "measured_degraded_run_ratio": raw.get("call_exposure_degraded_run_ratio"),
             "exact_events_per_call": raw.get("exact_events_per_call"),
-            "tokens_with_exact_evidence_per_call": raw.get("tokens_with_exact_evidence_per_call"),
+            "tokens_with_exact_evidence_per_call": direct_tokens_per_call,
+            "direct_tokens_with_exact_evidence_per_call": direct_tokens_per_call,
             "evidence_efficiency_score": _efficiency_score(str(provider), raw),
             "reasons": reasons,
             "suggested_budget_delta": None,
@@ -185,10 +206,62 @@ def build(history: dict) -> dict:
     }
 
 
+def validate(payload: dict) -> None:
+    if payload.get("mode") != MODE:
+        raise ValueError("SOCIAL_BUDGET_ADVISOR_MODE_INVALID")
+    if payload.get("observability_only") is not True or payload.get("production_effect") is not False or payload.get("automatic_budget_changes") is not False or payload.get("automatic_buy") is not False:
+        raise ValueError("SOCIAL_BUDGET_ADVISOR_PRODUCTION_LEAK")
+    truth = payload.get("truth_contract") if isinstance(payload.get("truth_contract"), dict) else {}
+    for key in REQUIRED_TRUTH:
+        if truth.get(key) is not True:
+            raise ValueError(f"SOCIAL_BUDGET_ADVISOR_TRUTH_MISSING:{key}")
+
+    minimum = _int(payload.get("minimum_measured_runs_for_policy_advice")) or MIN_RUNS_FOR_POLICY_ADVICE
+    decrease_minimum = _int(payload.get("minimum_measured_runs_for_decrease_advice")) or MIN_RUNS_FOR_DECREASE_ADVICE
+    for row in payload.get("providers") or []:
+        if not isinstance(row, dict):
+            raise ValueError("SOCIAL_BUDGET_ADVISOR_ROW_INVALID")
+        provider = str(row.get("provider") or "UNKNOWN")
+        recommendation = str(row.get("recommendation") or "")
+        measured = _int(row.get("measured_runs_for_policy"))
+        calls = row.get("calls_used_total")
+        score = row.get("evidence_efficiency_score")
+
+        if row.get("automatic_change") is not False or row.get("suggested_budget_delta") is not None:
+            raise ValueError(f"SOCIAL_BUDGET_ADVISOR_AUTO_CHANGE_LEAK:{provider}")
+        if row.get("score_effect") != "NONE_PROVIDER_POLICY_ADVICE_ONLY" or row.get("alert_gate_effect") != "NONE":
+            raise ValueError(f"SOCIAL_BUDGET_ADVISOR_PRODUCTION_EFFECT_LEAK:{provider}")
+        if measured < minimum and recommendation in CHANGE_RECOMMENDATIONS:
+            raise ValueError(f"SOCIAL_BUDGET_ADVISOR_EARLY_POLICY_ADVICE:{provider}")
+        if recommendation == "CANDIDATE_DECREASE_AFTER_HUMAN_REVIEW" and measured < decrease_minimum:
+            raise ValueError(f"SOCIAL_BUDGET_ADVISOR_EARLY_DECREASE_ADVICE:{provider}")
+
+        if provider == "social_mesh_public_index":
+            if recommendation != "OBSERVE_CONTEXT_ONLY_SOURCE" or score is not None:
+                raise ValueError("SOCIAL_BUDGET_ADVISOR_PUBLIC_INDEX_POLICY_LEAK")
+        if row.get("latest_state") == "NOT_CONFIGURED":
+            if recommendation != "CONNECT_PROVIDER_FIRST" or score is not None:
+                raise ValueError(f"SOCIAL_BUDGET_ADVISOR_NOT_CONFIGURED_GRADED:{provider}")
+        if measured == 0 or calls is None or _int(calls) == 0:
+            if score is not None:
+                raise ValueError(f"SOCIAL_BUDGET_ADVISOR_SCORE_WITHOUT_CALL_EXPOSURE:{provider}")
+
+        direct_tokens_rate = row.get("direct_tokens_with_exact_evidence_per_call")
+        if row.get("tokens_with_exact_evidence_per_call") != direct_tokens_rate:
+            raise ValueError(f"SOCIAL_BUDGET_ADVISOR_DIRECT_TOKEN_ALIAS_SKEW:{provider}")
+        exact_ratio = _num(row.get("measured_exact_evidence_run_ratio"))
+        exact_per_call = _num(row.get("exact_events_per_call"))
+        direct_rate = _num(direct_tokens_rate)
+        if measured > 0 and provider != "social_mesh_public_index" and row.get("latest_state") not in {"NOT_CONFIGURED", "INDEX_CONTEXT_ONLY"}:
+            if exact_ratio == 0.0 and exact_per_call == 0.0 and direct_rate == 0.0 and score not in (0, 0.0):
+                raise ValueError(f"SOCIAL_BUDGET_ADVISOR_ZERO_YIELD_SCORE_INFLATION:{provider}")
+
+
 def run(data_dir: str | Path = DATA) -> dict:
     data = Path(data_dir)
     history = _load(data / HISTORY.name, {})
     payload = build(history)
+    validate(payload)
     _write(data / OUTPUT.name, payload)
     return payload
 
@@ -199,12 +272,7 @@ def main() -> None:
         "history_runs": payload.get("history_runs_count"),
         "counts": payload.get("counts"),
         "top": [
-            {
-                "provider": x.get("provider"),
-                "recommendation": x.get("recommendation"),
-                "measured_runs": x.get("measured_runs_for_policy"),
-                "score": x.get("evidence_efficiency_score"),
-            }
+            {"provider": x.get("provider"), "recommendation": x.get("recommendation"), "measured_runs": x.get("measured_runs_for_policy"), "score": x.get("evidence_efficiency_score")}
             for x in (payload.get("providers") or [])[:5]
         ],
     }, ensure_ascii=False))
