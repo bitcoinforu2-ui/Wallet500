@@ -32,12 +32,12 @@ on:
 permissions:
   contents: write
 
-# Profiles are derived research state. Newer runs may supersede older builders
-# because every build starts from persistent source ledgers plus the prior profile
-# ledger; cancelling an older derivation cannot delete source truth.
+# Never kill an active derived-state publisher. GitHub keeps at most one newer
+# pending run for this group; the active run rebases by REBUILDING from latest
+# main immediately before publication, so source commits are never overwritten.
 concurrency:
   group: wallet500-coin-intelligence-profile-builder
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   profile:
@@ -122,34 +122,62 @@ jobs:
           print('COIN_PROFILE_DNA_OK', dna.get('counts'), 'archive', len(archive.get('entries') or {}))
           print('COIN_PROFILE_QUALITY_OK', quality.get('counts'))
           PY
-      - name: Persist profile state without mutating source truth
+      - name: Atomically rebuild and publish against newest source truth
         if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git config user.name 'wallet500-profile-bot'
           git config user.email 'wallet500-profile-bot@users.noreply.github.com'
 
-          # A profile is a pure derivation. Never rebase an already-computed
-          # profile commit over newer source truth: if main moved, discard this
-          # stale derivation and let the next scheduled/workflow_run build recompute.
-          git fetch --depth=1 origin main
-          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
-            echo 'COIN_PROFILE_BUILD_SUPERSEDED_BEFORE_PUBLISH: main advanced; next build will recompute from newer truth'
-            exit 0
-          fi
+          # High-frequency source bots may move main while this job installs/tests.
+          # A derived profile must never publish against stale source truth. Instead
+          # of rebasing generated files, reset to newest main and recompute them.
+          for attempt in 1 2 3 4 5; do
+            git fetch --depth=1 origin main
+            git reset --hard origin/main
 
-          git add \
-            data/coin-intelligence-profiles.json \
-            data/coin-intelligence-profile-ledger.json \
-            data/coin-intelligence-profile-archive.json \
-            data/coin-profile-dna-library.json \
-            data/coin-profile-data-quality.json
-          if git diff --cached --quiet; then
-            echo 'No coin profile state change'
-            exit 0
-          fi
-          git commit -m 'data: refresh persistent coin intelligence profiles [skip ci]'
-          if ! git push origin HEAD:main; then
-            echo 'COIN_PROFILE_BUILD_SUPERSEDED_DURING_PUBLISH: main advanced; refusing stale profile overwrite'
-            exit 0
-          fi
+            python -m wallet500.coin_intelligence_profiles
+            python -m wallet500.coin_profile_quality_guard
+
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          latest=json.loads(Path('data/coin-intelligence-profiles.json').read_text())
+          ledger=json.loads(Path('data/coin-intelligence-profile-ledger.json').read_text())
+          dna=json.loads(Path('data/coin-profile-dna-library.json').read_text())
+          quality=json.loads(Path('data/coin-profile-data-quality.json').read_text())
+          if latest.get('automatic_trade') is not False or latest.get('production_change') is not False:
+              raise SystemExit('ATOMIC_PROFILE_PRODUCTION_LEAK')
+          if (ledger.get('truth_contract') or {}).get('quarantined_metrics_excluded_from_dna') is not True:
+              raise SystemExit('ATOMIC_PROFILE_QUALITY_GUARD_MISSING')
+          if (dna.get('truth_contract') or {}).get('quarantined_metrics_excluded_from_similarity') is not True:
+              raise SystemExit('ATOMIC_DNA_QUALITY_GUARD_MISSING')
+          if quality.get('mode') != 'COIN_PROFILE_DATA_QUALITY_GUARD_V1':
+              raise SystemExit('ATOMIC_PROFILE_QUALITY_MODE_DRIFT')
+          print('ATOMIC_PROFILE_REBUILD_OK', latest.get('counts'), quality.get('counts'))
+          PY
+
+            git add \
+              data/coin-intelligence-profiles.json \
+              data/coin-intelligence-profile-ledger.json \
+              data/coin-intelligence-profile-archive.json \
+              data/coin-profile-dna-library.json \
+              data/coin-profile-data-quality.json
+
+            if git diff --cached --quiet; then
+              echo 'No coin profile state change'
+              exit 0
+            fi
+
+            git commit -m 'data: refresh persistent coin intelligence profiles [skip ci]'
+            if git push origin HEAD:main; then
+              echo "COIN_PROFILE_ATOMIC_PUBLISH_OK attempt=$attempt"
+              exit 0
+            fi
+
+            echo "COIN_PROFILE_ATOMIC_REBUILD_RETRY attempt=$attempt: main moved during publish"
+            sleep $attempt
+          done
+
+          echo 'COIN_PROFILE_ATOMIC_PUBLISH_FAILED after 5 fresh rebuild attempts'
+          exit 1
