@@ -9,7 +9,7 @@ from typing import Any
 DATA = Path("data")
 SCAN = DATA / "social-source-scan.json"
 OUTPUT = DATA / "social-source-health-history.json"
-MODE = "SOCIAL_SOURCE_HEALTH_HISTORY_OBSERVABILITY_ONLY_V1"
+MODE = "SOCIAL_SOURCE_HEALTH_HISTORY_OBSERVABILITY_ONLY_V2"
 MAX_RUNS = 192
 
 VALID_STATES = {
@@ -44,6 +44,40 @@ def _int(value: Any) -> int:
         return 0
 
 
+def _optional_int(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return max(0, int(value))
+    except Exception:
+        return None
+
+
+def _provider_call_metrics(scan: dict, provider: str) -> tuple[int | None, int | None]:
+    direct_budget = scan.get("direct_provider_budget") if isinstance(scan.get("direct_provider_budget"), dict) else {}
+    direct_calls = scan.get("direct_provider_calls_used") if isinstance(scan.get("direct_provider_calls_used"), dict) else {}
+    mesh_budget = scan.get("mesh_provider_budget") if isinstance(scan.get("mesh_provider_budget"), dict) else {}
+    mesh_calls = scan.get("mesh_provider_calls_used") if isinstance(scan.get("mesh_provider_calls_used"), dict) else {}
+
+    direct_key = {"x": "x", "youtube": "youtube", "reddit": "reddit"}.get(provider)
+    mesh_key = {
+        "telegram_mtproto": "telegram_mtproto",
+        "farcaster": "farcaster",
+        "discord": "discord",
+        "threads": "threads",
+        "bluesky": "bluesky",
+    }.get(provider)
+
+    if direct_key:
+        return _optional_int(direct_budget.get(direct_key)), _optional_int(direct_calls.get(direct_key))
+    if mesh_key:
+        return _optional_int(mesh_budget.get(mesh_key)), _optional_int(mesh_calls.get(mesh_key))
+    if provider == "social_mesh_public_index":
+        meta = scan.get("mesh_public_index") if isinstance(scan.get("mesh_public_index"), dict) else {}
+        return _optional_int(meta.get("budget")), _optional_int(meta.get("calls_used"))
+    return None, None
+
+
 def _snapshot(scan: dict) -> dict:
     health = scan.get("source_health") if isinstance(scan.get("source_health"), dict) else {}
     providers = health.get("providers") if isinstance(health.get("providers"), dict) else {}
@@ -54,6 +88,7 @@ def _snapshot(scan: dict) -> dict:
         state = str(raw.get("state") or "UNKNOWN")
         if state not in VALID_STATES:
             state = "UNKNOWN"
+        budget, calls_used = _provider_call_metrics(scan, str(provider))
         rows[str(provider)] = {
             "state": state,
             "configured": raw.get("configured") is True,
@@ -61,6 +96,8 @@ def _snapshot(scan: dict) -> dict:
             "official_context_events": _int(raw.get("official_context_events")),
             "indexed_exact_context_events": _int(raw.get("indexed_exact_context_events")),
             "tokens_with_exact_evidence": _int(raw.get("tokens_with_exact_evidence")),
+            "call_budget": budget,
+            "calls_used": calls_used,
         }
     return {
         "generated_at": scan.get("generated_at") or datetime.now(timezone.utc).isoformat(),
@@ -95,6 +132,11 @@ def _aggregate(runs: list[dict]) -> dict:
         indexed_events = 0
         tokens_exact_total = 0
         observations = 0
+        metric_runs = 0
+        calls_total = 0
+        budget_total = 0
+        latest_budget = None
+        latest_calls_used = None
         latest_state = "UNKNOWN"
         latest_at = None
 
@@ -122,10 +164,22 @@ def _aggregate(runs: list[dict]) -> dict:
                 index_runs += 1
             if state == "DEGRADED_UNKNOWN":
                 degraded_runs += 1
+
+            budget = _optional_int(row.get("call_budget"))
+            calls = _optional_int(row.get("calls_used"))
+            if budget is not None and calls is not None:
+                metric_runs += 1
+                budget_total += budget
+                calls_total += calls
+            latest_budget = budget
+            latest_calls_used = calls
             latest_state = state
             latest_at = run.get("generated_at")
 
         denom = max(1, observations)
+        exact_per_call = round(exact_events / calls_total, 4) if calls_total > 0 else None
+        tokens_per_call = round(tokens_exact_total / calls_total, 4) if calls_total > 0 else None
+        utilization = round(calls_total / budget_total, 4) if budget_total > 0 else None
         providers[provider] = {
             "runs_observed": observations,
             "latest_state": latest_state,
@@ -140,6 +194,14 @@ def _aggregate(runs: list[dict]) -> dict:
             "official_context_events_total": official_events,
             "indexed_exact_context_events_total": indexed_events,
             "tokens_with_exact_evidence_total": tokens_exact_total,
+            "call_metric_runs": metric_runs,
+            "calls_used_total": calls_total if metric_runs else None,
+            "call_budget_total": budget_total if metric_runs else None,
+            "latest_call_budget": latest_budget,
+            "latest_calls_used": latest_calls_used,
+            "call_utilization_ratio": utilization,
+            "exact_events_per_call": exact_per_call,
+            "tokens_with_exact_evidence_per_call": tokens_per_call,
             "budget_recommendation_effect": "NONE_OBSERVE_ONLY",
         }
     return providers
@@ -158,7 +220,7 @@ def build(scan: dict, previous: dict | None = None) -> dict:
     runs = runs[-MAX_RUNS:]
 
     return {
-        "version": 1,
+        "version": 2,
         "mode": MODE,
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "observability_only": True,
@@ -176,6 +238,7 @@ def build(scan: dict, previous: dict | None = None) -> dict:
             "secret_values_never_stored": True,
             "unknown_is_not_zero": True,
             "configuration_is_not_evidence": True,
+            "call_efficiency_is_observability_only": True,
         },
         "provider_rollup": _aggregate(runs),
         "runs": runs,
@@ -198,6 +261,7 @@ def main() -> None:
             "latest": row.get("latest_state"),
             "exact_ratio": row.get("exact_evidence_run_ratio"),
             "degraded_ratio": row.get("degraded_run_ratio"),
+            "exact_per_call": row.get("exact_events_per_call"),
         }
         for name, row in (payload.get("provider_rollup") or {}).items()
     }
