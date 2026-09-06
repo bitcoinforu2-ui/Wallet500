@@ -10,6 +10,7 @@ from . import social_feed_scan as base
 from . import social_feed_scan_v2 as v2
 from . import social_mesh_providers as mesh
 from . import social_catalyst as catalyst
+from . import social_bluesky_resilient as bluesky_resilient
 
 MODE = base.MODE
 MESH_SOURCES = {"telegram", "farcaster", "discord", "threads", "bluesky"}
@@ -107,7 +108,7 @@ def _scan_provider(provider: str, identity: dict):
         }
 
     _MESH_CALLS[provider] += 1
-    fn = mesh.MESH_SCANNERS[provider]
+    fn = bluesky_resilient.scan_bluesky_resilient if provider == "bluesky" else mesh.MESH_SCANNERS[provider]
     events, status = fn(identity)
     status = dict(status or {})
     status.setdefault("provider", provider)
