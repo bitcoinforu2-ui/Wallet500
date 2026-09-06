@@ -12,7 +12,7 @@ REAL_PRECURSOR_STATUSES = {"HIGH_CONVICTION_PRECURSOR", "PRE_BREAKOUT_CANDIDATE"
 REAL_WAKING_STATUSES = {"WAKING_CONFIRMED_RESEARCH", "WAKING_STRONG_RESEARCH"}
 EVM_CHAINS = {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche", "fantom", "linea", "zksync", "mantle", "scroll", "blast"}
 SOURCE_LANE_TOTAL = 5
-WATCH_TRACKING_VERSION = 1
+WATCH_TRACKING_VERSION = 2
 WATCH_NEW_TTL_HOURS = 24
 WATCH_DISPLAY_TZ = ZoneInfo("Asia/Jerusalem")
 
@@ -332,8 +332,10 @@ def build(data_dir: Path = DATA) -> dict:
     now = now_dt.isoformat()
     previous_payload = _load(data_dir / "real-alerts.json", {})
     previous_tracking = previous_payload.get("watch_tracking") if isinstance(previous_payload.get("watch_tracking"), dict) else {}
-    tracking_initialized = int(previous_tracking.get("version") or 0) == WATCH_TRACKING_VERSION
+    previous_tracking_version = int(previous_tracking.get("version") or 0)
+    tracking_initialized = previous_tracking_version == WATCH_TRACKING_VERSION
     previous_registry = previous_tracking.get("active_registry") if isinstance(previous_tracking.get("active_registry"), dict) else {}
+    previous_baseline_keys = set(previous_tracking.get("baseline_keys") or [])
     previous_watch_rows = _index_rows(list(previous_payload.get("verified_watch") or []))
 
     cex_payload = _load(data_dir / "cex-revival-radar.json", {})
@@ -482,8 +484,12 @@ def build(data_dir: Path = DATA) -> dict:
             )
             if exact_identity and exact_pair and age_ok and watch_interest:
                 if tracking_initialized:
-                    watch_added_at = previous_registry.get(k) or now
-                    watch_is_new = _watch_is_new_24h(watch_added_at, now_dt)
+                    if k in previous_registry:
+                        watch_added_at = previous_registry[k]
+                        watch_is_new = k not in previous_baseline_keys and _watch_is_new_24h(watch_added_at, now_dt)
+                    else:
+                        watch_added_at = now
+                        watch_is_new = True
                 else:
                     legacy_row = previous_watch_rows.get(k) or {}
                     watch_added_at = _first(legacy_row.get("watch_added_at"), legacy_row.get("first_alert_at"), item.get("first_alert_at"), now)
@@ -542,6 +548,10 @@ def build(data_dir: Path = DATA) -> dict:
         rk = _key(row.get("chain"), row.get("token_address"))
         if rk and row.get("watch_added_at"):
             active_registry[rk] = row.get("watch_added_at")
+    if tracking_initialized:
+        baseline_keys = sorted(k for k in previous_baseline_keys if k in active_registry)
+    else:
+        baseline_keys = sorted(active_registry.keys())
 
     return {
         "version": 3,
@@ -576,6 +586,7 @@ def build(data_dir: Path = DATA) -> dict:
             "display_timezone": "Asia/Jerusalem",
             "new_watch_24h_count": new_watch_count,
             "active_registry": active_registry,
+            "baseline_keys": baseline_keys,
         },
         "counts": {
             "real_alerts": len(real_alerts),
