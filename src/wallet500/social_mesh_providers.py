@@ -416,7 +416,7 @@ def scan_bluesky(identity: dict):
     for query in queries:
         params = urlencode({"q": query, "limit": 15, "sort": "latest"})
         try:
-            payload = _get_json("https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts?" + params)
+            payload = _get_json("https://api.bsky.app/xrpc/app.bsky.feed.searchPosts?" + params)
             for item in payload.get("posts") or []:
                 if not isinstance(item, dict):
                     continue
