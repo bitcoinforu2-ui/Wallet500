@@ -6,8 +6,10 @@ on:
     paths:
       - 'src/wallet500/catalyst_wire.py'
       - 'src/wallet500/global_listing_intelligence.py'
+      - 'src/wallet500/cross_source_correlation.py'
       - 'tests/test_catalyst_wire.py'
       - 'tests/test_global_listing_evm_core.py'
+      - 'tests/test_cross_source_correlation.py'
       - '.github/workflows/catalyst-wire.yml'
   schedule:
     - cron: '*/5 * * * *'
@@ -21,15 +23,19 @@ on:
     paths:
       - 'src/wallet500/catalyst_wire.py'
       - 'src/wallet500/global_listing_intelligence.py'
+      - 'src/wallet500/cross_source_correlation.py'
       - 'tests/test_catalyst_wire.py'
       - 'tests/test_global_listing_evm_core.py'
+      - 'tests/test_cross_source_correlation.py'
       - '.github/workflows/catalyst-wire.yml'
 
 permissions:
   contents: write
 
+# Cross-source correlation also enriches manual-watchlist.json. Use the same
+# publisher mutex as Live/Global Listing so no two truth-state writers race.
 concurrency:
-  group: wallet500-catalyst-wire
+  group: wallet500-live-scan-publisher
   cancel-in-progress: false
 
 jobs:
@@ -43,8 +49,8 @@ jobs:
           python-version: '3.12'
       - name: Install Wallet500 and test dependency
         run: pip install -e . pytest
-      - name: Lock Catalyst Wire and EVM listing truth policy
-        run: pytest -q tests/test_catalyst_wire.py tests/test_global_listing_evm_core.py
+      - name: Lock Catalyst, EVM listing and cross-source truth policy
+        run: pytest -q tests/test_catalyst_wire.py tests/test_global_listing_evm_core.py tests/test_cross_source_correlation.py
 
   wire:
     needs: test
@@ -65,36 +71,47 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m wallet500.catalyst_wire
+      - name: Correlate every known source again
+        run: python -m wallet500.cross_source_correlation
       - name: Validate event feed boundaries
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
           p=Path('data/catalyst-wire-live.json')
+          c=Path('data/cross-source-correlation.json')
           d=json.loads(p.read_text())
+          corr=json.loads(c.read_text())
           assert d['mode']=='CATALYST_WIRE_EVENT_FIRST_NO_MOMENTUM_WEIGHT'
           assert d['automatic_trade'] is False
           assert set(d['policy']['event_lane_zero_weight'])=={'volume_acceleration','liquidity_growth','holder_growth','wallet_growth'}
           assert d['policy']['official_source_required'] is True
           assert d['policy']['source_link_required_for_telegram'] is True
+          assert corr['mode']=='CONTINUOUS_CROSS_SOURCE_CORRELATION_RESEARCH_ONLY'
+          assert corr['automatic_trade'] is False
           for e in d.get('events',[]):
               if e.get('alert_eligible'):
                   assert e.get('preliminary_filter_pass') is True
                   assert e.get('forward_new') is True
                   assert e.get('source_url')
+          for asset in (corr.get('assets') or {}).values():
+              assert asset.get('continuous_rescan') is True
+              assert asset.get('research_only_until_wallet500_gates_pass') is True
+              assert asset.get('automatic_trade') is False
           print('CATALYST_WIRE_TRUTH_OK', d.get('counts'))
+          print('CROSS_SOURCE_TRUTH_OK', corr.get('counts'))
           PY
-      - name: Persist forward-only Catalyst Wire state
+      - name: Persist forward-only Catalyst Wire and correlation state
         run: |
           set -euo pipefail
           git config user.name 'wallet500-catalyst-bot'
           git config user.email 'wallet500-catalyst-bot@users.noreply.github.com'
-          git add data/catalyst-wire-live.json data/catalyst-wire-ledger.json data/catalyst-wire-state.json
+          git add data/catalyst-wire-live.json data/catalyst-wire-ledger.json data/catalyst-wire-state.json data/cross-source-correlation.json data/manual-watchlist.json
           if git diff --cached --quiet; then
-            echo 'No Catalyst Wire state change'
+            echo 'No Catalyst Wire/correlation state change'
             exit 0
           fi
-          git commit -m 'data: refresh Catalyst Wire [skip ci]'
+          git commit -m 'data: refresh Catalyst Wire and cross-source state [skip ci]'
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             if ! git rebase origin/main; then
