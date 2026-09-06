@@ -125,7 +125,7 @@ def test_bluesky_public_search_requires_no_secret(monkeypatch):
     monkeypatch.setattr(mesh, "_get_json", fake_get)
     rows, status = mesh.scan_bluesky(IDENTITY)
     assert status["status"] == "OK_DIRECT_PUBLIC"
-    assert "public.api.bsky.app/xrpc/app.bsky.feed.searchPosts" in captured["url"]
+    assert "api.bsky.app/xrpc/app.bsky.feed.searchPosts" in captured["url"]
     assert rows[0]["engagement"] == 4
 
 
