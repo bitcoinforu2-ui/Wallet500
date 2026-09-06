@@ -13,7 +13,8 @@ from . import social_telegram_truth_hardening as telegram_truth
 
 DEFAULT_PUBLIC_INDEX_SLOTS = 8
 EXACT_ATTRS = {"EXACT_CONTRACT", "EXACT_PAIR"}
-DIRECT_SOURCES = {"x", "youtube", "reddit", "telegram", "farcaster", "discord", "threads", "bluesky"}
+MESH_INDEX_SOURCES = {"telegram_index", "farcaster_index", "discord_index", "threads_index", "bluesky_index", "mesh_index"}
+LEGACY_INDEX_PROVIDER = {"x_index": "x", "youtube_index": "youtube", "reddit_index": "reddit"}
 CREDENTIAL_REQUIREMENTS = {
     "x": ["X_BEARER_TOKEN"],
     "youtube": ["YOUTUBE_API_KEY"],
@@ -80,8 +81,10 @@ def _telegram_timestamp_health(payload: dict) -> dict:
 
 def _event_provider(event: dict) -> str | None:
     source = str(event.get("source") or "").lower()
-    if source.endswith("_index") or source == "mesh_index":
+    if source in MESH_INDEX_SOURCES:
         return "social_mesh_public_index"
+    if source in LEGACY_INDEX_PROVIDER:
+        return LEGACY_INDEX_PROVIDER[source]
     if source == "telegram":
         if event.get("query_kind") or event.get("channel_id") or event.get("mesh_provider"):
             return "telegram_mtproto"
@@ -120,7 +123,8 @@ def _source_health(payload: dict) -> dict:
             if not provider:
                 continue
             attr = str(event.get("attribution") or "")
-            is_index = bool(event.get("context_only")) or str(event.get("source") or "").endswith("_index")
+            source = str(event.get("source") or "").lower()
+            is_index = bool(event.get("context_only")) or source in MESH_INDEX_SOURCES or source in LEGACY_INDEX_PROVIDER
             if is_index and attr in EXACT_ATTRS:
                 index_exact[provider] += 1
                 if token:
@@ -259,6 +263,7 @@ def run(output_dir: str | Path = "data") -> dict:
         "TELEGRAM_OFFICIAL_CONTEXT_REQUIRES_EXACT_AUTHOR_HANDLE_MATCH",
         "SOURCE_HEALTH_CONFIGURATION_NEVER_COUNTS_AS_EVIDENCE",
         "SOURCE_HEALTH_IS_OBSERVABILITY_ONLY_NO_SCORE_EFFECT",
+        "LEGACY_SOCIAL_INDEXES_AND_MESH_PUBLIC_INDEX_HAVE_SEPARATE_HEALTH_ACCOUNTING",
     ):
         if rule not in rules:
             rules.append(rule)
