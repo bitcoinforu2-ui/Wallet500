@@ -108,8 +108,6 @@ def _snapshot(scan: dict) -> dict:
 
 
 def _fingerprint(snapshot: dict) -> str:
-    # generated_at is the canonical run identity. Re-running the publisher against
-    # the same scan must never duplicate a historical observation.
     return str(snapshot.get("generated_at") or "")
 
 
@@ -135,6 +133,8 @@ def _aggregate(runs: list[dict]) -> dict:
         metric_runs = 0
         calls_total = 0
         budget_total = 0
+        metric_exact_events = 0
+        metric_tokens_exact = 0
         latest_budget = None
         latest_calls_used = None
         latest_state = "UNKNOWN"
@@ -152,10 +152,11 @@ def _aggregate(runs: list[dict]) -> dict:
             direct = _int(row.get("exact_direct_events"))
             official = _int(row.get("official_context_events"))
             indexed = _int(row.get("indexed_exact_context_events"))
+            tokens_exact = _int(row.get("tokens_with_exact_evidence"))
             exact_events += direct
             official_events += official
             indexed_events += indexed
-            tokens_exact_total += _int(row.get("tokens_with_exact_evidence"))
+            tokens_exact_total += tokens_exact
             if direct > 0:
                 exact_runs += 1
             if official > 0:
@@ -171,14 +172,16 @@ def _aggregate(runs: list[dict]) -> dict:
                 metric_runs += 1
                 budget_total += budget
                 calls_total += calls
+                metric_exact_events += direct
+                metric_tokens_exact += tokens_exact
             latest_budget = budget
             latest_calls_used = calls
             latest_state = state
             latest_at = run.get("generated_at")
 
         denom = max(1, observations)
-        exact_per_call = round(exact_events / calls_total, 4) if calls_total > 0 else None
-        tokens_per_call = round(tokens_exact_total / calls_total, 4) if calls_total > 0 else None
+        exact_per_call = round(metric_exact_events / calls_total, 4) if calls_total > 0 else None
+        tokens_per_call = round(metric_tokens_exact / calls_total, 4) if calls_total > 0 else None
         utilization = round(calls_total / budget_total, 4) if budget_total > 0 else None
         providers[provider] = {
             "runs_observed": observations,
@@ -197,6 +200,8 @@ def _aggregate(runs: list[dict]) -> dict:
             "call_metric_runs": metric_runs,
             "calls_used_total": calls_total if metric_runs else None,
             "call_budget_total": budget_total if metric_runs else None,
+            "call_metric_exact_events_total": metric_exact_events if metric_runs else None,
+            "call_metric_tokens_with_exact_evidence_total": metric_tokens_exact if metric_runs else None,
             "latest_call_budget": latest_budget,
             "latest_calls_used": latest_calls_used,
             "call_utilization_ratio": utilization,
@@ -239,6 +244,7 @@ def build(scan: dict, previous: dict | None = None) -> dict:
             "unknown_is_not_zero": True,
             "configuration_is_not_evidence": True,
             "call_efficiency_is_observability_only": True,
+            "call_efficiency_uses_only_same_run_measured_events": True,
         },
         "provider_rollup": _aggregate(runs),
         "runs": runs,
