@@ -30,6 +30,7 @@ def test_source_health_separates_config_from_evidence():
             "events": [
                 {"source": "telegram", "author": "official", "attribution": "OFFICIAL_CHANNEL_CONTEXT", "timestamp_provenance": "TELEGRAM_ORIGINAL_DATETIME"},
                 {"source": "x_index", "context_only": True, "attribution": "EXACT_CONTRACT"},
+                {"source": "bluesky_index", "context_only": True, "attribution": "EXACT_PAIR"},
                 {"source": "bluesky", "attribution": "EXACT_CONTRACT"},
             ],
         }],
@@ -38,6 +39,8 @@ def test_source_health_separates_config_from_evidence():
     assert health["providers"]["telegram_official"]["state"] == "ACTIVE_OFFICIAL_CONTEXT"
     assert health["providers"]["telegram_mtproto"]["state"] == "NOT_CONFIGURED"
     assert health["providers"]["bluesky"]["state"] == "ACTIVE_EXACT_EVIDENCE"
+    assert health["providers"]["x"]["state"] == "INDEX_CONTEXT_ONLY"
+    assert health["providers"]["x"]["indexed_exact_context_events"] == 1
     assert health["providers"]["social_mesh_public_index"]["state"] == "INDEX_CONTEXT_ONLY"
     assert health["providers"]["social_mesh_public_index"]["indexed_exact_context_events"] == 1
     assert health["providers"]["x"]["exact_direct_events"] == 0
