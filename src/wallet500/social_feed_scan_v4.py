@@ -103,7 +103,8 @@ def _source_health(payload: dict) -> dict:
     exact_direct: dict[str, int] = defaultdict(int)
     official_context: dict[str, int] = defaultdict(int)
     index_exact: dict[str, int] = defaultdict(int)
-    tokens_with_exact: dict[str, set[str]] = defaultdict(set)
+    tokens_with_direct_exact: dict[str, set[str]] = defaultdict(set)
+    tokens_with_index_exact: dict[str, set[str]] = defaultdict(set)
 
     for target in payload.get("targets") or []:
         if not isinstance(target, dict):
@@ -128,11 +129,11 @@ def _source_health(payload: dict) -> dict:
             if is_index and attr in EXACT_ATTRS:
                 index_exact[provider] += 1
                 if token:
-                    tokens_with_exact[provider].add(token)
+                    tokens_with_index_exact[provider].add(token)
             elif attr in EXACT_ATTRS:
                 exact_direct[provider] += 1
                 if token:
-                    tokens_with_exact[provider].add(token)
+                    tokens_with_direct_exact[provider].add(token)
             elif attr == "OFFICIAL_CHANNEL_CONTEXT":
                 official_context[provider] += 1
 
@@ -164,6 +165,9 @@ def _source_health(payload: dict) -> dict:
         exact_n = int(exact_direct.get(provider) or 0)
         official_n = int(official_context.get(provider) or 0)
         indexed_n = int(index_exact.get(provider) or 0)
+        direct_tokens = set(tokens_with_direct_exact.get(provider) or set())
+        indexed_tokens = set(tokens_with_index_exact.get(provider) or set())
+        all_exact_tokens = direct_tokens | indexed_tokens
 
         if exact_n > 0:
             state = "ACTIVE_EXACT_EVIDENCE"
@@ -187,14 +191,16 @@ def _source_health(payload: dict) -> dict:
             "exact_direct_events": exact_n,
             "official_context_events": official_n,
             "indexed_exact_context_events": indexed_n,
-            "tokens_with_exact_evidence": len(tokens_with_exact.get(provider) or set()),
+            "tokens_with_exact_evidence": len(all_exact_tokens),
+            "tokens_with_direct_exact_evidence": len(direct_tokens),
+            "tokens_with_indexed_exact_context": len(indexed_tokens),
             "credential_requirements": CREDENTIAL_REQUIREMENTS.get(provider, []),
             "unknown_is_not_zero": True,
             "score_effect": "NONE_PROVIDER_HEALTH_ONLY",
         }
 
     return {
-        "version": 1,
+        "version": 2,
         "summary": dict(summary),
         "providers": rows,
         "truth": {
@@ -202,6 +208,7 @@ def _source_health(payload: dict) -> dict:
             "index_context_never_counts_as_organic": True,
             "provider_health_does_not_modify_token_scores": True,
             "secret_values_never_exposed": True,
+            "direct_and_indexed_exact_token_counts_are_separate": True,
         },
     }
 
@@ -264,6 +271,7 @@ def run(output_dir: str | Path = "data") -> dict:
         "SOURCE_HEALTH_CONFIGURATION_NEVER_COUNTS_AS_EVIDENCE",
         "SOURCE_HEALTH_IS_OBSERVABILITY_ONLY_NO_SCORE_EFFECT",
         "LEGACY_SOCIAL_INDEXES_AND_MESH_PUBLIC_INDEX_HAVE_SEPARATE_HEALTH_ACCOUNTING",
+        "SOURCE_HEALTH_DIRECT_AND_INDEXED_EXACT_TOKEN_COUNTS_ARE_SEPARATE",
     ):
         if rule not in rules:
             rules.append(rule)
