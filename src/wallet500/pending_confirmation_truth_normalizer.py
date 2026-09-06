@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 DATA = Path("data")
 INPUT = DATA / "candidate-evidence-envelope.json"
+WALLET_PROBE = DATA / "revival-wallet-coverage-probe.json"
 
 PENDING_MARKET = "MARKET_CONFIRMATION_PENDING"
 PENDING_INDEPENDENT = "INDEPENDENT_EVIDENCE_PENDING"
+PENDING_WALLET = "WALLET_COVERAGE_PENDING"
 OUTCOME_MARKET_NEUTRAL = "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE"
 OUTCOME_INDEPENDENT_NEUTRAL = "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE"
+OUTCOME_WALLET_PROBE = "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+WALLET_PROBE_MAX_AGE_SECONDS = 7200
 
 
 def _numeric(value: Any) -> bool:
@@ -21,6 +26,14 @@ def _numeric(value: Any) -> bool:
         return True
     except (TypeError, ValueError):
         return False
+
+
+def _dt(value: Any) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
 
 
 def _market_observed(candidate: dict) -> bool:
@@ -39,16 +52,66 @@ def _independent_observed(candidate: dict) -> bool:
     return int(coverage.get("verified_independent_count") or 0) > 0
 
 
-def normalize(payload: dict) -> dict:
+def _wallet_probe_index(probe: dict, now: datetime) -> tuple[dict[str, dict], bool]:
+    if not isinstance(probe, dict):
+        return {}, False
+    truth = probe.get("truth_contract") if isinstance(probe.get("truth_contract"), dict) else {}
+    if (
+        probe.get("version") != "REVIVAL_WALLET_COVERAGE_PROBE_V1"
+        or probe.get("mode") != "RESEARCH_ONLY_EXACT_PAIR_WALLET_COVERAGE_PROBE"
+        or truth.get("probe_is_coverage_only_not_accumulation_alpha") is not True
+        or truth.get("probe_never_changes_candidate_promotion") is not True
+        or truth.get("probe_never_changes_real_alert_gate") is not True
+    ):
+        return {}, False
+    stamp = _dt(probe.get("generated_at"))
+    fresh = bool(stamp and 0 <= (now - stamp.astimezone(timezone.utc)).total_seconds() <= WALLET_PROBE_MAX_AGE_SECONDS)
+    if not fresh:
+        return {}, False
+    index = {}
+    for row in probe.get("tokens") or []:
+        if not isinstance(row, dict):
+            continue
+        token = str(row.get("token_address") or "").strip()
+        if token:
+            index[token] = row
+    return index, True
+
+
+def _wallet_coverage_observed(candidate: dict, probe_index: dict[str, dict], probe_fresh: bool) -> tuple[bool, dict | None]:
+    if not probe_fresh:
+        return False, None
+    token = str(candidate.get("token_address") or "").strip()
+    expected_pair = str(candidate.get("pair_address") or "").strip()
+    row = probe_index.get(token)
+    if not isinstance(row, dict):
+        return False, None
+    row_pair = str(row.get("pair_address") or "").strip()
+    verified = bool(
+        expected_pair
+        and row_pair
+        and expected_pair.lower() == row_pair.lower()
+        and row.get("coverage_verified") is True
+        and row.get("promotion_eligible") is False
+        and row.get("positive") is False
+    )
+    return verified, row
+
+
+def normalize(payload: dict, wallet_probe: dict | None = None, now: datetime | None = None) -> dict:
     """Make PENDING mean missing/unverified only, never merely non-positive.
 
-    This is diagnostics-only normalization. It never changes evidence_ready, market_positive,
-    family positive flags, candidate status, discovery tier, automatic_buy, or the strict
-    downstream REAL ALERT gate.
+    The broad wallet probe may close WALLET_COVERAGE_PENDING only as a coverage-observed
+    outcome. It never sets the Wallet Accumulation family verified/positive and therefore
+    never contributes to evidence_ready, pre_waking_evidence_ready, candidate promotion,
+    or the strict downstream REAL ALERT gate.
     """
+    now = now or datetime.now(timezone.utc)
     candidates = payload.get("candidates") if isinstance(payload.get("candidates"), list) else []
     market_neutral = 0
     independent_neutral = 0
+    wallet_probe_verified = 0
+    probe_index, probe_fresh = _wallet_probe_index(wallet_probe or {}, now)
 
     for candidate in candidates:
         if not isinstance(candidate, dict):
@@ -68,6 +131,18 @@ def normalize(payload: dict) -> dict:
                 outcomes.append(OUTCOME_INDEPENDENT_NEUTRAL)
             independent_neutral += 1
 
+        wallet_observed, probe_row = _wallet_coverage_observed(candidate, probe_index, probe_fresh)
+        if PENDING_WALLET in pending and wallet_observed:
+            pending = [x for x in pending if x != PENDING_WALLET]
+            if OUTCOME_WALLET_PROBE not in outcomes:
+                outcomes.append(OUTCOME_WALLET_PROBE)
+            coverage = candidate.get("coverage") if isinstance(candidate.get("coverage"), dict) else {}
+            coverage["wallet_coverage_observed"] = True
+            coverage["wallet_coverage_observation_role"] = "NON_PROMOTING_BROAD_PROBE"
+            coverage["wallet_coverage_probe_status"] = (probe_row or {}).get("status")
+            candidate["coverage"] = coverage
+            wallet_probe_verified += 1
+
         candidate["pending_confirmations"] = sorted(set(pending))
         candidate["verification_outcomes"] = sorted(set(outcomes))
 
@@ -78,11 +153,17 @@ def normalize(payload: dict) -> dict:
     counts["independent_evidence_pending"] = sum(
         1 for c in candidates if PENDING_INDEPENDENT in (c.get("pending_confirmations") or [])
     )
+    counts["wallet_coverage_pending"] = sum(
+        1 for c in candidates if PENDING_WALLET in (c.get("pending_confirmations") or [])
+    )
     counts["market_evidence_verified_not_positive"] = sum(
         1 for c in candidates if OUTCOME_MARKET_NEUTRAL in (c.get("verification_outcomes") or [])
     )
     counts["independent_evidence_verified_not_positive"] = sum(
         1 for c in candidates if OUTCOME_INDEPENDENT_NEUTRAL in (c.get("verification_outcomes") or [])
+    )
+    counts["wallet_coverage_verified_non_promoting_probe"] = sum(
+        1 for c in candidates if OUTCOME_WALLET_PROBE in (c.get("verification_outcomes") or [])
     )
     counts["true_pending_candidates"] = sum(
         1 for c in candidates if bool(c.get("pending_confirmations"))
@@ -92,22 +173,27 @@ def normalize(payload: dict) -> dict:
     truth = payload.get("truth_contract") if isinstance(payload.get("truth_contract"), dict) else {}
     truth["pending_semantics_missing_or_unverified_only"] = True
     truth["verified_not_positive_is_not_pending"] = True
+    truth["broad_wallet_probe_is_non_promoting_coverage_only"] = True
     truth["normalizer_changes_candidate_promotion"] = False
     truth["normalizer_changes_real_alert_gate"] = False
     payload["truth_contract"] = truth
     payload["pending_confirmation_normalization"] = {
-        "version": 1,
+        "version": 2,
         "market_reclassified_verified_not_positive": market_neutral,
         "independent_reclassified_verified_not_positive": independent_neutral,
+        "wallet_reclassified_coverage_observed_non_promoting": wallet_probe_verified,
+        "wallet_probe_fresh": probe_fresh,
+        "wallet_probe_rows": len(probe_index),
         "promotion_changed": False,
         "real_alert_gate_changed": False,
     }
     return payload
 
 
-def run(path: Path = INPUT) -> dict:
+def run(path: Path = INPUT, wallet_probe_path: Path = WALLET_PROBE) -> dict:
     payload = json.loads(path.read_text(encoding="utf-8"))
-    payload = normalize(payload)
+    probe = json.loads(wallet_probe_path.read_text(encoding="utf-8")) if wallet_probe_path.exists() else {}
+    payload = normalize(payload, probe)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return payload
 
