@@ -15,6 +15,7 @@ PENDING_WALLET = "WALLET_COVERAGE_PENDING"
 OUTCOME_MARKET_NEUTRAL = "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE"
 OUTCOME_INDEPENDENT_NEUTRAL = "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE"
 OUTCOME_WALLET_PROBE = "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+OUTCOME_WALLET_GAP = "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
 WALLET_PROBE_MAX_AGE_SECONDS = 7200
 
 
@@ -62,6 +63,7 @@ def _wallet_probe_index(probe: dict, now: datetime) -> tuple[dict[str, dict], bo
         or truth.get("probe_is_coverage_only_not_accumulation_alpha") is not True
         or truth.get("probe_never_changes_candidate_promotion") is not True
         or truth.get("probe_never_changes_real_alert_gate") is not True
+        or truth.get("unresolved_target_mint_touch_fails_closed") is not True
     ):
         return {}, False
     stamp = _dt(probe.get("generated_at"))
@@ -78,39 +80,40 @@ def _wallet_probe_index(probe: dict, now: datetime) -> tuple[dict[str, dict], bo
     return index, True
 
 
-def _wallet_coverage_observed(candidate: dict, probe_index: dict[str, dict], probe_fresh: bool) -> tuple[bool, dict | None]:
+def _wallet_probe_classification(candidate: dict, probe_index: dict[str, dict], probe_fresh: bool) -> tuple[str, dict | None]:
     if not probe_fresh:
-        return False, None
+        return "PENDING", None
     token = str(candidate.get("token_address") or "").strip()
     expected_pair = str(candidate.get("pair_address") or "").strip()
     row = probe_index.get(token)
     if not isinstance(row, dict):
-        return False, None
+        return "PENDING", None
     row_pair = str(row.get("pair_address") or "").strip()
-    verified = bool(
-        expected_pair
-        and row_pair
-        and expected_pair.lower() == row_pair.lower()
-        and row.get("coverage_verified") is True
-        and row.get("promotion_eligible") is False
-        and row.get("positive") is False
-    )
-    return verified, row
+    safe_role = row.get("promotion_eligible") is False and row.get("positive") is False
+    pair_ok = bool(expected_pair and row_pair and expected_pair.lower() == row_pair.lower())
+    if not pair_ok or not safe_role:
+        return "PENDING", row
+    if row.get("coverage_verified") is True:
+        return "VERIFIED", row
+    if row.get("unresolved_target_touch") is True and row.get("target_mint_touched") is True:
+        return "ATTRIBUTION_GAP", row
+    return "PENDING", row
 
 
 def normalize(payload: dict, wallet_probe: dict | None = None, now: datetime | None = None) -> dict:
-    """Make PENDING mean missing/unverified only, never merely non-positive.
+    """Make PENDING mean missing/unverified only, never verified-neutral or a proven gap.
 
-    The broad wallet probe may close WALLET_COVERAGE_PENDING only as a coverage-observed
-    outcome. It never sets the Wallet Accumulation family verified/positive and therefore
-    never contributes to evidence_ready, pre_waking_evidence_ready, candidate promotion,
-    or the strict downstream REAL ALERT gate.
+    The broad wallet probe can close WALLET_COVERAGE_PENDING in two truthful ways:
+    (1) coverage was verified, or (2) an exact target-mint touch was verified but signed
+    owner attribution could not be proven. The second case is an explicit fail-closed
+    attribution gap, not positive wallet evidence. Neither case contributes to promotion.
     """
     now = now or datetime.now(timezone.utc)
     candidates = payload.get("candidates") if isinstance(payload.get("candidates"), list) else []
     market_neutral = 0
     independent_neutral = 0
     wallet_probe_verified = 0
+    wallet_attribution_gap = 0
     probe_index, probe_fresh = _wallet_probe_index(wallet_probe or {}, now)
 
     for candidate in candidates:
@@ -131,17 +134,25 @@ def normalize(payload: dict, wallet_probe: dict | None = None, now: datetime | N
                 outcomes.append(OUTCOME_INDEPENDENT_NEUTRAL)
             independent_neutral += 1
 
-        wallet_observed, probe_row = _wallet_coverage_observed(candidate, probe_index, probe_fresh)
-        if PENDING_WALLET in pending and wallet_observed:
+        wallet_class, probe_row = _wallet_probe_classification(candidate, probe_index, probe_fresh)
+        if PENDING_WALLET in pending and wallet_class in {"VERIFIED", "ATTRIBUTION_GAP"}:
             pending = [x for x in pending if x != PENDING_WALLET]
-            if OUTCOME_WALLET_PROBE not in outcomes:
-                outcomes.append(OUTCOME_WALLET_PROBE)
             coverage = candidate.get("coverage") if isinstance(candidate.get("coverage"), dict) else {}
             coverage["wallet_coverage_observed"] = True
             coverage["wallet_coverage_observation_role"] = "NON_PROMOTING_BROAD_PROBE"
             coverage["wallet_coverage_probe_status"] = (probe_row or {}).get("status")
+            if wallet_class == "VERIFIED":
+                if OUTCOME_WALLET_PROBE not in outcomes:
+                    outcomes.append(OUTCOME_WALLET_PROBE)
+                coverage["wallet_attribution_resolved"] = bool((probe_row or {}).get("resolved_signed_owner"))
+                wallet_probe_verified += 1
+            else:
+                if OUTCOME_WALLET_GAP not in outcomes:
+                    outcomes.append(OUTCOME_WALLET_GAP)
+                coverage["wallet_attribution_resolved"] = False
+                coverage["wallet_attribution_gap_fail_closed"] = True
+                wallet_attribution_gap += 1
             candidate["coverage"] = coverage
-            wallet_probe_verified += 1
 
         candidate["pending_confirmations"] = sorted(set(pending))
         candidate["verification_outcomes"] = sorted(set(outcomes))
@@ -165,6 +176,9 @@ def normalize(payload: dict, wallet_probe: dict | None = None, now: datetime | N
     counts["wallet_coverage_verified_non_promoting_probe"] = sum(
         1 for c in candidates if OUTCOME_WALLET_PROBE in (c.get("verification_outcomes") or [])
     )
+    counts["wallet_attribution_gap_verified_fail_closed"] = sum(
+        1 for c in candidates if OUTCOME_WALLET_GAP in (c.get("verification_outcomes") or [])
+    )
     counts["true_pending_candidates"] = sum(
         1 for c in candidates if bool(c.get("pending_confirmations"))
     )
@@ -173,15 +187,17 @@ def normalize(payload: dict, wallet_probe: dict | None = None, now: datetime | N
     truth = payload.get("truth_contract") if isinstance(payload.get("truth_contract"), dict) else {}
     truth["pending_semantics_missing_or_unverified_only"] = True
     truth["verified_not_positive_is_not_pending"] = True
+    truth["verified_wallet_attribution_gap_is_not_pending_and_never_positive"] = True
     truth["broad_wallet_probe_is_non_promoting_coverage_only"] = True
     truth["normalizer_changes_candidate_promotion"] = False
     truth["normalizer_changes_real_alert_gate"] = False
     payload["truth_contract"] = truth
     payload["pending_confirmation_normalization"] = {
-        "version": 2,
+        "version": 3,
         "market_reclassified_verified_not_positive": market_neutral,
         "independent_reclassified_verified_not_positive": independent_neutral,
         "wallet_reclassified_coverage_observed_non_promoting": wallet_probe_verified,
+        "wallet_reclassified_attribution_gap_fail_closed": wallet_attribution_gap,
         "wallet_probe_fresh": probe_fresh,
         "wallet_probe_rows": len(probe_index),
         "promotion_changed": False,
