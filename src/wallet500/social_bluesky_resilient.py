@@ -8,9 +8,10 @@ from urllib.request import Request, urlopen
 
 from . import social_mesh_providers as mesh
 
-USER_AGENT = "Wallet500-Bluesky/1.1"
+USER_AGENT = "Wallet500-Bluesky/1.2"
 PUBLIC_APPVIEW = "https://public.api.bsky.app"
 LEGACY_PUBLIC_APPVIEW = "https://api.bsky.app"
+PUBLIC_SEARCH_BLOCKED = "PUBLIC_SEARCH_BLOCKED_AUTH_REQUIRED"
 
 
 def _safe_error(exc: BaseException) -> str:
@@ -153,6 +154,13 @@ def _scan_official_public_appview(identity: dict):
     }
 
 
+def _both_public_paths_blocked(public_status: dict, legacy_status: dict) -> bool:
+    return (
+        str(public_status.get("status") or "") == "HTTP_403"
+        and str(legacy_status.get("status") or "") == "HTTP_403"
+    )
+
+
 def scan_bluesky_resilient(identity: dict):
     public_rows, public_status = _scan_official_public_appview(identity)
     public_status = dict(public_status or {})
@@ -161,9 +169,8 @@ def scan_bluesky_resilient(identity: dict):
         public_status["legacy_public_fallback"] = "NOT_NEEDED"
         return public_rows, public_status
 
-    # Compatibility fallback only. The official unauthenticated AppView above is
-    # authoritative for public reads; the legacy path must never turn a failure
-    # into zero evidence.
+    # Compatibility fallback only. A failure on either public path must remain
+    # UNKNOWN, never observed zero.
     legacy_rows, legacy_status = mesh.scan_bluesky(identity)
     legacy_status = dict(legacy_status or {})
     if str(legacy_status.get("status") or "").startswith("OK"):
@@ -182,6 +189,13 @@ def scan_bluesky_resilient(identity: dict):
         public_status["legacy_public_fallback"] = "FAILED"
         public_status["auth_fallback"] = "NOT_CONFIGURED"
         public_status["meaning"] = "UNKNOWN_NOT_ZERO"
+        if _both_public_paths_blocked(public_status, legacy_status):
+            public_status["official_public_status"] = "HTTP_403"
+            public_status["status"] = PUBLIC_SEARCH_BLOCKED
+            public_status["public_search_blocked"] = True
+            public_status["public_search_observation"] = "BOTH_PUBLIC_APPVIEW_SEARCH_PATHS_HTTP_403"
+            public_status["activation_required"] = "CONFIGURE_BSKY_IDENTIFIER_AND_BSKY_APP_PASSWORD"
+            public_status["auth_required_for_reliable_search"] = True
         return public_rows, public_status
 
     try:
