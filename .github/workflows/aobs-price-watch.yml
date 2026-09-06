@@ -39,26 +39,27 @@ jobs:
           python -m py_compile src/wallet500/aobs_price_watch.py src/wallet500/aobs_price_watch_v2.py
           python src/wallet500/aobs_price_watch_v2.py --self-test
 
-      - name: Fetch exact AOBS pool and send edge-triggered Telegram alert
+      - name: Fetch exact AOBS pool plus holders and send edge-triggered Telegram alert
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           AOBS_STATE_PATH: data/aobs-price-watch.json
+          AOBS_HOLDER_LEDGER_PATH: data/aobs-holder-ledger.json
         run: |
           set -euo pipefail
           python src/wallet500/aobs_price_watch_v2.py
 
-      - name: Persist AOBS trigger state without CI fan-out
+      - name: Persist AOBS price and holder state without CI fan-out
         run: |
           set -euo pipefail
-          if git diff --quiet -- data/aobs-price-watch.json && git ls-files --error-unmatch data/aobs-price-watch.json >/dev/null 2>&1; then
+          if [ -z "$(git status --porcelain -- data/aobs-price-watch.json data/aobs-holder-ledger.json)" ]; then
             echo 'AOBS state unchanged'
             exit 0
           fi
           git config user.name 'wallet500-aobs-bot'
           git config user.email 'wallet500-aobs-bot@users.noreply.github.com'
-          git add data/aobs-price-watch.json
-          git commit -m 'data: persist AOBS price alert state [skip ci]'
+          git add data/aobs-price-watch.json data/aobs-holder-ledger.json
+          git commit -m 'data: persist AOBS price and holder state [skip ci]'
           git fetch --depth=20 origin main
           git rebase origin/main
           git push origin HEAD:main
