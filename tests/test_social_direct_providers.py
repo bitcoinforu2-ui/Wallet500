@@ -1,4 +1,4 @@
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import unquote
 
 import wallet500.social_direct_providers as direct
 import wallet500.social_feed_scan_v2 as scan
@@ -57,11 +57,46 @@ def test_x_direct_maps_author_id_to_username_and_scans_pair(monkeypatch):
     assert "expansions=author_id" in decoded
 
 
+def test_reddit_public_fallback_works_without_oauth_and_normalizes_epoch(monkeypatch):
+    monkeypatch.delenv("REDDIT_CLIENT_ID", raising=False)
+    monkeypatch.delenv("REDDIT_CLIENT_SECRET", raising=False)
+    captured = {}
+
+    def fake_get(url, headers=None, timeout=18):
+        captured["url"] = url
+        return {
+            "data": {"children": [{"data": {
+                "id": "abc",
+                "author": "organic_user",
+                "subreddit": "CryptoCurrency",
+                "created_utc": 1788602400,
+                "title": f"Watching {IDENTITY['token_address']}",
+                "selftext": "independent observation",
+                "score": 5,
+                "num_comments": 2,
+                "permalink": "/r/CryptoCurrency/comments/abc/example/",
+            }}]}
+        }
+
+    monkeypatch.setattr(direct, "_get_json", fake_get)
+    rows, status = direct.scan_reddit(IDENTITY)
+    assert status["status"] == "OK_DIRECT_PUBLIC"
+    assert "www.reddit.com/search.json" in captured["url"]
+    assert rows[0]["published_at"].endswith("+00:00")
+    assert rows[0]["engagement"] == 7
+
+
 def test_provider_config_never_exposes_secret_values(monkeypatch):
     monkeypatch.setenv("X_BEARER_TOKEN", "secret-x")
     monkeypatch.setenv("YOUTUBE_API_KEY", "secret-y")
     monkeypatch.setenv("REDDIT_CLIENT_ID", "secret-id")
     monkeypatch.setenv("REDDIT_CLIENT_SECRET", "secret-secret")
     cfg = direct.provider_config()
-    assert cfg == {"x": True, "youtube": True, "reddit_oauth": True, "telegram_public_direct": True}
+    assert cfg == {
+        "x": True,
+        "youtube": True,
+        "reddit_oauth": True,
+        "reddit_public": True,
+        "telegram_public_direct": True,
+    }
     assert "secret" not in str(cfg).lower()

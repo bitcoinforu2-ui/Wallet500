@@ -8,7 +8,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
-USER_AGENT = "Wallet500-SocialDirect/3.0"
+USER_AGENT = "Wallet500-SocialDirect/3.1"
 
 
 def _safe_error(exc: BaseException) -> str:
@@ -91,8 +91,18 @@ def provider_config() -> dict:
             (os.getenv("REDDIT_CLIENT_ID") or "").strip()
             and (os.getenv("REDDIT_CLIENT_SECRET") or "").strip()
         ),
+        "reddit_public": True,
         "telegram_public_direct": True,
     }
+
+
+def _iso_from_epoch(value):
+    try:
+        if value in (None, ""):
+            return None
+        return datetime.fromtimestamp(float(value), tz=timezone.utc).isoformat()
+    except (TypeError, ValueError, OSError, OverflowError):
+        return value
 
 
 def scan_x(identity: dict):
@@ -192,7 +202,7 @@ def _reddit_access_token() -> tuple[str | None, str | None]:
             {"grant_type": "client_credentials"},
             headers={
                 "Authorization": "Basic " + basic,
-                "User-Agent": (os.getenv("REDDIT_USER_AGENT") or "Wallet500/3.0 by bitcoinforu2-ui").strip(),
+                "User-Agent": (os.getenv("REDDIT_USER_AGENT") or "Wallet500/3.1 by bitcoinforu2-ui").strip(),
             },
         )
         token = str(payload.get("access_token") or "").strip()
@@ -201,36 +211,70 @@ def _reddit_access_token() -> tuple[str | None, str | None]:
         return None, _safe_error(exc)
 
 
+def _reddit_rows(payload: dict) -> list[dict]:
+    rows = []
+    for child in (((payload.get("data") or {}).get("children")) or []):
+        data = (child or {}).get("data") or {}
+        permalink = str(data.get("permalink") or "")
+        rows.append({
+            "source": "reddit",
+            "id": data.get("id"),
+            "author": data.get("author"),
+            "subreddit": data.get("subreddit"),
+            "published_at": _iso_from_epoch(data.get("created_utc")),
+            "text": f"{data.get('title') or ''} {data.get('selftext') or ''}"[:1500],
+            "engagement": float(data.get("score") or 0) + float(data.get("num_comments") or 0),
+            "url": "https://www.reddit.com" + permalink if permalink else None,
+            "direct_provider": True,
+        })
+    return rows
+
+
 def scan_reddit(identity: dict):
-    token, token_error = _reddit_access_token()
-    if not token:
-        return [], {"provider": "reddit", "status": token_error or "OAUTH_FAILED", "direct": True}
     query = direct_query(identity, "reddit")
     if not query:
         return [], {"provider": "reddit", "status": "NO_QUERY_IDENTITY", "direct": True}
+
+    user_agent = (os.getenv("REDDIT_USER_AGENT") or "Wallet500/3.1 by bitcoinforu2-ui").strip()
+    token, token_error = _reddit_access_token()
+    oauth_error = token_error
+    if token:
+        params = urlencode({"q": query, "sort": "new", "t": "day", "limit": 25, "raw_json": 1})
+        try:
+            payload = _get_json(
+                "https://oauth.reddit.com/search?" + params,
+                headers={"Authorization": "Bearer " + token, "User-Agent": user_agent},
+            )
+            rows = _reddit_rows(payload)
+            return rows, {
+                "provider": "reddit",
+                "status": "OK_DIRECT_OAUTH",
+                "count": len(rows),
+                "query_identity": "MINT_PAIR_BROAD",
+            }
+        except Exception as exc:
+            oauth_error = _safe_error(exc)
+
+    # Reddit's public JSON search is a useful no-secret fallback. It remains a direct
+    # source because the post payload comes from reddit.com itself, not a search index.
     params = urlencode({"q": query, "sort": "new", "t": "day", "limit": 25, "raw_json": 1})
     try:
         payload = _get_json(
-            "https://oauth.reddit.com/search?" + params,
-            headers={
-                "Authorization": "Bearer " + token,
-                "User-Agent": (os.getenv("REDDIT_USER_AGENT") or "Wallet500/3.0 by bitcoinforu2-ui").strip(),
-            },
+            "https://www.reddit.com/search.json?" + params,
+            headers={"User-Agent": user_agent},
         )
-        rows = []
-        for child in (((payload.get("data") or {}).get("children")) or []):
-            data = (child or {}).get("data") or {}
-            rows.append({
-                "source": "reddit",
-                "id": data.get("id"),
-                "author": data.get("author"),
-                "subreddit": data.get("subreddit"),
-                "published_at": data.get("created_utc"),
-                "text": f"{data.get('title') or ''} {data.get('selftext') or ''}"[:1500],
-                "engagement": float(data.get("score") or 0) + float(data.get("num_comments") or 0),
-                "url": "https://www.reddit.com" + str(data.get("permalink") or ""),
-                "direct_provider": True,
-            })
-        return rows, {"provider": "reddit", "status": "OK_DIRECT_OAUTH", "count": len(rows), "query_identity": "MINT_PAIR_BROAD"}
+        rows = _reddit_rows(payload)
+        return rows, {
+            "provider": "reddit",
+            "status": "OK_DIRECT_PUBLIC",
+            "count": len(rows),
+            "query_identity": "MINT_PAIR_BROAD",
+            "oauth_status": oauth_error,
+        }
     except Exception as exc:
-        return [], {"provider": "reddit", "status": _safe_error(exc), "direct": True}
+        return [], {
+            "provider": "reddit",
+            "status": _safe_error(exc),
+            "direct": True,
+            "oauth_status": oauth_error,
+        }

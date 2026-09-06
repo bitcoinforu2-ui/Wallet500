@@ -49,9 +49,7 @@ def test_many_copy_paste_shills_do_not_create_organic_acceleration():
 
 def test_independent_cross_source_mentions_can_create_strong_acceleration():
     rows = []
-    # Quiet prior baseline: one older independent observation.
     rows.append(event(author="old_user", minutes_ago=180, text=f"Watching this exact contract {CA}", source="reddit"))
-    # Six independent current mentions across two platforms, all with unique text.
     for i in range(6):
         rows.append(event(
             author=f"organic{i}",
@@ -66,13 +64,20 @@ def test_independent_cross_source_mentions_can_create_strong_acceleration():
     assert result["organic_acceleration_score"] > 0
 
 
+def test_reddit_epoch_timestamp_is_not_dropped():
+    row = event(author="reddit_user", minutes_ago=10, text=f"Independent Reddit observation {CA}", source="reddit")
+    row["published_at"] = int((NOW - timedelta(minutes=10)).timestamp())
+    result = token_result([row])
+    assert result["current_1h"]["raw_mentions"] == 1
+    assert result["latest_event_at"].startswith("2026-09-02T11:50:00")
+
+
 def test_same_author_burst_is_discounted():
     rows = [
         event(author="one_account", minutes_ago=5 + i, text=f"Different wording {i} around exact CA {CA}")
         for i in range(12)
     ]
     result = token_result(rows)
-    # One loud account is not independent social discovery.
     assert result["current_1h"]["independent_authors"] <= 1
     assert result["status"] == "NO_ORGANIC_SIGNAL"
 

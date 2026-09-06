@@ -41,6 +41,12 @@ def _identity_key(row: dict) -> tuple[str, str, str]:
     )
 
 
+def _dex_identity_verified(row: dict) -> bool:
+    # DEX_VERIFIED_DORMANT and future DEX_VERIFIED_* states still carry an exact
+    # verified pair. Liquidity semantics must be sanitized regardless of activity state.
+    return str(row.get("identity_status") or "").strip().upper().startswith("DEX_VERIFIED")
+
+
 def annotate_row(row: dict) -> dict:
     out = dict(row)
     truth = liquidity_truth(out)
@@ -71,12 +77,13 @@ def annotate_row(row: dict) -> dict:
 
 def sanitize_cex_radar(path: Path = DATA / "cex-revival-radar.json") -> dict:
     payload = _load(path, {})
-    rows = [annotate_row(x) if isinstance(x, dict) and x.get("identity_status") == "DEX_VERIFIED" else x for x in payload.get("alerts") or []]
+    rows = [annotate_row(x) if isinstance(x, dict) and _dex_identity_verified(x) else x for x in payload.get("alerts") or []]
     payload["alerts"] = rows
     payload["liquidity_truth_contract"] = {
-        "version": "LIQUIDITY_TRUTH_V1",
+        "version": "LIQUIDITY_TRUTH_V2_VERIFIED_STATE_COVERAGE",
         "pool_tvl_never_equals_execution_depth": True,
         "concentrated_pool_requires_verified_execution_depth": True,
+        "all_dex_verified_activity_states_sanitized": True,
         "unverified_concentrated_depth_policy": "FAIL_CLOSED_NO_EXECUTION_LIQUIDITY",
         "gate_metric": "VERIFIED_EXECUTION_DEPTH_USD_5PCT",
         "dex_total_liquidity_is_informational_only": True,
@@ -159,17 +166,27 @@ def _activity_truth(row: dict, metadata: dict | None = None) -> tuple[bool, dict
 def _demote_row(row: dict, metadata: dict | None = None) -> dict:
     out = annotate_row(_merge_liquidity_metadata(row, metadata))
     blockers = list(out.get("blockers") or [])
-    if out.get("concentrated_liquidity_pool") is True and out.get("execution_depth_verified") is not True:
+    concentrated_unverified = bool(
+        out.get("concentrated_liquidity_pool") is True
+        and out.get("execution_depth_verified") is not True
+    )
+    if concentrated_unverified:
         blockers.append(CONCENTRATED_BLOCKER)
+
     activity_ok, activity = _activity_truth(out, metadata)
     out["dex_activity_truth"] = activity
-    if not activity_ok:
+    # A concentrated pool with unverified execution depth is already fail-closed.
+    # Its execution liquidity is intentionally nulled by annotate_row, so turnover
+    # cannot be evaluated without reusing unsafe TVL. Do not misclassify that safety
+    # outcome as ordinary market dormancy; keep the stronger liquidity blocker.
+    if not activity_ok and not concentrated_unverified:
         blockers.append(DORMANT_ACTIVITY_BLOCKER)
+
     out["blockers"] = sorted(set(blockers))
     if CONCENTRATED_BLOCKER in out["blockers"]:
         out["actionable_research_alert"] = False
         out["status"] = "VERIFIED_WATCH_NOT_REAL_ALERT"
-    if DORMANT_ACTIVITY_BLOCKER in out["blockers"]:
+    elif DORMANT_ACTIVITY_BLOCKER in out["blockers"]:
         out["actionable_research_alert"] = False
         out["status"] = "DORMANT_NO_ACTIVITY_NOT_VERIFIED_WATCH"
     return out
@@ -186,10 +203,10 @@ def sanitize_real_alerts(path: Path = DATA / "real-alerts.json") -> dict:
     dormant = []
     for row in original_alerts:
         clean = _demote_row(row, metadata.get(_identity_key(row)))
-        if DORMANT_ACTIVITY_BLOCKER in (clean.get("blockers") or []):
-            dormant.append(clean)
-        elif CONCENTRATED_BLOCKER in (clean.get("blockers") or []):
+        if CONCENTRATED_BLOCKER in (clean.get("blockers") or []):
             demoted.append(clean)
+        elif DORMANT_ACTIVITY_BLOCKER in (clean.get("blockers") or []):
+            dormant.append(clean)
         else:
             alerts.append(clean)
 
@@ -243,12 +260,13 @@ def sanitize_real_alerts(path: Path = DATA / "real-alerts.json") -> dict:
     })
     payload["truth_contract"] = truth
     payload["liquidity_truth_guard"] = {
-        "version": "LIQUIDITY_TRUTH_GUARD_V2_ACTIVITY_FAIL_CLOSED",
+        "version": "LIQUIDITY_TRUTH_GUARD_V3_CONCENTRATED_PRECEDENCE",
         "demoted_real_alerts": len(demoted),
         "dormant_no_activity": len(uniq_dormant),
         "concentrated_depth_unverified_blocker": CONCENTRATED_BLOCKER,
         "dormant_activity_blocker": DORMANT_ACTIVITY_BLOCKER,
         "exact_pair_metadata_join": True,
+        "concentrated_liquidity_blocker_precedes_activity_classification": True,
     }
     _write(path, payload)
     return {
