@@ -55,8 +55,21 @@ def test_production_hard_blocks_unverified_meteora_even_with_huge_tvl():
     assert out['production_live_liquidity_usd']==0
 
 
+def _write_cex_metadata(tmp_path: Path, *, volume_h24: float, volume_h1: float, liquidity: float = 120_000):
+    (tmp_path/'cex-revival-radar.json').write_text(json.dumps({
+        'alerts':[{
+            'chain':'solana','token_address':'MINT','pair_address':'PAIR','identity_status':'DEX_VERIFIED',
+            'dex':'raydium','dex_liquidity_usd':liquidity,'dex_volume_h24':volume_h24,'dex_volume_h1':volume_h1,
+        }]
+    }),encoding='utf-8')
+
+
 def test_real_alert_is_demoted_when_concentrated_depth_is_unverified(tmp_path: Path):
     p=tmp_path/'real-alerts.json'
+    (tmp_path/'cex-revival-radar.json').write_text(json.dumps({'alerts':[{
+        'chain':'solana','token_address':'MINT','pair_address':'PAIR','identity_status':'DEX_VERIFIED',
+        'dex':'meteora','dex_liquidity_usd':37_200_000,'dex_volume_h24':500_000,'dex_volume_h1':20_000,
+    }]}),encoding='utf-8')
     p.write_text(json.dumps({
         'counts':{'real_alerts':1,'verified_watch_not_real':0},
         'alerts':[{
@@ -73,3 +86,47 @@ def test_real_alert_is_demoted_when_concentrated_depth_is_unverified(tmp_path: P
     assert data['counts']['real_alerts']==0
     assert data['verified_watch'][0]['actionable_research_alert'] is False
     assert 'EXECUTION_DEPTH_UNVERIFIED_CONCENTRATED_POOL' in data['verified_watch'][0]['blockers']
+
+
+def test_sushi_like_deep_but_dead_pair_is_not_verified_watch(tmp_path: Path):
+    p=tmp_path/'real-alerts.json'
+    _write_cex_metadata(tmp_path, volume_h24=55, volume_h1=0, liquidity=3_600_000)
+    p.write_text(json.dumps({
+        'counts':{'real_alerts':0,'verified_watch_not_real':1},
+        'alerts':[],
+        'verified_watch':[{
+            'symbol':'SUSHI','chain':'solana','token_address':'MINT','pair_address':'PAIR','dex':'raydium',
+            'liquidity_usd':3_600_000,'execution_pool_liquidity_usd':3_600_000,
+            'score':100,'blockers':['INDEPENDENT_CONFIRMATION_LT_2'],
+            'status':'VERIFIED_WATCH_NOT_REAL_ALERT','actionable_research_alert':False,
+        }],
+        'truth_contract':{},
+    }),encoding='utf-8')
+    result=sanitize_real_alerts(p)
+    data=json.loads(p.read_text())
+    assert result['real_alerts']==0
+    assert result['verified_watch']==0
+    assert result['dormant_no_activity']==1
+    row=data['dormant_no_activity'][0]
+    assert row['status']=='DORMANT_NO_ACTIVITY_NOT_VERIFIED_WATCH'
+    assert 'DEX_EXACT_PAIR_DORMANT_NO_ACTIVITY' in row['blockers']
+    assert row['dex_activity_truth']['volume_h24_usd']==55
+    assert row['dex_activity_truth']['turnover_h24'] < 0.005
+
+
+def test_active_exact_pair_survives_activity_guard(tmp_path: Path):
+    p=tmp_path/'real-alerts.json'
+    _write_cex_metadata(tmp_path, volume_h24=25_000, volume_h1=2_500, liquidity=120_000)
+    p.write_text(json.dumps({
+        'counts':{'real_alerts':1,'verified_watch_not_real':0},
+        'alerts':[{
+            'symbol':'OLD','chain':'solana','token_address':'MINT','pair_address':'PAIR','dex':'raydium',
+            'liquidity_usd':120_000,'execution_pool_liquidity_usd':120_000,
+            'blockers':[],'status':'REAL_ALERT','actionable_research_alert':True,
+        }],
+        'verified_watch':[],
+        'truth_contract':{},
+    }),encoding='utf-8')
+    result=sanitize_real_alerts(p)
+    assert result['real_alerts']==1
+    assert result['dormant_no_activity']==0
