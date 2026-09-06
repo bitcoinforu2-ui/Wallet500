@@ -4,6 +4,7 @@ import html
 import json
 import os
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
@@ -26,7 +27,6 @@ DIRECT_ENV = {
 DIRECT_CONFIG_KEY = {
     "x": "x",
     "youtube": "youtube",
-    "reddit": "reddit_oauth",
 }
 PERMANENT_DIRECT_FAILURES = {"HTTP_401", "HTTP_402", "HTTP_403", "HTTP_429"}
 
@@ -49,6 +49,13 @@ def _direct_budget(provider: str) -> int:
         return max(0, int(os.getenv(env_name, str(default))))
     except (TypeError, ValueError):
         return default
+
+
+def _provider_configured(provider: str) -> bool:
+    config = direct.provider_config()
+    if provider == "reddit":
+        return bool(config.get("reddit_oauth") or config.get("reddit_public"))
+    return bool(config.get(DIRECT_CONFIG_KEY[provider]))
 
 
 def _reset_direct_runtime_state() -> None:
@@ -181,7 +188,7 @@ def _scan_index(identity: dict, provider: str, source: str, site_query: str) -> 
         "ceid": "US:en",
     })
     try:
-        req = Request(url, headers={"User-Agent": "Wallet500-SocialIndex/2.0", "Accept": "application/rss+xml,text/xml,*/*"})
+        req = Request(url, headers={"User-Agent": "Wallet500-SocialIndex/2.1", "Accept": "application/rss+xml,text/xml,*/*"})
         with urlopen(req, timeout=18) as response:
             raw = response.read()
         root = ET.fromstring(raw)
@@ -210,9 +217,7 @@ def _scan_index(identity: dict, provider: str, source: str, site_query: str) -> 
 
 
 def _fallback(direct_fn, identity: dict, provider: str, source: str, sites: str):
-    config = direct.provider_config()
-    config_key = DIRECT_CONFIG_KEY[provider]
-    configured = bool(config.get(config_key))
+    configured = _provider_configured(provider)
     budget = _direct_budget(provider)
 
     if not configured:
@@ -261,6 +266,33 @@ def _scan_reddit_resilient(identity: dict):
     return _fallback(direct.scan_reddit, identity, "reddit", "reddit_index", "site:reddit.com")
 
 
+def _indexed_exact_context(payload: dict) -> dict:
+    sources = {"x_index", "youtube_index", "reddit_index"}
+    attrs = {"EXACT_CONTRACT", "EXACT_PAIR"}
+    events = []
+    tokens = set()
+    attribution_counts = {"EXACT_CONTRACT": 0, "EXACT_PAIR": 0}
+    for target in payload.get("targets") or []:
+        if not isinstance(target, dict):
+            continue
+        for event in target.get("events") or []:
+            if not isinstance(event, dict) or str(event.get("source") or "") not in sources:
+                continue
+            attr = str(event.get("attribution") or "")
+            if attr not in attrs:
+                continue
+            events.append(event)
+            tokens.add(str(target.get("token_address") or ""))
+            attribution_counts[attr] = attribution_counts.get(attr, 0) + 1
+    return {
+        "events": len(events),
+        "tokens": len([x for x in tokens if x]),
+        "attribution_counts": attribution_counts,
+        "organic_eligible": False,
+        "meaning": "verified identity context from indexed pages only; never organic proof",
+    }
+
+
 def run(output_dir: str = "data") -> dict:
     _reset_direct_runtime_state()
     base._select_targets = _rotating_select
@@ -281,17 +313,19 @@ def run(output_dir: str = "data") -> dict:
         base._scan_youtube = _ORIGINAL_YOUTUBE
         base._scan_reddit = _ORIGINAL_REDDIT
 
-    payload["version"] = 3
+    payload["version"] = 4
     payload["direct_provider_config"] = direct.provider_config()
     payload["direct_provider_budget"] = {provider: _direct_budget(provider) for provider in DEFAULT_DIRECT_BUDGETS}
     payload["direct_provider_calls_used"] = dict(_DIRECT_CALLS)
     payload["direct_provider_circuit_breakers"] = dict(_DIRECT_BREAKERS)
+    payload["indexed_exact_context"] = _indexed_exact_context(payload)
     payload["identity_query_contract"] = {
         "primary": "EXACT_TOKEN_MINT",
         "secondary": "EXACT_PAIR_ADDRESS",
         "official_context": True,
         "broad_name_symbol_context_only": True,
         "accepted_into_social_ledger": ["EXACT_CONTRACT", "EXACT_PAIR", "OFFICIAL_CHANNEL_CONTEXT"],
+        "indexed_exact_context_is_organic": False,
     }
     payload["selection_policy"] = {
         "priority_slots": max(0, int(os.getenv("SOCIAL_SCAN_PRIORITY_SLOTS", str(DEFAULT_PRIORITY_SLOTS)))),
@@ -303,9 +337,10 @@ def run(output_dir: str = "data") -> dict:
     for rule in (
         "DIRECT_X_API_USES_EXACT_MINT_PAIR_AND_OFFICIAL_HANDLE",
         "DIRECT_YOUTUBE_API_USES_EXACT_MINT_PAIR_AND_BROAD_CONTEXT",
-        "DIRECT_REDDIT_OAUTH_USES_EXACT_MINT_PAIR_AND_BROAD_CONTEXT",
+        "DIRECT_REDDIT_USES_OAUTH_THEN_PUBLIC_JSON_FALLBACK",
         "EXACT_PAIR_MENTION_IS_VERIFIED_IDENTITY_EVIDENCE",
         "PUBLIC_SEARCH_INDEX_FALLBACK_IS_CONTEXT_ONLY_NEVER_ORGANIC_SOCIAL_PROOF",
+        "INDEXED_EXACT_IDENTITY_EVIDENCE_NEVER_COUNTS_AS_ORGANIC_WITHOUT_DIRECT_SOURCE",
         "DIRECT_PROVIDER_FAILURE_IS_UNKNOWN_NOT_ZERO",
         "DIRECT_PROVIDER_CALL_BUDGETS_PROTECT_X_CREDITS_AND_YOUTUBE_DAILY_QUOTA",
         "PERMANENT_DIRECT_HTTP_FAILURE_CIRCUIT_BREAKS_FOR_REMAINDER_OF_RUN",
@@ -314,7 +349,7 @@ def run(output_dir: str = "data") -> dict:
         if rule not in rules:
             rules.append(rule)
     payload["rules"] = rules
-    base._write(base.DATA / base.OUTPUT.name, payload)
+    base._write(Path(output_dir) / base.OUTPUT.name, payload)
     return payload
 
 
@@ -327,6 +362,7 @@ def main() -> None:
         "direct_budget": payload.get("direct_provider_budget"),
         "direct_calls_used": payload.get("direct_provider_calls_used"),
         "direct_breakers": payload.get("direct_provider_circuit_breakers"),
+        "indexed_exact_context": payload.get("indexed_exact_context"),
         "identity_query_contract": payload.get("identity_query_contract"),
         "selection": payload.get("selection_policy"),
     }, ensure_ascii=False))
