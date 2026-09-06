@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '23,53 * * * *'
-  push:
+  pull_request:
     branches: [main]
     paths:
       - 'src/wallet500/social_feed_scan.py'
       - 'src/wallet500/social_feed_scan_v2.py'
       - 'src/wallet500/social_direct_providers.py'
       - 'src/wallet500/social_intelligence_v2.py'
+      - 'src/wallet500/social_organic_acceleration.py'
       - 'src/wallet500/social_coverage_hardening.py'
       - 'src/wallet500/cross_signal_fusion_v2.py'
       - 'tests/test_social_intelligence_v2.py'
@@ -18,13 +19,31 @@ on:
       - 'tests/test_social_direct_providers.py'
       - 'tests/test_social_coverage_hardening.py'
       - 'tests/test_cross_signal_fusion_v2.py'
+      - 'tests/test_social_organic_acceleration.py'
+      - '.github/workflows/social-intelligence-v2.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/social_feed_scan.py'
+      - 'src/wallet500/social_feed_scan_v2.py'
+      - 'src/wallet500/social_direct_providers.py'
+      - 'src/wallet500/social_intelligence_v2.py'
+      - 'src/wallet500/social_organic_acceleration.py'
+      - 'src/wallet500/social_coverage_hardening.py'
+      - 'src/wallet500/cross_signal_fusion_v2.py'
+      - 'tests/test_social_intelligence_v2.py'
+      - 'tests/test_social_feed_scan_v2.py'
+      - 'tests/test_social_direct_providers.py'
+      - 'tests/test_social_coverage_hardening.py'
+      - 'tests/test_cross_signal_fusion_v2.py'
+      - 'tests/test_social_organic_acceleration.py'
       - '.github/workflows/social-intelligence-v2.yml'
 
 permissions:
   contents: write
 
 concurrency:
-  group: wallet500-social-intelligence-v2
+  group: wallet500-social-intelligence-v2-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -34,7 +53,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'main' }}
           fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
@@ -63,7 +82,7 @@ jobs:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
           REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
-          REDDIT_USER_AGENT: ${{ vars.REDDIT_USER_AGENT || 'Wallet500/3.0 by bitcoinforu2-ui' }}
+          REDDIT_USER_AGENT: ${{ vars.REDDIT_USER_AGENT || 'Wallet500/3.1 by bitcoinforu2-ui' }}
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: python -m wallet500.social_feed_scan_v2
 
@@ -85,6 +104,7 @@ jobs:
           import json
           from pathlib import Path
           s=json.loads(Path('data/social-source-scan.json').read_text())
+          o=json.loads(Path('data/social-organic-acceleration.json').read_text())
           i=json.loads(Path('data/social-intelligence-v2.json').read_text())
           f=json.loads(Path('data/cross-signal-fusion-v2.json').read_text())
           if s.get('mode')!='RESEARCH_ONLY_SOCIAL_SOURCE_SCAN_V1': raise SystemExit('SOCIAL_SCAN_MODE_INVALID')
@@ -92,16 +112,19 @@ jobs:
           if f.get('mode')!='RESEARCH_ONLY_CROSS_SIGNAL_FUSION_V2': raise SystemExit('FUSION_MODE_INVALID')
           if i.get('automatic_buy') is not False or f.get('automatic_buy') is not False: raise SystemExit('SOCIAL_PRODUCTION_LEAK')
           if (i.get('truth_contract') or {}).get('missing_channel_is_unknown_not_zero') is not True: raise SystemExit('UNKNOWN_ZERO_TRUTH_MISSING')
+          if (i.get('truth_contract') or {}).get('indexed_exact_mentions_are_context_only_not_organic') is not True: raise SystemExit('INDEX_CONTEXT_TRUTH_MISSING')
           if (f.get('truth_contract') or {}).get('does_not_modify_real_alert_gate') is not True: raise SystemExit('REAL_ALERT_GATE_LEAK')
           if (s.get('selection_policy') or {}).get('rotation_enabled') is not True: raise SystemExit('SOCIAL_ROTATION_MISSING')
           q=s.get('identity_query_contract') or {}
           if q.get('primary')!='EXACT_TOKEN_MINT': raise SystemExit('SOCIAL_MINT_IDENTITY_MISSING')
           if q.get('secondary')!='EXACT_PAIR_ADDRESS': raise SystemExit('SOCIAL_PAIR_IDENTITY_MISSING')
+          if q.get('indexed_exact_context_is_organic') is not False: raise SystemExit('INDEX_CONTEXT_ORGANIC_LEAK')
           accepted=set(q.get('accepted_into_social_ledger') or [])
           if not {'EXACT_CONTRACT','EXACT_PAIR','OFFICIAL_CHANNEL_CONTEXT'} <= accepted: raise SystemExit('SOCIAL_ATTRIBUTION_CONTRACT_MISSING')
           cfg=s.get('direct_provider_config') or {}
-          for key in ('x','youtube','reddit_oauth','telegram_public_direct'):
+          for key in ('x','youtube','reddit_oauth','reddit_public','telegram_public_direct'):
               if key not in cfg or not isinstance(cfg[key], bool): raise SystemExit('DIRECT_PROVIDER_CONFIG_INVALID:'+key)
+          if cfg.get('reddit_public') is not True: raise SystemExit('REDDIT_PUBLIC_FALLBACK_DISABLED')
           budget=s.get('direct_provider_budget') or {}
           calls=s.get('direct_provider_calls_used') or {}
           expected={'x':1,'youtube':1,'reddit':6}
@@ -109,6 +132,8 @@ jobs:
               if budget.get(key)!=limit: raise SystemExit('DIRECT_PROVIDER_BUDGET_INVALID:'+key)
               used=calls.get(key)
               if not isinstance(used,int) or used<0 or used>limit: raise SystemExit('DIRECT_PROVIDER_CALL_OVER_BUDGET:'+key)
+          formats=set(o.get('timestamp_formats_supported') or [])
+          if not {'ISO8601','UNIX_EPOCH','RFC2822'} <= formats: raise SystemExit('SOCIAL_TIMESTAMP_FORMAT_SUPPORT_MISSING')
           for row in i.get('tokens') or []:
               a=row.get('availability') or {}; scores=row.get('scores') or {}
               if a.get('social_momentum') is False and scores.get('social_momentum') is not None: raise SystemExit('SOCIAL_UNKNOWN_RENDERED_AS_ZERO')
@@ -117,10 +142,11 @@ jobs:
           for row in f.get('tokens') or []:
               if row.get('production_effect') is not False or row.get('automatic_buy') is not False: raise SystemExit('FUSION_ROW_PRODUCTION_LEAK')
               if row.get('risk',{}).get('hard_blockers') and row.get('fusion_status')!='HARD_TRUTH_BLOCKED': raise SystemExit('HARD_BLOCKER_OVERRIDE')
-          print('SOCIAL_DIRECT_V3_OK', cfg, 'budget=', budget, 'calls=', calls, 'breakers=', s.get('direct_provider_circuit_breakers'), i.get('counts'), f.get('counts'))
+          print('SOCIAL_DIRECT_V4_OK', cfg, 'budget=', budget, 'calls=', calls, 'breakers=', s.get('direct_provider_circuit_breakers'), 'indexed=', s.get('indexed_exact_context'), i.get('counts'), f.get('counts'))
           PY
 
       - name: Publish social intelligence snapshot
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
