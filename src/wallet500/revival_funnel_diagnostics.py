@@ -35,15 +35,12 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
     envelope = _load(data_dir / "candidate-evidence-envelope.json", {})
     reawakening = _load(data_dir / "reawakening-shadow.json", {})
     alpha = _load(data_dir / "alpha-proof-report.json", {})
-    active = _load(data_dir / "active-qualified-candidates.json", [])
-    active_age = _load(data_dir / "active-qualified-age-gate.json", {})
 
     revival_counts = _dict(revival.get("counts"))
     precursor_counts = _dict(precursor.get("counts"))
     envelope_counts = _dict(envelope.get("counts"))
     reawakening_counts = _dict(reawakening.get("counts"))
     age_gate = _dict(revival.get("age_gate"))
-    active_age_counts = _dict(active_age)
 
     wallet_rows = wallets.get("tokens") if isinstance(wallets, dict) else []
     wallet_rows = wallet_rows if isinstance(wallet_rows, list) else []
@@ -60,16 +57,6 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
             wallet_complete += 1
         if coverage.get("eligible_as_forensics_t0_wallet_evidence") is True:
             wallet_forensics_eligible += 1
-
-    revival_coins = revival.get("coins") if isinstance(revival, dict) else []
-    revival_coins = revival_coins if isinstance(revival_coins, list) else []
-    legacy_research_pending = sum(
-        1
-        for row in revival_coins
-        if isinstance(row, dict)
-        and row.get("pre_alpha_eligible") is not True
-        and bool(row.get("pre_alpha_blocker"))
-    )
 
     envelope_rows = envelope.get("candidates") if isinstance(envelope, dict) else []
     envelope_rows = envelope_rows if isinstance(envelope_rows, list) else []
@@ -134,16 +121,6 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
             "classification": "DATA_FLOW_BLOCKER",
         })
 
-    raw_active = _num(active_age_counts.get("raw_active_before_age_governance"))
-    if raw_active == 0:
-        blockers.append({
-            "code": "NO_ACTIVE_QUALIFIED_BEFORE_AGE_GOVERNANCE",
-            "count": 0,
-            "classification": "UPSTREAM_QUALIFICATION_EMPTY",
-            "detail": "Legacy active-qualified is empty; Evidence Envelope remains a separate research lane.",
-        })
-
-    active_count = len(active) if isinstance(active, list) else 0
     return {
         "version": 3,
         "mode": "REVIVAL_FUNNEL_DIAGNOSTICS_V3_ADAPTIVE_DISCOVERY",
@@ -151,8 +128,8 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
         "production_change": False,
         "production_portfolio_impact": "NONE",
         "cohort_warning": (
-            "Revival, adaptive discovery, Precursor, Evidence Envelope, Reawakening and legacy Active Qualification "
-            "are distinct lanes. Only exact token/pair identity links may be compared."
+            "Revival, adaptive discovery, Precursor, Evidence Envelope and Reawakening are distinct lanes. "
+            "Only exact token/pair identity links may be compared."
         ),
         "lanes": {
             "solana_veteran_revival": {
@@ -165,8 +142,6 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
                 "waking_market_only": _num(revival_counts.get("waking_market_only")),
                 "absorption_proxy_watch": _num(revival_counts.get("absorption_proxy_watch")),
                 "absorption_candidate_proxy_watch": _num(revival_counts.get("absorption_candidate_proxy_watch")),
-                "legacy_pre_alpha_eligible": _num(revival_counts.get("pre_alpha")),
-                "legacy_research_pending": legacy_research_pending,
             },
             "evidence_promotion": {
                 "source_generated_at": envelope.get("generated_at") if isinstance(envelope, dict) else None,
@@ -233,12 +208,6 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
                 "status": alpha.get("primary_proof_status") if isinstance(alpha, dict) else None,
                 "formal_signals": _num(alpha.get("formal_signal_count")) if isinstance(alpha, dict) else 0,
                 "formal_controls": _num(alpha.get("formal_control_count")) if isinstance(alpha, dict) else 0,
-            },
-            "active_qualification": {
-                "active_candidates": active_count,
-                "raw_before_age_governance": raw_active,
-                "accepted_after_age_governance": _num(active_age_counts.get("accepted")),
-                "age_gate_status": active_age_counts.get("status"),
             },
         },
         "blockers": blockers,
