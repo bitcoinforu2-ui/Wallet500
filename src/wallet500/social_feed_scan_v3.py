@@ -29,7 +29,13 @@ MESH_ENV = {
     "threads": "THREADS_DIRECT_SLOTS",
     "bluesky": "BLUESKY_DIRECT_SLOTS",
 }
-PERMANENT_FAILURES = {"HTTP_401", "HTTP_402", "HTTP_403", "HTTP_429"}
+PERMANENT_FAILURES = {
+    "HTTP_401",
+    "HTTP_402",
+    "HTTP_403",
+    "HTTP_429",
+    bluesky_resilient.PUBLIC_SEARCH_BLOCKED,
+}
 
 _MESH_CALLS = {provider: 0 for provider in MESH_PROVIDERS}
 _MESH_BREAKERS: dict[str, str] = {}
