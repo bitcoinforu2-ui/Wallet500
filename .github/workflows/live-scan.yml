@@ -212,7 +212,20 @@ jobs:
         run: python scripts/compact_outcome_history.py
 
       - name: Validate primary live lane and learning integrity
+        id: strict_validation
         run: python -m wallet500.strict_validation
+
+      # Preserve failure evidence off-main. This does not publish or mutate production
+      # truth; it only makes the fail-closed validator payload inspectable after a run.
+      - name: Upload strict validation diagnostics on failure
+        if: ${{ failure() && steps.strict_validation.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wallet500-strict-validation-failure-${{ github.run_id }}
+          path: data/strict-validation.json
+          if-no-files-found: error
+          retention-days: 2
+
       - name: Build canonical production operator status
         run: python -m wallet500.production_status
       - name: Prepare immutable publish evidence
