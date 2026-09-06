@@ -9,6 +9,7 @@ on:
     paths:
       - '.github/workflows/aobs-price-watch.yml'
       - 'src/wallet500/aobs_price_watch.py'
+      - 'src/wallet500/aobs_price_watch_v2.py'
 
 permissions:
   contents: write
@@ -35,8 +36,8 @@ jobs:
       - name: Validate watcher logic
         run: |
           set -euo pipefail
-          python -m py_compile src/wallet500/aobs_price_watch.py
-          python src/wallet500/aobs_price_watch.py --self-test
+          python -m py_compile src/wallet500/aobs_price_watch.py src/wallet500/aobs_price_watch_v2.py
+          python src/wallet500/aobs_price_watch_v2.py --self-test
 
       - name: Fetch exact AOBS pool and send edge-triggered Telegram alert
         env:
@@ -45,7 +46,7 @@ jobs:
           AOBS_STATE_PATH: data/aobs-price-watch.json
         run: |
           set -euo pipefail
-          python src/wallet500/aobs_price_watch.py
+          python src/wallet500/aobs_price_watch_v2.py
 
       - name: Persist AOBS trigger state without CI fan-out
         run: |
