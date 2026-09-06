@@ -50,7 +50,11 @@ def _confidence(runs: int) -> str:
 
 
 def _efficiency_score(row: dict) -> float | None:
-    if row.get("latest_call_budget") is None or row.get("calls_used_total") is None:
+    state = str(row.get("latest_state") or "UNKNOWN")
+    calls_used = row.get("calls_used_total")
+    if state in {"NOT_CONFIGURED", "INDEX_CONTEXT_ONLY"}:
+        return None
+    if row.get("latest_call_budget") is None or calls_used is None or _int(calls_used) <= 0:
         return None
     exact_ratio = min(1.0, max(0.0, _num(row.get("exact_evidence_run_ratio"))))
     reliability = 1.0 - min(1.0, max(0.0, _num(row.get("degraded_run_ratio"))))
@@ -163,6 +167,7 @@ def build(history: dict) -> dict:
             "unknown_is_not_zero": True,
             "not_configured_is_not_bad_evidence": True,
             "indexed_context_never_counts_as_direct_efficiency": True,
+            "no_direct_calls_means_no_efficiency_score": True,
         },
         "counts": counts,
         "providers": rows,
