@@ -75,7 +75,7 @@ jobs:
           import re
 
           auth_tag='<script src="/Wallet500/wallet500-auth.js"></script>'
-          live_nav='''<div class="nav"><a href="/Wallet500/">🔥 Live</a><a href="/Wallet500/alerts/">🚨 Alerts</a><a href="/Wallet500/status/">📊 מצב הפרויקט</a><a href="/Wallet500/revival/">♻ Revival</a><a href="/Wallet500/performance/">💵 ביצועים</a><a href="/Wallet500/social/">📡 Social</a><a href="/Wallet500/control/">⚙ Control</a><a href="/Wallet500/terminal/">🖥 Terminal</a></div>'''
+          live_nav='''<nav class="nav"><a href="/Wallet500/">🔥 Live</a><a href="/Wallet500/alerts/">🚨 Alerts</a><a href="/Wallet500/status/">📊 מצב הפרויקט</a><a href="/Wallet500/revival/">♻ Revival</a><a href="/Wallet500/performance/">💵 ביצועים</a><a href="/Wallet500/social/">📡 Social</a><a href="/Wallet500/control/">⚙ Control</a><a href="/Wallet500/terminal/">🖥 Terminal</a></nav>'''
 
           for page in Path('_site').rglob('*.html'):
               s=page.read_text(encoding='utf-8')
@@ -84,8 +84,9 @@ jobs:
               s=re.sub(r'<nav id="w500-experiment-rubric"[^>]*>.*?</nav>', '', s, flags=re.S|re.I)
 
               # The two Live copies get the same complete, Live-first navigation.
+              # Accept both the legacy <div class="nav"> and semantic <nav class="nav">.
               if page.as_posix() in {'_site/index.html', '_site/live/index.html'}:
-                  s=re.sub(r'<div class="nav">.*?</div>', live_nav, s, count=1, flags=re.S|re.I)
+                  s=re.sub(r'<div class="nav">.*?</div>|<nav class="nav">.*?</nav>', live_nav, s, count=1, flags=re.S|re.I)
 
               if auth_tag not in s:
                   if re.search(r'</head\s*>', s, flags=re.I):
