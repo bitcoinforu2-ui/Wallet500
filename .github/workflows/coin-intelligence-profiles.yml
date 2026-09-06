@@ -1,0 +1,130 @@
+name: Wallet500 Coin Intelligence Profiles
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/wallet500/coin_intelligence_profiles.py'
+      - 'tests/test_coin_intelligence_profiles.py'
+      - '.github/workflows/coin-intelligence-profiles.yml'
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_run:
+    workflows:
+      - "Wallet500 Cross-Source Correlation"
+      - "Wallet500 Multi-Chain Live Scan"
+      - "Wallet500 Hybrid Token Profile"
+      - "Wallet500 Social Intelligence V2"
+      - "Wallet500 Global Listing Intelligence"
+      - "Wallet500 Catalyst Wire"
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/coin_intelligence_profiles.py'
+      - 'tests/test_coin_intelligence_profiles.py'
+      - '.github/workflows/coin-intelligence-profiles.yml'
+
+permissions:
+  contents: write
+
+# Profiles are derived research state. Newer runs may supersede older builders
+# because every build starts from persistent source ledgers plus the prior profile
+# ledger; cancelling an older derivation cannot delete source truth.
+concurrency:
+  group: wallet500-coin-intelligence-profile-builder
+  cancel-in-progress: true
+
+jobs:
+  profile:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # This repository has high-frequency data commits. Full-history checkout
+          # is unnecessary for a derived profile build and can become a bottleneck.
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Wallet500 and tests
+        run: pip install -e . pytest
+      - name: Lock profile identity, persistence and research-only truth rules
+        run: pytest -q tests/test_coin_intelligence_profiles.py
+      - name: Build persistent multi-source coin dossiers and DNA library
+        run: python -m wallet500.coin_intelligence_profiles
+      - name: Validate profile truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          latest=json.loads(Path('data/coin-intelligence-profiles.json').read_text())
+          ledger=json.loads(Path('data/coin-intelligence-profile-ledger.json').read_text())
+          archive=json.loads(Path('data/coin-intelligence-profile-archive.json').read_text())
+          dna=json.loads(Path('data/coin-profile-dna-library.json').read_text())
+
+          if latest.get('mode') != 'COIN_INTELLIGENCE_PROFILE_V1':
+              raise SystemExit('COIN_PROFILE_MODE_DRIFT')
+          if latest.get('automatic_trade') is not False or latest.get('production_change') is not False:
+              raise SystemExit('COIN_PROFILE_PRODUCTION_LEAK')
+          truth=ledger.get('truth_contract') or {}
+          required=(
+              'symbol_never_defines_identity',
+              'provisional_evm_never_cross_chain_merges',
+              'negative_evidence_is_retained',
+              'material_duplicate_events_are_deduplicated',
+              'missing_fingerprint_dimensions_remain_unobserved',
+              'profile_never_bypasses_production_gates',
+          )
+          if not all(truth.get(k) is True for k in required):
+              raise SystemExit('COIN_PROFILE_TRUTH_CONTRACT_MISSING')
+          profiles=ledger.get('profiles') or {}
+          for key,p in profiles.items():
+              expected=f"{p.get('chain')}:{p.get('token_address')}"
+              if key != expected:
+                  raise SystemExit('COIN_PROFILE_IDENTITY_KEY_DRIFT')
+              if p.get('production_effect') != 'NONE_RESEARCH_PROFILE_ONLY':
+                  raise SystemExit('COIN_PROFILE_PRODUCTION_EFFECT_LEAK')
+              fp=p.get('fingerprint') or {}
+              if fp.get('truth_rule') != 'MISSING_DIMENSIONS_REMAIN_UNOBSERVED':
+                  raise SystemExit('COIN_PROFILE_FINGERPRINT_TRUTH_DRIFT')
+          if dna.get('automatic_trade') is not False or dna.get('production_effect') != 'NONE':
+              raise SystemExit('COIN_PROFILE_DNA_PRODUCTION_LEAK')
+          if (dna.get('truth_contract') or {}).get('hard_gates_never_weaken_from_profile_similarity') is not True:
+              raise SystemExit('COIN_PROFILE_DNA_HARD_GATE_LEAK')
+          print('COIN_PROFILE_TRUTH_OK', latest.get('counts'))
+          print('COIN_PROFILE_DNA_OK', dna.get('counts'), 'archive', len(archive.get('entries') or {}))
+          PY
+      - name: Persist profile state without mutating source truth
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-profile-bot'
+          git config user.email 'wallet500-profile-bot@users.noreply.github.com'
+
+          # A profile is a pure derivation. Never rebase an already-computed
+          # profile commit over newer source truth: if main moved, discard this
+          # stale derivation and let the next scheduled/workflow_run build recompute.
+          git fetch --depth=1 origin main
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+            echo 'COIN_PROFILE_BUILD_SUPERSEDED_BEFORE_PUBLISH: main advanced; next build will recompute from newer truth'
+            exit 0
+          fi
+
+          git add \
+            data/coin-intelligence-profiles.json \
+            data/coin-intelligence-profile-ledger.json \
+            data/coin-intelligence-profile-archive.json \
+            data/coin-profile-dna-library.json
+          if git diff --cached --quiet; then
+            echo 'No coin profile state change'
+            exit 0
+          fi
+          git commit -m 'data: refresh persistent coin intelligence profiles [skip ci]'
+          if ! git push origin HEAD:main; then
+            echo 'COIN_PROFILE_BUILD_SUPERSEDED_DURING_PUBLISH: main advanced; refusing stale profile overwrite'
+            exit 0
+          fi
