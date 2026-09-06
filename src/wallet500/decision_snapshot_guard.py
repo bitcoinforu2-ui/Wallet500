@@ -11,6 +11,7 @@ DATA = Path("data")
 OUTPUT = DATA / "decision-snapshot-integrity.json"
 MIN_AGE_DAYS = 180
 MIN_LIQUIDITY_USD = 50_000.0
+PUBLIC_DECISION_SURFACES = ("alerts", "verified_watch", "evidence_ready", "dormant_no_activity")
 
 
 def _load(path: Path, default: Any) -> Any:
@@ -34,6 +35,28 @@ def _num(value: Any) -> float:
         return float(value or 0)
     except Exception:
         return 0.0
+
+
+def _visible_evidence_ready(real: dict) -> int:
+    keys = set()
+    for surface in ("verified_watch", "evidence_ready", "dormant_no_activity"):
+        rows = real.get(surface) if isinstance(real.get(surface), list) else []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if not (
+                row.get("evidence_ready") is True
+                or row.get("evidence_envelope_status") == "EVIDENCE_READY"
+                or row.get("status") == "EVIDENCE_READY_NOT_REAL_ALERT"
+            ):
+                continue
+            key = (
+                str(row.get("chain") or row.get("network") or ""),
+                str(row.get("token_address") or row.get("token") or row.get("mint") or ""),
+                str(row.get("pair_address") or row.get("dex_pair_address") or ""),
+            )
+            keys.add(key)
+    return len(keys)
 
 
 def build(data_dir: Path = DATA) -> dict:
@@ -69,11 +92,24 @@ def build(data_dir: Path = DATA) -> dict:
     ready_envelope = _int(ec.get("evidence_ready"))
     ready_real = _int(rc.get("evidence_ready_research"))
     ready_funnel = _int(ep.get("evidence_ready"))
+    ready_visible = _visible_evidence_ready(real)
+    evidence_counts = {
+        "envelope_canonical": ready_envelope,
+        "real_research_count": ready_real,
+        "funnel_research_count": ready_funnel,
+        "visible_across_watch_evidence_dormant": ready_visible,
+    }
     if len({ready_envelope, ready_real, ready_funnel}) != 1:
         fail(
             "EVIDENCE_READY_COUNT_SKEW",
-            "Envelope, REAL ALERT feed and funnel must describe the same evidence-ready population",
-            {"envelope": ready_envelope, "real": ready_real, "funnel": ready_funnel},
+            "Envelope, REAL research count and funnel must describe the same post-mintability Evidence Ready population",
+            evidence_counts,
+        )
+    if ready_visible != ready_envelope:
+        fail(
+            "EVIDENCE_READY_VISIBILITY_SKEW",
+            "Every canonical Evidence Ready token must remain visible on exactly one research surface, including dormant_no_activity",
+            evidence_counts,
         )
 
     if _int(age.get("minimum_market_age_days")) != MIN_AGE_DAYS:
@@ -100,7 +136,7 @@ def build(data_dir: Path = DATA) -> dict:
         if _int(c.get("positive_independent_count")) < 1:
             fail("EVIDENCE_READY_WITHOUT_INDEPENDENT_EVIDENCE", "Evidence Ready requires an independent positive lane", row.get("key"))
 
-    for surface in ("alerts", "verified_watch", "evidence_ready"):
+    for surface in PUBLIC_DECISION_SURFACES:
         for row in real.get(surface) or []:
             if not isinstance(row, dict):
                 continue
@@ -110,7 +146,7 @@ def build(data_dir: Path = DATA) -> dict:
                 and row.get("mintable") is False
                 and row.get("mint_authority") is None
             ):
-                fail("SOLANA_MINTABILITY_PUBLIC_BREACH", "Mintable or unverified Solana token reached a public decision surface", {"surface": surface, "token": row.get("token_address")})
+                fail("SOLANA_MINTABILITY_PUBLIC_BREACH", "Mintable or unverified Solana token reached a public/research decision surface", {"surface": surface, "token": row.get("token_address")})
 
     for row in real.get("alerts") or []:
         if not isinstance(row, dict):
@@ -130,19 +166,22 @@ def build(data_dir: Path = DATA) -> dict:
             fail("PRODUCTION_STATUS_SCOPE_DRIFT", "Production status must report 180d veteran scope", policy.get("minimum_verified_market_age_days"))
 
     return {
-        "version": 2,
+        "version": 3,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "mode": "FAIL_CLOSED_DECISION_SNAPSHOT_COHERENCE_GUARD_V2_NO_MINTABLE_SOLANA",
+        "mode": "FAIL_CLOSED_DECISION_SNAPSHOT_COHERENCE_GUARD_V3_DORMANT_SURFACE_INCLUDED",
         "passed": not failures,
         "failure_count": len(failures),
         "failures": failures,
         "counts": {
             "evidence_ready": ready_envelope,
+            "evidence_ready_visible": ready_visible,
             "verified_watch": _int(rc.get("verified_watch_not_real")),
+            "dormant_no_activity": _int(rc.get("dormant_no_activity")),
             "real_alerts": _int(rc.get("real_alerts")),
             "identity_pending": _int(rc.get("identity_pending_not_actionable")),
             "mintability_rejected_not_visible": _int(rc.get("mintability_rejected_not_visible")),
         },
+        "evidence_ready_coherence": evidence_counts,
         "truth_contract": {
             "veteran_scope_days": MIN_AGE_DAYS,
             "minimum_execution_pool_liquidity_usd": MIN_LIQUIDITY_USD,
@@ -150,6 +189,8 @@ def build(data_dir: Path = DATA) -> dict:
             "solana_mint_authority_must_be_revoked_null": True,
             "solana_mintable_tokens_allowed": False,
             "solana_unknown_mintability_allowed": False,
+            "dormant_no_activity_is_guarded_public_research_surface": True,
+            "evidence_ready_dormancy_does_not_erase_research_population": True,
             "evidence_ready_is_research_only": True,
             "no_hindsight": True,
         },
@@ -163,13 +204,17 @@ def run(data_dir: Path = DATA, fail_on_error: bool = True) -> dict:
     payload = build(data_dir)
     (data_dir / OUTPUT.name).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if fail_on_error and not payload["passed"]:
-        raise SystemExit("DECISION_SNAPSHOT_COHERENCE_FAILED:" + ",".join(x["code"] for x in payload["failures"]))
+        details = ";".join(
+            f"{x['code']}={json.dumps(x.get('actual'), ensure_ascii=False, sort_keys=True)}"
+            for x in payload["failures"]
+        )
+        raise SystemExit("DECISION_SNAPSHOT_COHERENCE_FAILED:" + details)
     return payload
 
 
 def main() -> None:
     payload = run()
-    print(json.dumps({"passed": payload["passed"], "counts": payload["counts"]}, ensure_ascii=False))
+    print(json.dumps({"passed": payload["passed"], "counts": payload["counts"], "evidence_ready_coherence": payload.get("evidence_ready_coherence")}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
