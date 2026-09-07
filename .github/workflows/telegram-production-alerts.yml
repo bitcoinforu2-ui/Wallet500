@@ -3,7 +3,9 @@ name: Wallet500 Production Telegram Alerts
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ["Wallet500 Candidate Evidence Envelope"]
+    workflows:
+      - "Wallet500 Candidate Evidence Envelope"
+      - "Wallet500 Pending Confirmation Refresh"
     types: [completed]
   push:
     branches: [main]
@@ -17,8 +19,9 @@ on:
 permissions:
   contents: write
 
-# Serialized post-publish lane: a coherent candidate-evidence decision snapshot
-# must already be atomically committed on main before user-facing delivery.
+# Serialized post-publish lane: a coherent decision snapshot must already be
+# atomically committed on main by one of the two canonical decision publishers
+# before user-facing delivery.
 concurrency:
   group: wallet500-production-telegram-alerts
   cancel-in-progress: false
@@ -79,7 +82,17 @@ jobs:
 
           if proof.get('status') != 'VERIFIED_COHERENT_DECISION_SNAPSHOT':
               raise SystemExit('TELEGRAM_DECISION_PUBLICATION_PROOF_STATUS_INVALID')
-          if proof.get('producer') != 'CANDIDATE_EVIDENCE_ENVELOPE':
+
+          # Both producers run the same fail-closed decision guard and bind the
+          # exact generated files by SHA-256 in one atomic commit. The pending
+          # refresh is explicitly non-promoting; accepting its proof does not
+          # change the REAL ALERT gate, it only removes a producer-name race.
+          producer=str(proof.get('producer') or '').strip()
+          producer_prefix={
+              'CANDIDATE_EVIDENCE_ENVELOPE':'candidate-evidence',
+              'PENDING_CONFIRMATION_REFRESH':'pending-confirmation',
+          }
+          if producer not in producer_prefix:
               raise SystemExit('TELEGRAM_DECISION_PUBLICATION_PRODUCER_INVALID')
           if proof.get('decision_validation') != 'PASS' or guard.get('passed') is not True:
               raise SystemExit('TELEGRAM_DECISION_SNAPSHOT_VALIDATION_NOT_PASS')
@@ -89,7 +102,8 @@ jobs:
           run_id=str(proof.get('workflow_run_id') or '').strip()
           source_sha=str(proof.get('source_sha') or '').strip()
           generation_id=str(proof.get('generation_id') or '').strip()
-          if not run_id or len(source_sha) != 40 or generation_id != f'candidate-evidence:{run_id}:{source_sha}':
+          expected_generation=f'{producer_prefix[producer]}:{run_id}:{source_sha}'
+          if not run_id or len(source_sha) != 40 or generation_id != expected_generation:
               raise SystemExit('TELEGRAM_DECISION_PUBLICATION_GENERATION_INVALID')
 
           hashes=proof.get('hashes') or {}
@@ -116,6 +130,7 @@ jobs:
           if real_age > 35*60 or proof_age > 35*60:
               raise SystemExit(f'TELEGRAM_SOURCE_STALE real_age={real_age:.0f}s proof_age={proof_age:.0f}s')
           print('TELEGRAM_COHERENT_DECISION_SOURCE_OK', {
+              'producer': producer,
               'generation_id': generation_id,
               'real_alerts': (real.get('counts') or {}).get('real_alerts'),
               'real_alerts_sha256': actual_real_sha,
