@@ -1,0 +1,93 @@
+name: Wallet500 Revival 90D 15K Telegram
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '10,25,40,55 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/revival_90d_telegram.py'
+      - 'tests/test_revival_90d_telegram.py'
+      - '.github/workflows/revival-90d-telegram.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-revival-90d-telegram
+  cancel-in-progress: false
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install and test 90d 15k alert truth contract
+        run: |
+          pip install -e . pytest
+          python -m pytest -q tests/test_revival_90d_telegram.py
+      - name: Refuse stale revival source
+        run: |
+          set -euo pipefail
+          ts="$(git log -1 --format=%ct -- data/revival-radar.json)"
+          now="$(date +%s)"
+          if [ -z "$ts" ] || [ $((now-ts)) -gt 2700 ]; then
+            echo 'REVIVAL_90D_SOURCE_STALE_GT_45M'
+            exit 1
+          fi
+      - name: Send forward-only 90d 15k revival alerts
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo 'REVIVAL_90D_TELEGRAM_SECRETS_MISSING'
+            exit 1
+          fi
+          python -m wallet500.revival_90d_telegram
+      - name: Validate alert report
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('data/revival-90d-telegram-report.json').read_text())
+          t=d.get('truth_contract') or {}
+          if d.get('mode')!='RESEARCH_ONLY_REVIVAL_90D_15K_TELEGRAM_V1': raise SystemExit('REVIVAL_90D_MODE_INVALID')
+          if d.get('configured') is not True: raise SystemExit('REVIVAL_90D_TELEGRAM_NOT_CONFIGURED')
+          if t.get('research_only') is not True or t.get('production_portfolio_impact')!='NONE': raise SystemExit('REVIVAL_90D_PRODUCTION_LEAK')
+          if t.get('production_gate_changed') is not False or t.get('automatic_buy') is not False: raise SystemExit('REVIVAL_90D_PRODUCTION_GATE_CHANGED')
+          if float(t.get('minimum_pair_age_days') or 0)!=90.0: raise SystemExit('REVIVAL_90D_AGE_DRIFT')
+          if float(t.get('minimum_liquidity_usd') or 0)!=15000.0: raise SystemExit('REVIVAL_90D_LIQ_DRIFT')
+          if t.get('exact_pair_required') is not True or t.get('exact_base_token_identity_required') is not True: raise SystemExit('REVIVAL_90D_IDENTITY_GUARD_MISSING')
+          if t.get('notification_marker')!='🔥🔥🔥': raise SystemExit('REVIVAL_90D_FIRE_MARKER_MISSING')
+          if t.get('no_historical_backfill') is not True or t.get('no_hindsight') is not True: raise SystemExit('REVIVAL_90D_FORWARD_ONLY_GUARD_MISSING')
+          print('REVIVAL_90D_TELEGRAM_OK', {'eligible':d.get('eligible_count'),'baseline':d.get('baseline_count'),'delivered':d.get('delivered_count'),'errors':d.get('error_count')})
+          PY
+      - name: Publish alert state atomically
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          source_sha="$(git rev-parse HEAD)"
+          set +e
+          python scripts/atomic_publish.py \
+            --base "$source_sha" \
+            --fail-on-newer \
+            --message 'alerts: persist 90d 15k Telegram state' \
+            data/revival-90d-telegram-report.json \
+            data/revival-90d-telegram-state.json
+          rc=$?
+          set -e
+          if [ "$rc" -eq 75 ]; then
+            echo 'REVIVAL_90D_STATE_SUPERSEDED_BY_NEWER_MAIN'
+            exit 0
+          fi
+          exit "$rc"
