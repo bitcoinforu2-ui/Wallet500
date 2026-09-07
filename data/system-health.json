@@ -1,16 +1,18 @@
 {
   "version": 7,
   "diagnostic_contract": "FAIL_LOUD_FAIL_SPECIFIC_FAIL_TRACEABLE",
-  "updated_at": "2026-09-05T07:23:41.128885+00:00",
-  "overall": "HEALTHY",
-  "pipeline_health": "HEALTHY",
+  "updated_at": "2026-09-07T01:18:13.106415+00:00",
+  "overall": "DEGRADED",
+  "pipeline_health": "DEGRADED",
   "capability_health": "HEALTHY",
   "failure_summary": {
-    "count": 0,
+    "count": 1,
     "production_blockers": 0,
     "system_production_blockers": 0,
     "candidate_gate_blocks": 0,
-    "codes": []
+    "codes": [
+      "PREVIOUS_PUBLISH_EVIDENCE_STALE_OR_MISSING"
+    ]
   },
   "gate_summary": {
     "holder_cluster_input": 0,
@@ -21,11 +23,40 @@
     "production_authorized_candidates": 0,
     "interpretation": "Candidate gate blocks are correct fail-closed decisions and are separate from system health failures."
   },
-  "failures": [],
+  "failures": [
+    {
+      "component": "publish_pipeline",
+      "status": "DEGRADED",
+      "phase": "PRE_CURRENT_RUN_PUBLISH_STEP_PREVIOUS_COMMIT_EVIDENCE",
+      "age_seconds": 150869.8,
+      "max_age_seconds": 1800,
+      "evidence_status": "READY_TO_PUBLISH",
+      "strict_validation": "PASS",
+      "source_sha": "4e68fc5d59a9edf285d8cffca24c583e3380f1f7",
+      "run_id": "33952326056",
+      "proof_rule": "IF_THIS_FILE_IS_VISIBLE_ON_MAIN_THE_VALIDATED_DATA_COMMIT_WAS_PUSHED_SUCCESSFULLY",
+      "interpretation": "This checks the previous published commit only; current-run publication happens after health and strict validation.",
+      "failure_code": "PREVIOUS_PUBLISH_EVIDENCE_STALE_OR_MISSING",
+      "severity": "MEDIUM",
+      "blocks_production": false,
+      "expected": {
+        "max_age_seconds": 1800,
+        "status": "READY_TO_PUBLISH"
+      },
+      "actual": {
+        "age_seconds": 150869.8,
+        "status": "READY_TO_PUBLISH",
+        "source_sha": "4e68fc5d59a9edf285d8cffca24c583e3380f1f7",
+        "run_id": "33952326056"
+      },
+      "recommended_action": "CHECK_PREVIOUS_PUBLISH_HISTORY; CURRENT_RUN_HAS_NOT_REACHED_PUBLISH_STEP_YET",
+      "diagnosed_at": "2026-09-07T01:18:13.106415+00:00"
+    }
+  ],
   "checks": {
     "primary_scan": {
       "status": "HEALTHY",
-      "age_seconds": 43.1,
+      "age_seconds": 44.8,
       "max_age_seconds": 600,
       "failure_code": "OK",
       "severity": "INFO",
@@ -33,26 +64,34 @@
       "expected": null,
       "actual": null,
       "recommended_action": "NONE",
-      "diagnosed_at": "2026-09-05T07:23:41.128885+00:00"
+      "diagnosed_at": "2026-09-07T01:18:13.106415+00:00"
     },
     "publish_pipeline": {
-      "status": "HEALTHY",
+      "status": "DEGRADED",
       "phase": "PRE_CURRENT_RUN_PUBLISH_STEP_PREVIOUS_COMMIT_EVIDENCE",
-      "age_seconds": 451.2,
+      "age_seconds": 150869.8,
       "max_age_seconds": 1800,
       "evidence_status": "READY_TO_PUBLISH",
       "strict_validation": "PASS",
-      "source_sha": "464c5e0b1f76337f70cf65401a1e0a32df707575",
-      "run_id": "33951989658",
+      "source_sha": "4e68fc5d59a9edf285d8cffca24c583e3380f1f7",
+      "run_id": "33952326056",
       "proof_rule": "IF_THIS_FILE_IS_VISIBLE_ON_MAIN_THE_VALIDATED_DATA_COMMIT_WAS_PUSHED_SUCCESSFULLY",
       "interpretation": "This checks the previous published commit only; current-run publication happens after health and strict validation.",
-      "failure_code": "OK",
-      "severity": "INFO",
+      "failure_code": "PREVIOUS_PUBLISH_EVIDENCE_STALE_OR_MISSING",
+      "severity": "MEDIUM",
       "blocks_production": false,
-      "expected": null,
-      "actual": null,
-      "recommended_action": "NONE",
-      "diagnosed_at": "2026-09-05T07:23:41.128885+00:00"
+      "expected": {
+        "max_age_seconds": 1800,
+        "status": "READY_TO_PUBLISH"
+      },
+      "actual": {
+        "age_seconds": 150869.8,
+        "status": "READY_TO_PUBLISH",
+        "source_sha": "4e68fc5d59a9edf285d8cffca24c583e3380f1f7",
+        "run_id": "33952326056"
+      },
+      "recommended_action": "CHECK_PREVIOUS_PUBLISH_HISTORY; CURRENT_RUN_HAS_NOT_REACHED_PUBLISH_STEP_YET",
+      "diagnosed_at": "2026-09-07T01:18:13.106415+00:00"
     },
     "old_coin_revival": {
       "status": "HEALTHY",
@@ -62,7 +101,7 @@
       "expected": null,
       "actual": null,
       "recommended_action": "NONE",
-      "diagnosed_at": "2026-09-05T07:23:41.128885+00:00"
+      "diagnosed_at": "2026-09-07T01:18:13.106415+00:00"
     },
     "new_token_lab": {
       "status": "HEALTHY",
@@ -76,7 +115,7 @@
       "expected": null,
       "actual": null,
       "recommended_action": "NONE",
-      "diagnosed_at": "2026-09-05T07:23:41.128885+00:00"
+      "diagnosed_at": "2026-09-07T01:18:13.106415+00:00"
     },
     "holder_cluster_fail_closed": {
       "status": "HEALTHY",
@@ -87,7 +126,7 @@
       "expected": null,
       "actual": null,
       "recommended_action": "NONE",
-      "diagnosed_at": "2026-09-05T07:23:41.128885+00:00"
+      "diagnosed_at": "2026-09-07T01:18:13.106415+00:00"
     },
     "liquidity_policy": {
       "status": "HEALTHY",
@@ -100,7 +139,7 @@
       "expected": null,
       "actual": null,
       "recommended_action": "NONE",
-      "diagnosed_at": "2026-09-05T07:23:41.128885+00:00"
+      "diagnosed_at": "2026-09-07T01:18:13.106415+00:00"
     },
     "holder_cluster_evidence_coverage": {
       "status": "HEALTHY",
@@ -115,11 +154,11 @@
       "expected": null,
       "actual": null,
       "recommended_action": "NONE",
-      "diagnosed_at": "2026-09-05T07:23:41.128885+00:00"
+      "diagnosed_at": "2026-09-07T01:18:13.106415+00:00"
     },
     "wallet_forensics": {
       "status": "HEALTHY",
-      "age_seconds": 1.4,
+      "age_seconds": 2.0,
       "source": "active-qualified-candidates.json",
       "active_candidates_expected": 0,
       "active_candidates_seen": 0,
@@ -134,7 +173,7 @@
       "expected": null,
       "actual": null,
       "recommended_action": "NONE",
-      "diagnosed_at": "2026-09-05T07:23:41.128885+00:00"
+      "diagnosed_at": "2026-09-07T01:18:13.106415+00:00"
     },
     "wallet_forensics_capability": {
       "status": "HEALTHY",
@@ -153,7 +192,7 @@
       "expected": null,
       "actual": null,
       "recommended_action": "NONE",
-      "diagnosed_at": "2026-09-05T07:23:41.128885+00:00"
+      "diagnosed_at": "2026-09-07T01:18:13.106415+00:00"
     },
     "wallet_forensics_evidence_yield": {
       "status": "HEALTHY",
@@ -171,7 +210,7 @@
       "expected": null,
       "actual": null,
       "recommended_action": "NONE",
-      "diagnosed_at": "2026-09-05T07:23:41.128885+00:00"
+      "diagnosed_at": "2026-09-07T01:18:13.106415+00:00"
     }
   },
   "lane_metrics": {
@@ -187,7 +226,7 @@
     },
     "revival": {
       "qualified": 0,
-      "cex_revival_alerts": 18
+      "cex_revival_alerts": 75
     },
     "allocation_decision": "VETERAN_COIN_REVIVAL_ONLY"
   }
