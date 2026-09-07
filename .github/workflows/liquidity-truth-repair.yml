@@ -10,6 +10,7 @@ on:
       - 'src/wallet500/liquidity_truth.py'
       - 'src/wallet500/liquidity_truth_guard.py'
       - 'src/wallet500/cex_fast_lane.py'
+      - 'scripts/atomic_publish.py'
       - 'data/cex-revival-radar.json'
       - 'data/real-alerts.json'
       - 'tests/test_liquidity_truth_guard.py'
@@ -32,21 +33,17 @@ jobs:
         with:
           ref: main
           fetch-depth: 1
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Install and test liquidity truth contracts
         run: |
           pip install -e . pytest
           python -m pytest -q tests/test_liquidity_truth_guard.py
-
       - name: Full regression on code or manual repair changes
         if: github.event_name != 'schedule'
         run: python -m pytest -q
-
-      - name: Sanitize latest main and publish with race-safe retries
+      - name: Sanitize latest main and publish atomically
         shell: bash
         run: |
           set -euo pipefail
@@ -56,6 +53,7 @@ jobs:
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
+            source_sha="$(git rev-parse HEAD)"
 
             python - <<'PY'
           from wallet500.liquidity_truth_guard import sanitize_cex_radar, sanitize_real_alerts
@@ -63,24 +61,29 @@ jobs:
           print('REAL_ALERT_LIQUIDITY_TRUTH', sanitize_real_alerts())
           PY
 
-            # The repository integrity audit must pass on the exact files that will be committed.
             python -m pytest -q tests/test_system_integrity_audit.py
 
-            git add data/cex-revival-radar.json data/real-alerts.json
-            if git diff --cached --quiet; then
-              echo 'LIQUIDITY_TRUTH_ALREADY_CLEAN'
-              exit 0
-            fi
+            set +e
+            python scripts/atomic_publish.py \
+              --base "$source_sha" \
+              --fail-on-newer \
+              --message 'data: enforce liquidity truth on latest main' \
+              data/cex-revival-radar.json \
+              data/real-alerts.json
+            rc=$?
+            set -e
 
-            git commit -m 'data: enforce liquidity truth on latest main'
-            if git push origin HEAD:main; then
+            if [ "$rc" -eq 0 ]; then
               echo 'LIQUIDITY_TRUTH_REPAIR_PUBLISHED'
               exit 0
             fi
-
-            echo "LIQUIDITY_TRUTH_RETRY attempt=$attempt"
-            sleep 3
+            if [ "$rc" -eq 75 ]; then
+              echo "LIQUIDITY_TRUTH_RECOMPUTE_REQUIRED attempt=$attempt"
+              sleep 1
+              continue
+            fi
+            exit "$rc"
           done
 
-          echo '::error::LIQUIDITY_TRUTH_REPAIR_RACE_EXHAUSTED'
+          echo '::error::LIQUIDITY_TRUTH_REPAIR_RECOMPUTE_EXHAUSTED'
           exit 1
