@@ -4,9 +4,10 @@
 Rules:
 - validate manifest identity, hashes, and strict validation before publishing;
 - never overwrite a path that changed on main after the source scan;
-- bind publication proof to the exact real-alerts.json digest;
-- if real-alerts changed after the source scan, treat this snapshot as superseded
-  (successful no-op) instead of a false infrastructure failure;
+- bind publication proof to the effective canonical real-alerts.json digest;
+- preserve a newer, independently verified coherent decision snapshot as one unit;
+- if real-alerts changed without a valid coherent decision proof, treat the scan as
+  superseded instead of weakening verification;
 - use commit-tree compare-and-swap retries, never force-push.
 """
 from __future__ import annotations
@@ -21,6 +22,23 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
+DECISION_PROOF = "data/decision-publish-evidence.json"
+DECISION_HASH_PATHS = {
+    "candidate_evidence": "data/candidate-evidence-envelope.json",
+    "real_alerts": "data/real-alerts.json",
+    "revival_funnel": "data/revival-funnel-diagnostics.json",
+    "cross_signal_fusion": "data/cross-signal-fusion-v2.json",
+    "decision_integrity": "data/decision-snapshot-integrity.json",
+}
+# These are the decision-snapshot paths that can also be present in the Live Scan
+# artifact. If a newer coherent decision snapshot exists, preserve this set as a
+# unit instead of mixing generations.
+DECISION_OWNED_LIVE_PATHS = {
+    "data/candidate-evidence-envelope.json",
+    "data/real-alerts.json",
+    "data/revival-funnel-diagnostics.json",
+}
+
 
 def git(*args: str, env: dict[str, str] | None = None, input_text: str | None = None,
         check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -30,6 +48,17 @@ def git(*args: str, env: dict[str, str] | None = None, input_text: str | None = 
     )
     if check and p.returncode:
         raise RuntimeError(f"git {' '.join(args)} failed: {p.stderr.strip()}")
+    return p
+
+
+def git_bytes(*args: str, check: bool = True) -> subprocess.CompletedProcess[bytes]:
+    p = subprocess.run(
+        ["git", *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False
+    )
+    if check and p.returncode:
+        raise RuntimeError(
+            f"git {' '.join(args)} failed: {p.stderr.decode('utf-8', 'replace').strip()}"
+        )
     return p
 
 
@@ -79,7 +108,10 @@ def validate_manifest(root: Path, source_run: int, source_sha: str) -> tuple[dic
         else:
             raise RuntimeError(f"Invalid snapshot item kind for {rel}: {kind!r}")
 
-    real_item = next((x for x in items if x.get("path") == "data/real-alerts.json" and x.get("kind") == "file"), None)
+    real_item = next(
+        (x for x in items if x.get("path") == "data/real-alerts.json" and x.get("kind") == "file"),
+        None,
+    )
     if not real_item or not real_item.get("sha256"):
         raise RuntimeError("Verified snapshot missing immutable real-alerts.json digest")
     return manifest, manifest_bytes
@@ -102,6 +134,86 @@ def published_run(parent: str, watermark: str) -> int:
         return 0
 
 
+def _parent_bytes(parent: str, rel: str) -> bytes | None:
+    p = git_bytes("show", f"{parent}:{rel}", check=False)
+    return p.stdout if p.returncode == 0 else None
+
+
+def verified_decision_snapshot(parent: str) -> dict | None:
+    """Return proof only when every bound decision file on parent matches its hash.
+
+    This is deliberately fail-closed. A malformed/missing proof, missing file, or
+    single digest mismatch means the verified publisher must not preserve the newer
+    decision generation as trusted canonical state.
+    """
+    raw = _parent_bytes(parent, DECISION_PROOF)
+    if raw is None:
+        return None
+    try:
+        proof = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return None
+    if proof.get("status") != "VERIFIED_COHERENT_DECISION_SNAPSHOT":
+        return None
+    if proof.get("decision_validation") != "PASS":
+        return None
+    if proof.get("exact_pair_required") is not True:
+        return None
+    hashes = proof.get("hashes")
+    if not isinstance(hashes, dict):
+        return None
+    for key, rel in DECISION_HASH_PATHS.items():
+        expected = str(hashes.get(key) or "")
+        body = _parent_bytes(parent, rel)
+        if not expected or body is None:
+            return None
+        if hashlib.sha256(body).hexdigest() != expected:
+            return None
+    return proof
+
+
+def _proof_blob(
+    *,
+    source_run: int,
+    source_sha: str,
+    manifest_bytes: bytes,
+    snapshot_real_digest: str,
+    effective_real_digest: str,
+    preserved_decision: dict | None,
+) -> tuple[str, dict]:
+    generation_id = f"live-scan:{source_run}:{source_sha}"
+    preserving = preserved_decision is not None
+    proof = {
+        "version": 3,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": "VERIFIED_PUBLISHED_SNAPSHOT",
+        "run_id": source_run,
+        "source_run_id": source_run,
+        "source_sha": source_sha,
+        "generation_id": generation_id,
+        "strict_validation": "PASS",
+        "scope": "data/",
+        # Effective canonical digest after this commit, not necessarily the copy in
+        # the Live Scan artifact when a fresher coherent decision snapshot wins.
+        "real_alerts_sha256": effective_real_digest,
+        "snapshot_real_alerts_sha256": snapshot_real_digest,
+        "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        "canonical_decision_preserved": preserving,
+        "decision_snapshot_generation_id": (
+            preserved_decision.get("generation_id") if preserving else None
+        ),
+        "decision_snapshot_hashes_verified": preserving,
+        "proof_rule": (
+            "ATOMIC_LIVE_SNAPSHOT_WITH_HASH_VERIFIED_COHERENT_DECISION_PRESERVATION"
+            if preserving
+            else "ATOMIC_WITH_VERIFIED_SNAPSHOT_AND_BOUND_TO_REAL_ALERTS_SHA256"
+        ),
+    }
+    text = json.dumps(proof, indent=2, sort_keys=True) + "\n"
+    blob = git("hash-object", "-w", "--stdin", input_text=text).stdout.strip()
+    return blob, proof
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--snapshot-dir", required=True)
@@ -121,24 +233,7 @@ def main() -> int:
     git("fetch", "--no-tags", "origin", source_sha)
 
     real_item = next(x for x in items if x.get("path") == real_path and x.get("kind") == "file")
-    real_digest = str(real_item["sha256"])
-    generation_id = f"live-scan:{source_run}:{source_sha}"
-    proof = {
-        "version": 2,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "status": "VERIFIED_PUBLISHED_SNAPSHOT",
-        "run_id": source_run,
-        "source_run_id": source_run,
-        "source_sha": source_sha,
-        "generation_id": generation_id,
-        "strict_validation": "PASS",
-        "scope": "data/",
-        "real_alerts_sha256": real_digest,
-        "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
-        "proof_rule": "ATOMIC_WITH_VERIFIED_SNAPSHOT_AND_BOUND_TO_REAL_ALERTS_SHA256",
-    }
-    proof_text = json.dumps(proof, indent=2, sort_keys=True) + "\n"
-    proof_blob = git("hash-object", "-w", "--stdin", input_text=proof_text).stdout.strip()
+    snapshot_real_digest = str(real_item["sha256"])
 
     blobs: dict[str, str] = {}
     for item in items:
@@ -147,7 +242,7 @@ def main() -> int:
         rel = item["path"]
         blobs[rel] = git("hash-object", "-w", str(root / "files" / rel)).stdout.strip()
 
-    print(f"VERIFIED_SNAPSHOT_VALID paths={len(items)} real_alerts_sha256={real_digest}")
+    print(f"VERIFIED_SNAPSHOT_VALID paths={len(items)} real_alerts_sha256={snapshot_real_digest}")
 
     for attempt in range(1, max(1, args.attempts) + 1):
         git("fetch", "origin", "main")
@@ -156,6 +251,14 @@ def main() -> int:
         if current >= source_run:
             print(f"VERIFIED_SNAPSHOT_STALE source_run={source_run} published_run={current}")
             return 0
+
+        decision = verified_decision_snapshot(parent)
+        decision_changed = any(
+            changed_since(source_sha, parent, rel)
+            for rel in DECISION_OWNED_LIVE_PATHS
+            if any(item.get("path") == rel for item in items)
+        )
+        preserve_decision = decision if decision_changed and decision is not None else None
 
         index_path = Path(tempfile.gettempdir()) / f"wallet500-verified-{os.getpid()}-{attempt}.index"
         skipped: list[str] = []
@@ -168,8 +271,15 @@ def main() -> int:
             for item in items:
                 rel = item["path"]
                 if rel == watermark:
-                    # Add proof only if the bound real-alerts path is still eligible below.
                     continue
+
+                # A valid newer candidate/REAL ALERT/funnel snapshot is atomic. If
+                # any part is newer, preserve every overlapping part from that same
+                # generation to prevent denominator/semantic contamination.
+                if preserve_decision is not None and rel in DECISION_OWNED_LIVE_PATHS:
+                    skipped.append(rel)
+                    continue
+
                 if changed_since(source_sha, parent, rel):
                     skipped.append(rel)
                     continue
@@ -179,12 +289,27 @@ def main() -> int:
                     git("update-index", "--force-remove", "--", rel, env=env, check=False)
                 applied.append(rel)
 
-            if real_path in skipped:
-                # A newer real-alerts generation is already on main. This old verified
-                # snapshot is safely superseded; publishing its proof would be invalid.
-                print(f"VERIFIED_SNAPSHOT_SUPERSEDED source_run={source_run} reason=REAL_ALERTS_NEWER_ON_MAIN")
+            if real_path in skipped and preserve_decision is None:
+                print(
+                    f"VERIFIED_SNAPSHOT_SUPERSEDED source_run={source_run} "
+                    "reason=REAL_ALERTS_NEWER_WITHOUT_VALID_COHERENT_DECISION_PROOF"
+                )
                 return 0
 
+            effective_real_digest = snapshot_real_digest
+            if preserve_decision is not None:
+                effective_real_digest = str((preserve_decision.get("hashes") or {}).get("real_alerts") or "")
+                if not effective_real_digest:
+                    raise RuntimeError("Verified decision proof missing real_alerts digest")
+
+            proof_blob, proof = _proof_blob(
+                source_run=source_run,
+                source_sha=source_sha,
+                manifest_bytes=manifest_bytes,
+                snapshot_real_digest=snapshot_real_digest,
+                effective_real_digest=effective_real_digest,
+                preserved_decision=preserve_decision,
+            )
             git("update-index", "--add", "--cacheinfo", f"100644,{proof_blob},{watermark}", env=env)
             applied.append(watermark)
             tree = git("write-tree", env=env).stdout.strip()
@@ -193,16 +318,27 @@ def main() -> int:
 
         if skipped:
             print("VERIFIED_SNAPSHOT_PRESERVED_NEWER " + ",".join(skipped[:40]))
+        if preserve_decision is not None:
+            print(
+                "VERIFIED_DECISION_SNAPSHOT_PRESERVED "
+                f"generation={proof.get('decision_snapshot_generation_id')} "
+                f"real_alerts_sha256={proof.get('real_alerts_sha256')}"
+            )
         parent_tree = git("rev-parse", f"{parent}^{{tree}}").stdout.strip()
         if tree == parent_tree:
             print("VERIFIED_SNAPSHOT_NO_SAFE_CHANGE")
             return 0
 
-        commit = git("commit-tree", tree, "-p", parent,
-                     input_text=f"data: publish verified live scan {source_run}\n").stdout.strip()
+        commit = git(
+            "commit-tree", tree, "-p", parent,
+            input_text=f"data: publish verified live scan {source_run}\n",
+        ).stdout.strip()
         pushed = git("push", "origin", f"{commit}:refs/heads/main", check=False)
         if pushed.returncode == 0:
-            print(f"VERIFIED_PUBLISH_PROOF_OK generation={generation_id} applied={len(applied)} preserved={len(skipped)}")
+            print(
+                f"VERIFIED_PUBLISH_PROOF_OK generation=live-scan:{source_run}:{source_sha} "
+                f"applied={len(applied)} preserved={len(skipped)}"
+            )
             return 0
         print(f"VERIFIED_PUBLISH_RETRY attempt={attempt}", flush=True)
         time.sleep(min(2.0, 0.08 * attempt))
