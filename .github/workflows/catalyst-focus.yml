@@ -2,10 +2,6 @@ name: Wallet500 Catalyst Focus Alerts
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows:
-      - "Wallet500 Catalyst Wire"
-    types: [completed]
   schedule:
     - cron: '*/5 * * * *'
   push:
@@ -18,13 +14,14 @@ on:
 permissions:
   contents: write
 
+# One stateful selector loop only. Raw Catalyst discovery is independent and the
+# immutable ledger prevents a timing gap from losing an event between 5m runs.
 concurrency:
   group: wallet500-catalyst-focus-alerts
   cancel-in-progress: false
 
 jobs:
   focus:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -51,8 +48,10 @@ jobs:
           d=json.loads(Path('data/catalyst-focus-live.json').read_text())
           assert d['mode']=='SELECTIVE_LISTING_FOCUS_ONLY'
           assert d['policy']['raw_listing_telegram'] is False
+          assert d['policy']['silent_watch_before_promotion'] is True
           assert d['policy']['selected_candidates_monitored_until_listing'] is True
-          assert d['policy']['followup_only_on_material_change'] is True
+          assert d['policy']['followup_only_on_material_change_or_countdown'] is True
+          assert d['policy']['focus_score_is_probability'] is False
           assert d['policy']['automatic_trade'] is False
           for x in d.get('new_evaluations',[]):
               if x.get('focus_eligible'):
