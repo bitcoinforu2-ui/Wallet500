@@ -11,6 +11,7 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/waking_fallbacks.py'
+      - 'scripts/atomic_publish.py'
       - 'tests/test_waking_fallbacks.py'
       - '.github/workflows/waking-fallbacks.yml'
 
@@ -124,23 +125,22 @@ jobs:
           if reported!=recomputed: raise SystemExit('WAKING_FALLBACK_PROVIDER_COUNT_MISMATCH')
           print('WAKING_NO_KEY_FALLBACKS_VALID',c,d.get('provider_status_counts'))
           PY
-      - name: Publish enriched Waking snapshots
+      - name: Publish enriched Waking snapshots atomically
+        shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-waking-fallback-bot'
-          git config user.email 'wallet500-waking-fallback-bot@users.noreply.github.com'
-          tmp="$(mktemp -d)"
-          cp data/waking-confirmation-latest.json "$tmp/waking-confirmation-latest.json"
-          cp data/waking-confirmation-state.json "$tmp/waking-confirmation-state.json"
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
-            cp "$tmp/waking-confirmation-latest.json" data/waking-confirmation-latest.json
-            cp "$tmp/waking-confirmation-state.json" data/waking-confirmation-state.json
-            git add data/waking-confirmation-latest.json data/waking-confirmation-state.json
-            if git diff --cached --quiet; then echo 'WAKING_FALLBACK_NO_DATA_CHANGE'; exit 0; fi
-            git commit -m 'data: enrich Waking with no-key holder and Telegram evidence'
-            if git push origin HEAD:main; then echo 'WAKING_FALLBACK_PUBLISH_OK'; exit 0; fi
-            echo "WAKING_FALLBACK_PUBLISH_RETRY attempt=$attempt"; sleep 3
-          done
-          echo '::error::WAKING_FALLBACK_PUBLISH_RACE_EXHAUSTED'; exit 1
+          source_sha="$(git rev-parse HEAD)"
+          set +e
+          python scripts/atomic_publish.py \
+            --base "$source_sha" \
+            --fail-on-newer \
+            --message 'data: enrich Waking with no-key holder and Telegram evidence' \
+            data/waking-confirmation-latest.json \
+            data/waking-confirmation-state.json
+          rc=$?
+          set -e
+          if [ "$rc" -eq 75 ]; then
+            echo 'WAKING_FALLBACK_SUPERSEDED_BY_NEWER_WAKING_STATE'
+            exit 0
+          fi
+          exit "$rc"
