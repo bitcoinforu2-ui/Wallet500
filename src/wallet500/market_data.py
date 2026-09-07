@@ -9,6 +9,8 @@ from .liquidity_reality import compute_liquidity_reality
 
 BASE = "https://api.dexscreener.com"
 EVM_CHAINS = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "polygon", "optimism", "avalanche"}
+VALUATION_LIQUIDITY_MULTIPLE_HARD_MAX = 20.0
+VALUATION_INTERNAL_DIVERGENCE_HARD_MAX = 100.0
 
 
 def _get(path: str, timeout: int = 20):
@@ -32,6 +34,57 @@ def _finite_positive(value) -> float | None:
     except (TypeError, ValueError):
         return None
     return value if math.isfinite(value) and value > 0 else None
+
+
+def _valuation_integrity(liquidity_usd: float, fdv, market_cap, *, target_side: str) -> dict:
+    """Fail closed on impossible supply-derived valuation fields.
+
+    DexScreener marketCap/fdv are useful provider hints, not immutable truth. A
+    bridged/wrapped asset can expose a chain-local supply that makes those fields
+    absurdly small relative to the exact pool's own USD liquidity. In that case
+    Wallet500 must never use the value in scoring, ranking or a buy-facing alert.
+
+    The raw provider values are retained for audit. Only the trusted fields are
+    nulled. This preserves immutable evidence while enforcing UNKNOWN != 0.
+    """
+    raw_fdv = _finite_positive(fdv)
+    raw_mcap = _finite_positive(market_cap)
+    result = {
+        "raw_provider_fdv": raw_fdv,
+        "raw_provider_market_cap": raw_mcap,
+        "fdv": raw_fdv,
+        "market_cap": raw_mcap,
+        "supply_valuation_verified": False,
+        "supply_valuation_status": "UNKNOWN",
+        "supply_valuation_reasons": [],
+    }
+
+    if target_side != "BASE":
+        result.update(fdv=None, market_cap=None, supply_valuation_status="UNAVAILABLE_QUOTE_SIDE")
+        result["supply_valuation_reasons"].append("DEX_PROVIDER_VALUATION_DESCRIBES_BASE_TOKEN")
+        return result
+
+    vals = [x for x in (raw_fdv, raw_mcap) if x is not None]
+    if not vals:
+        result.update(fdv=None, market_cap=None, supply_valuation_status="UNKNOWN_PROVIDER_MISSING")
+        result["supply_valuation_reasons"].append("NO_POSITIVE_PROVIDER_SUPPLY_VALUATION")
+        return result
+
+    maximum = max(vals)
+    minimum = min(vals)
+    if len(vals) == 2 and minimum > 0 and maximum / minimum > VALUATION_INTERNAL_DIVERGENCE_HARD_MAX:
+        result.update(fdv=None, market_cap=None, supply_valuation_status="QUARANTINED_PROVIDER_INTERNAL_DIVERGENCE")
+        result["supply_valuation_reasons"].append("FDV_MARKET_CAP_DIVERGENCE_GT_100X")
+        return result
+
+    if liquidity_usd >= 50_000 and maximum > 0 and liquidity_usd / maximum > VALUATION_LIQUIDITY_MULTIPLE_HARD_MAX:
+        result.update(fdv=None, market_cap=None, supply_valuation_status="QUARANTINED_IMPOSSIBLE_VS_EXACT_POOL_LIQUIDITY")
+        result["supply_valuation_reasons"].append("EXACT_POOL_LIQUIDITY_GT_20X_PROVIDER_VALUATION")
+        return result
+
+    result["supply_valuation_verified"] = True
+    result["supply_valuation_status"] = "PROVIDER_PLAUSIBILITY_PASS"
+    return result
 
 
 def token_pairs(chain: str, token: str) -> list[dict]:
@@ -141,17 +194,18 @@ def _pair_to_snapshot(chain: str, token: str, p: dict | None) -> dict | None:
     if target_side == "BASE":
         buys_h1, sells_h1 = int(h1.get("buys") or 0), int(h1.get("sells") or 0)
         buys_h24, sells_h24 = int(h24.get("buys") or 0), int(h24.get("sells") or 0)
-        target_fdv = float(p.get("fdv") or 0)
-        target_market_cap = float(p.get("marketCap") or 0)
     else:
         # A DexScreener BUY is a base-token buy / quote-token sell, so swap the
         # transaction direction when the tracked asset is quoteToken.
         buys_h1, sells_h1 = int(h1.get("sells") or 0), int(h1.get("buys") or 0)
         buys_h24, sells_h24 = int(h24.get("sells") or 0), int(h24.get("buys") or 0)
-        # DexScreener fdv/marketCap also describe baseToken. Do not misattribute
-        # them to a quote-side target.
-        target_fdv = 0.0
-        target_market_cap = 0.0
+
+    valuation = _valuation_integrity(
+        liq_usd,
+        p.get("fdv") if target_side == "BASE" else None,
+        p.get("marketCap") if target_side == "BASE" else None,
+        target_side=target_side,
+    )
 
     return {
         "chain": chain,
@@ -170,8 +224,7 @@ def _pair_to_snapshot(chain: str, token: str, p: dict | None) -> dict | None:
         "liquidity_base": liq_base,
         "liquidity_quote": liq_quote,
         "liquidity_composition_present": bool(liq_usd > 0 and liq_base > 0 and liq_quote > 0),
-        "fdv": target_fdv,
-        "market_cap": target_market_cap,
+        **valuation,
         "volume_m5": float(vol.get("m5") or 0),
         "volume_h1": float(vol.get("h1") or 0),
         "volume_h6": float(vol.get("h6") or 0),
@@ -199,6 +252,7 @@ def _compact_pool(chain: str, token: str, p: dict) -> dict | None:
             "token_identity_verified", "target_token_side", "base_token_address",
             "quote_token_address", "liquidity_usd", "liquidity_base",
             "liquidity_quote", "quote_token_symbol", "liquidity_composition_present",
+            "supply_valuation_verified", "supply_valuation_status",
             "volume_m5", "volume_h1", "buys_h1", "sells_h1", "pair_created_at",
         )
     }
