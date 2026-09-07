@@ -55,3 +55,24 @@ def test_api_new_instrument_emits_event(monkeypatch):
     events, health, _ = cw._api_events("GATE_SPOT_INSTRUMENTS", "gate", "u", universe, {"snapshot": {}})
     assert len(events) == 1
     assert events[0]["event_type"] == "PREMARKET_OR_AUCTION"
+
+
+def test_decorate_builds_exact_pair_dexscreener_url_when_missing_direct_url():
+    event = {
+        "candidate": {
+            "token": "0x80563fc2dd549bf36f82d3bf3b970bb5b08dbddb",
+            "chain": "bsc",
+            "pair_address": "0x1111111111111111111111111111111111111111",
+            "preliminary_filter_pass": True,
+        }
+    }
+    out = cw._decorate(event)
+    assert out["pair_address"] == "0x1111111111111111111111111111111111111111"
+    assert out["dex_url"] == "https://dexscreener.com/bsc/0x1111111111111111111111111111111111111111"
+    assert "🔗 DEX: https://dexscreener.com/bsc/0x1111111111111111111111111111111111111111" in cw._message(out)
+
+
+def test_no_pair_never_invents_dex_link():
+    out = cw._decorate({"candidate": {"token": "0x1", "chain": "bsc", "preliminary_filter_pass": True}})
+    assert out["dex_url"] is None
+    assert "DEX: unavailable — exact pair not verified" in cw._message(out)
