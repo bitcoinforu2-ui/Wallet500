@@ -102,3 +102,5 @@ def test_connection_confirmation_is_sent_only_once(tmp_path, monkeypatch):
     assert second["connection_confirmation_sent"] is False
     assert len(messages) == 1
     assert "Wallet500 מחובר" in messages[0]
+
+# Manual research-cycle trigger only; no production logic change.
