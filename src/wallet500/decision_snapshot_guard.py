@@ -65,12 +65,11 @@ def _visible_evidence_ready(real: dict) -> int:
 
 
 def _preserve_evidence_ready_visibility(data_dir: Path) -> None:
-    """Mirror missing canonical Evidence Ready rows onto a research-only surface.
+    """Mirror only the current canonical Evidence Ready population.
 
-    real_alerts.build intentionally ranks/truncates the broad watch list for UI size.
-    That must never erase members of the canonical Evidence Ready research population.
-    This bridge copies only already-canonical, already-mintability-sanitized Evidence
-    Ready rows. It does not change thresholds, promotion status or production effect.
+    The dedicated evidence_ready surface exists solely to preserve canonical rows
+    that fall outside the ranked watch-list display window. It must never retain a
+    row that is no longer EVIDENCE_READY in the current sanitized Envelope.
     """
     envelope_path = data_dir / "candidate-evidence-envelope.json"
     real_path = data_dir / "real-alerts.json"
@@ -79,19 +78,34 @@ def _preserve_evidence_ready_visibility(data_dir: Path) -> None:
     if not isinstance(envelope, dict) or not isinstance(real, dict):
         return
 
+    canonical_rows = [
+        row for row in (envelope.get("candidates") or [])
+        if isinstance(row, dict) and row.get("status") == "EVIDENCE_READY"
+    ]
+    canonical = {_identity_key(row): row for row in canonical_rows}
+    canonical_keys = set(canonical)
+
+    old_research = real.get("evidence_ready") if isinstance(real.get("evidence_ready"), list) else []
+    research_rows = [
+        row for row in old_research
+        if isinstance(row, dict) and _identity_key(row) in canonical_keys
+    ]
+    pruned = len(old_research) - len(research_rows)
+
     existing = set()
-    for surface in ("verified_watch", "evidence_ready", "dormant_no_activity"):
+    for surface in ("verified_watch", "dormant_no_activity"):
         rows = real.get(surface) if isinstance(real.get(surface), list) else []
         for row in rows:
             if isinstance(row, dict) and _is_evidence_ready_visible(row):
-                existing.add(_identity_key(row))
+                key = _identity_key(row)
+                if key in canonical_keys:
+                    existing.add(key)
+    for row in research_rows:
+        if _is_evidence_ready_visible(row):
+            existing.add(_identity_key(row))
 
-    research_rows = real.get("evidence_ready") if isinstance(real.get("evidence_ready"), list) else []
     added = 0
-    for row in envelope.get("candidates") or []:
-        if not isinstance(row, dict) or row.get("status") != "EVIDENCE_READY":
-            continue
-        key = _identity_key(row)
+    for key, row in canonical.items():
         if key in existing:
             continue
         truth = row.get("truth") if isinstance(row.get("truth"), dict) else {}
@@ -136,11 +150,14 @@ def _preserve_evidence_ready_visibility(data_dir: Path) -> None:
     real["counts"] = counts
     bridge = real.get("evidence_ready_visibility_bridge") if isinstance(real.get("evidence_ready_visibility_bridge"), dict) else {}
     bridge.update({
-        "version": 1,
+        "version": 2,
         "added_this_run": added,
+        "pruned_stale_this_run": pruned,
         "canonical_visible_count": len(existing),
+        "canonical_envelope_count": len(canonical_keys),
         "production_effect": False,
         "thresholds_changed": False,
+        "stale_carry_over_allowed": False,
     })
     real["evidence_ready_visibility_bridge"] = bridge
     real_path.write_text(json.dumps(real, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -187,17 +204,9 @@ def build(data_dir: Path = DATA) -> dict:
         "visible_across_watch_evidence_dormant": ready_visible,
     }
     if len({ready_envelope, ready_real, ready_funnel}) != 1:
-        fail(
-            "EVIDENCE_READY_COUNT_SKEW",
-            "Envelope, REAL research count and funnel must describe the same post-mintability Evidence Ready population",
-            evidence_counts,
-        )
+        fail("EVIDENCE_READY_COUNT_SKEW", "Envelope, REAL research count and funnel must describe the same post-mintability Evidence Ready population", evidence_counts)
     if ready_visible != ready_envelope:
-        fail(
-            "EVIDENCE_READY_VISIBILITY_SKEW",
-            "Every canonical Evidence Ready token must remain visible on exactly one research surface, including dormant_no_activity",
-            evidence_counts,
-        )
+        fail("EVIDENCE_READY_VISIBILITY_SKEW", "Every canonical Evidence Ready token must remain visible on exactly one research surface, including dormant_no_activity", evidence_counts)
 
     if _int(age.get("minimum_market_age_days")) != MIN_AGE_DAYS:
         fail("ACTIVE_AGE_GATE_SCOPE_DRIFT", "Active age gate must enforce 180d", age.get("minimum_market_age_days"))
@@ -213,12 +222,7 @@ def build(data_dir: Path = DATA) -> dict:
             fail("EVIDENCE_READY_PRODUCTION_LEAK", "Evidence Ready must never authorize production", row.get("key"))
         t = row.get("truth") if isinstance(row.get("truth"), dict) else {}
         c = row.get("coverage") if isinstance(row.get("coverage"), dict) else {}
-        if not (
-            t.get("exact_identity_verified") is True
-            and t.get("exact_pair_verified") is True
-            and t.get("market_age_verified_180d_plus") is True
-            and t.get("execution_liquidity_floor_passed") is True
-        ):
+        if not (t.get("exact_identity_verified") is True and t.get("exact_pair_verified") is True and t.get("market_age_verified_180d_plus") is True and t.get("execution_liquidity_floor_passed") is True):
             fail("EVIDENCE_READY_TRUTH_BREACH", "Evidence Ready row lacks mandatory base truth", row.get("key"))
         if _int(c.get("positive_independent_count")) < 1:
             fail("EVIDENCE_READY_WITHOUT_INDEPENDENT_EVIDENCE", "Evidence Ready requires an independent positive lane", row.get("key"))
@@ -228,11 +232,7 @@ def build(data_dir: Path = DATA) -> dict:
             if not isinstance(row, dict):
                 continue
             chain = str(row.get("chain") or row.get("network") or "").lower()
-            if chain == "solana" and not (
-                row.get("mintability_verified") is True
-                and row.get("mintable") is False
-                and row.get("mint_authority") is None
-            ):
+            if chain == "solana" and not (row.get("mintability_verified") is True and row.get("mintable") is False and row.get("mint_authority") is None):
                 fail("SOLANA_MINTABILITY_PUBLIC_BREACH", "Mintable or unverified Solana token reached a public/research decision surface", {"surface": surface, "token": row.get("token_address")})
 
     for row in real.get("alerts") or []:
@@ -286,18 +286,12 @@ def build(data_dir: Path = DATA) -> dict:
 
 
 def run(data_dir: Path = DATA, fail_on_error: bool = True) -> dict:
-    # Sanitize first so stale precursor/waking rows cannot keep a mintable token
-    # visible after the canonical Revival universe has correctly rejected it.
     sanitize_real_alerts(data_dir)
-    # Preserve canonical research visibility after broad watch-list ranking/truncation.
     _preserve_evidence_ready_visibility(data_dir)
     payload = build(data_dir)
     (data_dir / OUTPUT.name).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if fail_on_error and not payload["passed"]:
-        details = ";".join(
-            f"{x['code']}={json.dumps(x.get('actual'), ensure_ascii=False, sort_keys=True)}"
-            for x in payload["failures"]
-        )
+        details = ";".join(f"{x['code']}={json.dumps(x.get('actual'), ensure_ascii=False, sort_keys=True)}" for x in payload["failures"])
         raise SystemExit("DECISION_SNAPSHOT_COHERENCE_FAILED:" + details)
     return payload
 
