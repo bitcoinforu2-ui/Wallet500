@@ -7,6 +7,7 @@ on:
       - '.github/workflows/policy-threshold-migration-fast.yml'
       - 'scripts/migrate_revival_policy_60d_15k.py'
       - 'scripts/migrate_revival_policy_60d_15k_fixups.py'
+      - 'scripts/migrate_paid_attention_15k.py'
 
 permissions:
   contents: write
@@ -33,6 +34,7 @@ jobs:
         run: |
           python scripts/migrate_revival_policy_60d_15k.py
           python scripts/migrate_revival_policy_60d_15k_fixups.py
+          python scripts/migrate_paid_attention_15k.py
 
       - name: Install package and tests
         run: |
