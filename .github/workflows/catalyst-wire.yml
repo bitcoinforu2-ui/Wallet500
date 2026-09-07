@@ -5,11 +5,16 @@ on:
   pull_request:
     paths:
       - 'src/wallet500/catalyst_wire.py'
+      - 'src/wallet500/catalyst_wire_binance.py'
       - 'src/wallet500/catalyst_focus.py'
+      - 'src/wallet500/catalyst_focus_binance.py'
+      - 'src/wallet500/binance_event_intelligence.py'
       - 'src/wallet500/global_listing_intelligence.py'
       - 'src/wallet500/cross_source_correlation.py'
       - 'tests/test_catalyst_wire.py'
+      - 'tests/test_binance_event_intelligence.py'
       - 'tests/test_catalyst_focus.py'
+      - 'tests/test_catalyst_focus_binance.py'
       - 'tests/test_global_listing_evm_core.py'
       - 'tests/test_cross_source_correlation.py'
       - '.github/workflows/catalyst-wire.yml'
@@ -24,11 +29,16 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/catalyst_wire.py'
+      - 'src/wallet500/catalyst_wire_binance.py'
       - 'src/wallet500/catalyst_focus.py'
+      - 'src/wallet500/catalyst_focus_binance.py'
+      - 'src/wallet500/binance_event_intelligence.py'
       - 'src/wallet500/global_listing_intelligence.py'
       - 'src/wallet500/cross_source_correlation.py'
       - 'tests/test_catalyst_wire.py'
+      - 'tests/test_binance_event_intelligence.py'
       - 'tests/test_catalyst_focus.py'
+      - 'tests/test_catalyst_focus_binance.py'
       - 'tests/test_global_listing_evm_core.py'
       - 'tests/test_cross_source_correlation.py'
       - '.github/workflows/catalyst-wire.yml'
@@ -37,7 +47,7 @@ permissions:
   contents: write
 
 # Raw discovery and Focus selection share one stateful scheduled run. Raw events are
-# never sent to Telegram; only catalyst_focus receives Telegram credentials.
+# never sent to Telegram; only the selective Focus layer receives Telegram credentials.
 concurrency:
   group: wallet500-catalyst-wire-source-scan
   cancel-in-progress: false
@@ -53,8 +63,8 @@ jobs:
           python-version: '3.12'
       - name: Install Wallet500 and test dependency
         run: pip install -e . pytest
-      - name: Lock Catalyst discovery, Focus selection, EVM listing and cross-source truth policy
-        run: pytest -q tests/test_catalyst_wire.py tests/test_catalyst_focus.py tests/test_global_listing_evm_core.py tests/test_cross_source_correlation.py
+      - name: Lock Catalyst discovery, Binance context, Focus selection, EVM listing and cross-source truth policy
+        run: pytest -q tests/test_catalyst_wire.py tests/test_binance_event_intelligence.py tests/test_catalyst_focus.py tests/test_catalyst_focus_binance.py tests/test_global_listing_evm_core.py tests/test_cross_source_correlation.py
 
   wire:
     needs: test
@@ -71,18 +81,18 @@ jobs:
       - name: Install Wallet500
         run: pip install -e .
 
-      - name: Run raw official Catalyst discovery silently
-        run: python -m wallet500.catalyst_wire
+      - name: Run raw official Catalyst discovery with Binance historical context silently
+        run: python -m wallet500.catalyst_wire_binance
 
       # Telegram is deliberately available only to the selective Focus layer.
       # Push/workflow_run refreshes update evidence but cannot emit Focus alerts;
       # the 5-minute schedule (or explicit manual run) owns stateful alert delivery.
-      - name: Run selective Focus monitor and Telegram alerts
+      - name: Run selective Focus monitor with Binance priority Telegram alerts
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python -m wallet500.catalyst_focus
+        run: python -m wallet500.catalyst_focus_binance
 
       - name: Validate raw event feed boundaries
         run: |
@@ -101,6 +111,18 @@ jobs:
                   assert e.get('preliminary_filter_pass') is True
                   assert e.get('forward_new') is True
                   assert e.get('source_url')
+              b=e.get('binance_intelligence') or {}
+              is_binance=str(e.get('source_owner') or '').lower()=='binance' or str(e.get('source_id') or '').upper().startswith('BINANCE_')
+              if is_binance:
+                  assert b.get('applicable') is True
+                  assert b.get('priority')=='FIRE_PRIORITY'
+                  assert b.get('production_effect') is False
+                  assert b.get('automatic_buy') is False
+                  truth=b.get('truth_contract') or {}
+                  assert truth.get('exact_chain_token_identity_required_for_history') is True
+                  assert truth.get('pair_mismatch_rejected_when_both_pairs_known') is True
+                  assert truth.get('symbol_only_history_never_scores') is True
+                  assert truth.get('binance_priority_never_overrides_wallet500_gates') is True
           print('CATALYST_WIRE_TRUTH_OK', d.get('counts'))
           PY
 
@@ -127,6 +149,10 @@ jobs:
                   assert x.get('dex_url')
                   assert (x.get('market') or {}).get('token_identity_verified') is True
                   assert (x.get('market') or {}).get('liquidity_usd',0) >= d['policy']['hard_liquidity_floor_usd']
+              b=x.get('binance_intelligence') or {}
+              if b.get('applicable'):
+                  assert b.get('production_effect') is False
+                  assert b.get('automatic_buy') is False
           print('CATALYST_FOCUS_POLICY_OK', d.get('counts'))
           PY
 
