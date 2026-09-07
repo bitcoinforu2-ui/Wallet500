@@ -64,6 +64,17 @@ jobs:
             git add data/aobs-holder-ledger.json
           fi
           git commit -m 'data: persist AOBS price and holder state [skip ci]'
-          git fetch --depth=20 origin main
-          git rebase origin/main
-          git push origin HEAD:main
+          for attempt in 1 2 3 4 5; do
+            git fetch --depth=20 origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo 'AOBS_STATE_PUBLISH_REBASE_CONFLICT'
+              exit 1
+            fi
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep $((attempt * 2))
+          done
+          echo 'AOBS_STATE_PUBLISH_RETRY_EXHAUSTED'
+          exit 1
