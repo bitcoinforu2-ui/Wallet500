@@ -22,6 +22,7 @@ on:
       - 'src/wallet500/reawakening_forward_tracker.py'
       - 'src/wallet500/reawakening_forward_fast_runner.py'
       - 'src/wallet500/reawakening_telegram.py'
+      - 'scripts/atomic_publish.py'
       - 'tests/test_reawakening_shadow.py'
       - 'tests/test_reawakening_forward_tracker.py'
       - 'tests/test_reawakening_forward_fast_runner.py'
@@ -96,32 +97,29 @@ jobs:
           print('FALSE_NEGATIVE_RECOVERY_V2_OK', d.get('counts'))
           print('DEDICATED_FORWARD_OK', {k:fr.get(k) for k in ('eligible_rejects','exact_pair_successes','exact_pair_misses','observations_added_this_run','state_hot_observations')})
           PY
-      - name: Publish immutable V2 shadow state
+      - name: Publish immutable V2 shadow state atomically
         if: github.event_name != 'pull_request'
+        shell: bash
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
-          tmp="$(mktemp -d)"
-          cp data/reawakening-shadow.json "$tmp/latest.json"
-          cp data/reawakening-shadow-state.json "$tmp/state.json"
-          cp data/reawakening-forward-state.json "$tmp/forward-state.json"
-          cp data/reawakening-forward-report.json "$tmp/forward-report.json"
-          cp data/reawakening-telegram-report.json "$tmp/telegram-report.json"
-          cp data/reawakening-telegram-state.json "$tmp/telegram-state.json"
-          for attempt in 1 2 3 4 5 6 7 8; do
-            git fetch origin main
-            git reset --hard origin/main
-            cp "$tmp/latest.json" data/reawakening-shadow.json
-            cp "$tmp/state.json" data/reawakening-shadow-state.json
-            cp "$tmp/forward-state.json" data/reawakening-forward-state.json
-            cp "$tmp/forward-report.json" data/reawakening-forward-report.json
-            cp "$tmp/telegram-report.json" data/reawakening-telegram-report.json
-            cp "$tmp/telegram-state.json" data/reawakening-telegram-state.json
-            git add data/reawakening-shadow.json data/reawakening-shadow-state.json data/reawakening-forward-state.json data/reawakening-forward-report.json data/reawakening-telegram-report.json data/reawakening-telegram-state.json
-            if git diff --cached --quiet; then exit 0; fi
-            git commit -m 'research: refresh false-negative recovery V2 exact-pair forward state'
-            if git push origin HEAD:main; then exit 0; fi
-            sleep 3
-          done
-          exit 1
+          source_sha="$(git rev-parse HEAD)"
+          set +e
+          python scripts/atomic_publish.py \
+            --base "$source_sha" \
+            --fail-on-newer \
+            --message 'research: refresh false-negative recovery V2 exact-pair forward state' \
+            data/reawakening-shadow.json \
+            data/reawakening-shadow-state.json \
+            data/reawakening-forward-state.json \
+            data/reawakening-forward-report.json \
+            data/reawakening-telegram-report.json \
+            data/reawakening-telegram-state.json
+          rc=$?
+          set -e
+          if [ "$rc" -eq 75 ]; then
+            echo 'REAWAKENING_SNAPSHOT_SUPERSEDED_BY_NEWER_STATE'
+            exit 0
+          fi
+          exit "$rc"
