@@ -1,7 +1,7 @@
 {
   "version": 2,
   "mode": "RESEARCH_ONLY_CANDIDATE_EVIDENCE_ENVELOPE_V1",
-  "generated_at": "2026-09-07T10:43:32.908999+00:00",
+  "generated_at": "2026-09-07T10:47:47.810020+00:00",
   "production_change": false,
   "production_portfolio_impact": "NONE",
   "automatic_buy": false,
@@ -41,57 +41,57 @@
   "source_freshness": {
     "revival": {
       "generated_at": "2026-09-07T10:23:37.832805+00:00",
-      "age_seconds": 1195.1,
+      "age_seconds": 1450.0,
       "max_age_seconds": 7200,
       "fresh": true
     },
     "holder": {
       "generated_at": "2026-09-07T10:25:17.700858+00:00",
-      "age_seconds": 1095.2,
+      "age_seconds": 1350.1,
       "max_age_seconds": 7200,
       "fresh": true
     },
     "wallet": {
       "generated_at": "2026-09-07T10:42:28Z",
-      "age_seconds": 64.9,
+      "age_seconds": 319.8,
       "max_age_seconds": 7200,
       "fresh": true
     },
     "registry": {
       "generated_at": "2026-09-07T10:42:49.797690+00:00",
-      "age_seconds": 43.1,
+      "age_seconds": 298.0,
       "max_age_seconds": 7200,
       "fresh": true
     },
     "precursor": {
       "generated_at": "2026-09-07T10:43:00.015162+00:00",
-      "age_seconds": 32.9,
+      "age_seconds": 287.8,
       "max_age_seconds": 5400,
       "fresh": true
     },
     "waking": {
       "generated_at": "2026-09-07T10:42:54.660780+00:00",
-      "age_seconds": 38.2,
+      "age_seconds": 293.1,
       "max_age_seconds": 5400,
       "fresh": true
     },
     "cex": {
       "generated_at": "2026-09-07T10:06:37.342093+00:00",
-      "age_seconds": 2215.6,
+      "age_seconds": 2470.5,
       "max_age_seconds": 2700,
       "fresh": true
     },
     "pre_t0": {
       "generated_at": "2026-09-07T10:41:23.138701+00:00",
-      "age_seconds": 129.8,
+      "age_seconds": 384.7,
       "max_age_seconds": 7200,
       "fresh": true
     }
   },
   "counts": {
     "universe_with_exact_pair": 285,
-    "evidence_ready": 5,
-    "verified_watch": 190,
+    "evidence_ready": 6,
+    "verified_watch": 189,
     "deep_watch": 58,
     "blocked_truth": 32,
     "with_verified_holder_growth_lane": 284,
@@ -138,26 +138,29 @@
         "pair_volume_change_pct": -1.02
       },
       "adaptive_discovery": {
-        "anomaly_score": 49.45,
-        "velocity_score": 28.0,
-        "persistence_score": 75.0,
-        "signal_family_count": 3,
+        "anomaly_score": 66.4,
+        "velocity_score": 46.0,
+        "persistence_score": 90.0,
+        "signal_family_count": 4,
         "signal_families": [
           "holder_growth",
           "liquidity",
-          "pair_survival"
+          "pair_survival",
+          "verified_social"
         ],
         "signals": [
           "EXACT_PAIR_PERSISTENCE_VERIFIED",
           "LIQUIDITY_RETENTION_PERSISTENT",
           "LIQUIDITY_STABLE_OR_RISING",
-          "POSITIVE_HOLDER_GROWTH"
+          "MULTI_LANE_PERSISTENCE",
+          "POSITIVE_HOLDER_GROWTH",
+          "POSITIVE_VERIFIED_SOCIAL"
         ],
         "pair_volume_change_pct": -1.02,
         "liquidity_change_pct": 0.61,
-        "positive_independent_count": 1,
+        "positive_independent_count": 2,
         "late_move_risk": false,
-        "velocity_positive": false,
+        "velocity_positive": true,
         "persistence_positive": true,
         "anomaly_positive": true,
         "method": "FORWARD_SNAPSHOT_VELOCITY_PERSISTENCE_PROXY_V1"
@@ -231,10 +234,19 @@
           }
         },
         "social": {
-          "verified": false,
-          "positive": false,
-          "status": "MISSING",
-          "metrics": {}
+          "verified": true,
+          "positive": true,
+          "status": "VERIFIED_MULTI_SOURCE_SOCIAL",
+          "source": "WAKING_SOCIAL_MULTI_SOURCE+OFFICIAL_TELEGRAM_V2",
+          "metrics": {
+            "score": 0.0,
+            "signals": [
+              "SOCIAL_MENTIONS_0",
+              "SOCIAL_SOURCES_0",
+              "SOCIAL_AUTHORS_0",
+              "OFFICIAL_TELEGRAM_24H_POSTS_0"
+            ]
+          }
         },
         "pair_survival": {
           "verified": true,
@@ -258,23 +270,24 @@
       "coverage": {
         "verified_independent_lanes": [
           "HOLDER_GROWTH",
-          "SMART_MONEY"
+          "SMART_MONEY",
+          "VERIFIED_SOCIAL"
         ],
         "positive_independent_lanes": [
-          "HOLDER_GROWTH"
+          "HOLDER_GROWTH",
+          "VERIFIED_SOCIAL"
         ],
-        "verified_independent_count": 2,
-        "positive_independent_count": 1,
-        "verified_family_count": 4,
+        "verified_independent_count": 3,
+        "positive_independent_count": 2,
+        "verified_family_count": 5,
         "evidence_ready": true,
         "pre_waking_evidence_ready": false,
         "anomaly_watch": false,
         "market_confirmation_pending": false,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
-        "wallet_attribution_resolved": false,
-        "wallet_attribution_gap_fail_closed": true
+        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
+        "wallet_attribution_resolved": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -286,7 +299,7 @@
       "blockers": [],
       "pending_confirmations": [],
       "verification_outcomes": [
-        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
+        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -330,25 +343,28 @@
         "pair_volume_change_pct": -4.02
       },
       "adaptive_discovery": {
-        "anomaly_score": 41.2,
-        "velocity_score": 18.0,
-        "persistence_score": 70.0,
-        "signal_family_count": 2,
+        "anomaly_score": 58.15,
+        "velocity_score": 36.0,
+        "persistence_score": 85.0,
+        "signal_family_count": 3,
         "signal_families": [
           "holder_growth",
-          "pair_survival"
+          "pair_survival",
+          "verified_social"
         ],
         "signals": [
           "EXACT_PAIR_PERSISTENCE_VERIFIED",
           "LIQUIDITY_RETENTION_PERSISTENT",
+          "MULTI_LANE_PERSISTENCE",
           "POSITIVE_HOLDER_GROWTH",
+          "POSITIVE_VERIFIED_SOCIAL",
           "PRICE_NOT_EXTENDED_24H"
         ],
         "pair_volume_change_pct": -4.02,
         "liquidity_change_pct": -0.16,
-        "positive_independent_count": 1,
+        "positive_independent_count": 2,
         "late_move_risk": false,
-        "velocity_positive": false,
+        "velocity_positive": true,
         "persistence_positive": true,
         "anomaly_positive": true,
         "method": "FORWARD_SNAPSHOT_VELOCITY_PERSISTENCE_PROXY_V1"
@@ -416,16 +432,25 @@
         "waking_confirmation": {
           "verified": false,
           "positive": false,
-          "status": "WAKING_UNCONFIRMED_RESEARCH",
+          "status": "WAKING_RISK_RESEARCH",
           "metrics": {
             "confirmation_score": 10.2
           }
         },
         "social": {
-          "verified": false,
-          "positive": false,
-          "status": "MISSING",
-          "metrics": {}
+          "verified": true,
+          "positive": true,
+          "status": "VERIFIED_MULTI_SOURCE_SOCIAL",
+          "source": "WAKING_SOCIAL_MULTI_SOURCE+OFFICIAL_TELEGRAM_V2",
+          "metrics": {
+            "score": 0.0,
+            "signals": [
+              "SOCIAL_MENTIONS_0",
+              "SOCIAL_SOURCES_0",
+              "SOCIAL_AUTHORS_0",
+              "OFFICIAL_TELEGRAM_24H_POSTS_0"
+            ]
+          }
         },
         "pair_survival": {
           "verified": true,
@@ -449,14 +474,16 @@
       "coverage": {
         "verified_independent_lanes": [
           "HOLDER_GROWTH",
-          "SMART_MONEY"
+          "SMART_MONEY",
+          "VERIFIED_SOCIAL"
         ],
         "positive_independent_lanes": [
-          "HOLDER_GROWTH"
+          "HOLDER_GROWTH",
+          "VERIFIED_SOCIAL"
         ],
-        "verified_independent_count": 2,
-        "positive_independent_count": 1,
-        "verified_family_count": 4,
+        "verified_independent_count": 3,
+        "positive_independent_count": 2,
+        "verified_family_count": 5,
         "evidence_ready": true,
         "pre_waking_evidence_ready": false,
         "anomaly_watch": false,
@@ -521,25 +548,28 @@
         "pair_volume_change_pct": -1.61
       },
       "adaptive_discovery": {
-        "anomaly_score": 41.2,
-        "velocity_score": 18.0,
-        "persistence_score": 70.0,
-        "signal_family_count": 2,
+        "anomaly_score": 58.15,
+        "velocity_score": 36.0,
+        "persistence_score": 85.0,
+        "signal_family_count": 3,
         "signal_families": [
           "holder_growth",
-          "pair_survival"
+          "pair_survival",
+          "verified_social"
         ],
         "signals": [
           "EXACT_PAIR_PERSISTENCE_VERIFIED",
           "LIQUIDITY_RETENTION_PERSISTENT",
+          "MULTI_LANE_PERSISTENCE",
           "POSITIVE_HOLDER_GROWTH",
+          "POSITIVE_VERIFIED_SOCIAL",
           "PRICE_NOT_EXTENDED_24H"
         ],
         "pair_volume_change_pct": -1.61,
         "liquidity_change_pct": -0.95,
-        "positive_independent_count": 1,
+        "positive_independent_count": 2,
         "late_move_risk": false,
-        "velocity_positive": false,
+        "velocity_positive": true,
         "persistence_positive": true,
         "anomaly_positive": true,
         "method": "FORWARD_SNAPSHOT_VELOCITY_PERSISTENCE_PROXY_V1"
@@ -607,16 +637,25 @@
         "waking_confirmation": {
           "verified": false,
           "positive": false,
-          "status": "WAKING_UNCONFIRMED_RESEARCH",
+          "status": "WAKING_RISK_RESEARCH",
           "metrics": {
             "confirmation_score": 15.0
           }
         },
         "social": {
-          "verified": false,
-          "positive": false,
-          "status": "MISSING",
-          "metrics": {}
+          "verified": true,
+          "positive": true,
+          "status": "VERIFIED_MULTI_SOURCE_SOCIAL",
+          "source": "WAKING_SOCIAL_MULTI_SOURCE+OFFICIAL_TELEGRAM_V2",
+          "metrics": {
+            "score": 0.0,
+            "signals": [
+              "SOCIAL_MENTIONS_0",
+              "SOCIAL_SOURCES_0",
+              "SOCIAL_AUTHORS_0",
+              "OFFICIAL_TELEGRAM_24H_POSTS_0"
+            ]
+          }
         },
         "pair_survival": {
           "verified": true,
@@ -640,14 +679,218 @@
       "coverage": {
         "verified_independent_lanes": [
           "HOLDER_GROWTH",
-          "SMART_MONEY"
+          "SMART_MONEY",
+          "VERIFIED_SOCIAL"
         ],
         "positive_independent_lanes": [
-          "HOLDER_GROWTH"
+          "HOLDER_GROWTH",
+          "VERIFIED_SOCIAL"
         ],
-        "verified_independent_count": 2,
+        "verified_independent_count": 3,
+        "positive_independent_count": 2,
+        "verified_family_count": 5,
+        "evidence_ready": true,
+        "pre_waking_evidence_ready": false,
+        "anomaly_watch": false,
+        "market_confirmation_pending": false,
+        "wallet_coverage_observed": true,
+        "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
+        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
+        "wallet_attribution_resolved": false
+      },
+      "rescue_shadow": {
+        "eligible": false,
+        "reason": null,
+        "observation_horizons_hours": [],
+        "delegated_to": null,
+        "no_hindsight": true
+      },
+      "blockers": [],
+      "pending_confirmations": [],
+      "verification_outcomes": [
+        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+      ],
+      "mintability_verified": true,
+      "mintable": false,
+      "mint_authority": null,
+      "mintability_status": "NON_MINTABLE_VERIFIED",
+      "mintability_checked_at": "2026-09-05T00:32:09.671051+00:00"
+    },
+    {
+      "key": "solana:61V8vBaqAGMpgDQi4JcAwo1dmBGHsyhzodcPqnEVpump:j3b6dvhes2y1cbmtvz5tcwxnegsjjdbukxduvdpoqms7",
+      "chain": "solana",
+      "network": "solana",
+      "token_address": "61V8vBaqAGMpgDQi4JcAwo1dmBGHsyhzodcPqnEVpump",
+      "symbol": "ARC",
+      "pair_address": "J3b6dvheS2Y1cbMtVz5TCWXNegSjJDbUKxdUVDPoqmS7",
+      "dex_url": "https://dexscreener.com/solana/j3b6dvhes2y1cbmtvz5tcwxnegsjjdbukxduvdpoqms7",
+      "status": "EVIDENCE_READY",
+      "discovery_tier": "WAKING_EVIDENCE_READY",
+      "production_effect": false,
+      "automatic_buy": false,
+      "truth": {
+        "exact_identity_verified": true,
+        "exact_pair_verified": true,
+        "market_age_verified_180d_plus": true,
+        "market_age_days": 593,
+        "execution_pool_liquidity_usd": 4651700.38,
+        "execution_liquidity_floor_passed": true,
+        "revival_source_fresh": true,
+        "mintability_verified_non_mintable": true
+      },
+      "market": {
+        "revival_score_verified": 67.22,
+        "watch_status": "WAKING_MARKET_ONLY",
+        "market_positive": true,
+        "price_usd": 0.071531,
+        "liquidity_usd": 4651700.38,
+        "volume_24h_usd": 363737.83,
+        "drawdown_from_ath_pct": 88.52192805806189,
+        "change_24h_pct": -1.81185,
+        "change_7d_pct": 0.2,
+        "liquidity_change_pct": 0.02,
+        "pair_volume_change_pct": -5.35
+      },
+      "adaptive_discovery": {
+        "anomaly_score": 52.95,
+        "velocity_score": 28.0,
+        "persistence_score": 85.0,
+        "signal_family_count": 3,
+        "signal_families": [
+          "liquidity",
+          "pair_survival",
+          "verified_social"
+        ],
+        "signals": [
+          "EXACT_PAIR_PERSISTENCE_VERIFIED",
+          "LIQUIDITY_RETENTION_PERSISTENT",
+          "LIQUIDITY_STABLE_OR_RISING",
+          "POSITIVE_VERIFIED_SOCIAL",
+          "PRICE_NOT_EXTENDED_24H"
+        ],
+        "pair_volume_change_pct": -5.35,
+        "liquidity_change_pct": 0.02,
         "positive_independent_count": 1,
-        "verified_family_count": 4,
+        "late_move_risk": false,
+        "velocity_positive": false,
+        "persistence_positive": true,
+        "anomaly_positive": true,
+        "method": "FORWARD_SNAPSHOT_VELOCITY_PERSISTENCE_PROXY_V1"
+      },
+      "families": {
+        "holder_growth": {
+          "verified": true,
+          "positive": false,
+          "status": "FORWARD_VERIFIED",
+          "source": "VERIFIED_DUAL_HOLDER_INTELLIGENCE_V1",
+          "metrics": {
+            "holder_count": 45745,
+            "growth_24h_ready": true,
+            "growth_24h_count": -19,
+            "growth_24h_pct": -0.0415,
+            "growth_7d_ready": false,
+            "growth_7d_count": null,
+            "growth_7d_pct": null
+          }
+        },
+        "wallet_accumulation": {
+          "verified": false,
+          "positive": false,
+          "pair_match": false,
+          "status": "MISSING_OR_PARTIAL",
+          "metrics": {
+            "resolution_pct": null,
+            "resolved_swaps_h1": 0,
+            "unique_traders_h1": null,
+            "first_seen_buyers_h1": 0,
+            "net_accumulating_wallets_h1": 0,
+            "net_distributing_wallets_h1": 0,
+            "wallet_buy_sell_ratio_h1": 0.0
+          }
+        },
+        "smart_money": {
+          "verified": true,
+          "positive": false,
+          "status": "VERIFIED_NONE",
+          "metrics": {
+            "verified_wallets_seen": 43,
+            "historically_qualified_pre_waking_buyers": 0,
+            "waking_t0": "2026-09-06T18:22:50.815283+00:00"
+          }
+        },
+        "cex_revival": {
+          "verified": false,
+          "positive": false,
+          "status": "MISSING",
+          "metrics": {
+            "score": null,
+            "coherent_confirmations": null
+          }
+        },
+        "precursor": {
+          "verified": true,
+          "positive": false,
+          "status": "INSUFFICIENT_PRECURSOR_EVIDENCE",
+          "metrics": {
+            "confidence_adjusted_score": 22.2,
+            "available_evidence_score": 74.0,
+            "evidence_coverage_pct": 30.0
+          }
+        },
+        "waking_confirmation": {
+          "verified": false,
+          "positive": false,
+          "status": "WAKING_UNCONFIRMED_RESEARCH",
+          "metrics": {
+            "confirmation_score": 3.6
+          }
+        },
+        "social": {
+          "verified": true,
+          "positive": true,
+          "status": "VERIFIED_MULTI_SOURCE_SOCIAL",
+          "source": "WAKING_SOCIAL_MULTI_SOURCE+OFFICIAL_TELEGRAM_V2",
+          "metrics": {
+            "score": 0.0,
+            "signals": [
+              "SOCIAL_MENTIONS_0",
+              "SOCIAL_SOURCES_0",
+              "SOCIAL_AUTHORS_0",
+              "OFFICIAL_TELEGRAM_24H_POSTS_0"
+            ]
+          }
+        },
+        "pair_survival": {
+          "verified": true,
+          "positive": true,
+          "status": "SURVIVED_PREVIOUS_EXACT_PAIR"
+        },
+        "concentration": {
+          "verified": false,
+          "positive": false,
+          "role": "RISK_CONTEXT_ONLY_NEVER_POSITIVE_ALPHA",
+          "status": "MISSING",
+          "metrics": {
+            "top1_pct": null,
+            "top5_pct": null,
+            "top10_pct": null,
+            "top20_pct": null,
+            "concentration_risk_score": null
+          }
+        }
+      },
+      "coverage": {
+        "verified_independent_lanes": [
+          "HOLDER_GROWTH",
+          "SMART_MONEY",
+          "VERIFIED_SOCIAL"
+        ],
+        "positive_independent_lanes": [
+          "VERIFIED_SOCIAL"
+        ],
+        "verified_independent_count": 3,
+        "positive_independent_count": 1,
+        "verified_family_count": 5,
         "evidence_ready": true,
         "pre_waking_evidence_ready": false,
         "anomaly_watch": false,
@@ -797,7 +1040,7 @@
         "waking_confirmation": {
           "verified": false,
           "positive": false,
-          "status": "WAKING_UNCONFIRMED_RESEARCH",
+          "status": "WAKING_RISK_RESEARCH",
           "metrics": {
             "confirmation_score": 7.2
           }
@@ -844,8 +1087,9 @@
         "market_confirmation_pending": false,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
-        "wallet_attribution_resolved": false
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -857,7 +1101,7 @@
       "blockers": [],
       "pending_confirmations": [],
       "verification_outcomes": [
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -987,7 +1231,7 @@
         "waking_confirmation": {
           "verified": false,
           "positive": false,
-          "status": "WAKING_UNCONFIRMED_RESEARCH",
+          "status": "WAKING_RISK_RESEARCH",
           "metrics": {
             "confirmation_score": 11.25
           }
@@ -1230,8 +1474,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -1244,7 +1489,7 @@
       "pending_confirmations": [],
       "verification_outcomes": [
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -2584,8 +2829,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
-        "wallet_attribution_resolved": false
+        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
+        "wallet_attribution_resolved": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -2778,9 +3023,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
-        "wallet_attribution_resolved": false,
-        "wallet_attribution_gap_fail_closed": true
+        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
+        "wallet_attribution_resolved": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -2793,7 +3037,7 @@
       "pending_confirmations": [],
       "verification_outcomes": [
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
+        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -2974,8 +3218,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
+        "wallet_attribution_resolved": false
       },
       "rescue_shadow": {
         "eligible": false,
@@ -3556,8 +3800,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_NOT_TARGET_MINT",
-        "wallet_attribution_resolved": false
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -3570,7 +3815,7 @@
       "pending_confirmations": [],
       "verification_outcomes": [
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -4329,8 +4574,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
+        "wallet_attribution_resolved": false
       },
       "rescue_shadow": {
         "eligible": false,
@@ -10097,9 +10342,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
-        "wallet_attribution_resolved": false,
-        "wallet_attribution_gap_fail_closed": true
+        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
+        "wallet_attribution_resolved": false
       },
       "rescue_shadow": {
         "eligible": false,
@@ -10112,7 +10356,7 @@
       "pending_confirmations": [],
       "verification_outcomes": [
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
+        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -13339,8 +13583,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -13353,7 +13598,7 @@
       "pending_confirmations": [],
       "verification_outcomes": [
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -13529,8 +13774,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -13543,7 +13789,7 @@
       "pending_confirmations": [],
       "verification_outcomes": [
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -15430,8 +15676,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
-        "wallet_attribution_resolved": false
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -15444,7 +15691,7 @@
       "pending_confirmations": [],
       "verification_outcomes": [
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -16777,9 +17024,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
-        "wallet_attribution_resolved": false,
-        "wallet_attribution_gap_fail_closed": true
+        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
+        "wallet_attribution_resolved": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -16793,7 +17039,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
+        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -17740,8 +17986,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -17755,7 +18002,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -18500,9 +18747,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
-        "wallet_attribution_resolved": false,
-        "wallet_attribution_gap_fail_closed": true
+        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
+        "wallet_attribution_resolved": false
       },
       "rescue_shadow": {
         "eligible": false,
@@ -18516,7 +18762,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
+        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -18883,8 +19129,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
+        "wallet_attribution_resolved": false
       },
       "rescue_shadow": {
         "eligible": false,
@@ -19074,8 +19320,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
+        "wallet_attribution_resolved": false
       },
       "rescue_shadow": {
         "eligible": false,
@@ -19861,7 +20107,7 @@
       "mintable": false,
       "mint_authority": null,
       "mintability_status": "NON_MINTABLE_VERIFIED",
-      "mintability_checked_at": "2026-09-07T10:43:33.608270+00:00"
+      "mintability_checked_at": "2026-09-07T10:47:48.529200+00:00"
     },
     {
       "key": "solana:ch7rTovcUK7C1zNFM7F93kXU2CByYUsJT4pwYx7pump:h9yaf1gvanurxq4latfvf56unappk1fu8jqc8xy6fydg",
@@ -20798,8 +21044,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
-        "wallet_attribution_resolved": false
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -20813,7 +21060,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -22330,8 +22577,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_NOT_TARGET_MINT",
-        "wallet_attribution_resolved": false
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -22345,7 +22593,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -28000,8 +28248,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
-        "wallet_attribution_resolved": false
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -28015,7 +28264,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -28567,8 +28816,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
+        "wallet_attribution_resolved": false
       },
       "rescue_shadow": {
         "eligible": false,
@@ -30460,8 +30709,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -30475,7 +30725,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -31027,8 +31277,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -31042,7 +31293,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -32352,8 +32603,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -32367,7 +32619,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -35589,7 +35841,7 @@
       "mintable": false,
       "mint_authority": null,
       "mintability_status": "NON_MINTABLE_VERIFIED",
-      "mintability_checked_at": "2026-09-07T10:43:33.608270+00:00"
+      "mintability_checked_at": "2026-09-07T10:47:48.529200+00:00"
     },
     {
       "key": "solana:CreiuhfwdWCN5mJbMJtA9bBpYQrQF2tCBuZwSPWfpump:hceas2dbsrcrhnuzbvpkuasz7x3ovu9ekzxmc5zdsz4j",
@@ -35947,9 +36199,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
-        "wallet_attribution_resolved": false,
-        "wallet_attribution_gap_fail_closed": true
+        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
+        "wallet_attribution_resolved": true
       },
       "rescue_shadow": {
         "eligible": false,
@@ -35963,7 +36214,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
+        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -36515,8 +36766,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
+        "wallet_attribution_resolved": false
       },
       "rescue_shadow": {
         "eligible": false,
@@ -36719,195 +36970,6 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
-      ],
-      "mintability_verified": true,
-      "mintable": false,
-      "mint_authority": null,
-      "mintability_status": "NON_MINTABLE_VERIFIED",
-      "mintability_checked_at": "2026-09-05T00:32:09.671051+00:00"
-    },
-    {
-      "key": "solana:61V8vBaqAGMpgDQi4JcAwo1dmBGHsyhzodcPqnEVpump:j3b6dvhes2y1cbmtvz5tcwxnegsjjdbukxduvdpoqms7",
-      "chain": "solana",
-      "network": "solana",
-      "token_address": "61V8vBaqAGMpgDQi4JcAwo1dmBGHsyhzodcPqnEVpump",
-      "symbol": "ARC",
-      "pair_address": "J3b6dvheS2Y1cbMtVz5TCWXNegSjJDbUKxdUVDPoqmS7",
-      "dex_url": "https://dexscreener.com/solana/j3b6dvhes2y1cbmtvz5tcwxnegsjjdbukxduvdpoqms7",
-      "status": "VERIFIED_WATCH",
-      "discovery_tier": "WAKING_MARKET_WATCH",
-      "production_effect": false,
-      "automatic_buy": false,
-      "truth": {
-        "exact_identity_verified": true,
-        "exact_pair_verified": true,
-        "market_age_verified_180d_plus": true,
-        "market_age_days": 593,
-        "execution_pool_liquidity_usd": 4651700.38,
-        "execution_liquidity_floor_passed": true,
-        "revival_source_fresh": true,
-        "mintability_verified_non_mintable": true
-      },
-      "market": {
-        "revival_score_verified": 67.22,
-        "watch_status": "WAKING_MARKET_ONLY",
-        "market_positive": true,
-        "price_usd": 0.071531,
-        "liquidity_usd": 4651700.38,
-        "volume_24h_usd": 363737.83,
-        "drawdown_from_ath_pct": 88.52192805806189,
-        "change_24h_pct": -1.81185,
-        "change_7d_pct": 0.2,
-        "liquidity_change_pct": 0.02,
-        "pair_volume_change_pct": -5.35
-      },
-      "adaptive_discovery": {
-        "anomaly_score": 41.25,
-        "velocity_score": 10.0,
-        "persistence_score": 85.0,
-        "signal_family_count": 2,
-        "signal_families": [
-          "liquidity",
-          "pair_survival"
-        ],
-        "signals": [
-          "EXACT_PAIR_PERSISTENCE_VERIFIED",
-          "LIQUIDITY_RETENTION_PERSISTENT",
-          "LIQUIDITY_STABLE_OR_RISING",
-          "PRICE_NOT_EXTENDED_24H"
-        ],
-        "pair_volume_change_pct": -5.35,
-        "liquidity_change_pct": 0.02,
-        "positive_independent_count": 0,
-        "late_move_risk": false,
-        "velocity_positive": false,
-        "persistence_positive": true,
-        "anomaly_positive": true,
-        "method": "FORWARD_SNAPSHOT_VELOCITY_PERSISTENCE_PROXY_V1"
-      },
-      "families": {
-        "holder_growth": {
-          "verified": true,
-          "positive": false,
-          "status": "FORWARD_VERIFIED",
-          "source": "VERIFIED_DUAL_HOLDER_INTELLIGENCE_V1",
-          "metrics": {
-            "holder_count": 45745,
-            "growth_24h_ready": true,
-            "growth_24h_count": -19,
-            "growth_24h_pct": -0.0415,
-            "growth_7d_ready": false,
-            "growth_7d_count": null,
-            "growth_7d_pct": null
-          }
-        },
-        "wallet_accumulation": {
-          "verified": false,
-          "positive": false,
-          "pair_match": false,
-          "status": "MISSING_OR_PARTIAL",
-          "metrics": {
-            "resolution_pct": null,
-            "resolved_swaps_h1": 0,
-            "unique_traders_h1": null,
-            "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 0,
-            "net_distributing_wallets_h1": 0,
-            "wallet_buy_sell_ratio_h1": 0.0
-          }
-        },
-        "smart_money": {
-          "verified": true,
-          "positive": false,
-          "status": "VERIFIED_NONE",
-          "metrics": {
-            "verified_wallets_seen": 43,
-            "historically_qualified_pre_waking_buyers": 0,
-            "waking_t0": "2026-09-06T18:22:50.815283+00:00"
-          }
-        },
-        "cex_revival": {
-          "verified": false,
-          "positive": false,
-          "status": "MISSING",
-          "metrics": {
-            "score": null,
-            "coherent_confirmations": null
-          }
-        },
-        "precursor": {
-          "verified": true,
-          "positive": false,
-          "status": "INSUFFICIENT_PRECURSOR_EVIDENCE",
-          "metrics": {
-            "confidence_adjusted_score": 22.2,
-            "available_evidence_score": 74.0,
-            "evidence_coverage_pct": 30.0
-          }
-        },
-        "waking_confirmation": {
-          "verified": false,
-          "positive": false,
-          "status": "WAKING_UNCONFIRMED_RESEARCH",
-          "metrics": {
-            "confirmation_score": 3.6
-          }
-        },
-        "social": {
-          "verified": false,
-          "positive": false,
-          "status": "MISSING",
-          "metrics": {}
-        },
-        "pair_survival": {
-          "verified": true,
-          "positive": true,
-          "status": "SURVIVED_PREVIOUS_EXACT_PAIR"
-        },
-        "concentration": {
-          "verified": false,
-          "positive": false,
-          "role": "RISK_CONTEXT_ONLY_NEVER_POSITIVE_ALPHA",
-          "status": "MISSING",
-          "metrics": {
-            "top1_pct": null,
-            "top5_pct": null,
-            "top10_pct": null,
-            "top20_pct": null,
-            "concentration_risk_score": null
-          }
-        }
-      },
-      "coverage": {
-        "verified_independent_lanes": [
-          "HOLDER_GROWTH",
-          "SMART_MONEY"
-        ],
-        "positive_independent_lanes": [],
-        "verified_independent_count": 2,
-        "positive_independent_count": 0,
-        "verified_family_count": 4,
-        "evidence_ready": false,
-        "pre_waking_evidence_ready": false,
-        "anomaly_watch": false,
-        "market_confirmation_pending": false,
-        "wallet_coverage_observed": true,
-        "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
-      },
-      "rescue_shadow": {
-        "eligible": false,
-        "reason": null,
-        "observation_horizons_hours": [],
-        "delegated_to": null,
-        "no_hindsight": true
-      },
-      "blockers": [],
-      "pending_confirmations": [],
-      "verification_outcomes": [
-        "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
       ],
       "mintability_verified": true,
@@ -37223,7 +37285,7 @@
         "waking_confirmation": {
           "verified": false,
           "positive": false,
-          "status": "WAKING_UNCONFIRMED_RESEARCH",
+          "status": "WAKING_RISK_RESEARCH",
           "metrics": {
             "confirmation_score": 0.0
           }
@@ -39192,8 +39254,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
+        "wallet_attribution_resolved": false
       },
       "rescue_shadow": {
         "eligible": true,
@@ -39578,9 +39640,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
-        "wallet_attribution_resolved": false,
-        "wallet_attribution_gap_fail_closed": true
+        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
+        "wallet_attribution_resolved": true
       },
       "rescue_shadow": {
         "eligible": true,
@@ -39598,7 +39659,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
+        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -39772,8 +39833,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_NOT_TARGET_MINT",
-        "wallet_attribution_resolved": false
+        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
+        "wallet_attribution_resolved": true
       },
       "rescue_shadow": {
         "eligible": true,
@@ -40159,9 +40220,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
-        "wallet_attribution_resolved": false,
-        "wallet_attribution_gap_fail_closed": true
+        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
+        "wallet_attribution_resolved": true
       },
       "rescue_shadow": {
         "eligible": true,
@@ -40179,7 +40239,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
+        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -43420,9 +43480,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
-        "wallet_attribution_resolved": false,
-        "wallet_attribution_gap_fail_closed": true
+        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
+        "wallet_attribution_resolved": true
       },
       "rescue_shadow": {
         "eligible": true,
@@ -43440,7 +43499,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
+        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -43612,8 +43671,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
-        "wallet_attribution_resolved": false
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": true,
@@ -43631,7 +43691,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -44185,8 +44245,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": true,
@@ -44204,7 +44265,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -44759,8 +44820,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
-        "wallet_attribution_resolved": false
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": true,
@@ -44778,7 +44840,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -46480,8 +46542,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
-        "wallet_attribution_resolved": false
+        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
+        "wallet_attribution_resolved": true
       },
       "rescue_shadow": {
         "eligible": true,
@@ -46889,7 +46951,7 @@
       "mintable": false,
       "mint_authority": null,
       "mintability_status": "NON_MINTABLE_VERIFIED",
-      "mintability_checked_at": "2026-09-07T10:43:33.608270+00:00"
+      "mintability_checked_at": "2026-09-07T10:47:48.529200+00:00"
     },
     {
       "key": "solana:AT13ipG8K4HDyEJm3H1ZVQV2Bw8sihewoLQReSMsYo3o:cqmwcyb7fgor8z7as56yxbqzwjy7mnactmj6wulhgv5h",
@@ -47438,8 +47500,9 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
+        "wallet_attribution_resolved": false,
+        "wallet_attribution_gap_fail_closed": true
       },
       "rescue_shadow": {
         "eligible": true,
@@ -47457,7 +47520,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
+        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -48411,7 +48474,7 @@
       "mintable": false,
       "mint_authority": null,
       "mintability_status": "NON_MINTABLE_VERIFIED",
-      "mintability_checked_at": "2026-09-07T10:43:33.608270+00:00"
+      "mintability_checked_at": "2026-09-07T10:47:48.529200+00:00"
     },
     {
       "key": "solana:H94yBE9hRVFHEcyqtbP4tW7YGRqBUA6qFQrDHMZTe56J:dg91befdbhsibyffms35apx9zxiet7dq26wnjdww46wa",
@@ -49754,8 +49817,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "VERIFIED_SIGNED_OWNER_TARGET_TOUCH",
-        "wallet_attribution_resolved": true
+        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
+        "wallet_attribution_resolved": false
       },
       "rescue_shadow": {
         "eligible": true,
@@ -52274,9 +52337,8 @@
         "market_confirmation_pending": true,
         "wallet_coverage_observed": true,
         "wallet_coverage_observation_role": "NON_PROMOTING_BROAD_PROBE",
-        "wallet_coverage_probe_status": "PARTIAL_TARGET_TOUCH_OWNER_UNRESOLVED",
-        "wallet_attribution_resolved": false,
-        "wallet_attribution_gap_fail_closed": true
+        "wallet_coverage_probe_status": "VERIFIED_LATEST_PAIR_TRANSACTION_FAILED",
+        "wallet_attribution_resolved": false
       },
       "rescue_shadow": {
         "eligible": true,
@@ -52296,7 +52358,7 @@
       "verification_outcomes": [
         "INDEPENDENT_EVIDENCE_VERIFIED_NOT_POSITIVE",
         "MARKET_EVIDENCE_VERIFIED_NOT_POSITIVE",
-        "WALLET_ATTRIBUTION_GAP_VERIFIED_FAIL_CLOSED"
+        "WALLET_COVERAGE_VERIFIED_NON_PROMOTING_PROBE"
       ],
       "mintability_verified": true,
       "mintable": false,
@@ -54586,9 +54648,9 @@
   "pending_confirmation_normalization": {
     "version": 3,
     "market_reclassified_verified_not_positive": 273,
-    "independent_reclassified_verified_not_positive": 188,
-    "wallet_reclassified_coverage_observed_non_promoting": 195,
-    "wallet_reclassified_attribution_gap_fail_closed": 68,
+    "independent_reclassified_verified_not_positive": 187,
+    "wallet_reclassified_coverage_observed_non_promoting": 188,
+    "wallet_reclassified_attribution_gap_fail_closed": 75,
     "wallet_probe_fresh": true,
     "wallet_probe_rows": 285,
     "promotion_changed": false,
