@@ -11,14 +11,14 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/verified-publisher.yml'
+      - 'scripts/publish_verified_snapshot.py'
 
 permissions:
   actions: read
   contents: write
 
-# Freshness-first serialized publishing lane. A newer publisher cancels an older
-# queued/running publisher, and immutable scan data can never overwrite a path
-# that main changed after the scan's source SHA.
+# Freshness-first serialized publishing lane. Immutable scan data can never
+# overwrite paths changed on main after the scan source SHA.
 concurrency:
   group: wallet500-verified-snapshot-publisher
   cancel-in-progress: true
@@ -78,206 +78,16 @@ jobs:
           ref: main
           fetch-depth: 1
 
-      - name: Validate handoff manifest
-        env:
-          SNAPSHOT_DIR: ${{ runner.temp }}/wallet500-verified-snapshot
-          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
-          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import hashlib, json, os
-          from pathlib import Path, PurePosixPath
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-          root=Path(os.environ['SNAPSHOT_DIR']).resolve()
-          manifest_path=root/'manifest.json'
-          if not manifest_path.is_file():
-              raise SystemExit('Missing verified snapshot manifest')
-          manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
-          if manifest.get('version') != 1:
-              raise SystemExit('Unsupported verified snapshot manifest version')
-          if str(manifest.get('source_run_id')) != str(os.environ['SOURCE_RUN_ID']):
-              raise SystemExit('Snapshot source run mismatch')
-          if str(manifest.get('source_sha')) != str(os.environ['SOURCE_SHA']):
-              raise SystemExit('Snapshot source SHA mismatch')
-          if manifest.get('strict_validation') != 'PASS':
-              raise SystemExit('Snapshot strict validation is not PASS')
-          items=manifest.get('items')
-          if not isinstance(items,list) or not items:
-              raise SystemExit('Verified snapshot contains no data paths')
-
-          seen=set()
-          for item in items:
-              if not isinstance(item,dict):
-                  raise SystemExit('Malformed snapshot item')
-              path=str(item.get('path') or '')
-              kind=item.get('kind')
-              pp=PurePosixPath(path)
-              if not path.startswith('data/') or pp.is_absolute() or '..' in pp.parts:
-                  raise SystemExit(f'Unsafe snapshot path: {path!r}')
-              if path in seen:
-                  raise SystemExit(f'Duplicate snapshot path: {path}')
-              seen.add(path)
-              target=(root/'files'/path).resolve()
-              files_root=(root/'files').resolve()
-              if files_root not in target.parents:
-                  raise SystemExit(f'Path escaped snapshot root: {path}')
-              if kind == 'file':
-                  if not target.is_file():
-                      raise SystemExit(f'Missing snapshot file: {path}')
-                  digest=hashlib.sha256(target.read_bytes()).hexdigest()
-                  if digest != item.get('sha256'):
-                      raise SystemExit(f'SHA256 mismatch: {path}')
-              elif kind == 'delete':
-                  if target.exists():
-                      raise SystemExit(f'Delete item unexpectedly contains file: {path}')
-              else:
-                  raise SystemExit(f'Invalid snapshot item kind for {path}: {kind!r}')
-          real_item=next((x for x in items if x.get('path')=='data/real-alerts.json' and x.get('kind')=='file'),None)
-          if not real_item or not real_item.get('sha256'):
-              raise SystemExit('Verified snapshot missing immutable real-alerts.json digest')
-          print(f'Validated immutable handoff: {len(items)} data paths; real-alerts digest bound')
-          PY
-
-      - name: Publish verified snapshot atomically without stale path overwrite
-        env:
-          SNAPSHOT_DIR: ${{ runner.temp }}/wallet500-verified-snapshot
-          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
-          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+      - name: Validate and publish verified snapshot atomically
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          python - <<'PY'
-          import hashlib, json, os, subprocess, tempfile, time
-          from datetime import datetime, timezone
-          from pathlib import Path
-
-          root=Path(os.environ['SNAPSHOT_DIR']).resolve()
-          manifest_path=root/'manifest.json'
-          manifest_bytes=manifest_path.read_bytes()
-          manifest=json.loads(manifest_bytes.decode('utf-8'))
-          source_run=int(os.environ['SOURCE_RUN_ID'])
-          source_sha=str(os.environ['SOURCE_SHA']).strip()
-          watermark='data/publish-evidence.json'
-          real_path='data/real-alerts.json'
-
-          def git(*args, env=None, input_text=None, check=True):
-              p=subprocess.run(
-                  ['git',*args], text=True, input=input_text,
-                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                  env=env, check=False)
-              if check and p.returncode:
-                  raise SystemExit(f"git {' '.join(args)} failed: {p.stderr.strip()}")
-              return p
-
-          # The scan base is needed for path-level optimistic concurrency checks.
-          # If another workflow changed a path after this scan started, the current
-          # main copy wins and the stale snapshot is forbidden from overwriting it.
-          git('fetch','--no-tags','--depth=1','origin',source_sha)
-
-          real_item=next((x for x in manifest['items'] if x.get('path')==real_path and x.get('kind')=='file'),None)
-          if not real_item or not real_item.get('sha256'):
-              raise SystemExit('Verified snapshot missing immutable real-alerts digest')
-          real_digest=str(real_item['sha256'])
-          generation_id=f'live-scan:{source_run}:{source_sha}'
-          proof={
-              'version':2,
-              'created_at':datetime.now(timezone.utc).isoformat(),
-              'status':'VERIFIED_PUBLISHED_SNAPSHOT',
-              'run_id':source_run,
-              'source_run_id':source_run,
-              'source_sha':source_sha,
-              'generation_id':generation_id,
-              'strict_validation':'PASS',
-              'scope':'data/',
-              'real_alerts_sha256':real_digest,
-              'manifest_sha256':hashlib.sha256(manifest_bytes).hexdigest(),
-              'proof_rule':'ATOMIC_WITH_VERIFIED_SNAPSHOT_AND_BOUND_TO_REAL_ALERTS_SHA256',
-          }
-          proof_text=json.dumps(proof,indent=2,sort_keys=True)+'\n'
-          proof_blob=git('hash-object','-w','--stdin',input_text=proof_text).stdout.strip()
-
-          blobs={}
-          for item in manifest['items']:
-              if item['kind']!='file' or item['path']==watermark:
-                  continue
-              rel=item['path']
-              src=root/'files'/rel
-              p=git('hash-object','-w',str(src))
-              blobs[rel]=p.stdout.strip()
-          print(f'Prepared {len(blobs)} immutable data blobs plus atomic publication proof')
-
-          def published_run(parent):
-              p=git('show',f'{parent}:{watermark}',check=False)
-              if p.returncode:
-                  return 0
-              try:
-                  return int(json.loads(p.stdout).get('run_id') or 0)
-              except Exception:
-                  return 0
-
-          def changed_on_main_since_scan(parent, rel):
-              p=git('diff','--quiet',source_sha,parent,'--',rel,check=False)
-              if p.returncode not in (0,1):
-                  raise SystemExit(f'Unable to compare freshness for {rel}: {p.stderr.strip()}')
-              return p.returncode == 1
-
-          max_attempts=40
-          for attempt in range(1,max_attempts+1):
-              print(f'Publisher attempt {attempt}/{max_attempts} for source run {source_run}',flush=True)
-              git('fetch','origin','main')
-              parent=git('rev-parse','origin/main').stdout.strip()
-              current=published_run(parent)
-              if current >= source_run:
-                  print(f'Refusing duplicate/stale verified snapshot {source_run}; main watermark is {current}')
-                  raise SystemExit(0)
-
-              index_path=Path(tempfile.gettempdir())/f'wallet500-publish-{os.getpid()}.index'
-              skipped=[]
-              applied=[]
-              try:
-                  index_path.unlink(missing_ok=True)
-                  env=os.environ.copy()
-                  env['GIT_INDEX_FILE']=str(index_path)
-                  git('read-tree',parent,env=env)
-                  for item in manifest['items']:
-                      rel=item['path']
-                      if rel==watermark:
-                          git('update-index','--add','--cacheinfo',f'100644,{proof_blob},{rel}',env=env)
-                          applied.append(rel)
-                          continue
-                      if changed_on_main_since_scan(parent, rel):
-                          skipped.append(rel)
-                          continue
-                      if item['kind']=='file':
-                          git('update-index','--add','--cacheinfo',f'100644,{blobs[rel]},{rel}',env=env)
-                      else:
-                          git('update-index','--force-remove','--',rel,env=env)
-                      applied.append(rel)
-                  tree=git('write-tree',env=env).stdout.strip()
-              finally:
-                  index_path.unlink(missing_ok=True)
-
-              if real_path in skipped:
-                  raise SystemExit('REAL_ALERTS_CHANGED_ON_MAIN_AFTER_SOURCE_SCAN; refusing mismatched publication proof')
-              print(f'Freshness guard applied={len(applied)} preserved_newer_main={len(skipped)}')
-              if skipped:
-                  print('Preserved newer paths: ' + ', '.join(skipped[:40]))
-              parent_tree=git('rev-parse',f'{parent}^{{tree}}').stdout.strip()
-              if tree==parent_tree:
-                  print(f'Latest main already contains all safe data for source run {source_run}')
-                  raise SystemExit(0)
-
-              commit=git('commit-tree',tree,'-p',parent,
-                         input_text=f'data: publish verified live scan {source_run}\n').stdout.strip()
-              pushed=git('push','origin',f'{commit}:refs/heads/main',check=False)
-              if pushed.returncode==0:
-                  print(f'VERIFIED_PUBLISH_PROOF_OK generation={generation_id} real_alerts_sha256={real_digest}')
-                  raise SystemExit(0)
-              print('Main moved during atomic publisher attempt; retrying on newest main',flush=True)
-              time.sleep(0.15)
-
-          raise SystemExit(f'Verified snapshot publisher failed after {max_attempts} bounded attempts')
-          PY
+          python scripts/publish_verified_snapshot.py \
+            --snapshot-dir "${{ runner.temp }}/wallet500-verified-snapshot" \
+            --source-run-id "${{ steps.source.outputs.run_id }}" \
+            --source-sha "${{ steps.source.outputs.source_sha }}"
