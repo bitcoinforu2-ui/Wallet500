@@ -2,8 +2,8 @@ from wallet500 import market_data
 from wallet500 import main
 
 
-def _pair(address, base="TOKEN", quote="USDC", price="1", native="1", liquidity=1000):
-    return {
+def _pair(address, base="TOKEN", quote="USDC", price="1", native="1", liquidity=1000, fdv=None, market_cap=None):
+    out = {
         "pairAddress": address,
         "baseToken": {"address": base, "symbol": base},
         "quoteToken": {"address": quote, "symbol": quote},
@@ -14,6 +14,11 @@ def _pair(address, base="TOKEN", quote="USDC", price="1", native="1", liquidity=
         "volume": {},
         "priceChange": {},
     }
+    if fdv is not None:
+        out["fdv"] = fdv
+    if market_cap is not None:
+        out["marketCap"] = market_cap
+    return out
 
 
 def test_snapshot_uses_requested_pair(monkeypatch):
@@ -49,8 +54,35 @@ def test_quote_side_price_is_derived_not_base_price(monkeypatch):
     s=market_data.snapshot("solana","QUOTE","PAIR_A")
     assert s["target_token_side"]=="QUOTE"
     assert s["price_usd"]==50.0
-    assert s["market_cap"]==0.0
-    assert s["fdv"]==0.0
+    assert s["market_cap"] is None
+    assert s["fdv"] is None
+    assert s["supply_valuation_verified"] is False
+    assert s["supply_valuation_status"] == "UNAVAILABLE_QUOTE_SIDE"
+
+
+def test_impossible_supply_valuation_is_quarantined_not_used(monkeypatch):
+    # Regression case: $2.9M exact-pair liquidity cannot coexist credibly with
+    # a $29K provider FDV/market cap. Preserve raw evidence; trusted fields become UNKNOWN.
+    pairs=[_pair("PAIR_Z", price="1196.28", liquidity=2_900_000, fdv=29_000, market_cap=29_000)]
+    monkeypatch.setattr(market_data,"token_pairs",lambda chain,token:pairs)
+    s=market_data.snapshot("solana","TOKEN","PAIR_Z")
+    assert s["pair_address"] == "PAIR_Z"
+    assert s["raw_provider_fdv"] == 29_000
+    assert s["raw_provider_market_cap"] == 29_000
+    assert s["fdv"] is None
+    assert s["market_cap"] is None
+    assert s["supply_valuation_verified"] is False
+    assert s["supply_valuation_status"] == "QUARANTINED_IMPOSSIBLE_VS_EXACT_POOL_LIQUIDITY"
+    assert "EXACT_POOL_LIQUIDITY_GT_20X_PROVIDER_VALUATION" in s["supply_valuation_reasons"]
+
+
+def test_plausible_supply_valuation_remains_available(monkeypatch):
+    pairs=[_pair("PAIR_OK", price="1", liquidity=500_000, fdv=10_000_000, market_cap=8_000_000)]
+    monkeypatch.setattr(market_data,"token_pairs",lambda chain,token:pairs)
+    s=market_data.snapshot("solana","TOKEN","PAIR_OK")
+    assert s["supply_valuation_verified"] is True
+    assert s["fdv"] == 10_000_000
+    assert s["market_cap"] == 8_000_000
 
 
 def test_solana_pair_identity_is_case_sensitive(monkeypatch):
