@@ -78,7 +78,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          # This stateful job does not need every historical branch. Full-history
+          # checkout had grown to >5 minutes and widened the stale-state race window.
+          fetch-depth: 1
+      - name: Refresh stateful wire job to newest main truth
+        run: |
+          set -euo pipefail
+          # Scheduled/workflow_run executions are pinned to their trigger SHA, which
+          # can be older than the previous serialized Catalyst publisher. Generate
+          # state only after moving to the newest committed main snapshot.
+          git fetch --depth=1 origin main
+          git reset --hard origin/main
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
