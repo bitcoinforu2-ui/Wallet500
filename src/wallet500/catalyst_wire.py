@@ -38,6 +38,16 @@ BLOCKED_SYMBOLS = {
     "USDT", "USDC", "USDBC", "DAI", "FDUSD", "TUSD", "USDE", "PYUSD",
     "WETH", "WBNB", "WBTC", "WSOL", "STETH", "WSTETH", "CBBTC", "CBETH",
 }
+DEXSCREENER_CHAIN_SLUGS = {
+    "solana": "solana",
+    "ethereum": "ethereum",
+    "bsc": "bsc",
+    "base": "base",
+    "arbitrum": "arbitrum",
+    "polygon": "polygon",
+    "optimism": "optimism",
+    "avalanche": "avalanche",
+}
 
 PAGE_SOURCES = [
     ("MEXC_SPOT_LISTINGS", "mexc", "https://www.mexc.com/announcements/new-listings/spot-18"),
@@ -382,13 +392,26 @@ def _social_catalyst_events(universe: dict[str, dict]) -> tuple[list[dict], dict
     return events, {"source": "PROJECT_OFFICIAL_SOCIAL", "kind": "internal", "ok": True, "events": len(events)}
 
 
+def _exact_pair_dex_url(candidate: dict) -> str | None:
+    direct = str(candidate.get("dex_url") or "").strip()
+    if direct:
+        return direct
+    pair = str(candidate.get("pair_address") or "").strip()
+    chain = _norm_chain(candidate.get("chain"))
+    slug = DEXSCREENER_CHAIN_SLUGS.get(chain)
+    if not pair or not slug:
+        return None
+    return f"https://dexscreener.com/{slug}/{urllib.parse.quote(pair, safe='')}"
+
+
 def _decorate(event: dict) -> dict:
     c = event.get("candidate") if isinstance(event.get("candidate"), dict) else {}
     e = dict(event)
     e["preliminary_filter_pass"] = c.get("preliminary_filter_pass") is True
     e["contract"] = c.get("token")
     e["chain"] = c.get("chain")
-    e["dex_url"] = c.get("dex_url") or c.get("url")
+    e["pair_address"] = c.get("pair_address")
+    e["dex_url"] = _exact_pair_dex_url(c)
     e["market_age_days"] = c.get("market_age_days")
     e["ignored_for_event_lane"] = ["volume_acceleration", "liquidity_growth", "holder_growth", "wallet_growth"]
     e.pop("candidate", None)
@@ -426,6 +449,8 @@ def _message(e: dict) -> str:
         lines.append(f"🔗 Official source: {e.get('source_url')}")
     if e.get("dex_url"):
         lines.append(f"🔗 DEX: {e.get('dex_url')}")
+    else:
+        lines.append("⚠️ DEX: unavailable — exact pair not verified")
     return "\n".join(lines)
 
 
