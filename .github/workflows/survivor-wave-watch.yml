@@ -103,11 +103,11 @@ jobs:
           if fusion6.get('probability_model_enabled') is not False: raise SystemExit('FUSION_UNCALIBRATED_PROBABILITY_ENABLED')
           contract=d.get('veteran_truth_contract') or {}
           if contract.get('focus')!='VETERAN_COIN_REVIVAL_ONLY': raise SystemExit('VETERAN_FOCUS_INVALID')
-          if float(contract.get('minimum_market_age_days') or 0) < 180: raise SystemExit('VETERAN_AGE_FLOOR_INVALID')
+          if float(contract.get('minimum_market_age_days') or 0) < 60: raise SystemExit('VETERAN_AGE_FLOOR_INVALID')
           if contract.get('unknown_age_policy')!='FAIL_CLOSED_NO_ALERT': raise SystemExit('VETERAN_FAIL_CLOSED_INVALID')
           eligible={}
           for x in d.get('tokens') or []:
-              if float(x.get('liquidity_usd') or 0) < float(d.get('liquidity_survival_floor_usd') or 50000): raise SystemExit('SURVIVOR_BELOW_LIQUIDITY_FLOOR')
+              if float(x.get('liquidity_usd') or 0) < float(d.get('liquidity_survival_floor_usd') or 15000): raise SystemExit('SURVIVOR_BELOW_LIQUIDITY_FLOOR')
               if 'intelligence_v3' not in x or 'model_governor_v4' not in x: raise SystemExit('SHADOW_LAYER_MISSING')
               if 'wallet_transaction_intelligence_v5' not in x or 'pre_wave_fusion_v6' not in x: raise SystemExit('WALLET_FUSION_LAYER_MISSING')
               if ((x.get('intelligence_v3') or {}).get('pre_wave_probability') or {}).get('status') != 'INSUFFICIENT_SAMPLE': raise SystemExit('UNCALIBRATED_PROBABILITY_LEAK')
@@ -115,7 +115,7 @@ jobs:
               if (x.get('wallet_transaction_intelligence_v5') or {}).get('production_effect') is not False: raise SystemExit('WALLET_TX_PRODUCTION_EFFECT_LEAK')
               if (x.get('pre_wave_fusion_v6') or {}).get('production_effect') is not False: raise SystemExit('FUSION_PRODUCTION_EFFECT_LEAK')
               token=str(x.get('token') or '').lower(); eligible[token]=bool(x.get('veteran_alert_eligible'))
-              if x.get('veteran_alert_eligible') and x.get('veteran_age_status')!='VERIFIED_180D_PLUS': raise SystemExit('ACTIONABLE_WITHOUT_VERIFIED_VETERAN_AGE')
+              if x.get('veteran_alert_eligible') and x.get('veteran_age_status')!='VERIFIED_60D_PLUS': raise SystemExit('ACTIONABLE_WITHOUT_VERIFIED_VETERAN_AGE')
           for event in d.get('telegram_events') or []:
               if not eligible.get(str(event.get('token') or '').lower(), False): raise SystemExit('NON_VETERAN_TELEGRAM_EVENT_LEAK')
           for qn in ('data/survivor-signal-intelligence-v3.json','data/survivor-model-governor-v4.json','data/survivor-wallet-transaction-intelligence-v5.json','data/survivor-pre-wave-fusion-v6.json','data/survivor-exact-pair-crosscheck.json'):
