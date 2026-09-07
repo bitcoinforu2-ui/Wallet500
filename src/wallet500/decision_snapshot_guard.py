@@ -70,6 +70,12 @@ def _preserve_evidence_ready_visibility(data_dir: Path) -> None:
     The dedicated evidence_ready surface exists solely to preserve canonical rows
     that fall outside the ranked watch-list display window. It must never retain a
     row that is no longer EVIDENCE_READY in the current sanitized Envelope.
+
+    Ranked watch and dormant surfaces may themselves persist across generations.
+    Their rows are retained for research continuity, but any stale Evidence Ready
+    markers are cleared unless the exact chain/token/pair still belongs to the
+    current canonical Envelope. This prevents historical research state from
+    contaminating the current denominator while preserving no-hindsight history.
     """
     envelope_path = data_dir / "candidate-evidence-envelope.json"
     real_path = data_dir / "real-alerts.json"
@@ -84,6 +90,31 @@ def _preserve_evidence_ready_visibility(data_dir: Path) -> None:
     ]
     canonical = {_identity_key(row): row for row in canonical_rows}
     canonical_keys = set(canonical)
+
+    stale_surface_markers_pruned = 0
+    for surface in ("verified_watch", "dormant_no_activity"):
+        rows = real.get(surface) if isinstance(real.get(surface), list) else []
+        cleaned = []
+        for row in rows:
+            if not isinstance(row, dict):
+                cleaned.append(row)
+                continue
+            key = _identity_key(row)
+            if _is_evidence_ready_visible(row) and key not in canonical_keys:
+                row = dict(row)
+                row["evidence_ready"] = False
+                if row.get("evidence_envelope_status") == "EVIDENCE_READY":
+                    row["evidence_envelope_status"] = "NOT_EVIDENCE_READY_CURRENT_CANONICAL"
+                if row.get("status") == "EVIDENCE_READY_NOT_REAL_ALERT":
+                    row["status"] = (
+                        "VERIFIED_WATCH_NOT_REAL_ALERT"
+                        if surface == "verified_watch"
+                        else "DORMANT_NO_ACTIVITY_NOT_VERIFIED_WATCH"
+                    )
+                row["evidence_ready_visibility_reason"] = "STALE_CANONICAL_EVIDENCE_READY_MARKER_CLEARED"
+                stale_surface_markers_pruned += 1
+            cleaned.append(row)
+        real[surface] = cleaned
 
     old_research = real.get("evidence_ready") if isinstance(real.get("evidence_ready"), list) else []
     research_rows = [
@@ -150,9 +181,10 @@ def _preserve_evidence_ready_visibility(data_dir: Path) -> None:
     real["counts"] = counts
     bridge = real.get("evidence_ready_visibility_bridge") if isinstance(real.get("evidence_ready_visibility_bridge"), dict) else {}
     bridge.update({
-        "version": 2,
+        "version": 3,
         "added_this_run": added,
         "pruned_stale_this_run": pruned,
+        "pruned_stale_surface_markers_this_run": stale_surface_markers_pruned,
         "canonical_visible_count": len(existing),
         "canonical_envelope_count": len(canonical_keys),
         "production_effect": False,
