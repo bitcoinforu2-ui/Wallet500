@@ -55,7 +55,7 @@ jobs:
           if p.get('mode')!='RESEARCH_ONLY_EXACT_PAIR_WALLET_COVERAGE_PROBE': raise SystemExit('WALLET_PROBE_MODE_INVALID')
           if p.get('production_portfolio_impact')!='NONE' or p.get('automatic_buy') is not False: raise SystemExit('WALLET_PROBE_PRODUCTION_LEAK')
           t=p.get('truth_contract') or {}
-          if t.get('minimum_market_age_days')!=180: raise SystemExit('WALLET_PROBE_AGE_INVALID')
+          if t.get('minimum_market_age_days')!=60: raise SystemExit('WALLET_PROBE_AGE_INVALID')
           if t.get('exact_pair_required') is not True: raise SystemExit('WALLET_PROBE_PAIR_GUARD_MISSING')
           if t.get('probe_is_coverage_only_not_accumulation_alpha') is not True: raise SystemExit('WALLET_PROBE_ROLE_INVALID')
           if t.get('probe_verified_never_counts_as_positive_wallet_accumulation') is not True: raise SystemExit('WALLET_PROBE_POSITIVE_LEAK')
