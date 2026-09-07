@@ -42,8 +42,9 @@ def test_gate_rejects_under_15k_and_wrong_identity():
     assert "BASE_TOKEN_IDENTITY_NOT_VERIFIED" in meta["blockers"]
 
 
-def test_three_fire_message_and_transition_dedupe(tmp_path, monkeypatch):
-    (tmp_path / mod.SOURCE).write_text(json.dumps([_row()]), encoding="utf-8")
+def test_forward_only_baseline_then_three_fire_transition(tmp_path, monkeypatch):
+    src = tmp_path / mod.SOURCE
+    src.write_text(json.dumps([_row()]), encoding="utf-8")
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
     messages = []
@@ -54,16 +55,26 @@ def test_three_fire_message_and_transition_dedupe(tmp_path, monkeypatch):
 
     monkeypatch.setattr(mod, "_send", fake_send)
     now = datetime(2026, 9, 7, 19, 0, tzinfo=timezone.utc)
-    first = mod.run(str(tmp_path), now=now)
-    second = mod.run(str(tmp_path), now=now)
 
-    assert first["delivered_count"] == 1
-    assert second["delivered_count"] == 0
+    baseline = mod.run(str(tmp_path), now=now)
+    assert baseline["baseline_count"] == 1
+    assert baseline["delivered_count"] == 0
+    assert messages == []
+
+    src.write_text(json.dumps([]), encoding="utf-8")
+    mod.run(str(tmp_path), now=now)
+    src.write_text(json.dumps([_row()]), encoding="utf-8")
+    fired = mod.run(str(tmp_path), now=now)
+    again = mod.run(str(tmp_path), now=now)
+
+    assert fired["delivered_count"] == 1
+    assert again["delivered_count"] == 0
     assert len(messages) == 1
     assert messages[0].startswith("🔥🔥🔥 REVIVAL 90D / 15K")
     assert "Production 180d/$50K gate: UNCHANGED" in messages[0]
-    assert first["truth_contract"]["research_only"] is True
-    assert first["truth_contract"]["production_gate_changed"] is False
+    assert fired["truth_contract"]["research_only"] is True
+    assert fired["truth_contract"]["production_gate_changed"] is False
+    assert fired["truth_contract"]["no_historical_backfill"] is True
 
 
 def test_no_secrets_never_marks_sent(tmp_path, monkeypatch):
