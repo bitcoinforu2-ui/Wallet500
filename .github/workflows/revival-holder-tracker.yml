@@ -72,10 +72,13 @@ jobs:
           for x in d.get('coins') or []:
               if x.get('source')=='RUGCHECK_EXACT_MINT_PUBLIC_REPORT':
                   if x.get('holder_count') is not None or x.get('growth_eligible') is not False: raise SystemExit('RUGCHECK_TRUTH_LEAK')
-              if x.get('holder_truth_status')=='ANOMALY_REQUIRES_SECOND_SOURCE' and x.get('growth_eligible') is not False:
-                  raise SystemExit('ANOMALOUS_JUMP_NOT_BLOCKED')
+              status=x.get('holder_truth_status')
+              if status=='ANOMALY_REQUIRES_SECOND_SOURCE':
+                  if x.get('growth_eligible') is not False: raise SystemExit('ANOMALOUS_JUMP_NOT_BLOCKED')
+                  if x.get('candidate_holder_count') is None: raise SystemExit('ANOMALOUS_CANDIDATE_COUNT_MISSING')
+                  continue
               if x.get('source')=='VERIFIED_DUAL_HOLDER_INTELLIGENCE_V1' and x.get('holder_count') is not None:
-                  if x.get('holder_truth_status')!='FORWARD_VERIFIED' or x.get('growth_eligible') is not True: raise SystemExit('HOLDER_TRUTH_NOT_MARKED')
+                  if status!='FORWARD_VERIFIED' or x.get('growth_eligible') is not True: raise SystemExit('HOLDER_TRUTH_NOT_MARKED')
                   if x.get('first_holder_count') is not None and x.get('holder_growth_count') is not None:
                       if int(x['holder_growth_count']) != int(x['holder_count'])-int(x['first_holder_count']): raise SystemExit('REVIVAL_HOLDER_DELTA_MISMATCH')
                   if x.get('provider_actual') is None: raise SystemExit('HOLDER_PROVIDER_ACTUAL_MISSING')
