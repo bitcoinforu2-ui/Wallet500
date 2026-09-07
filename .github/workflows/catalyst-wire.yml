@@ -6,12 +6,14 @@ on:
     paths:
       - 'src/wallet500/catalyst_wire.py'
       - 'src/wallet500/catalyst_wire_binance.py'
+      - 'src/wallet500/catalyst_identity_guard.py'
       - 'src/wallet500/catalyst_focus.py'
       - 'src/wallet500/catalyst_focus_binance.py'
       - 'src/wallet500/binance_event_intelligence.py'
       - 'src/wallet500/global_listing_intelligence.py'
       - 'src/wallet500/cross_source_correlation.py'
       - 'tests/test_catalyst_wire.py'
+      - 'tests/test_catalyst_identity_guard.py'
       - 'tests/test_binance_event_intelligence.py'
       - 'tests/test_catalyst_focus.py'
       - 'tests/test_catalyst_focus_binance.py'
@@ -30,12 +32,14 @@ on:
     paths:
       - 'src/wallet500/catalyst_wire.py'
       - 'src/wallet500/catalyst_wire_binance.py'
+      - 'src/wallet500/catalyst_identity_guard.py'
       - 'src/wallet500/catalyst_focus.py'
       - 'src/wallet500/catalyst_focus_binance.py'
       - 'src/wallet500/binance_event_intelligence.py'
       - 'src/wallet500/global_listing_intelligence.py'
       - 'src/wallet500/cross_source_correlation.py'
       - 'tests/test_catalyst_wire.py'
+      - 'tests/test_catalyst_identity_guard.py'
       - 'tests/test_binance_event_intelligence.py'
       - 'tests/test_catalyst_focus.py'
       - 'tests/test_catalyst_focus_binance.py'
@@ -63,8 +67,8 @@ jobs:
           python-version: '3.12'
       - name: Install Wallet500 and test dependency
         run: pip install -e . pytest
-      - name: Lock Catalyst discovery, Binance context, Focus selection, EVM listing and cross-source truth policy
-        run: pytest -q tests/test_catalyst_wire.py tests/test_binance_event_intelligence.py tests/test_catalyst_focus.py tests/test_catalyst_focus_binance.py tests/test_global_listing_evm_core.py tests/test_cross_source_correlation.py
+      - name: Lock Catalyst discovery, symbol identity, Binance context, Focus selection, EVM listing and cross-source truth policy
+        run: pytest -q tests/test_catalyst_wire.py tests/test_catalyst_identity_guard.py tests/test_binance_event_intelligence.py tests/test_catalyst_focus.py tests/test_catalyst_focus_binance.py tests/test_global_listing_evm_core.py tests/test_cross_source_correlation.py
 
   wire:
     needs: test
@@ -83,6 +87,9 @@ jobs:
 
       - name: Run raw official Catalyst discovery with Binance historical context silently
         run: python -m wallet500.catalyst_wire_binance
+
+      - name: Fail closed on CEX symbol-to-contract identity collisions before Focus
+        run: python -m wallet500.catalyst_identity_guard
 
       # Telegram is deliberately available only to the selective Focus layer.
       # Push/workflow_run refreshes update evidence but cannot emit Focus alerts;
@@ -106,7 +113,13 @@ jobs:
           assert set(d['policy']['event_lane_zero_weight'])=={'volume_acceleration','liquidity_growth','holder_growth','wallet_growth'}
           assert d['policy']['official_source_required'] is True
           assert d['policy']['source_link_required_for_telegram'] is True
+          identity_guard=d.get('identity_link_guard') or {}
+          assert identity_guard.get('fail_closed') is True
           for e in d.get('events',[]):
+              if e.get('identity_guard_fail_closed') is True and e.get('symbol_contract_link_verified') is not True:
+                  assert e.get('preliminary_filter_pass') is False
+                  assert e.get('alert_eligible') is False
+                  assert e.get('identity_guard_blocker')=='SYMBOL_TO_CONTRACT_NOT_CANONICALLY_VERIFIED'
               if e.get('alert_eligible'):
                   assert e.get('preliminary_filter_pass') is True
                   assert e.get('forward_new') is True
@@ -123,7 +136,7 @@ jobs:
                   assert truth.get('pair_mismatch_rejected_when_both_pairs_known') is True
                   assert truth.get('symbol_only_history_never_scores') is True
                   assert truth.get('binance_priority_never_overrides_wallet500_gates') is True
-          print('CATALYST_WIRE_TRUTH_OK', d.get('counts'))
+          print('CATALYST_WIRE_TRUTH_OK', d.get('counts'), identity_guard)
           PY
 
       - name: Validate selective Focus policy when executed
@@ -132,7 +145,7 @@ jobs:
           import json
           from pathlib import Path
           p=Path('data/catalyst-focus-live.json')
-          if not p.exists():
+          if not p.exists() or not p.stat().st_size:
               print('CATALYST_FOCUS_NOT_EXECUTED_ON_THIS_TRIGGER')
               raise SystemExit(0)
           d=json.loads(p.read_text())
