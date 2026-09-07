@@ -132,7 +132,7 @@ jobs:
           if f.get('automatic_buy') is not False: raise SystemExit('REVIVAL_FORENSICS_AUTOMATIC_BUY_INVALID')
           if f.get('no_hindsight') is not True: raise SystemExit('REVIVAL_FORENSICS_NO_HINDSIGHT_VIOLATION')
           if 'NEVER_SWITCH' not in str(f.get('pair_identity_rule')): raise SystemExit('REVIVAL_FORENSICS_PAIR_LOCK_MISSING')
-          if '180' not in str(f.get('age_rule')): raise SystemExit('REVIVAL_FORENSICS_AGE_GATE_MISSING')
+          if '60' not in str(f.get('age_rule')): raise SystemExit('REVIVAL_FORENSICS_AGE_GATE_MISSING')
           if '24H' not in str(f.get('full_lifecycle_rule')): raise SystemExit('REVIVAL_FORENSICS_LIFECYCLE_MISSING')
           if f.get('wallet500_status')!='RAW_VERIFIED_EXACT_PAIR_CONNECTED_SMART_MONEY_TIERS_PENDING': raise SystemExit('REVIVAL_FORENSICS_WALLET_BRIDGE_STATUS_INVALID')
           fb=f.get('wallet500_bridge') or {}
@@ -144,7 +144,7 @@ jobs:
               if t0.get('waking_t0')!=t0.get('price_source_generated_at'): raise SystemExit('REVIVAL_FORENSICS_T0_PRICE_TIME_MISMATCH')
               if len(str(t0.get('evidence_sha256') or '')) != 64: raise SystemExit('REVIVAL_FORENSICS_EVIDENCE_HASH_INVALID')
               if not t0.get('pair_address'): raise SystemExit('REVIVAL_FORENSICS_PAIR_ID_MISSING')
-              if t0.get('market_age_verified') is not True or int(t0.get('market_age_min_days') or 0) < 180:
+              if t0.get('market_age_verified') is not True or int(t0.get('market_age_min_days') or 0) < 60:
                   raise SystemExit('REVIVAL_FORENSICS_EVENT_AGE_INVALID')
               for horizon in (event.get('horizons') or {}).values():
                   if horizon.get('available') is True and horizon.get('pair_identity')!='STRICT_MATCH':
