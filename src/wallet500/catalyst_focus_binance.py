@@ -10,11 +10,51 @@ _BASE_STARTMSG = cf.startmsg
 _BASE_UPDATEMSG = cf.updatemsg
 _BASE_FINALMSG = cf.finalmsg
 
+NEGATIVE_MACHINE_STATES = {
+    "delisted", "disabled", "offline", "suspended", "halted", "closed",
+    "cancelled", "canceled", "removed", "terminated", "deactivated",
+}
+
+
+def _negative_machine_state(event: dict) -> str | None:
+    machine = event.get("machine_state") if isinstance(event.get("machine_state"), dict) else {}
+    state = str(machine.get("state") or "").strip().lower()
+    if state in NEGATIVE_MACHINE_STATES:
+        return state
+
+    # Fail closed on explicit negative state text from official machine-state feeds.
+    # This protects against producer/classifier mistakes such as a delisted product
+    # being mislabeled SPOT_LISTING_EXPECTED.
+    if str(event.get("source_kind") or "").upper() == "OFFICIAL_MACHINE_STATE":
+        text = " ".join(
+            str(x or "")
+            for x in (event.get("excerpt"), event.get("title"), event.get("description"))
+        ).lower()
+        for value in NEGATIVE_MACHINE_STATES:
+            if f"state={value}" in text or f" state {value}" in text:
+                return value
+    return None
+
 
 def score_event(event: dict) -> dict:
-    # Binance intelligence is context-only. It never changes Focus score, thresholds,
-    # exact-pair, liquidity, risk or eligibility decisions.
-    return enrich_event(_BASE_SCORE_EVENT(event), DATA)
+    # Binance intelligence remains context-only. The safety veto below is generic
+    # for every exchange event passing through the production Focus wrapper.
+    scored = _BASE_SCORE_EVENT(event)
+    negative_state = _negative_machine_state(event)
+    if negative_state:
+        blockers = list(scored.get("blockers") or [])
+        if "NEGATIVE_EXCHANGE_MACHINE_STATE" not in blockers:
+            blockers.append("NEGATIVE_EXCHANGE_MACHINE_STATE")
+        scored.update(
+            focus_eligible=False,
+            decision="WATCH_SILENT_NEGATIVE_MACHINE_STATE",
+            blockers=blockers,
+            machine_state_verdict="NEGATIVE_FAIL_CLOSED",
+            negative_machine_state=negative_state,
+        )
+    else:
+        scored["machine_state_verdict"] = "NO_NEGATIVE_STATE_DETECTED"
+    return enrich_event(scored, DATA)
 
 
 def _inject(base_text: str, event: dict) -> str:
