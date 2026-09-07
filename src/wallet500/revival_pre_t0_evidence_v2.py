@@ -23,7 +23,14 @@ def _load(path: Path, default: Any) -> Any:
 
 def _write(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # The immutable PRE-T0 ledger is append-heavy and already tens of MB. Compact
+    # serialization preserves exactly the same JSON truth while materially reducing
+    # blob size, push duration and the chance of hitting GitHub's hard file limit.
+    if path.name == LEDGER_NAME:
+        text = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+    else:
+        text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    path.write_text(text, encoding="utf-8")
 
 
 def _dt(value: object) -> datetime:
