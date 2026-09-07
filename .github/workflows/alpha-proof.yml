@@ -19,6 +19,7 @@ on:
     paths:
       - 'src/wallet500/alpha_proof.py'
       - 'src/wallet500/alpha_checkpoint_recovery.py'
+      - 'scripts/atomic_publish.py'
       - 'tests/test_alpha_proof.py'
       - 'tests/test_alpha_checkpoint_recovery.py'
       - '.github/workflows/alpha-proof.yml'
@@ -66,32 +67,36 @@ jobs:
           if report.get('formal_proof_rule')!='ONLY EVENTS WHOSE IMMUTABLE EVENT TIME IS AT/AFTER ACTIVATION ARE COUNTED': raise SystemExit('ALPHA_NO_HINDSIGHT_CONTRACT_INVALID')
           for cohort in ('signals','controls'):
               for rec in (ledger.get(cohort) or {}).values():
-                  cps=rec.get('checkpoints') or {}
-                  for label,cp in cps.items():
+                  for label,cp in (rec.get('checkpoints') or {}).items():
                       if not isinstance(cp,dict): raise SystemExit(f'ALPHA_CHECKPOINT_INVALID:{cohort}:{label}')
-                      if cp.get('recovery_provenance') and cp.get('recovery_provenance')!='IMMUTABLE_EXACT_PAIR_OUTCOME_HISTORY_V1':
-                          raise SystemExit('ALPHA_CHECKPOINT_RECOVERY_PROVENANCE_INVALID')
+                      if cp.get('recovery_provenance') and cp.get('recovery_provenance')!='IMMUTABLE_EXACT_PAIR_OUTCOME_HISTORY_V1': raise SystemExit('ALPHA_CHECKPOINT_RECOVERY_PROVENANCE_INVALID')
           print('FORWARD_ALPHA_PROOF_V1_OK', report.get('primary_proof_status'), report.get('formal_signal_count'), report.get('formal_control_count'))
           PY
-      - name: Publish immutable alpha proof state
+      - name: Recompute latest truth and publish alpha proof atomically
         if: github.event_name != 'pull_request'
+        shell: bash
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
-          tmp="$(mktemp -d)"
-          cp data/alpha-proof-ledger.json "$tmp/ledger.json"
-          cp data/alpha-proof-report.json "$tmp/report.json"
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
-            cp "$tmp/ledger.json" data/alpha-proof-ledger.json
-            cp "$tmp/report.json" data/alpha-proof-report.json
-            git add data/alpha-proof-ledger.json data/alpha-proof-report.json
-            if git diff --cached --quiet; then exit 0; fi
-            git commit -m 'alpha: refresh forward proof evidence'
-            if git push origin HEAD:main; then exit 0; fi
-            sleep 3
+            source_sha="$(git rev-parse HEAD)"
+            python -m wallet500.alpha_checkpoint_recovery
+            python -m wallet500.alpha_proof
+            set +e
+            python scripts/atomic_publish.py \
+              --base "$source_sha" \
+              --fail-on-newer \
+              --message 'alpha: refresh forward proof evidence' \
+              data/alpha-proof-ledger.json \
+              data/alpha-proof-report.json
+            rc=$?
+            set -e
+            if [ "$rc" -eq 0 ]; then exit 0; fi
+            if [ "$rc" -eq 75 ]; then echo "ALPHA_PROOF_RECOMPUTE_REQUIRED attempt=$attempt"; sleep 1; continue; fi
+            exit "$rc"
           done
-          echo 'Alpha proof publish failed after retries'
+          echo '::error::Alpha proof atomic publish failed after coherent recompute retries'
           exit 1
