@@ -66,10 +66,7 @@ jobs:
           python-version: '3.12'
       - name: Install Wallet500
         run: pip install -e .
-      - name: Run official Catalyst Wire and Telegram edge alerts
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - name: Run raw official Catalyst Wire discovery only
         run: python -m wallet500.catalyst_wire
       - name: Validate event feed boundaries
         run: |
