@@ -1,4 +1,4 @@
-name: Wallet500 CEX Leaderboard Early Watch
+name: Wallet500 CEX Leaderboard Research Scan
 
 on:
   workflow_dispatch:
@@ -20,11 +20,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: wallet500-cex-leaderboard-early-watch
+  group: wallet500-cex-leaderboard-research-scan
   cancel-in-progress: false
 
 jobs:
-  detect-notify:
+  detect-research:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -61,7 +61,7 @@ jobs:
           spot=run_cex_spot_revival(Path('data'), now)
           board=bridge_leaderboard(Path('data'), now)
           ident=resolve_identity(Path('data'))
-          print('CEX_LEADERBOARD_EARLY_WATCH', {
+          print('CEX_LEADERBOARD_RESEARCH_SCAN', {
               'generated_at': now,
               'healthy_sources': spot.get('healthy_sources'),
               'symbols_seen': spot.get('symbols_seen'),
@@ -91,12 +91,11 @@ jobs:
                   raise SystemExit('CEX_RESEARCH_ACTIONABLE_LEAK')
           print('CEX_LEADERBOARD_FAIL_CLOSED_VALID')
           PY
-      - name: Send forward-only exact veteran CEX early-watch Telegram alerts
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python -m wallet500.cex_spot_watch_telegram
-      - name: Publish fresh research and delivery state with bounded retries
+      - name: Enforce silent routine CEX research policy
+        run: |
+          echo 'Routine CEX EARLY WATCH Telegram delivery is disabled by user notification policy.'
+          echo 'CEX research data continues to refresh; selective double-listing / exceptional alerts remain handled by Catalyst Focus v3.'
+      - name: Publish fresh research state with bounded retries
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -109,8 +108,6 @@ jobs:
             data/cex-spot-state.json
             data/cex-spot-state.json.gz
             data/cex-identity-registry.json
-            data/cex-spot-telegram-state.json
-            data/cex-spot-telegram-report.json
           )
           snap="$(mktemp -d)"
           for f in "${targets[@]}"; do
@@ -152,9 +149,9 @@ jobs:
               echo "No CEX leaderboard state changes"
               exit 0
             fi
-            git commit -m "data: refresh CEX leaderboard early-watch state"
+            git commit -m "data: refresh CEX leaderboard research state"
             if git push origin HEAD:main; then
-              echo "CEX leaderboard early-watch state published"
+              echo "CEX leaderboard research state published"
               exit 0
             fi
             sleep 1
