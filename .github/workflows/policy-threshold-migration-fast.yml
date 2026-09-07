@@ -50,13 +50,13 @@ jobs:
         run: |
           find src tests -type d -name '__pycache__' -prune -exec rm -rf {} + || true
           rm -rf src/wallet500.egg-info
-          if git diff --quiet; then
-            echo 'No migration changes detected.'
+          if git diff --quiet -- src tests docs scripts; then
+            echo 'No source migration changes detected.'
             exit 0
           fi
           git config user.name 'wallet500-policy-bot'
           git config user.email 'wallet500-policy-bot@users.noreply.github.com'
-          git add -A src tests docs .github/workflows scripts
+          git add -A src tests docs scripts
           git commit -m 'policy: set Revival scope to 60d age and 15k liquidity'
           git reset --hard HEAD
           git clean -fd
