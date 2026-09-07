@@ -74,7 +74,7 @@ def test_under_180_day_token_is_quarantined(monkeypatch):
 
     live, reason = radar._live_exact_pair_truth(_record())
     assert live is None
-    assert reason == 'UNDER_180D_MARKET_AGE'
+    assert reason == 'UNDER_60D_MARKET_AGE'
 
 
 def test_stale_strong_history_cannot_override_collapsed_live_liquidity(monkeypatch):
@@ -85,7 +85,7 @@ def test_stale_strong_history_cannot_override_collapsed_live_liquidity(monkeypat
     assert radar._preeligible(_record()) is True
     live, reason = radar._live_exact_pair_truth(_record())
     assert live is None
-    assert reason == 'LIVE_LIQUIDITY_BELOW_50K'
+    assert reason == 'LIVE_LIQUIDITY_BELOW_15K'
 
 
 def test_live_activity_floor_is_fail_closed(monkeypatch):

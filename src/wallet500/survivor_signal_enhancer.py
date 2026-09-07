@@ -167,7 +167,7 @@ def update_forward(forward, row, observed_at):
     for h in HORIZONS_H:
         if elapsed >= h and str(h) not in event["horizons"]:
             event["horizons"][str(h)] = {"observed_at": observed_at, "return_pct": pct_delta(p, p0),
-                "liquidity_delta_pct": pct_delta(l, l0), "liquidity_survived": bool(l is not None and l >= 50000),
+                "liquidity_delta_pct": pct_delta(l, l0), "liquidity_survived": bool(l is not None and l >= 15000),
                 "dna_level": level, "wave_status": row.get("wave_status")}
 
 

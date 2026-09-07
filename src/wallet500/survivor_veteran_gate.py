@@ -6,7 +6,7 @@ from pathlib import Path
 DATA = Path("data")
 WATCH = DATA / "survivor-wave-watch.json"
 HOT_HEALTHY = DATA / "hot-healthy-radar.json"
-VETERAN_MIN_DAYS = 180.0
+VETERAN_MIN_DAYS = 60.0
 
 
 def load(path: Path, default):
@@ -47,13 +47,13 @@ def age_truth_index() -> tuple[dict, dict]:
                 }
 
     for row in radar.get("quarantined_fail_closed") or []:
-        if not isinstance(row, dict) or row.get("reason") != "UNDER_180D_MARKET_AGE":
+        if not isinstance(row, dict) or row.get("reason") != "UNDER_60D_MARKET_AGE":
             continue
         token = token_of(row)
         if token:
             under_180[norm(token)] = {
                 "source": "HOT_HEALTHY_V3_LIVE_VETERAN_TRUTH",
-                "reason": "UNDER_180D_MARKET_AGE",
+                "reason": "UNDER_60D_MARKET_AGE",
             }
 
     return verified, under_180
@@ -77,11 +77,11 @@ def main() -> None:
         key = norm(token)
         if key in verified:
             row["veteran_alert_eligible"] = True
-            row["veteran_age_status"] = "VERIFIED_180D_PLUS"
+            row["veteran_age_status"] = "VERIFIED_60D_PLUS"
             row["market_age_days_verified"] = verified[key].get("market_age_days")
         elif key in under_180:
             row["veteran_alert_eligible"] = False
-            row["veteran_age_status"] = "UNDER_180D_BLOCKED"
+            row["veteran_age_status"] = "UNDER_60D_BLOCKED"
             row["market_age_days_verified"] = None
         else:
             row["veteran_alert_eligible"] = False
@@ -124,7 +124,7 @@ def main() -> None:
     watch["suppressed_signals"] = suppressed[:50]
     watch["note"] = (
         "Winner-DNA cohort remains research-only. Telegram/actionable counts are now fail-closed to tokens with "
-        "verified market age >=180 days. Young historical winners may remain for learning but can never become "
+        "verified market age >=60 days. Young historical winners may remain for learning but can never become "
         "a Wallet500 Revival alert."
     )
 

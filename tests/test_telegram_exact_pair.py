@@ -73,7 +73,7 @@ def test_exact_pair_is_required_for_alert():
 
 def test_verified_180_day_market_age_is_required_for_alert():
     row = _row()
-    row["market_age_min_days"] = 179
+    row["market_age_min_days"] = 59
     assert _tier(row) is None
     row = _row()
     row["market_age_verified"] = False

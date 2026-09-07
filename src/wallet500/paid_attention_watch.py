@@ -433,7 +433,7 @@ def run(output_dir: str = "data") -> dict:
         "low_liquidity_learning": sum(1 for x in rows if x["watch_status"] == "PAID_ATTENTION_LOW_LIQUIDITY_LEARNING"),
         "pump_dump_learning": sum(1 for x in rows if x["watch_status"] == "PAID_ATTENTION_PUMP_DUMP_LEARNING"),
         "liquidity_unverified": sum(1 for x in rows if x["watch_status"] == "PAID_ATTENTION_LIQUIDITY_UNVERIFIED"),
-        "live_liquidity_ge_50k": sum(1 for x in rows if _n((x.get("market") or {}).get("liquidity_usd"), 0.0) >= MIN_RESEARCH_LIQUIDITY_USD),
+        "live_liquidity_ge_15k": sum(1 for x in rows if _n((x.get("market") or {}).get("liquidity_usd"), 0.0) >= MIN_RESEARCH_LIQUIDITY_USD),
         "live_liquidity_lt_50k": sum(1 for x in rows if _n((x.get("market") or {}).get("liquidity_usd"), 0.0) < MIN_RESEARCH_LIQUIDITY_USD),
         "live_liquidity_lt_10k": sum(1 for x in rows if _n((x.get("market") or {}).get("liquidity_usd"), 0.0) < EXTREME_THIN_LIQUIDITY_USD),
         "ad_and_boost": sum(1 for x in rows if (x.get("promotion") or {}).get("ad_and_boost") is True),

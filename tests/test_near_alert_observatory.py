@@ -35,7 +35,7 @@ def test_near_alert_observatory_is_research_only_and_ranks_closest(tmp_path: Pat
             "evidence_promotion": {"universe_with_exact_pair": 285, "evidence_ready": 6, "blocked_truth": 32},
             "reawakening_recovery": {"eligible_liquidity_only_rejects": 388, "outcome_tracker_matches": 380, "shadow_triggers_v2": 0},
         },
-        "blockers": [{"code": "EXECUTION_LIQUIDITY_LT_50K", "count": 29, "classification": "HARD_TRUTH_OR_RISK_BLOCKER"}],
+        "blockers": [{"code": "EXECUTION_LIQUIDITY_LT_15K", "count": 29, "classification": "HARD_TRUTH_OR_RISK_BLOCKER"}],
         "pending_confirmations": [{"code": "PRECURSOR_EVIDENCE_INSUFFICIENT", "count": 96, "classification": "PENDING_CONFIRMATION_NOT_HARD_FAILURE"}],
     })
     _write(tmp_path / "reawakening-shadow.json", {"mode": "RESEARCH_ONLY_SURVIVOR_REAWAKENING_V2", "contract": "FALSE_NEGATIVE_RECOVERY_RECHECK_V2", "counts": {"eligible_liquidity_only_rejects": 388, "shadow_triggers_v2": 0}})

@@ -7,7 +7,7 @@ PAIR = "0x9793a9cbb04f781433254e4530398107e6a8dcee"
 
 def reject_record(extra_reasons=None):
     reasons = [
-        "CURRENT_LIQUIDITY_BELOW_50K",
+        "CURRENT_LIQUIDITY_BELOW_15K",
         "PASSED_SCORE_LIQUIDITY_VOLUME_ACTIVITY_MANIPULATION",
     ]
     if extra_reasons:
@@ -26,7 +26,9 @@ def reject_record(extra_reasons=None):
             "token": "0xabc",
             "pair_address": PAIR,
             "price_usd": 0.001,
-            "liquidity_usd": 42_000,
+            "market_age_verified": True,
+            "market_age_min_days": 90,
+            "liquidity_usd": 12_000,
             "live_survival_reasons": reasons,
         },
     }

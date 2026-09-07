@@ -10,7 +10,7 @@ STATE = DATA / 'lifecycle-strategy-ledger.json'
 SUMMARY = DATA / 'lifecycle-strategy-summary.json'
 SOURCE = DATA / 'outcome-tracker.json'
 POSITION_USD = 1.0
-MIN_LIQ = 50_000.0
+MIN_LIQ = 15_000.0
 POLICY_VERSION = 'LIFECYCLE_V1_FORWARD_ONLY'
 # Fractions are of the original token quantity. Frozen from first activation.
 TAKE_PROFITS = ((100.0, 0.25, 'TP1_2X'), (300.0, 0.25, 'TP2_4X'), (700.0, 0.25, 'TP3_8X'))

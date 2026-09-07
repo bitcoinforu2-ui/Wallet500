@@ -135,7 +135,7 @@ def run(data_dir: Path = DATA) -> dict:
         "production_portfolio_impact": "NONE",
         "automatic_buy": False,
         "symbol_only_actionable": False,
-        "minimum_market_age_days": 180,
+        "minimum_market_age_days": 60,
         "truth_contract": {
             "symbol_only_never_actionable": True,
             "unique_or_strictly_coherent_coin_identity_required": True,

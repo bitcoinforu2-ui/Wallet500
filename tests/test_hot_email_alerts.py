@@ -25,7 +25,7 @@ def test_hot_email_accepts_only_strict_real_alert():
 
 
 def test_hot_email_rejects_underage_or_unverified_identity():
-    assert _is_hot(row(market_age_days=179)) is False
+    assert _is_hot(row(market_age_days=59)) is False
     assert _is_hot(row(market_age_verified=False)) is False
     assert _is_hot(row(exact_identity_verified=False)) is False
     assert _is_hot(row(exact_pair_verified=False)) is False
@@ -33,7 +33,7 @@ def test_hot_email_rejects_underage_or_unverified_identity():
 
 def test_hot_email_rejects_cex_only_score_and_low_liquidity():
     assert _is_hot({"cex_revival_score": 100, "confirmations": 7}) is False
-    assert _is_hot(row(liquidity_usd=49999)) is False
+    assert _is_hot(row(liquidity_usd=14999)) is False
     assert _is_hot(row(status="VERIFIED_WATCH_NOT_REAL_ALERT")) is False
     assert _is_hot(row(score=74)) is False
 

@@ -5,9 +5,9 @@ from wallet500 import cex_fast_lane as fast
 
 
 def test_default_scope_is_veteran_only():
-    assert fast.PROJECT_SCOPE_MIN_AGE_DAYS == 180
-    assert fast.MIN_AGE_DAYS == 180
-    assert fast.APPROVED_PRODUCTION_MIN_AGE_DAYS == 180
+    assert fast.PROJECT_SCOPE_MIN_AGE_DAYS == 60
+    assert fast.MIN_AGE_DAYS == 60
+    assert fast.APPROVED_PRODUCTION_MIN_AGE_DAYS == 60
 
 
 def test_collection_runs_before_scope_drift_block(tmp_path: Path, monkeypatch):
@@ -44,7 +44,7 @@ def test_collection_runs_before_scope_drift_block(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(fast, "run_cex_revival", fake_futures)
     monkeypatch.setattr(fast, "run_cex_spot_revival", fake_spot)
     monkeypatch.setattr(fast, "build_real_alerts", lambda out: {"alerts_count": 0})
-    monkeypatch.setattr(fast, "MIN_AGE_DAYS", 180)
+    monkeypatch.setattr(fast, "MIN_AGE_DAYS", 60)
     monkeypatch.setattr(fast, "APPROVED_PRODUCTION_MIN_AGE_DAYS", 7)
 
     result = fast.run(tmp_path)

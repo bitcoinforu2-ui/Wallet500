@@ -49,13 +49,13 @@ def analyze_liquidity_pools(snapshots:list[dict],output_dir:Path,now:str)->dict:
             age=_pool_age_minutes(p.get("pair_created_at"),now_dt)
             reasons=[]; score=0; direction='INFLOW'; hard_block=False
             if prev:
-                if prev_liq>=50000 and liq<50000:
-                    reasons.append("TRADABLE_LIQUIDITY_LOST_BELOW_50K");score=100;direction='OUTFLOW';hard_block=True
-                if prev_liq>=50000 and pct is not None and pct<=-90:
+                if prev_liq>=15000 and liq<50000:
+                    reasons.append("TRADABLE_LIQUIDITY_LOST_BELOW_15K");score=100;direction='OUTFLOW';hard_block=True
+                if prev_liq>=15000 and pct is not None and pct<=-90:
                     reasons.append("LIQUIDITY_EVACUATION_90PCT_PLUS");score=100;direction='OUTFLOW';hard_block=True
-                elif prev_liq>=50000 and pct is not None and pct<=-55:
+                elif prev_liq>=15000 and pct is not None and pct<=-55:
                     reasons.append("LIQUIDITY_EVACUATION_55PCT_PLUS");score=max(score,90);direction='OUTFLOW';hard_block=True
-                elif prev_liq>=50000 and pct is not None and pct<=-30:
+                elif prev_liq>=15000 and pct is not None and pct<=-30:
                     reasons.append("LIQUIDITY_OUTFLOW_30PCT_PLUS");score=max(score,65);direction='OUTFLOW'
                 if delta>=10000 and pct is not None and pct>=50:
                     reasons.append("LIQUIDITY_SURGE_50PCT_PLUS");score+=35
@@ -65,12 +65,12 @@ def analyze_liquidity_pools(snapshots:list[dict],output_dir:Path,now:str)->dict:
                     reasons.append("LIQUIDITY_THRESHOLD_BREAKOUT_40K");score+=25
                 if prev_liq<50000<=liq:
                     reasons.append("TRADABLE_LIQUIDITY_THRESHOLD_50K_CROSSED");score+=25
-                if delta>=50000:
+                if delta>=15000:
                     reasons.append("MAJOR_LIQUIDITY_INFLOW_50K");score+=40
                 elif delta>=25000:
                     reasons.append("STRONG_LIQUIDITY_INFLOW_25K");score+=25
-            elif age is not None and age<=120 and liq>=50000:
-                reasons.append("NEW_POOL_FUNDED_50K_PLUS");score+=35
+            elif age is not None and age<=120 and liq>=15000:
+                reasons.append("NEW_POOL_FUNDED_15K_PLUS");score+=35
             vol=float(p.get("volume_h1") or 0); buys=int(p.get("buys_h1") or 0); sells=int(p.get("sells_h1") or 0)
             if reasons and direction=='INFLOW' and vol>=15000:
                 reasons.append("LIQUIDITY_PLUS_ACTIVE_VOLUME");score+=15

@@ -133,7 +133,7 @@ def test_real_alert_younger_than_180_days_is_critical():
             "exact_identity_verified": True,
             "exact_pair_verified": True,
             "market_age_verified": True,
-            "market_age_days": 179,
+            "market_age_days": 59,
             "blockers": [],
         }],
         "verified_watch": [],

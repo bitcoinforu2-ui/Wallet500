@@ -9,8 +9,8 @@ DATA = Path("data")
 OUTPUT = DATA / "candidate-evidence-envelope.json"
 VERSION = 2
 MODE = "RESEARCH_ONLY_CANDIDATE_EVIDENCE_ENVELOPE_V1"
-MIN_MARKET_AGE_DAYS = 180
-MIN_EXECUTION_LIQUIDITY_USD = 50_000.0
+MIN_MARKET_AGE_DAYS = 60
+MIN_EXECUTION_LIQUIDITY_USD = 15_000.0
 MAX_AGE = {"revival":7200,"holder":7200,"wallet":7200,"registry":7200,"precursor":5400,"waking":5400,"cex":2700,"pre_t0":7200}
 STRONG_PRECURSOR = {"HIGH_CONVICTION_PRECURSOR","PRE_BREAKOUT_CANDIDATE","EARLY_REVIVAL_WATCH"}
 STRONG_WAKING = {"WAKING_CONFIRMED_RESEARCH","WAKING_STRONG_RESEARCH"}
@@ -220,7 +220,7 @@ def build(data_dir: Path = DATA, now: datetime | None = None) -> dict:
         if not exact_id: blockers.append("EXACT_IDENTITY_REQUIRED")
         if not exact_pair: blockers.append("EXACT_PAIR_REQUIRED")
         if not age_ok: blockers.append("MARKET_AGE_180D_REQUIRED")
-        if not liq_ok: blockers.append("EXECUTION_LIQUIDITY_LT_50K")
+        if not liq_ok: blockers.append("EXECUTION_LIQUIDITY_LT_15K")
         blockers+=risk
         pending=[]
         if hard and not market: pending.append("MARKET_CONFIRMATION_PENDING")
@@ -230,7 +230,7 @@ def build(data_dir: Path = DATA, now: datetime | None = None) -> dict:
         if hard and not wl["verified"]: pending.append("WALLET_COVERAGE_PENDING")
         rescue=bool(hard and ((not liq_ok and liq>=10_000) or status=="DEEP_WATCH") and not ad["late_move_risk"]); delegated="reawakening-shadow.json" if rescue and not liq_ok else None
         out.append({"key":f"solana:{t}:{p.lower()}","chain":"solana","network":"solana","token_address":t,"symbol":r.get("symbol"),"pair_address":p,"dex_url":r.get("dex_link"),"status":status,"discovery_tier":tier,"production_effect":False,"automatic_buy":False,
-                    "truth":{"exact_identity_verified":exact_id,"exact_pair_verified":exact_pair,"market_age_verified_180d_plus":age_ok,"market_age_days":age if age_ok else None,"execution_pool_liquidity_usd":liq,"execution_liquidity_floor_passed":liq_ok,"revival_source_fresh":fr["revival"]["fresh"]},
+                    "truth":{"exact_identity_verified":exact_id,"exact_pair_verified":exact_pair,"market_age_verified_60d_plus":age_ok,"market_age_days":age if age_ok else None,"execution_pool_liquidity_usd":liq,"execution_liquidity_floor_passed":liq_ok,"revival_source_fresh":fr["revival"]["fresh"]},
                     "market":{"revival_score_verified":rev,"watch_status":watch,"market_positive":market,"price_usd":r.get("price_usd"),"liquidity_usd":liq,"volume_24h_usd":r.get("dex_pair_volume_24h_usd"),"drawdown_from_ath_pct":r.get("drawdown_from_ath_pct"),"change_24h_pct":r.get("change_24h_pct"),"change_7d_pct":r.get("change_7d_pct"),"liquidity_change_pct":comp.get("liquidity_change_pct"),"pair_volume_change_pct":comp.get("pair_volume_change_pct")},
                     "adaptive_discovery":ad,"families":{"holder_growth":hl,"wallet_accumulation":wl,"smart_money":sl,"cex_revival":cl,"precursor":pl,"waking_confirmation":kl,"social":sol,"pair_survival":{"verified":ps_verified,"positive":ps_positive,"status":"SURVIVED_PREVIOUS_EXACT_PAIR" if ps_verified else "PENDING"},"concentration":con},
                     "coverage":{"verified_independent_lanes":verified,"positive_independent_lanes":positive,"verified_independent_count":len(verified),"positive_independent_count":len(positive),"verified_family_count":vf,"evidence_ready":ready,"pre_waking_evidence_ready":pre_ready,"anomaly_watch":anomaly_watch,"market_confirmation_pending":not market},

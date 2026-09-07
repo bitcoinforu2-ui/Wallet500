@@ -59,7 +59,7 @@ def test_unknown_or_under_180d_age_fails_closed():
     token = "0x4560000000000000000000000000000000000789"
     row = {"chain": "base", "token": token, "symbol": "TEST"}
     result = mvr._score(row, _snapshot("base", token, age_days=30), now, None, {"verified": False})
-    assert "PAIR_AGE_LT_180D_OR_UNKNOWN" in result["blockers"]
+    assert "PAIR_AGE_LT_60D_OR_UNKNOWN" in result["blockers"]
     assert result["status"] == "INELIGIBLE_FAIL_CLOSED"
 
 
@@ -71,7 +71,7 @@ def test_missing_pair_creation_time_is_unknown_not_epoch_veteran():
     snap["pair_created_at"] = None
     result = mvr._score(row, snap, now, None, {"verified": False})
     assert result["market_age_verified"] is False
-    assert "PAIR_AGE_LT_180D_OR_UNKNOWN" in result["blockers"]
+    assert "PAIR_AGE_LT_60D_OR_UNKNOWN" in result["blockers"]
 
 
 def test_exact_registry_age_can_prove_veteran_when_current_pair_is_newer():
@@ -90,7 +90,7 @@ def test_exact_registry_age_can_prove_veteran_when_current_pair_is_newer():
     assert result["market_age_pair_days"] < 180
     assert result["market_age_registry_days"] > 180
     assert result["market_age_evidence_source"] == "EXACT_REGISTRY_FIXTURE"
-    assert "PAIR_AGE_LT_180D_OR_UNKNOWN" not in result["blockers"]
+    assert "PAIR_AGE_LT_60D_OR_UNKNOWN" not in result["blockers"]
 
 
 def test_unverified_row_cannot_spoof_registry_age():
@@ -104,15 +104,15 @@ def test_unverified_row_cannot_spoof_registry_age():
     }
     result = mvr._score(row, _snapshot("arbitrum", token, age_days=30), now, None, {"verified": False})
     assert result["market_age_registry_days"] is None
-    assert "PAIR_AGE_LT_180D_OR_UNKNOWN" in result["blockers"]
+    assert "PAIR_AGE_LT_60D_OR_UNKNOWN" in result["blockers"]
 
 
 def test_live_liquidity_floor_never_relaxed():
     now = datetime(2026, 9, 4, tzinfo=timezone.utc)
     token = "0x7890000000000000000000000000000000000123"
     row = {"chain": "ethereum", "token": token, "symbol": "TEST"}
-    result = mvr._score(row, _snapshot("ethereum", token, liq=49999), now, None, {"verified": False})
-    assert "LIVE_LIQUIDITY_LT_50K" in result["blockers"]
+    result = mvr._score(row, _snapshot("ethereum", token, liq=14999), now, None, {"verified": False})
+    assert "LIVE_LIQUIDITY_LT_15K" in result["blockers"]
     assert result["status"] == "INELIGIBLE_FAIL_CLOSED"
 
 

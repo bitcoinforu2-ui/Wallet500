@@ -14,6 +14,8 @@ from typing import Any
 from .reawakening_shadow import (
     MIN_CONFIRMATION_SPAN_MINUTES,
     MIN_LIQUIDITY_RETENTION,
+    MIN_LIQUIDITY_USD,
+    MIN_MARKET_AGE_DAYS,
     REQUIRED_CONSECUTIVE,
     observation_passes,
 )
@@ -169,6 +171,21 @@ def build(output_dir: str = "data") -> dict:
         gate_passed = len(reasons)
         activity_passed = int(metrics.get("activity_checks_passed") or 0)
         activity_available = int(metrics.get("activity_checks_available") or 0)
+
+        # Near-recovery is a positive recovery surface, not a list of every historical reject.
+        # Fail closed on market age, current liquidity and actual returning activity.
+        market_age_verified = snap.get("market_age_verified") is True or record.get("market_age_verified") is True
+        market_age_days = _f(snap.get("market_age_min_days") or record.get("market_age_min_days"))
+        liquidity_recovered_for_watch = _f(metrics.get("liquidity_usd")) >= MIN_LIQUIDITY_USD
+        activity_returning = activity_passed >= 1
+        if (
+            not market_age_verified
+            or market_age_days < MIN_MARKET_AGE_DAYS
+            or not liquidity_recovered_for_watch
+            or not activity_returning
+        ):
+            continue
+
         waiting_confirmation = (
             passed_snapshot
             and (
@@ -270,7 +287,7 @@ def build(output_dir: str = "data") -> dict:
             "near_recovery_shown": len(near_rows),
         },
         "rule": {
-            "liquidity_floor_usd": 50000,
+            "liquidity_floor_usd": 15000,
             "exact_pair_locked": True,
             "confirmation_observations": REQUIRED_CONSECUTIVE,
             "confirmation_span_minutes": MIN_CONFIRMATION_SPAN_MINUTES,

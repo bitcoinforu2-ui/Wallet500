@@ -24,7 +24,7 @@ LEDGER = DATA / "catalyst-wire-ledger.json"
 STATE = DATA / "catalyst-focus-state.json"
 OUT = DATA / "catalyst-focus-live.json"
 
-MIN_LIQ = 50_000.0
+MIN_LIQ = 15_000.0
 FOCUS_SCORE = 76.0
 DROP_SCORE = 64.0
 # Telegram is intentionally much stricter than the research/Focus gate.
@@ -84,7 +84,7 @@ def headroom(h1,h24):
 def grade(score): return "A+" if score>=88 else "A" if score>=82 else "B+" if score>=76 else "B" if score>=68 else "C" if score>=58 else "D"
 def risk(market):
     score=0; reasons=[]; liquidity=num(market.get("liquidity_usd")); cap=num(market.get("market_cap")) or num(market.get("fdv")); buys,sells=int(market.get("buys_h1") or 0),int(market.get("sells_h1") or 0); h1,h24=num(market.get("price_change_h1")),num(market.get("price_change_h24"))
-    if liquidity<MIN_LIQ: score+=60; reasons.append("LIQUIDITY_BELOW_50K")
+    if liquidity<MIN_LIQ: score+=60; reasons.append("LIQUIDITY_BELOW_15K")
     if cap>0:
         depth=liquidity/cap
         if depth<.01:score+=25;reasons.append("LIQUIDITY_LT_1PCT_MCAP")
@@ -115,7 +115,7 @@ def score_event(event):
     raw=.24*clamp(num(event.get("impact_score")))+.27*exchange_score+.27*readiness+.22*room;score=clamp(raw-.35*risk_score);blockers=[]
     if event.get("preliminary_filter_pass") is not True:blockers.append("PRELIMINARY_FILTER_FAIL")
     if not event.get("source_url"):blockers.append("OFFICIAL_SOURCE_MISSING")
-    if liquidity<MIN_LIQ:blockers.append("LIQUIDITY_BELOW_50K")
+    if liquidity<MIN_LIQ:blockers.append("LIQUIDITY_BELOW_15K")
     if market.get("token_identity_verified") is not True or not market.get("pair_address"):blockers.append("EXACT_PAIR_NOT_VERIFIED")
     if risk_score>=55:blockers.append("RISK_TOO_HIGH")
     if exchange_score<50:blockers.append("EXCHANGE_IMPACT_TOO_LOW")
@@ -187,7 +187,7 @@ def finalmsg(event,reason):
     market=event.get("market") or {};return "\n".join(["🏁 WALLET500 · FOCUS CLOSED",f"{event.get('symbol')} · {reason}",f"Final score {event.get('decision_score')}/100 · Risk {event.get('risk_score')}/100",f"Price {price(market.get('price_usd'))} · Liq {money(market.get('liquidity_usd'))}"])
 def material_change(current,previous):
     cm=current.get("market") or {};om=previous.get("market") or {}
-    if num(cm.get("liquidity_usd"))<MIN_LIQ:return "LIQUIDITY_BROKE_50K",True
+    if num(cm.get("liquidity_usd"))<MIN_LIQ:return "LIQUIDITY_BROKE_15K",True
     if num(current.get("decision_score"))<DROP_SCORE:return "SCORE_COLLAPSED",True
     sd=num(current.get("decision_score"))-num(previous.get("decision_score"))
     if abs(sd)>=8:return f"SCORE_CHANGE_{sd:+.0f}",False

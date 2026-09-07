@@ -9,7 +9,7 @@ from typing import Any
 DATA = Path("data")
 OUTPUT = DATA / "decision-engine-v1.json"
 LEDGER = DATA / "decision-engine-v1-ledger.json"
-MIN_LIQUIDITY_USD = 50_000.0
+MIN_LIQUIDITY_USD = 15_000.0
 VERSION = "DECISION_ENGINE_V1_SHADOW"
 MAX_LEDGER_EVENTS = 5000
 
@@ -132,7 +132,7 @@ def score_survival(row: dict) -> tuple[float, list[str]]:
     elif liq >= MIN_LIQUIDITY_USD:
         score += 10.0
     else:
-        reasons.append("SUB_50K_LIQUIDITY")
+        reasons.append("SUB_15K_LIQUIDITY")
     if liq >= MIN_LIQUIDITY_USD:
         reasons.append("LIQUIDITY_FLOOR_PASSED")
 
@@ -330,7 +330,7 @@ def hard_safety_failures(row: dict) -> list[str]:
         failures.append("PAIR_IDENTITY")
     liq = num(row.get("production_live_liquidity_usd") or row.get("live_liquidity_usd") or row.get("liquidity_usd"))
     if liq < MIN_LIQUIDITY_USD:
-        failures.append("LIQUIDITY_BELOW_50K")
+        failures.append("LIQUIDITY_BELOW_15K")
     if flag(row, "pump_dump_blocked"):
         failures.append("PUMP_DUMP_BLOCK")
     if flag(row, "production_risk_blocked"):

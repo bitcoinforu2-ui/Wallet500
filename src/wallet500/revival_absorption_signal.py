@@ -16,7 +16,7 @@ DEX_BATCH_SIZE = 30
 # Research-only gate. It is deliberately conservative and never promotes a coin
 # to PRE-ALPHA/production. DexScreener exposes buy/sell transaction counts but
 # not verified buy-vs-sell USD notional, so this is explicitly a proxy signal.
-MIN_LIQUIDITY_USD = 50_000.0
+MIN_LIQUIDITY_USD = 15_000.0
 MIN_VOLUME_24H_USD = 10_000.0
 MIN_TXNS_24H = 40
 MIN_VOLUME_TO_LIQUIDITY = 0.05
@@ -103,7 +103,7 @@ def compute_absorption_proxy(coin: dict, pair: dict | None) -> dict:
     criteria = {
         "sell_count_gt_buy_count": sells_h24 > buys_h24 and buys_h24 > 0,
         "sell_buy_count_ratio_le_2": sell_buy_ratio is not None and sell_buy_ratio <= MAX_SELL_BUY_COUNT_RATIO,
-        "liquidity_ge_50k": liquidity_usd >= MIN_LIQUIDITY_USD,
+        "liquidity_ge_15k": liquidity_usd >= MIN_LIQUIDITY_USD,
         "volume_24h_ge_10k": volume_24h_usd >= MIN_VOLUME_24H_USD,
         "txns_24h_ge_40": txns_h24 >= MIN_TXNS_24H,
         "volume_to_liquidity_ge_5pct": volume_to_liquidity >= MIN_VOLUME_TO_LIQUIDITY,
@@ -116,7 +116,7 @@ def compute_absorption_proxy(coin: dict, pair: dict | None) -> dict:
         score += 25
     if criteria["sell_buy_count_ratio_le_2"]:
         score += 10
-    if criteria["liquidity_ge_50k"]:
+    if criteria["liquidity_ge_15k"]:
         score += 15
     if criteria["volume_24h_ge_10k"]:
         score += 10

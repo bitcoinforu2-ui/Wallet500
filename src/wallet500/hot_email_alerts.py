@@ -8,8 +8,8 @@ from email.message import EmailMessage
 from pathlib import Path
 
 HOT_MIN_SCORE = 75
-MIN_MARKET_AGE_DAYS = 180
-MIN_LIQUIDITY_USD = 50_000.0
+MIN_MARKET_AGE_DAYS = 60
+MIN_LIQUIDITY_USD = 15_000.0
 DEFAULT_RECIPIENT = "bitcoinforu2@gmail.com"
 
 

@@ -12,7 +12,7 @@ PAIR = "0x9793a9cBb04f781433254e4530398107E6a8dcee"
 
 def reject_record(source="LIVE_SURVIVAL_FAILED", extra_reasons=None, rejected_at="2026-09-01T10:00:00+00:00"):
     reasons = [
-        "CURRENT_LIQUIDITY_BELOW_50K",
+        "CURRENT_LIQUIDITY_BELOW_15K",
         "PASSED_SCORE_LIQUIDITY_VOLUME_ACTIVITY_MANIPULATION",
     ]
     if extra_reasons:
@@ -27,7 +27,9 @@ def reject_record(source="LIVE_SURVIVAL_FAILED", extra_reasons=None, rejected_at
             "token": "0xabc",
             "pair_address": PAIR.lower(),
             "price_usd": 0.001,
-            "liquidity_usd": 42_000,
+            "market_age_verified": True,
+            "market_age_min_days": 90,
+            "liquidity_usd": 12_000,
             "live_survival_reasons": reasons,
         },
     }
@@ -156,3 +158,17 @@ def test_run_uses_outcome_tracker_history_only_after_v2_start(tmp_path):
     assert target["triggered_at"] == "2026-09-01T10:20:00+00:00"
     assert target["evidence_source"] == "OUTCOME_TRACKER_EXACT_PAIR_HISTORY"
     assert target["v2_started_at"] == "2026-09-01T10:01:00+00:00"
+
+def test_reawakening_age_gate_is_fail_closed_at_60_days():
+    young = reject_record()
+    young["first_reject_snapshot"]["market_age_min_days"] = 59
+    assert eligible_reject(young)[0] is False
+
+    unknown = reject_record()
+    unknown["first_reject_snapshot"].pop("market_age_verified", None)
+    assert eligible_reject(unknown)[0] is False
+
+    boundary = reject_record()
+    boundary["first_reject_snapshot"]["market_age_min_days"] = 60
+    assert eligible_reject(boundary)[0] is True
+

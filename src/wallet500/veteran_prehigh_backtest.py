@@ -13,7 +13,7 @@ DATA = Path("data")
 WINNER_STUDY = DATA / "winner-separator-study.json"
 SURVIVOR = DATA / "survivor-wave-watch.json"
 OUT = DATA / "veteran-prehigh-backtest.json"
-MIN_AGE_DAYS = 180.0
+MIN_AGE_DAYS = 60.0
 LIQ_FLOOR = 50_000.0
 MAX_LEAD_HOURS = 6.0
 
@@ -222,7 +222,7 @@ def main():
             "veteran_snapshots": len(eligible_points),
             "veteran_high_dna_snapshots": len(high_points),
             "first_veteran_high_at": high_points[0].get("observed_at") if high_points else None,
-            "age_status": "VETERAN_IN_SAVED_WINDOW" if eligible_points else ("PAIR_AGE_UNVERIFIED" if not (pair_meta.get(key) or {}).get("pair_created_at") else "UNDER_180D_IN_SAVED_WINDOW"),
+            "age_status": "VETERAN_IN_SAVED_WINDOW" if eligible_points else ("PAIR_AGE_UNVERIFIED" if not (pair_meta.get(key) or {}).get("pair_created_at") else "UNDER_60D_IN_SAVED_WINDOW"),
         })
 
     grid_rows = []

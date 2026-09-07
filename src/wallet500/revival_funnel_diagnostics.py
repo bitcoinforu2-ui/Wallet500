@@ -134,10 +134,10 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
         "lanes": {
             "solana_veteran_revival": {
                 "source_generated_at": revival.get("generated_at") if isinstance(revival, dict) else None,
-                "minimum_market_age_days": _num(age_gate.get("minimum_market_age_days")) or 180,
+                "minimum_market_age_days": _num(age_gate.get("minimum_market_age_days")) or 60,
                 "age_gate_status": age_gate.get("status"),
                 "universe": _num(revival_counts.get("universe")),
-                "age_verified_180d_plus": _num(revival_counts.get("age_verified_180d_plus")),
+                "age_verified_60d_plus": _num(revival_counts.get("age_verified_60d_plus")),
                 "core_drawdown_watch": _num(revival_counts.get("core_drawdown_watch")),
                 "waking_market_only": _num(revival_counts.get("waking_market_only")),
                 "absorption_proxy_watch": _num(revival_counts.get("absorption_proxy_watch")),

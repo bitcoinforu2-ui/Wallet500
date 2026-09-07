@@ -15,8 +15,8 @@ from .telegram_alerts import (
     _write,
 )
 
-MIN_MARKET_AGE_DAYS = 180
-MIN_LIQUIDITY_USD = 50_000.0
+MIN_MARKET_AGE_DAYS = 60
+MIN_LIQUIDITY_USD = 15_000.0
 
 
 def _now() -> str:
@@ -232,8 +232,8 @@ def run() -> dict:
                 "exact_identity_verified=true",
                 "exact_pair_verified=true",
                 "market_age_verified=true",
-                "market_age_days>=180",
-                "execution_pool_liquidity_usd>=50000",
+                "market_age_days>=60",
+                "execution_pool_liquidity_usd>=15000",
                 "blockers=[]",
             ],
             "manual_execution": "review alert only; no automatic trade",

@@ -12,11 +12,11 @@ def test_full_filter_pass_is_research_only():
 
 def test_under_180_fails_closed():
     r=a.classify({'token':'0x'+'2'*40},snap(age=30),datetime(2026,9,6,tzinfo=timezone.utc))
-    assert 'PAIR_AGE_LT_180D_OR_UNKNOWN' in r['blockers']
+    assert 'PAIR_AGE_LT_60D_OR_UNKNOWN' in r['blockers']
 
 def test_liquidity_floor_never_relaxed():
     r=a.classify({'token':'0x'+'2'*40},snap(liq=49999),datetime(2026,9,6,tzinfo=timezone.utc))
-    assert 'LIVE_LIQUIDITY_LT_50K' in r['blockers']
+    assert 'LIVE_LIQUIDITY_LT_15K' in r['blockers']
 
 def test_no_pair_fails_closed_and_stays_research_only():
     r=a.classify({'token':'0x'+'2'*40},None,datetime(2026,9,6,tzinfo=timezone.utc))

@@ -42,7 +42,7 @@ def mark(r):
     except: runup=None
     return {'price':price,'liq':liq,'vol':vol,'tx':tx,'buys':buys,'sells':sells,'buy_share':buy_share,'turnover':turnover,'retention':retention,'runup':runup,'marks':len(recent)}
 
-def hard(m): return m and m['liq']>=50000 and m['vol']>=15000 and m['tx']>=50 and m['runup'] is not None and m['runup']<=25
+def hard(m): return m and m['liq']>=15000 and m['vol']>=15000 and m['tx']>=50 and m['runup'] is not None and m['runup']<=25
 
 def arm_hits(m,consensus):
     if not hard(m): return []

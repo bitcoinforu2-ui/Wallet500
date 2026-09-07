@@ -20,7 +20,7 @@ FEATURES = DATA / "revival-feature-analysis.json"
 MODE = "RESEARCH_ONLY_REVIVAL_FORENSICS_V2"
 CONTRACT = "REVIVAL_FORENSICS_V2"
 NETWORK = "solana"
-MIN_AGE_DAYS = 180
+MIN_AGE_DAYS = 60
 HORIZONS_MIN = (5, 15, 30, 60, 240, 720, 1440)
 WAKING_STATUS = "WAKING_MARKET_ONLY"
 
@@ -159,7 +159,7 @@ def build_t0(coin: dict, target: dict, source_generated_at: str, created_at: str
     market_cap = n(coin.get("market_cap_usd"))
     blockers = []
     if coin.get("market_age_verified") is not True or age is None or age < MIN_AGE_DAYS:
-        blockers.append("AGE_NOT_VERIFIED_180D_PLUS")
+        blockers.append("AGE_NOT_VERIFIED_60D_PLUS")
     if not pair:
         blockers.append("PAIR_ID_MISSING")
     if price is None or price <= 0:
@@ -309,7 +309,7 @@ def run(output_dir: str = "data") -> dict:
     state.update({"version":2,"mode":MODE,"contract":CONTRACT,"network":NETWORK,"updated_at":at,"no_hindsight":True,"future_leakage_guard":True,"minimum_market_age_days":MIN_AGE_DAYS,"events":events,"active_by_token":active}); write(state_path,state)
     ordered=sorted(events.values(),key=lambda e:str((e.get("t0") or {}).get("waking_t0") or ""),reverse=True); active_events=[events[eid] for eid in active.values() if eid in events]; analysis=feature_analysis(ordered)
     counts={"events_total":len(ordered),"waking_active":len(active_events),"completed_24h":sum(1 for e in ordered if e.get("completed")),"x2_plus":sum(1 for e in ordered if e.get("outcome_class") in {"REVIVAL_X2","REVIVAL_X4","REVIVAL_X10"}),"failed_liquidity":sum(1 for e in ordered if e.get("outcome_class")=="FAILED_LIQUIDITY_SURVIVAL"),"no_revival_24h":sum(1 for e in ordered if e.get("outcome_class")=="NO_REVIVAL_24H")}
-    payload={"version":2,"mode":MODE,"contract":CONTRACT,"network":NETWORK,"generated_at":at,"source_revival_generated_at":revival.get("generated_at"),"source_waking_generated_at":waking.get("generated_at"),"production_portfolio_impact":"NONE","automatic_buy":False,"no_hindsight":True,"future_leakage_guard":"ONLY_PUBLISHED_T0_AND_FORWARD_EXACT_PAIR_OBSERVATIONS","pair_identity_rule":"LOCK_REVIVAL_DEX_PAIR_AT_WAKING_T0_AND_NEVER_SWITCH","age_rule":"MARKET_AGE_VERIFIED_GTE_180_DAYS_FAIL_CLOSED","holder_rule":"HOLDER_BASELINE_MAY_BE_POST_T0_AND_IS_NEVER_RELABELED_AS_PRICE_T0","wallet500_status":"NOT_CONNECTED_TO_WAKING_PIPELINE_YET","horizons_minutes":list(HORIZONS_MIN),"counts":counts,"events":ordered}; write(latest_path,payload); write(features_path,analysis)
+    payload={"version":2,"mode":MODE,"contract":CONTRACT,"network":NETWORK,"generated_at":at,"source_revival_generated_at":revival.get("generated_at"),"source_waking_generated_at":waking.get("generated_at"),"production_portfolio_impact":"NONE","automatic_buy":False,"no_hindsight":True,"future_leakage_guard":"ONLY_PUBLISHED_T0_AND_FORWARD_EXACT_PAIR_OBSERVATIONS","pair_identity_rule":"LOCK_REVIVAL_DEX_PAIR_AT_WAKING_T0_AND_NEVER_SWITCH","age_rule":"MARKET_AGE_VERIFIED_GTE_60_DAYS_FAIL_CLOSED","holder_rule":"HOLDER_BASELINE_MAY_BE_POST_T0_AND_IS_NEVER_RELABELED_AS_PRICE_T0","wallet500_status":"NOT_CONNECTED_TO_WAKING_PIPELINE_YET","horizons_minutes":list(HORIZONS_MIN),"counts":counts,"events":ordered}; write(latest_path,payload); write(features_path,analysis)
     dashboard={"version":2,"mode":MODE,"generated_at":at,"counts":counts,"claim_status":analysis.get("claim_status"),"wallet500_status":payload["wallet500_status"],"active":[{"event_id":e.get("event_id"),"symbol":e.get("symbol"),"token_address":e.get("token_address"),"t0":(e.get("t0") or {}).get("waking_t0"),"entry_price_usd":(e.get("t0") or {}).get("price_usd"),"pair_address":(e.get("t0") or {}).get("pair_address"),"revival_score_t0":(e.get("t0") or {}).get("revival_score_verified"),"peak_return_pct":e.get("peak_return_pct"),"max_drawdown_from_t0_pct":e.get("max_drawdown_from_t0_pct"),"outcome_class":e.get("outcome_class"),"holder_confirmation":e.get("holder_confirmation"),"horizons":e.get("horizons"),"evidence_sha256":(e.get("t0") or {}).get("evidence_sha256")} for e in active_events]}; write(dashboard_path,dashboard)
     return payload
 

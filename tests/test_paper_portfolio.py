@@ -35,7 +35,7 @@ def test_buy_mark_and_sell_realizes_loss():
 
 def test_never_opens_below_liquidity_floor():
     ledger = initial_ledger("2026-08-29T00:00:00+00:00")
-    ledger, summary = reconcile_portfolio(ledger, [candidate(liquidity=49999.99)], {}, "2026-08-29T00:01:00+00:00")
+    ledger, summary = reconcile_portfolio(ledger, [candidate(liquidity=14999.99)], {}, "2026-08-29T00:01:00+00:00")
     assert summary["open_positions"] == 0
     assert summary["cash_usd"] == 100.0
 

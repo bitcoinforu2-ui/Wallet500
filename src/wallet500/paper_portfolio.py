@@ -8,7 +8,7 @@ from typing import Any, Iterable
 DATA_DIR = Path("data")
 STARTING_CASH_USD = 100.0
 POSITION_SIZE_USD = 1.0
-MIN_LIQUIDITY_USD = 50_000.0
+MIN_LIQUIDITY_USD = 15_000.0
 LEDGER_PATH = DATA_DIR / "paper-portfolio-ledger.json"
 SUMMARY_PATH = DATA_DIR / "paper-portfolio-summary.json"
 

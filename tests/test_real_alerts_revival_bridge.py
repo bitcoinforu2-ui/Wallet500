@@ -76,7 +76,7 @@ def test_evidence_ready_is_visible_but_does_not_auto_become_real_alert(tmp_path)
             "truth": {
                 "exact_identity_verified": True,
                 "exact_pair_verified": True,
-                "market_age_verified_180d_plus": True,
+                "market_age_verified_60d_plus": True,
                 "market_age_days": 900,
                 "execution_pool_liquidity_usd": 120000,
             },

@@ -28,7 +28,7 @@ def seed(root: Path, ready=2, real_ready=2, funnel_ready=2, visible_ready=None, 
         "mode": "RESEARCH_ONLY_CANDIDATE_EVIDENCE_ENVELOPE_V1",
         "production_change": False,
         "automatic_buy": False,
-        "truth_contract": {"minimum_market_age_days": 180, "exact_pair_required": True},
+        "truth_contract": {"minimum_market_age_days": 60, "exact_pair_required": True},
         "counts": {"evidence_ready": ready},
         "candidates": [],
     })
@@ -54,11 +54,11 @@ def seed(root: Path, ready=2, real_ready=2, funnel_ready=2, visible_ready=None, 
     })
     write(root, "active-qualified-age-gate.json", {
         "status": age_status,
-        "minimum_market_age_days": 180,
-        "project_scope_minimum_market_age_days": 180,
+        "minimum_market_age_days": 60,
+        "project_scope_minimum_market_age_days": 60,
     })
     write(root, "production-status.json", {
-        "policy": {"minimum_verified_market_age_days": 180},
+        "policy": {"minimum_verified_market_age_days": 60},
     })
 
 
@@ -111,7 +111,7 @@ def test_visibility_bridge_prunes_noncanonical_carry_over(tmp_path):
             "truth": {
                 "exact_identity_verified": True,
                 "exact_pair_verified": True,
-                "market_age_verified_180d_plus": True,
+                "market_age_verified_60d_plus": True,
                 "market_age_days": 200,
                 "execution_pool_liquidity_usd": 60000,
             },
@@ -147,7 +147,7 @@ def test_visibility_bridge_clears_stale_ready_markers_on_persistent_surfaces(tmp
             "truth": {
                 "exact_identity_verified": True,
                 "exact_pair_verified": True,
-                "market_age_verified_180d_plus": True,
+                "market_age_verified_60d_plus": True,
                 "market_age_days": 200,
                 "execution_pool_liquidity_usd": 60000,
             },

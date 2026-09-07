@@ -8,7 +8,8 @@ from typing import Any
 MODE = "RESEARCH_ONLY_SURVIVOR_REAWAKENING_V2"
 CONTRACT = "FALSE_NEGATIVE_RECOVERY_RECHECK_V2"
 
-MIN_LIQUIDITY_USD = 50_000.0
+MIN_LIQUIDITY_USD = 15_000.0
+MIN_MARKET_AGE_DAYS = 60
 MIN_CONFIRMATION_SPAN_MINUTES = 15.0
 MIN_LIQUIDITY_RETENTION = 0.90
 MIN_GAIN_SINCE_REJECT_PCT = -25.0
@@ -26,7 +27,7 @@ REQUIRED_CONSECUTIVE = 2
 
 ELIGIBLE_SOURCE = "LIVE_SURVIVAL_FAILED"
 REQUIRED_REASONS = {
-    "CURRENT_LIQUIDITY_BELOW_50K",
+    "CURRENT_LIQUIDITY_BELOW_15K",
     "PASSED_SCORE_LIQUIDITY_VOLUME_ACTIVITY_MANIPULATION",
 }
 HARD_EXCLUDED_REASONS = {
@@ -128,9 +129,22 @@ def _first_reasons(record: dict) -> list[str]:
 
 def eligible_reject(record: dict) -> tuple[bool, list[str]]:
     reasons = set(_first_reasons(record))
+    snap = record.get("first_reject_snapshot") if isinstance(record.get("first_reject_snapshot"), dict) else {}
+    age_verified = snap.get("market_age_verified") is True or record.get("market_age_verified") is True
+    age_days = _f(snap.get("market_age_min_days") or record.get("market_age_min_days"))
+    first_liquidity = _f(snap.get("liquidity_usd"))
+    had_liquidity_floor_reason = bool(
+        {"CURRENT_LIQUIDITY_BELOW_15K", "CURRENT_LIQUIDITY_BELOW_50K"} & reasons
+    )
+    liquidity_failed_current_policy = (
+        first_liquidity > 0
+        and first_liquidity < MIN_LIQUIDITY_USD
+        and had_liquidity_floor_reason
+    )
     checks = {
         "source_live_survival_failed": str(record.get("first_reject_source") or "") == ELIGIBLE_SOURCE,
-        "liquidity_only_failure_present": "CURRENT_LIQUIDITY_BELOW_50K" in reasons,
+        "veteran_age_verified_60d_plus": age_verified and age_days >= MIN_MARKET_AGE_DAYS,
+        "liquidity_only_failure_present": liquidity_failed_current_policy,
         "other_quality_checks_passed": "PASSED_SCORE_LIQUIDITY_VOLUME_ACTIVITY_MANIPULATION" in reasons,
         "no_hard_reversal_reason": not bool(reasons & HARD_EXCLUDED_REASONS),
     }

@@ -11,7 +11,7 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 DATA = Path("data")
-MIN_MARKET_AGE_DAYS = 180
+MIN_MARKET_AGE_DAYS = 60
 UA = {"User-Agent": "Wallet500/1.7", "Accept": "application/json"}
 
 EXCHANGE_ALIASES = {
@@ -253,7 +253,7 @@ def run(path: Path = DATA / "cex-revival-radar.json") -> dict:
             rejected.append({
                 "symbol": alert.get("symbol"),
                 "base_symbol": base,
-                "reason": "UNDER_180_DAYS_OR_AGE_UNVERIFIED",
+                "reason": "UNDER_60_DAYS_OR_AGE_UNVERIFIED",
                 "coingecko_id": chosen.get("id"),
                 "identity_evidence": identity_evidence,
             })

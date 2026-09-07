@@ -126,9 +126,9 @@ def main():
         ("liq>=75k", lambda r: f(r.get("entry_liquidity_usd")) >= 75000),
         ("liq>=100k", lambda r: f(r.get("entry_liquidity_usd")) >= 100000),
         ("liq>=250k", lambda r: f(r.get("entry_liquidity_usd")) >= 250000),
-        ("liq>=500k", lambda r: f(r.get("entry_liquidity_usd")) >= 500000),
+        ("liq>=500k", lambda r: f(r.get("entry_liquidity_usd")) >= 150000),
         ("vol>=25k", lambda r: f(r.get("entry_volume_h1")) >= 25000),
-        ("vol>=50k", lambda r: f(r.get("entry_volume_h1")) >= 50000),
+        ("vol>=50k", lambda r: f(r.get("entry_volume_h1")) >= 15000),
         ("vol>=100k", lambda r: f(r.get("entry_volume_h1")) >= 100000),
         ("tx>=100", lambda r: i(r.get("entry_txns_h1")) >= 100),
         ("tx>=250", lambda r: i(r.get("entry_txns_h1")) >= 250),
@@ -142,7 +142,7 @@ def main():
         ("pre-runup<=25%", lambda r: r.get("pre_entry_runup_pct") is not None and f(r.get("pre_entry_runup_pct")) <= 25),
         ("pre-runup<=50%", lambda r: r.get("pre_entry_runup_pct") is not None and f(r.get("pre_entry_runup_pct")) <= 50),
         ("pre-runup<=100%", lambda r: r.get("pre_entry_runup_pct") is not None and f(r.get("pre_entry_runup_pct")) <= 100),
-        ("liq>=100k & vol>=50k", lambda r: f(r.get("entry_liquidity_usd")) >= 100000 and f(r.get("entry_volume_h1")) >= 50000),
+        ("liq>=100k & vol>=50k", lambda r: f(r.get("entry_liquidity_usd")) >= 100000 and f(r.get("entry_volume_h1")) >= 15000),
         ("liq>=100k & tx>=250", lambda r: f(r.get("entry_liquidity_usd")) >= 100000 and i(r.get("entry_txns_h1")) >= 250),
         ("liq>=250k & vol>=100k", lambda r: f(r.get("entry_liquidity_usd")) >= 250000 and f(r.get("entry_volume_h1")) >= 100000),
     ]
@@ -160,7 +160,7 @@ def main():
         bucket(enriched, "75-100k", lambda r: 75000 <= f(r.get("entry_liquidity_usd")) < 100000),
         bucket(enriched, "100-250k", lambda r: 100000 <= f(r.get("entry_liquidity_usd")) < 250000),
         bucket(enriched, "250-500k", lambda r: 250000 <= f(r.get("entry_liquidity_usd")) < 500000),
-        bucket(enriched, ">=500k", lambda r: f(r.get("entry_liquidity_usd")) >= 500000),
+        bucket(enriched, ">=500k", lambda r: f(r.get("entry_liquidity_usd")) >= 150000),
     ]
     turnover_buckets = [
         bucket(enriched, "<0.25", lambda r: f(r.get("turnover_h1")) < .25),
@@ -186,7 +186,7 @@ def main():
         vol = f(last.get("volume_h1"))
         tx = i(last.get("buys_h1")) + i(last.get("sells_h1"))
         gates = []
-        if liq < 50000: gates.append("LIQ_LT_50K")
+        if liq < 50000: gates.append("LIQ_LT_15K")
         if vol < 15000: gates.append("VOL_LT_15K")
         if tx < 50: gates.append("TX_LT_50")
         if not hist: gates.append("NO_LATEST_MARK")

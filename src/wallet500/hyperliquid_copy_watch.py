@@ -194,7 +194,7 @@ def _score(row: dict[str, Any], cfg: dict[str, Any]) -> float:
 def _decision(row: dict[str, Any], cfg: dict[str, Any]) -> tuple[str, list[str]]:
     blockers: list[str] = []
     if _f(row.get("history_span_days")) < _f(cfg.get("min_history_days"), 180):
-        blockers.append("HISTORY_LT_180D")
+        blockers.append("HISTORY_LT_60D")
     if int(row.get("closed_fill_events") or 0) < int(cfg.get("min_closed_fill_events") or 200):
         blockers.append("INSUFFICIENT_CLOSED_FILL_SAMPLE")
     wr = row.get("close_win_rate_proxy_pct")

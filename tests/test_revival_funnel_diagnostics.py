@@ -13,8 +13,8 @@ def _write(path: Path, value) -> None:
 def test_diagnostics_separates_hard_blockers_from_pending_confirmations(tmp_path: Path) -> None:
     _write(tmp_path / "revival-1000-latest.json", {
         "generated_at": "2026-09-04T10:00:00Z",
-        "age_gate": {"status": "ENFORCED_FAIL_CLOSED", "minimum_market_age_days": 180},
-        "counts": {"universe": 120, "age_verified_180d_plus": 120, "core_drawdown_watch": 30, "waking_market_only": 4, "pre_alpha": 0},
+        "age_gate": {"status": "ENFORCED_FAIL_CLOSED", "minimum_market_age_days": 60},
+        "counts": {"universe": 120, "age_verified_60d_plus": 120, "core_drawdown_watch": 30, "waking_market_only": 4, "pre_alpha": 0},
         "coins": [
             {"pre_alpha_eligible": False, "pre_alpha_blocker": "PENDING"},
             {"pre_alpha_eligible": False, "pre_alpha_blocker": "PENDING"},
@@ -56,7 +56,7 @@ def test_diagnostics_separates_hard_blockers_from_pending_confirmations(tmp_path
             {
                 "status": "BLOCKED_TRUTH",
                 "discovery_tier": "HARD_TRUTH_BLOCKED",
-                "blockers": ["EXECUTION_LIQUIDITY_LT_50K"],
+                "blockers": ["EXECUTION_LIQUIDITY_LT_15K"],
                 "pending_confirmations": [],
                 "rescue_shadow": {"eligible": True},
             },
@@ -98,7 +98,7 @@ def test_diagnostics_separates_hard_blockers_from_pending_confirmations(tmp_path
 
     assert out["version"] == 3
     assert out["production_change"] is False
-    assert out["lanes"]["solana_veteran_revival"]["minimum_market_age_days"] == 180
+    assert out["lanes"]["solana_veteran_revival"]["minimum_market_age_days"] == 60
     assert out["lanes"]["evidence_promotion"]["evidence_ready"] == 2
     assert out["lanes"]["evidence_promotion"]["pre_waking_evidence_ready"] == 4
     assert out["lanes"]["evidence_promotion"]["anomaly_watch"] == 6
@@ -109,7 +109,7 @@ def test_diagnostics_separates_hard_blockers_from_pending_confirmations(tmp_path
     assert "INDEPENDENT_EVIDENCE_PENDING" not in hard_codes
     assert "MARKET_CONFIRMATION_PENDING" in pending_codes
     assert "INDEPENDENT_EVIDENCE_PENDING" in pending_codes
-    assert "EXECUTION_LIQUIDITY_LT_50K" in hard_codes
+    assert "EXECUTION_LIQUIDITY_LT_15K" in hard_codes
     assert "REAWAKENING_FORWARD_TRACKER_EMPTY_AFTER_ACTIVATION" in hard_codes
     assert "NO_ACTIVE_QUALIFIED_BEFORE_AGE_GOVERNANCE" not in hard_codes
     assert "active_qualification" not in out["lanes"]

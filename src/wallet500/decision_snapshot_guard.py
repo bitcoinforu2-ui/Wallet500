@@ -9,8 +9,8 @@ from .solana_mintability_public_guard import sanitize_real_alerts
 
 DATA = Path("data")
 OUTPUT = DATA / "decision-snapshot-integrity.json"
-MIN_AGE_DAYS = 180
-MIN_LIQUIDITY_USD = 50_000.0
+MIN_AGE_DAYS = 60
+MIN_LIQUIDITY_USD = 15_000.0
 PUBLIC_DECISION_SURFACES = ("alerts", "verified_watch", "evidence_ready", "dormant_no_activity")
 
 
@@ -158,7 +158,7 @@ def _preserve_evidence_ready_visibility(data_dir: Path) -> None:
             "evidence_verified_count": _int(coverage.get("verified_independent_count")),
             "exact_identity_verified": truth.get("exact_identity_verified") is True,
             "exact_pair_verified": truth.get("exact_pair_verified") is True,
-            "market_age_verified": truth.get("market_age_verified_180d_plus") is True,
+            "market_age_verified": truth.get("market_age_verified_60d_plus") is True,
             "market_age_days": _int(truth.get("market_age_days")),
             "execution_pool_liquidity_usd": _num(truth.get("execution_pool_liquidity_usd") or market.get("execution_pool_liquidity_usd")),
             "mintability_verified": row.get("mintability_verified") is True,
@@ -221,7 +221,7 @@ def build(data_dir: Path = DATA) -> dict:
         fail("ENVELOPE_PRODUCTION_LEAK", "Evidence envelope must remain research-only")
     truth = envelope.get("truth_contract") if isinstance(envelope.get("truth_contract"), dict) else {}
     if _int(truth.get("minimum_market_age_days")) != MIN_AGE_DAYS:
-        fail("ENVELOPE_AGE_SCOPE_DRIFT", "Evidence envelope must enforce veteran 180d scope", truth.get("minimum_market_age_days"))
+        fail("ENVELOPE_AGE_SCOPE_DRIFT", "Evidence envelope must enforce veteran 60d scope", truth.get("minimum_market_age_days"))
     if truth.get("exact_pair_required") is not True:
         fail("ENVELOPE_EXACT_PAIR_GUARD_MISSING", "Exact pair truth is mandatory")
 
@@ -241,11 +241,11 @@ def build(data_dir: Path = DATA) -> dict:
         fail("EVIDENCE_READY_VISIBILITY_SKEW", "Every canonical Evidence Ready token must remain visible on exactly one research surface, including dormant_no_activity", evidence_counts)
 
     if _int(age.get("minimum_market_age_days")) != MIN_AGE_DAYS:
-        fail("ACTIVE_AGE_GATE_SCOPE_DRIFT", "Active age gate must enforce 180d", age.get("minimum_market_age_days"))
+        fail("ACTIVE_AGE_GATE_SCOPE_DRIFT", "Active age gate must enforce 60d", age.get("minimum_market_age_days"))
     if age.get("status") == "QUARANTINED_FAIL_CLOSED_UNAPPROVED_POLICY":
         fail("STALE_7D_AGE_GOVERNOR", "Legacy 7d-vs-180d quarantine must not reappear")
     if age.get("project_scope_minimum_market_age_days") not in (None, MIN_AGE_DAYS):
-        fail("ACTIVE_PROJECT_SCOPE_DRIFT", "Project scope must be 180d", age.get("project_scope_minimum_market_age_days"))
+        fail("ACTIVE_PROJECT_SCOPE_DRIFT", "Project scope must be 60d", age.get("project_scope_minimum_market_age_days"))
 
     for row in envelope.get("candidates") or []:
         if not isinstance(row, dict) or row.get("status") != "EVIDENCE_READY":
@@ -254,7 +254,7 @@ def build(data_dir: Path = DATA) -> dict:
             fail("EVIDENCE_READY_PRODUCTION_LEAK", "Evidence Ready must never authorize production", row.get("key"))
         t = row.get("truth") if isinstance(row.get("truth"), dict) else {}
         c = row.get("coverage") if isinstance(row.get("coverage"), dict) else {}
-        if not (t.get("exact_identity_verified") is True and t.get("exact_pair_verified") is True and t.get("market_age_verified_180d_plus") is True and t.get("execution_liquidity_floor_passed") is True):
+        if not (t.get("exact_identity_verified") is True and t.get("exact_pair_verified") is True and t.get("market_age_verified_60d_plus") is True and t.get("execution_liquidity_floor_passed") is True):
             fail("EVIDENCE_READY_TRUTH_BREACH", "Evidence Ready row lacks mandatory base truth", row.get("key"))
         if _int(c.get("positive_independent_count")) < 1:
             fail("EVIDENCE_READY_WITHOUT_INDEPENDENT_EVIDENCE", "Evidence Ready requires an independent positive lane", row.get("key"))
@@ -282,7 +282,7 @@ def build(data_dir: Path = DATA) -> dict:
     if isinstance(production, dict) and production:
         policy = production.get("policy") if isinstance(production.get("policy"), dict) else {}
         if _int(policy.get("minimum_verified_market_age_days")) not in (0, MIN_AGE_DAYS):
-            fail("PRODUCTION_STATUS_SCOPE_DRIFT", "Production status must report 180d veteran scope", policy.get("minimum_verified_market_age_days"))
+            fail("PRODUCTION_STATUS_SCOPE_DRIFT", "Production status must report 60d veteran scope", policy.get("minimum_verified_market_age_days"))
 
     return {
         "version": 4,

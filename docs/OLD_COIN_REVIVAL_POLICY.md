@@ -8,19 +8,19 @@ Wallet500 production intelligence is 100% focused on established-token revival/r
 New-token discovery is not part of the production search objective. Historical files from older experiments may remain for learning and auditability, but they must never enter the visible Revival radar, qualification lane, alerts, paper entries or production decisions.
 
 ## Mandatory age rule
-A token is eligible for Wallet500 Revival only when there is verified evidence that it has traded in the market for at least 180 days.
+A token is eligible for Wallet500 Revival only when there is verified evidence that it has traded in the market for at least 60 days.
 
 Hard rule:
 
-- VERIFIED MARKET AGE >= 180 DAYS: eligible for Revival analysis.
-- VERIFIED MARKET AGE < 180 DAYS: rejected.
+- VERIFIED MARKET AGE >= 60 DAYS: eligible for Revival analysis.
+- VERIFIED MARKET AGE < 60 DAYS: rejected.
 - UNKNOWN / AMBIGUOUS AGE: rejected fail-closed.
 - Contract creation date alone is not sufficient evidence of market age.
 
 Accepted lower-bound evidence can include:
 
-1. Exact CoinGecko identity with ATH/ATL historical market timestamp proving at least 180 days of market history.
-2. Exact DexScreener pair identity with pair creation timestamp proving at least 180 days of market history.
+1. Exact CoinGecko identity with ATH/ATL historical market timestamp proving at least 60 days of market history.
+2. Exact DexScreener pair identity with pair creation timestamp proving at least 60 days of market history.
 3. Another exact, independently verifiable first-market/first-liquidity/first-trade timestamp approved by the same truth rules.
 
 For CEX-only symbols, symbol text alone is never enough when identity is ambiguous. A CEX symbol must resolve to one unambiguous market identity before age verification can pass.
@@ -28,7 +28,7 @@ For CEX-only symbols, symbol text alone is never enough when identity is ambiguo
 Every visible candidate must expose:
 
 - `market_age_verified: true`
-- `market_age_min_days >= 180`
+- `market_age_min_days >= 60`
 - `market_age_evidence_at`
 - `market_age_evidence_source`
 
@@ -82,7 +82,7 @@ For every mature symbol build rolling personal baselines rather than comparing u
 Use robust median/percentile or MAD/z-score style comparisons once enough history exists. Never fabricate historical baseline values when history was not collected.
 
 ## Historical review
-Existing Wallet500 history remains intelligence data and must not be deleted merely because it predates this policy. Backtests and case studies may preserve younger assets as historical records, but all current Revival candidate selection and alerts must apply the 180-day gate.
+Existing Wallet500 history remains intelligence data and must not be deleted merely because it predates this policy. Backtests and case studies may preserve younger assets as historical records, but all current Revival candidate selection and alerts must apply the 60-day gate.
 
 Measure at 5m, 15m, 30m, 1h, 4h, 12h and 24h:
 
@@ -99,7 +99,7 @@ Threshold changes must be versioned and evaluated against the complete track rec
 ## Production truth rule
 No item may be labeled as a current Revival candidate unless all of the following are true:
 
-1. Market age is verified at >=180 days.
+1. Market age is verified at >=60 days.
 2. Identity is sufficiently resolved for the lane in which it is shown.
 3. Required liquidity/pair/risk gates for that lane are satisfied.
 4. Missing evidence is displayed as missing, never silently assumed.

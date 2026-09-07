@@ -9,10 +9,10 @@ from .market_data import _pair_to_snapshot, pair_lookup, token_pairs
 
 DATA = Path('data')
 OUT = DATA / 'hot-healthy-radar.json'
-MIN_LIQ = 50000.0
+MIN_LIQ = 15000.0
 MIN_VOL = 15000.0
 MIN_TX = 50
-MIN_MARKET_AGE_DAYS = 180
+MIN_MARKET_AGE_DAYS = 60
 EVM_CHAINS = {'ethereum', 'eth', 'bsc', 'bnb', 'base', 'arbitrum', 'polygon', 'optimism', 'avalanche'}
 
 
@@ -156,7 +156,7 @@ def _live_exact_pair_truth(r):
     sells = _i(live.get('sells_h1'))
     tx = buys + sells
     if liq < MIN_LIQ:
-        return None, 'LIVE_LIQUIDITY_BELOW_50K'
+        return None, 'LIVE_LIQUIDITY_BELOW_15K'
     if vol < MIN_VOL:
         return None, 'LIVE_VOLUME_H1_BELOW_15K'
     if tx < MIN_TX:
@@ -371,7 +371,7 @@ def run():
         'healthy_watch': watch[:100],
         'top_ranked': rows[:100],
         'quarantined_fail_closed': quarantine[:200],
-        'note': 'Research/radar ranking only. V3 rechecks the exact pair live, proves target-token identity/side, requires current $50K/$15K/50 activity gates, and requires >=180-day veteran-market proof before ranking. Historical outcome marks are baseline evidence only and can never substitute for current market truth. It does not bypass LP/ownership/cluster verification or create a production tradability claim.'
+        'note': 'Research/radar ranking only. V3 rechecks the exact pair live, proves target-token identity/side, requires current $50K/$15K/50 activity gates, and requires >=60-day veteran-market proof before ranking. Historical outcome marks are baseline evidence only and can never substitute for current market truth. It does not bypass LP/ownership/cluster verification or create a production tradability claim.'
     }
     OUT.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + '\n')
     print(json.dumps({k: payload[k] for k in ('historical_preeligible_candidates','scored_live_verified_candidates','quarantined_fail_closed_count','hot_healthy_count','healthy_watch_count')}, indent=2))

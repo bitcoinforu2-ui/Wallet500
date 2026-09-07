@@ -79,7 +79,7 @@ def run():
         "mode": "VETERAN_COIN_REVIVAL_ONLY",
         "production_primary": "ESTABLISHED_TOKEN_REVIVAL",
         "target_attention_pct": {"old_coin_revival": 100, "new_token_research": 0},
-        "minimum_verified_market_age_days": 180,
+        "minimum_verified_market_age_days": 60,
         "unknown_or_ambiguous_age": "REJECT_OR_PENDING_NOT_ACTIONABLE",
         "new_token_lane": "DISABLED",
         "minimum_exchange_confirmations": 2,

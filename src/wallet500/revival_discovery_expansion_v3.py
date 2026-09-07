@@ -23,7 +23,7 @@ def structural_candidate(flow: dict) -> bool:
     return all([
         c.get("sell_count_gt_buy_count") is True,
         c.get("sell_buy_count_ratio_le_2") is True,
-        c.get("liquidity_ge_50k") is True,
+        c.get("liquidity_ge_15k") is True,
         c.get("volume_24h_ge_10k") is True,
         c.get("txns_24h_ge_40") is True,
         c.get("volume_to_liquidity_ge_5pct") is True,

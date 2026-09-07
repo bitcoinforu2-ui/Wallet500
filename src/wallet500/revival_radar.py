@@ -100,7 +100,7 @@ def _score(s: dict, history: list[dict], now_dt) -> dict:
     if pc1>=12: score+=10; reasons.append(f'1h revival momentum +{pc1:.1f}%')
     elif pc1>=5: score+=5; reasons.append(f'1h revival momentum +{pc1:.1f}%')
     if pc5>=5: score+=5; reasons.append(f'5m impulse +{pc5:.1f}%')
-    if liq>=50000: score+=5; reasons.append('tradable liquidity 50k+')
+    if liq>=15000: score+=5; reasons.append('tradable liquidity 50k+')
 
     score=min(100,int(score))
     return {

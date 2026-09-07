@@ -38,7 +38,7 @@ def test_low_confidence_news_cannot_create_false_warm_signal():
 
 
 def test_hard_blocker_cannot_be_overridden_by_social():
-    row = base_row(); row["blockers"] = ["EXECUTION_LIQUIDITY_LT_50K"]
+    row = base_row(); row["blockers"] = ["EXECUTION_LIQUIDITY_LT_15K"]
     social = {"scores": {"narrative": 100, "confidence": 100, "social_momentum": 100, "kol_quality": 100, "news_catalyst": 100, "hype_manipulation_risk": 0}}
     out = score_row(row, social)
     assert out["fusion_status"] == "HARD_TRUTH_BLOCKED"

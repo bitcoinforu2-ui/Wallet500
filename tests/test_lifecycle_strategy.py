@@ -30,7 +30,7 @@ def test_partial_profit_ladder():
 def test_liquidity_break_exits_remainder():
     s=initial_state('2026-08-29T12:00:00+00:00')
     s,_=reconcile(s,tracker(price=0.25), '2026-08-29T12:01:00+00:00')
-    s,summary=reconcile(s,tracker(price=0.30,liq=49999), '2026-08-29T12:02:00+00:00')
+    s,summary=reconcile(s,tracker(price=0.30,liq=14999), '2026-08-29T12:02:00+00:00')
     p=next(iter(s['positions'].values()))
     assert p['remaining_fraction']==0
     assert p['status']=='CLOSED_LIQUIDITY_EXIT_SIGNAL'

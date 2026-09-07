@@ -194,7 +194,7 @@ def test_liquidity_floor_stays_hard_blocker_and_is_delegated_to_rescue_shadow(tm
     write(tmp_path, "revival-prewaking-wallet-evidence.json", {"generated_at": "2026-09-04T23:55:00+00:00", "tokens": []})
     revival = json.loads((tmp_path / "revival-1000-latest.json").read_text())
     coin = revival["coins"][0]
-    coin["dex_pair_liquidity_usd"] = 42000
+    coin["dex_pair_liquidity_usd"] = 14000
     coin["revival_score_verified"] = 58
     coin["watch_status"] = "DEEP_WATCH"
     write(tmp_path, "revival-1000-latest.json", revival)
@@ -202,7 +202,7 @@ def test_liquidity_floor_stays_hard_blocker_and_is_delegated_to_rescue_shadow(tm
     result = build(tmp_path, now=NOW)
     row = result["candidates"][0]
     assert row["status"] == "BLOCKED_TRUTH"
-    assert "EXECUTION_LIQUIDITY_LT_50K" in row["blockers"]
+    assert "EXECUTION_LIQUIDITY_LT_15K" in row["blockers"]
     assert row["rescue_shadow"]["eligible"] is True
     assert row["rescue_shadow"]["delegated_to"] == "reawakening-shadow.json"
     assert row["rescue_shadow"]["observation_horizons_hours"] == [6, 24, 72]

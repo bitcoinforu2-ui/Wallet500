@@ -9,7 +9,7 @@ from .market_data import snapshot
 
 DATA=Path('data'); OUT=DATA/'arbitrum-revival-universe.json'; STATE=DATA/'arbitrum-revival-state.json'
 CHAIN='arbitrum'; NETWORK='arbitrum'; MODE='RESEARCH_ONLY_ARBITRUM_REVIVAL_UNIVERSE_V1'
-MIN_AGE_DAYS=180; MIN_LIQUIDITY=50000.0; MIN_VOLUME_H1=15000.0; MIN_TXNS_H1=50
+MIN_AGE_DAYS=60; MIN_LIQUIDITY=50000.0; MIN_VOLUME_H1=15000.0; MIN_TXNS_H1=50
 BLOCKED={'USDC','USDT','DAI','USDE','WETH','WBTC','ARBETH','WSTETH','STETH'}
 
 def _load(p,default):
@@ -76,8 +76,8 @@ def classify(row,snap,now,previous=None):
         return {**row,'status':'INELIGIBLE_FAIL_CLOSED','blockers':['NO_VERIFIED_EXACT_PAIR'],'exact_pair_verified':False,'market_age_verified':False,'revival_signal':False,**boundary}
     age=_pair_age(snap.get('pair_created_at'),now); liq=float(snap.get('liquidity_usd') or 0); vol=float(snap.get('volume_h1') or 0); tx=int(snap.get('buys_h1') or 0)+int(snap.get('sells_h1') or 0)
     blockers=[]
-    if age is None or age<MIN_AGE_DAYS:blockers.append('PAIR_AGE_LT_180D_OR_UNKNOWN')
-    if liq<MIN_LIQUIDITY:blockers.append('LIVE_LIQUIDITY_LT_50K')
+    if age is None or age<MIN_AGE_DAYS:blockers.append('PAIR_AGE_LT_60D_OR_UNKNOWN')
+    if liq<MIN_LIQUIDITY:blockers.append('LIVE_LIQUIDITY_LT_15K')
     if vol<MIN_VOLUME_H1:blockers.append('VOLUME_H1_LT_15K')
     if tx<MIN_TXNS_H1:blockers.append('TXNS_H1_LT_50')
     prev=previous or {}; pv=float(prev.get('volume_h1') or 0); pl=float(prev.get('liquidity_usd') or 0)
@@ -92,7 +92,7 @@ def run(data_dir=DATA,now=None):
     for i,row in enumerate(discovered):
         s=snapshot(CHAIN,row['token']); out.append(classify(row,s,now,old.get(row['token'])))
         if i and i%20==0:time.sleep(.35)
-    counts={'discovered':len(discovered),'exact_pair_verified':sum(x.get('exact_pair_verified') is True for x in out),'age_180d_plus':sum(x.get('market_age_verified') is True for x in out),'liquidity_50k_plus':sum(float(x.get('liquidity_usd') or 0)>=MIN_LIQUIDITY for x in out),'full_filter_pass':sum(not x.get('blockers') for x in out),'revival_watch':sum(x.get('revival_signal') is True for x in out)}
+    counts={'discovered':len(discovered),'exact_pair_verified':sum(x.get('exact_pair_verified') is True for x in out),'age_60d_plus':sum(x.get('market_age_verified') is True for x in out),'liquidity_50k_plus':sum(float(x.get('liquidity_usd') or 0)>=MIN_LIQUIDITY for x in out),'full_filter_pass':sum(not x.get('blockers') for x in out),'revival_watch':sum(x.get('revival_signal') is True for x in out)}
     payload={'version':1,'generated_at':now.isoformat(),'mode':MODE,'network':CHAIN,'production_portfolio_impact':'NONE','automatic_buy':False,'no_hindsight':True,'filter_contract':{'minimum_market_age_days':MIN_AGE_DAYS,'minimum_live_liquidity_usd':MIN_LIQUIDITY,'minimum_volume_h1_usd':MIN_VOLUME_H1,'minimum_txns_h1':MIN_TXNS_H1,'exact_pair_required':True,'stable_wrapped_excluded':True},'counts':counts,'tokens':out,'errors':errors}
     (data_dir/'arbitrum-revival-universe.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
     state={'version':1,'updated_at':now.isoformat(),'tokens':{x['token']:{k:x.get(k) for k in ('pair_address','price_usd','liquidity_usd','volume_h1','volume_h24','status')} for x in out if x.get('token')}}

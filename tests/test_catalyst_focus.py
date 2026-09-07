@@ -17,7 +17,7 @@ def test_overextended_market_is_penalized(monkeypatch):
     monkeypatch.setattr(cf,'market_snapshot',lambda c,t:market(price_change_h1=95,price_change_h24=260));out=cf.score_event(base_event('mexc'));assert out['headroom_score']<=15;assert 'ALREADY_OVEREXTENDED' in out['decision_reasons'];assert out['focus_eligible'] is False
 
 def test_liquidity_floor_is_hard_block(monkeypatch):
-    monkeypatch.setattr(cf,'market_snapshot',lambda c,t:market(liquidity_usd=49000));out=cf.score_event(base_event('binance'));assert 'LIQUIDITY_BELOW_50K' in out['blockers'];assert out['focus_eligible'] is False
+    monkeypatch.setattr(cf,'market_snapshot',lambda c,t:market(liquidity_usd=14999));out=cf.score_event(base_event('binance'));assert 'LIQUIDITY_BELOW_15K' in out['blockers'];assert out['focus_eligible'] is False
 
 def test_unresolved_market_stays_silent_not_promoted(monkeypatch):
     monkeypatch.setattr(cf,'market_snapshot',lambda c,t:None);out=cf.score_event(base_event('binance'));assert out['decision']=='WATCH_SILENT_NO_EXACT_MARKET';assert out['focus_eligible'] is False
@@ -26,7 +26,7 @@ def test_material_price_move_triggers_update():
     p={'decision_score':80,'market':market(price_usd=1,liquidity_usd=200000)};c={'decision_score':80,'market':market(price_usd=1.12,liquidity_usd=200000)};reason,critical=cf.material_change(c,p);assert reason and reason.startswith('PRICE_MOVE_');assert critical is False
 
 def test_liquidity_break_is_critical():
-    p={'decision_score':80,'market':market(price_usd=1,liquidity_usd=200000)};c={'decision_score':70,'market':market(price_usd=1,liquidity_usd=40000)};reason,critical=cf.material_change(c,p);assert reason=='LIQUIDITY_BROKE_50K';assert critical is True
+    p={'decision_score':80,'market':market(price_usd=1,liquidity_usd=200000)};c={'decision_score':70,'market':market(price_usd=1,liquidity_usd=14000)};reason,critical=cf.material_change(c,p);assert reason=='LIQUIDITY_BROKE_15K';assert critical is True
 
 def test_first_focus_run_baselines_history_but_keeps_current_forward_event():
     old=base_event('mexc',event_id='old',forward_new=False);new=base_event('mexc',event_id='new',forward_new=True);wire={'events':[new]};ledger={'events':{'old':{'first_seen_at':'2026-09-01T00:00:00+00:00','event':old},'new':{'first_seen_at':'2026-09-07T00:00:00+00:00','event':new}}};state={};seen={};found=cf.discover_unseen(wire,ledger,state,seen);assert set(found)=={'new'};assert 'old' in seen;assert state['ledger_baseline_complete'] is True

@@ -69,12 +69,12 @@ def test_holder_and_lp_evidence_are_fail_closed_for_buy():
 
 def test_hard_gate_failure_rejects_even_with_momentum():
     row = base_row()
-    row["production_live_liquidity_usd"] = 20_000
+    row["production_live_liquidity_usd"] = 10_000
     row["pump_dump_blocked"] = True
     row["live_survival_gate"] = "FAILED"
     d = evaluate(row, in_position=False)
     assert d["recommended_action"] == "REJECT"
-    assert "LIQUIDITY_BELOW_50K" in d["hard_safety_failures"]
+    assert "LIQUIDITY_BELOW_15K" in d["hard_safety_failures"]
     assert "PUMP_DUMP_BLOCK" in d["hard_safety_failures"]
     assert "LIVE_SURVIVAL_INACTIVE" in d["hard_safety_failures"]
 

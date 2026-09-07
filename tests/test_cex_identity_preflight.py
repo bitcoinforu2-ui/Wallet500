@@ -35,7 +35,7 @@ def test_ambiguous_symbol_uses_strict_cex_price_coherence(tmp_path, monkeypatch)
     assert out["alerts"][0]["coingecko_id"] == "unifai-network"
     assert out["alerts"][0]["cex_identity_preflight_verified"] is True
     assert out["alerts"][0]["cex_identity_preflight"]["method"] == "CEX_PRICE_COHERENCE"
-    assert out["alerts"][0]["market_age_min_days"] >= 180
+    assert out["alerts"][0]["market_age_min_days"] >= 60
 
 
 def test_ambiguous_symbol_stays_fail_closed_when_not_distinguishable(tmp_path, monkeypatch):
@@ -64,4 +64,4 @@ def test_resolved_but_young_coin_is_rejected(tmp_path, monkeypatch):
     })
     report = p.run(path)
     assert report["accepted"] == 0
-    assert report["rejections"][0]["reason"] == "UNDER_180_DAYS_OR_AGE_UNVERIFIED"
+    assert report["rejections"][0]["reason"] == "UNDER_60_DAYS_OR_AGE_UNVERIFIED"

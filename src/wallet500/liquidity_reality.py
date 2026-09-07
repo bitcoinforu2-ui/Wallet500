@@ -165,9 +165,9 @@ def compute_liquidity_reality(
         reasons.append("LIQUIDITY_REASONABLY_DISTRIBUTED")
 
     if tradable_share < 70:
-        reasons.append("LESS_THAN_70PCT_LIQUIDITY_IN_50K_PLUS_POOLS")
+        reasons.append("LESS_THAN_70PCT_LIQUIDITY_IN_15K_PLUS_POOLS")
     else:
-        reasons.append("MOST_LIQUIDITY_IN_50K_PLUS_POOLS")
+        reasons.append("MOST_LIQUIDITY_IN_15K_PLUS_POOLS")
 
     return {
         "liquidity_reality_score": score,

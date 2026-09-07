@@ -11,7 +11,7 @@ def test_sub_50k_fresh_candidate_fails_universal_live_gate():
         "chain": "solana",
         "token": "bulldoge",
         "pair_created_at": 1787825047000,
-        "liquidity_usd": 33580.75,
+        "liquidity_usd": 13580.75,
         "volume_h1": 200000,
         "buys_h1": 6961,
         "sells_h1": 775,
@@ -19,7 +19,7 @@ def test_sub_50k_fresh_candidate_fails_universal_live_gate():
     }
     out = evaluate(candidate, {"tokens": {}}, NOW)
     assert out["live_survival_gate"] == "FAILED"
-    assert "CURRENT_LIQUIDITY_BELOW_50K" in out["live_survival_reasons"]
+    assert "CURRENT_LIQUIDITY_BELOW_15K" in out["live_survival_reasons"]
 
 
 def test_sub_50k_candidate_cannot_wait_as_pending():
@@ -27,7 +27,7 @@ def test_sub_50k_candidate_cannot_wait_as_pending():
         "chain": "solana",
         "token": "survivor",
         "pair_created_at": 1787824181000,
-        "liquidity_usd": 36804.34,
+        "liquidity_usd": 13804.34,
         "volume_h1": 180000,
         "buys_h1": 8473,
         "sells_h1": 3363,
@@ -35,7 +35,7 @@ def test_sub_50k_candidate_cannot_wait_as_pending():
     }
     out = evaluate(candidate, {"tokens": {}}, NOW)
     assert out["live_survival_gate"] == "FAILED"
-    assert "CURRENT_LIQUIDITY_BELOW_50K" in out["live_survival_reasons"]
+    assert "CURRENT_LIQUIDITY_BELOW_15K" in out["live_survival_reasons"]
 
 
 def test_even_historically_survived_sub_50k_candidate_is_not_active():
@@ -43,7 +43,7 @@ def test_even_historically_survived_sub_50k_candidate_is_not_active():
         "chain": "solana",
         "token": "survivor",
         "pair_created_at": 1787823307000,
-        "liquidity_usd": 42000,
+        "liquidity_usd": 14000,
         "volume_h1": 90000,
         "buys_h1": 1200,
         "sells_h1": 700,
@@ -56,15 +56,15 @@ def test_even_historically_survived_sub_50k_candidate_is_not_active():
                 "peak_price_usd": 0.00021,
                 "current_price_usd": 0.00020,
                 "history": [
-                    {"observed_at": "2026-08-27T10:10:00+00:00", "liquidity_usd": 40000},
-                    {"observed_at": "2026-08-27T10:25:00+00:00", "liquidity_usd": 42000},
+                    {"observed_at": "2026-08-27T10:10:00+00:00", "liquidity_usd": 13000},
+                    {"observed_at": "2026-08-27T10:25:00+00:00", "liquidity_usd": 14000},
                 ],
             }
         }
     }
     out = evaluate(candidate, outcomes, NOW)
     assert out["live_survival_gate"] == "FAILED"
-    assert "CURRENT_LIQUIDITY_BELOW_50K" in out["live_survival_reasons"]
+    assert "CURRENT_LIQUIDITY_BELOW_15K" in out["live_survival_reasons"]
 
 
 def test_above_50k_survived_candidate_can_become_active():

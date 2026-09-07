@@ -32,7 +32,7 @@ def test_build_t0_locks_age_pair_and_hash():
     }
     target = {"confirmation_status": "UNCONFIRMED_RESEARCH", "confirmation_score": 50}
     t0 = build_t0(coin, target, "2026-09-02T12:00:00+00:00", "2026-09-02T12:05:00+00:00")
-    assert t0["market_age_min_days"] == 180
+    assert t0["market_age_min_days"] == 60
     assert t0["pair_address"] == "pair"
     assert t0["blockers"] == []
     assert len(t0["evidence_sha256"]) == 64
@@ -42,13 +42,13 @@ def test_build_t0_fails_closed_under_180():
     coin = {
         "token_address": "mint",
         "market_age_verified": True,
-        "market_age_min_days": 179,
+        "market_age_min_days": 59,
         "dex_pair_address": "pair",
         "price_usd": 1,
         "dex_pair_liquidity_usd": 100000,
     }
     t0 = build_t0(coin, {}, "2026-09-02T12:00:00+00:00", "2026-09-02T12:00:01+00:00")
-    assert "AGE_NOT_VERIFIED_180D_PLUS" in t0["blockers"]
+    assert "AGE_NOT_VERIFIED_60D_PLUS" in t0["blockers"]
 
 
 def test_exact_pair_forward_only_horizon_selection():

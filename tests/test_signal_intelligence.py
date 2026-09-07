@@ -50,7 +50,7 @@ def seed(root: Path, stamp: str, row=None):
         "false_negatives": [{
             "identity": {"chain": "solana", "token": "X", "pair_address": "Y"},
             "first_reject_source": "LIVE_SURVIVAL_FAILED",
-            "first_reject_reasons": ["CURRENT_LIQUIDITY_BELOW_50K"],
+            "first_reject_reasons": ["CURRENT_LIQUIDITY_BELOW_15K"],
             "tradable_peak_gain_since_reject_pct": 500,
         }],
     })

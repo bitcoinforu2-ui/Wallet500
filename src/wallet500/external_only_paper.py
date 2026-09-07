@@ -58,7 +58,7 @@ def run():
         if sk not in sources or not pair:continue
         snap=current_v2_mark(r,pair)
         if not snap:continue
-        if snap['price_usd']<=0 or snap['liquidity_usd']<50000 or snap['volume_h1']<15000 or snap['buys_h1']+snap['sells_h1']<50:continue
+        if snap['price_usd']<=0 or snap['liquidity_usd']<15000 or snap['volume_h1']<15000 or snap['buys_h1']+snap['sells_h1']<50:continue
         q=evaluate_entry_quality(r,snap)
         if not q.get('pass'):continue
         candidates.append((key(chain,token,pair),r,snap,q,sources[sk]))

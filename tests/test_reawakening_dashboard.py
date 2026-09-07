@@ -22,6 +22,8 @@ def test_reawakening_dashboard_builds_near_and_trigger_rows(tmp_path: Path) -> N
                     "first_reject_snapshot": {
                         "symbol": "NEAR",
                         "price_usd": 1.0,
+                        "market_age_verified": True,
+                        "market_age_min_days": 90,
                     },
                 },
                 key_trigger: {
@@ -29,6 +31,8 @@ def test_reawakening_dashboard_builds_near_and_trigger_rows(tmp_path: Path) -> N
                     "first_reject_snapshot": {
                         "symbol": "FIRE",
                         "price_usd": 1.0,
+                        "market_age_verified": True,
+                        "market_age_min_days": 90,
                     },
                 },
             }

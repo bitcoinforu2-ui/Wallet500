@@ -6,7 +6,7 @@ from pathlib import Path
 
 from wallet500.entry_quality import evaluate_entry_quality
 
-DATA=Path('data'); MIN_LIQ=50000.0; MIN_VOL_H1=15000.0; MIN_TXNS_H1=50; POSITION_USD=1.0
+DATA=Path('data'); MIN_LIQ=15000.0; MIN_VOL_H1=15000.0; MIN_TXNS_H1=50; POSITION_USD=1.0
 PAPER_LEDGER=DATA/'first-eligible-paper-ledger.json'
 EVM_CHAINS={'ethereum','eth','bsc','bnb','base','arbitrum','polygon','optimism','avalanche'}
 PRICE_IDENTITY_CONTRACT_VERSION=2

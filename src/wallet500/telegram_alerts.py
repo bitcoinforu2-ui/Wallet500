@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-MIN_MARKET_AGE_DAYS = 180
+MIN_MARKET_AGE_DAYS = 60
 ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
 
 
@@ -436,7 +436,7 @@ def run() -> dict:
             "requires": [
                 "matching real-alerts.json row with status=REAL_ALERT and actionable_research_alert=true",
                 "market_age_verified=true",
-                "market_age_min_days>=180",
+                "market_age_min_days>=60",
                 "qualification=QUALIFIED or REVIVAL_QUALIFIED",
                 "live_survival_gate=ACTIVE",
                 "pump_dump_blocked=false",
@@ -444,12 +444,12 @@ def run() -> dict:
                 "pair_address=locked_pair_address",
                 "holder_cluster_production_status=PASS",
                 "holder_cluster_verification_complete=true",
-                "liquidity>=50000",
+                "liquidity>=15000",
                 "volume_h1>=15000",
                 "activity_h1>=50",
                 "risk not HIGH/CRITICAL",
             ],
-            "high_conviction": "score>=90, liquidity>=50000, volume_h1>=30000, risk=LOW",
+            "high_conviction": "score>=90, liquidity>=15000, volume_h1>=30000, risk=LOW",
             "manual_execution": "Telegram is a review alert only; no automatic trade is executed",
             "dedupe": "one alert per transition into actionable state for chain+token+exact_pair",
             "telegram_timestamp": "every delivered message includes explicit Asia/Jerusalem send date/time plus original signal T0",

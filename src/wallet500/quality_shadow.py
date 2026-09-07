@@ -43,7 +43,7 @@ def _dt(v):
 def _base_gate(mark: dict) -> bool:
     return (
         _f(mark.get("price_usd")) > 0
-        and _f(mark.get("liquidity_usd")) >= 50000
+        and _f(mark.get("liquidity_usd")) >= 15000
         and _f(mark.get("volume_h1")) >= 15000
         and int(mark.get("txns_h1") or 0) >= 50
     )

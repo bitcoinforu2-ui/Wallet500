@@ -21,7 +21,7 @@ CORE_NETWORKS = {
 }
 EVM_CHAINS = {"ethereum", "bsc", "arbitrum", "base"}
 MIN_VETERAN_AGE_DAYS = 180
-MIN_LIQUIDITY_USD = 50_000.0
+MIN_LIQUIDITY_USD = 15_000.0
 MIN_VOLUME_H1_USD = 15_000.0
 MIN_TXNS_H1 = 50
 WATCH_SCORE = 70
@@ -353,9 +353,9 @@ def _score(row: dict, snap: dict, now_dt: datetime, previous: dict | None, cex_s
     if snap.get("token_identity_verified") is not True or not snap.get("pair_address"):
         blockers.append("EXACT_TOKEN_PAIR_IDENTITY_UNVERIFIED")
     if age_days is None or age_days < MIN_VETERAN_AGE_DAYS:
-        blockers.append("PAIR_AGE_LT_180D_OR_UNKNOWN")
+        blockers.append("PAIR_AGE_LT_60D_OR_UNKNOWN")
     if liq < MIN_LIQUIDITY_USD:
-        blockers.append("LIVE_LIQUIDITY_LT_50K")
+        blockers.append("LIVE_LIQUIDITY_LT_15K")
     if vol_h1 < MIN_VOLUME_H1_USD:
         blockers.append("VOLUME_H1_LT_15K")
     if txns < MIN_TXNS_H1:

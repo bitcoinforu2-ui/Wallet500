@@ -98,7 +98,7 @@ def _age_ok(*rows: dict) -> tuple[bool, int | None]:
             except (TypeError, ValueError):
                 pass
         truth = row.get("truth") if isinstance(row.get("truth"), dict) else {}
-        if truth.get("market_age_verified_180d_plus") is True:
+        if truth.get("market_age_verified_60d_plus") is True:
             try:
                 ages.append(int(truth.get("market_age_days")))
             except (TypeError, ValueError):
@@ -566,7 +566,7 @@ def build(data_dir: Path = DATA) -> dict:
         },
         "truth_contract": {
             "focus": "VETERAN_COIN_REVIVAL_ONLY",
-            "minimum_market_age_days": 180,
+            "minimum_market_age_days": 60,
             "minimum_execution_pool_liquidity_usd": cfg.verified_min_liquidity_usd,
             "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
             "dex_total_liquidity_is_informational_only": True,

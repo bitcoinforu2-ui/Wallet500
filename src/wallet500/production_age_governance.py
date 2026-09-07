@@ -10,7 +10,7 @@ DATA = Path("data")
 
 # Veteran-only is a project scope invariant, not a learned alpha threshold.
 # Signal thresholds still require prospective evidence; the universe boundary does not.
-PROJECT_SCOPE_MIN_AGE_DAYS = 180
+PROJECT_SCOPE_MIN_AGE_DAYS = 60
 APPROVED_PRODUCTION_MIN_AGE_DAYS = PROJECT_SCOPE_MIN_AGE_DAYS
 
 

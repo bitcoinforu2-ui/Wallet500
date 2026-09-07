@@ -99,7 +99,7 @@ def test_reentry_after_six_hours_can_alert_again(tmp_path: Path, monkeypatch):
 
 def test_unverified_or_young_identity_never_sends(tmp_path: Path, monkeypatch):
     bad = candidate()
-    bad["market_age_min_days"] = 100
+    bad["market_age_min_days"] = 59
     _write(tmp_path / "cex-spot-identity-radar.json", source([bad]))
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")

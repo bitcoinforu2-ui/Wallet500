@@ -123,10 +123,10 @@ def exitability(row, history):
     if liq is None:
         return {"status":"INSUFFICIENT_COVERAGE","score":0,"simulated_slippage":"INSUFFICIENT_COVERAGE"}
     score=0; reasons=[]
-    if liq >= 500000: score += 50; reasons.append("DEEP_LIQUIDITY")
+    if liq >= 150000: score += 50; reasons.append("DEEP_LIQUIDITY")
     elif liq >= 200000: score += 40; reasons.append("GOOD_LIQUIDITY")
     elif liq >= 100000: score += 30; reasons.append("MODERATE_LIQUIDITY")
-    elif liq >= 50000: score += 20; reasons.append("MINIMUM_SURVIVAL_LIQUIDITY")
+    elif liq >= 15000: score += 20; reasons.append("MINIMUM_SURVIVAL_LIQUIDITY")
     if prior:
         pl=f(prior.get("liquidity_usd"))
         if pl not in (None,0):
