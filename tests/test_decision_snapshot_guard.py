@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from wallet500.decision_snapshot_guard import build
+from wallet500.decision_snapshot_guard import build, _preserve_evidence_ready_visibility
 
 
 def write(root: Path, name: str, payload):
@@ -45,7 +45,6 @@ def seed(root: Path, ready=2, real_ready=2, funnel_ready=2, visible_ready=None, 
         "verified_watch": _ready_rows(watch_n)["verified_watch"],
         "dormant_no_activity": _ready_rows(dormant_ready, "dormant_no_activity")["dormant_no_activity"],
     }
-    # Avoid duplicate synthetic keys when evidence is split across surfaces.
     for i, row in enumerate(real_payload["dormant_no_activity"], start=watch_n):
         row["token_address"] = f"TOKEN{i}"
         row["pair_address"] = f"PAIR{i}"
@@ -99,3 +98,39 @@ def test_guard_detects_legacy_age_quarantine(tmp_path):
     result = build(tmp_path)
     assert result["passed"] is False
     assert "STALE_7D_AGE_GOVERNOR" in {x["code"] for x in result["failures"]}
+
+
+def test_visibility_bridge_prunes_noncanonical_carry_over(tmp_path):
+    write(tmp_path, "candidate-evidence-envelope.json", {
+        "candidates": [{
+            "chain": "solana",
+            "token_address": "CURRENT",
+            "pair_address": "PAIR-CURRENT",
+            "symbol": "CUR",
+            "status": "EVIDENCE_READY",
+            "truth": {
+                "exact_identity_verified": True,
+                "exact_pair_verified": True,
+                "market_age_verified_180d_plus": True,
+                "market_age_days": 200,
+                "execution_pool_liquidity_usd": 60000,
+            },
+            "coverage": {"positive_independent_count": 1},
+            "mintability_verified": True,
+            "mintable": False,
+            "mint_authority": None,
+        }],
+    })
+    write(tmp_path, "real-alerts.json", {
+        "counts": {"evidence_ready_research": 2},
+        "verified_watch": [],
+        "dormant_no_activity": [],
+        "evidence_ready": [
+            {"chain": "solana", "token_address": "STALE", "pair_address": "PAIR-STALE", "evidence_ready": True, "status": "EVIDENCE_READY_NOT_REAL_ALERT"}
+        ],
+    })
+    _preserve_evidence_ready_visibility(tmp_path)
+    real = json.loads((tmp_path / "real-alerts.json").read_text(encoding="utf-8"))
+    assert real["counts"]["evidence_ready_research"] == 1
+    assert {(x["token_address"], x["pair_address"]) for x in real["evidence_ready"]} == {("CURRENT", "PAIR-CURRENT")}
+    assert real["evidence_ready_visibility_bridge"]["pruned_stale_this_run"] == 1
