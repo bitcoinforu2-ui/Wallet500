@@ -19,6 +19,8 @@ import time
 from pathlib import Path
 
 STALE_RECOMPUTE_EXIT = 75
+DEFAULT_GIT_NAME = "wallet500-atomic-publisher"
+DEFAULT_GIT_EMAIL = "wallet500-atomic-publisher@users.noreply.github.com"
 
 
 def git(*args: str, env: dict[str, str] | None = None, input_text: str | None = None,
@@ -35,6 +37,16 @@ def git(*args: str, env: dict[str, str] | None = None, input_text: str | None = 
     if check and p.returncode:
         raise RuntimeError(f"git {' '.join(args)} failed: {p.stderr.strip()}")
     return p
+
+
+def ensure_git_identity() -> None:
+    """Guarantee commit-tree can run even on a pristine GitHub runner."""
+    name = git("config", "--get", "user.name", check=False).stdout.strip()
+    email = git("config", "--get", "user.email", check=False).stdout.strip()
+    if not name:
+        git("config", "user.name", DEFAULT_GIT_NAME)
+    if not email:
+        git("config", "user.email", DEFAULT_GIT_EMAIL)
 
 
 def changed_since(base: str, parent: str, rel: str) -> bool:
@@ -71,6 +83,7 @@ def main() -> int:
         print("ATOMIC_PUBLISH_NO_PATHS")
         return 0
 
+    ensure_git_identity()
     base = args.base or git("rev-parse", "HEAD").stdout.strip()
     git("fetch", "--no-tags", "origin", base, check=False)
 
