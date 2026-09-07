@@ -9,10 +9,12 @@ on:
       - 'src/wallet500/reawakening_shadow.py'
       - 'src/wallet500/reawakening_forward_tracker.py'
       - 'src/wallet500/reawakening_forward_fast_runner.py'
+      - 'src/wallet500/reawakening_dashboard.py'
       - 'src/wallet500/reawakening_telegram.py'
       - 'tests/test_reawakening_shadow.py'
       - 'tests/test_reawakening_forward_tracker.py'
       - 'tests/test_reawakening_forward_fast_runner.py'
+      - 'tests/test_reawakening_dashboard.py'
       - 'tests/test_reawakening_telegram.py'
       - '.github/workflows/reawakening-shadow.yml'
   push:
@@ -21,11 +23,13 @@ on:
       - 'src/wallet500/reawakening_shadow.py'
       - 'src/wallet500/reawakening_forward_tracker.py'
       - 'src/wallet500/reawakening_forward_fast_runner.py'
+      - 'src/wallet500/reawakening_dashboard.py'
       - 'src/wallet500/reawakening_telegram.py'
       - 'scripts/atomic_publish.py'
       - 'tests/test_reawakening_shadow.py'
       - 'tests/test_reawakening_forward_tracker.py'
       - 'tests/test_reawakening_forward_fast_runner.py'
+      - 'tests/test_reawakening_dashboard.py'
       - 'tests/test_reawakening_telegram.py'
       - '.github/workflows/reawakening-shadow.yml'
 
@@ -50,12 +54,15 @@ jobs:
       - name: Install and test V2 recovery truth rules
         run: |
           pip install -e . pytest
-          python -m pytest -q tests/test_reawakening_shadow.py tests/test_reawakening_forward_tracker.py tests/test_reawakening_forward_fast_runner.py tests/test_reawakening_telegram.py
+          python -m pytest -q tests/test_reawakening_shadow.py tests/test_reawakening_forward_tracker.py tests/test_reawakening_forward_fast_runner.py tests/test_reawakening_dashboard.py tests/test_reawakening_telegram.py
       - name: Measure rejected immutable pairs and build forward-only recovery lane
         if: github.event_name != 'pull_request'
         env:
           WALLET500_REAWAKENING_REQUEST_PAUSE_SECONDS: '0.22'
         run: python -m wallet500.reawakening_forward_fast_runner
+      - name: Build compact Recovery V2 dashboard feed
+        if: github.event_name != 'pull_request'
+        run: python -m wallet500.reawakening_dashboard
       - name: Send only fresh Recovery V2 Telegram alerts
         if: github.event_name != 'pull_request'
         env:
@@ -70,8 +77,9 @@ jobs:
           from pathlib import Path
           p=Path('data/reawakening-shadow.json'); s=Path('data/reawakening-shadow-state.json')
           f=Path('data/reawakening-forward-state.json'); r=Path('data/reawakening-forward-report.json')
-          if not p.exists() or not s.exists() or not f.exists() or not r.exists(): raise SystemExit('REAWAKENING_OUTPUT_MISSING')
-          d=json.loads(p.read_text()); st=json.loads(s.read_text()); fs=json.loads(f.read_text()); fr=json.loads(r.read_text())
+          dash=Path('data/reawakening-dashboard.json')
+          if not p.exists() or not s.exists() or not f.exists() or not r.exists() or not dash.exists(): raise SystemExit('REAWAKENING_OUTPUT_MISSING')
+          d=json.loads(p.read_text()); st=json.loads(s.read_text()); fs=json.loads(f.read_text()); fr=json.loads(r.read_text()); db=json.loads(dash.read_text())
           if d.get('mode')!='RESEARCH_ONLY_SURVIVOR_REAWAKENING_V2': raise SystemExit('REAWAKENING_MODE_INVALID')
           if d.get('contract')!='FALSE_NEGATIVE_RECOVERY_RECHECK_V2': raise SystemExit('REAWAKENING_CONTRACT_INVALID')
           if d.get('production_portfolio_impact')!='NONE' or d.get('automatic_buy') is not False: raise SystemExit('REAWAKENING_SAFETY_INVALID')
@@ -83,6 +91,11 @@ jobs:
           if fs.get('mode')!='RESEARCH_ONLY_REAWAKENING_EXACT_PAIR_FORWARD_V1' or fr.get('mode')!='RESEARCH_ONLY_REAWAKENING_EXACT_PAIR_FORWARD_V1': raise SystemExit('DEDICATED_FORWARD_MODE_INVALID')
           for x in (fs,fr):
               if x.get('production_portfolio_impact')!='NONE' or x.get('production_gate_changed') is not False or x.get('automatic_buy') is not False: raise SystemExit('DEDICATED_FORWARD_SAFETY_INVALID')
+          if db.get('mode')!='RESEARCH_ONLY_REAWAKENING_DASHBOARD_V1': raise SystemExit('REAWAKENING_DASHBOARD_MODE_INVALID')
+          if db.get('production_portfolio_impact')!='NONE' or db.get('production_gate_changed') is not False or db.get('automatic_buy') is not False: raise SystemExit('REAWAKENING_DASHBOARD_SAFETY_INVALID')
+          if int((db.get('counts') or {}).get('reawakening_triggers') or 0) != int((d.get('counts') or {}).get('shadow_triggers_v2') or 0): raise SystemExit('REAWAKENING_DASHBOARD_TRIGGER_COUNT_DRIFT')
+          for row in db.get('triggers') or []:
+              if row.get('special_marker') != '🔥 REAWAKENED': raise SystemExit('REAWAKENING_FIRE_MARKER_MISSING')
           mc=fs.get('measurement_contract') or {}
           if mc.get('pair_identity')!='IMMUTABLE_FIRST_REJECT_EXACT_PAIR' or mc.get('token_identity_must_be_verified') is not True or mc.get('forward_only') is not True: raise SystemExit('DEDICATED_FORWARD_IDENTITY_CONTRACT_INVALID')
           dc=d.get('dedicated_forward_contract') or {}
@@ -96,6 +109,7 @@ jobs:
           if int(fr.get('eligible_rejects') or 0) != int((d.get('counts') or {}).get('eligible_liquidity_only_rejects') or 0): raise SystemExit('DEDICATED_FORWARD_ELIGIBLE_COUNT_DRIFT')
           print('FALSE_NEGATIVE_RECOVERY_V2_OK', d.get('counts'))
           print('DEDICATED_FORWARD_OK', {k:fr.get(k) for k in ('eligible_rejects','exact_pair_successes','exact_pair_misses','observations_added_this_run','state_hot_observations')})
+          print('REAWAKENING_DASHBOARD_OK', db.get('counts'))
           PY
       - name: Publish immutable V2 shadow state atomically
         if: github.event_name != 'pull_request'
@@ -114,6 +128,7 @@ jobs:
             data/reawakening-shadow-state.json \
             data/reawakening-forward-state.json \
             data/reawakening-forward-report.json \
+            data/reawakening-dashboard.json \
             data/reawakening-telegram-report.json \
             data/reawakening-telegram-state.json
           rc=$?
