@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/alpha_robustness.py'
+      - 'scripts/atomic_publish.py'
       - 'tests/test_alpha_robustness.py'
       - '.github/workflows/alpha-robustness.yml'
 
@@ -48,31 +49,34 @@ jobs:
           report=json.loads(p.read_text())
           safety=report.get('safety_contract') or {}
           if report.get('mode')!='ALPHA_ROBUSTNESS_AUDIT_V1': raise SystemExit('ALPHA_ROBUSTNESS_MODE_INVALID')
-          required_false=(
-              'changes_discovery_funnel','changes_signal_enrollment','changes_candidate_qualification',
-              'changes_production_gate','changes_telegram_alerts','can_block_or_drop_candidate',
-              'can_block_or_drop_signal','changes_primary_alpha_proof_status'
-          )
+          required_false=('changes_discovery_funnel','changes_signal_enrollment','changes_candidate_qualification','changes_production_gate','changes_telegram_alerts','can_block_or_drop_candidate','can_block_or_drop_signal','changes_primary_alpha_proof_status')
           if safety.get('proof_audit_only') is not True: raise SystemExit('ALPHA_ROBUSTNESS_NOT_PROOF_ONLY')
           for key in required_false:
               if safety.get(key) is not False: raise SystemExit(f'ALPHA_ROBUSTNESS_SAFETY_FAIL:{key}')
           print('ALPHA_ROBUSTNESS_SAFE', report.get('primary_robustness_status'))
           PY
-      - name: Publish audit report only
+      - name: Recompute latest proof and publish audit atomically
+        shell: bash
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
-          tmp="$(mktemp -d)"
-          cp data/alpha-robustness-audit.json "$tmp/report.json"
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
-            cp "$tmp/report.json" data/alpha-robustness-audit.json
-            git add data/alpha-robustness-audit.json
-            if git diff --cached --quiet; then exit 0; fi
-            git commit -m 'alpha: refresh robustness audit'
-            if git push origin HEAD:main; then exit 0; fi
-            sleep 3
+            source_sha="$(git rev-parse HEAD)"
+            python -m wallet500.alpha_robustness
+            set +e
+            python scripts/atomic_publish.py \
+              --base "$source_sha" \
+              --fail-on-newer \
+              --message 'alpha: refresh robustness audit' \
+              data/alpha-robustness-audit.json
+            rc=$?
+            set -e
+            if [ "$rc" -eq 0 ]; then exit 0; fi
+            if [ "$rc" -eq 75 ]; then echo "ALPHA_ROBUSTNESS_RECOMPUTE_REQUIRED attempt=$attempt"; sleep 1; continue; fi
+            exit "$rc"
           done
+          echo '::error::ALPHA_ROBUSTNESS_ATOMIC_PUBLISH_EXHAUSTED'
           exit 1
