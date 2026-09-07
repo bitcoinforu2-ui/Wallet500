@@ -92,7 +92,38 @@ jobs:
         run: python -m wallet500.catalyst_wire_binance
       - name: Fail closed on CEX symbol-to-contract identity collisions before Focus
         run: python -m wallet500.catalyst_identity_guard
-      - name: Run selective Focus monitor with Binance priority Telegram alerts
+      - name: Silence legacy v2 Focus notifications without deleting truth history
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+          p=Path('data/catalyst-focus-state.json')
+          if not p.exists() or not p.stat().st_size:
+              raise SystemExit(0)
+          d=json.loads(p.read_text())
+          focus=d.get('focus') if isinstance(d.get('focus'),dict) else {}
+          changed=0
+          now=datetime.now(timezone.utc).isoformat()
+          for rec in focus.values():
+              if not isinstance(rec,dict) or rec.get('status')!='TRACKING':
+                  continue
+              event=rec.get('event') if isinstance(rec.get('event'),dict) else {}
+              gate=event.get('telegram_gate') if isinstance(event.get('telegram_gate'),dict) else {}
+              if gate.get('telegram_relevant') is not True:
+                  rec['status']='SILENCED_NOTIFICATION_POLICY_V3'
+                  rec['notification_silenced_at']=now
+                  rec['notification_silence_reason']='LEGACY_OR_UNVERIFIED_TELEGRAM_GATE'
+                  changed+=1
+          if changed:
+              d['focus']=focus
+              d['version']=max(int(d.get('version') or 0),3)
+              d['updated_at']=now
+              p.write_text(json.dumps(d,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('CATALYST_LEGACY_NOTIFICATION_SILENCE',changed)
+          PY
+      - name: Run Focus monitor with double-listing or exceptional-only Telegram alerts
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -135,7 +166,7 @@ jobs:
                   assert truth.get('binance_priority_never_overrides_wallet500_gates') is True
           print('CATALYST_WIRE_TRUTH_OK', d.get('counts'), identity_guard)
           PY
-      - name: Validate selective Focus policy when executed
+      - name: Validate selective Focus v3 notification policy when executed
         run: |
           python - <<'PY'
           import json
@@ -145,24 +176,39 @@ jobs:
               print('CATALYST_FOCUS_NOT_EXECUTED_ON_THIS_TRIGGER')
               raise SystemExit(0)
           d=json.loads(p.read_text())
-          assert d['mode']=='SELECTIVE_LISTING_FOCUS_ONLY'
-          assert d['policy']['raw_listing_telegram'] is False
-          assert d['policy']['silent_watch_before_promotion'] is True
-          assert d['policy']['selected_candidates_monitored_until_listing'] is True
-          assert d['policy']['followup_only_on_material_change_or_countdown'] is True
-          assert d['policy']['focus_score_is_probability'] is False
-          assert d['policy']['automatic_trade'] is False
+          assert int(d.get('version') or 0) >= 3
+          assert d['mode']=='TELEGRAM_MULTI_EXCHANGE_OR_EXCEPTIONAL_ONLY'
+          policy=d['policy']
+          assert policy['raw_listing_telegram'] is False
+          assert policy['routine_listing_telegram'] is False
+          assert policy['multi_exchange_listing_telegram'] is True
+          assert policy['exceptional_listing_telegram'] is True
+          assert policy['automatic_trade'] is False
+          assert policy['focus_threshold']==76.0
+          assert policy['hard_liquidity_floor_usd']==50000.0
+          assert policy['exceptional_score']==88.0
+          assert policy['exceptional_readiness']==85.0
+          assert policy['exceptional_max_risk']==20.0
+          assert policy['exceptional_min_liquidity_usd']==250000.0
           for x in d.get('new_evaluations',[]):
               if x.get('focus_eligible'):
-                  assert x.get('decision_score',0) >= d['policy']['focus_threshold']
+                  assert x.get('decision_score',0) >= policy['focus_threshold']
                   assert x.get('dex_url')
-                  assert (x.get('market') or {}).get('token_identity_verified') is True
-                  assert (x.get('market') or {}).get('liquidity_usd',0) >= d['policy']['hard_liquidity_floor_usd']
-              b=x.get('binance_intelligence') or {}
-              if b.get('applicable'):
-                  assert b.get('production_effect') is False
-                  assert b.get('automatic_buy') is False
-          print('CATALYST_FOCUS_POLICY_OK', d.get('counts'))
+                  market=x.get('market') or {}
+                  assert market.get('token_identity_verified') is True
+                  assert market.get('pair_address')
+                  assert market.get('liquidity_usd',0) >= policy['hard_liquidity_floor_usd']
+          for rec in d.get('active_focus',[]):
+              event=rec.get('event') if isinstance(rec,dict) else {}
+              gate=event.get('telegram_gate') if isinstance(event,dict) else {}
+              assert gate.get('telegram_relevant') is True
+              assert gate.get('reason') in {'MULTI_EXCHANGE_LISTING','EXCEPTIONAL_SETUP'}
+          for sent in (d.get('telegram') or {}).get('delivered',[]):
+              gate=sent.get('telegram_gate') if isinstance(sent,dict) else {}
+              if sent.get('type')=='FOCUS_START':
+                  assert gate.get('telegram_relevant') is True
+                  assert gate.get('reason') in {'MULTI_EXCHANGE_LISTING','EXCEPTIONAL_SETUP'}
+          print('CATALYST_FOCUS_V3_POLICY_OK', d.get('counts'))
           PY
       - name: Persist raw evidence and Focus state atomically
         shell: bash
