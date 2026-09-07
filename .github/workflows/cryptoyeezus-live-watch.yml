@@ -58,5 +58,13 @@ jobs:
             exit 0
           fi
           git commit -m 'Update CryptoYeezus forward social state'
-          git pull --rebase origin main
-          git push origin HEAD:main
+          for attempt in 1 2 3 4 5; do
+            git pull --rebase origin main
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "Publish race on attempt ${attempt}; retrying against fresh main"
+            sleep $((attempt * 2))
+          done
+          echo 'Failed to publish CryptoYeezus state after 5 contention-safe retries' >&2
+          exit 1
