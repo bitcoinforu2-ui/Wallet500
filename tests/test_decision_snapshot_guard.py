@@ -134,3 +134,55 @@ def test_visibility_bridge_prunes_noncanonical_carry_over(tmp_path):
     assert real["counts"]["evidence_ready_research"] == 1
     assert {(x["token_address"], x["pair_address"]) for x in real["evidence_ready"]} == {("CURRENT", "PAIR-CURRENT")}
     assert real["evidence_ready_visibility_bridge"]["pruned_stale_this_run"] == 1
+
+
+def test_visibility_bridge_clears_stale_ready_markers_on_persistent_surfaces(tmp_path):
+    write(tmp_path, "candidate-evidence-envelope.json", {
+        "candidates": [{
+            "chain": "testchain",
+            "token_address": "CURRENT",
+            "pair_address": "PAIR-CURRENT",
+            "symbol": "CUR",
+            "status": "EVIDENCE_READY",
+            "truth": {
+                "exact_identity_verified": True,
+                "exact_pair_verified": True,
+                "market_age_verified_180d_plus": True,
+                "market_age_days": 200,
+                "execution_pool_liquidity_usd": 60000,
+            },
+            "coverage": {"positive_independent_count": 1},
+        }],
+    })
+    stale = {
+        "chain": "testchain",
+        "token_address": "STALE",
+        "pair_address": "PAIR-STALE",
+        "evidence_ready": True,
+        "evidence_envelope_status": "EVIDENCE_READY",
+        "status": "DORMANT_NO_ACTIVITY_NOT_VERIFIED_WATCH",
+    }
+    write(tmp_path, "real-alerts.json", {
+        "counts": {"evidence_ready_research": 2},
+        "verified_watch": [],
+        "dormant_no_activity": [stale],
+        "evidence_ready": [],
+    })
+
+    _preserve_evidence_ready_visibility(tmp_path)
+    real = json.loads((tmp_path / "real-alerts.json").read_text(encoding="utf-8"))
+
+    assert len(real["dormant_no_activity"]) == 1
+    row = real["dormant_no_activity"][0]
+    assert row["token_address"] == "STALE"
+    assert row["evidence_ready"] is False
+    assert row["evidence_envelope_status"] == "NOT_EVIDENCE_READY_CURRENT_CANONICAL"
+    assert real["counts"]["evidence_ready_research"] == 1
+    assert real["evidence_ready_visibility_bridge"]["pruned_stale_surface_markers_this_run"] == 1
+    visible = {
+        (x.get("chain"), x.get("token_address"), x.get("pair_address"))
+        for surface in ("verified_watch", "evidence_ready", "dormant_no_activity")
+        for x in real.get(surface, [])
+        if x.get("evidence_ready") is True or x.get("evidence_envelope_status") == "EVIDENCE_READY" or x.get("status") == "EVIDENCE_READY_NOT_REAL_ALERT"
+    }
+    assert visible == {("testchain", "CURRENT", "PAIR-CURRENT")}
