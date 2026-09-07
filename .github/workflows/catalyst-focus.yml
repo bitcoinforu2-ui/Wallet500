@@ -1,0 +1,86 @@
+name: Wallet500 Catalyst Focus Alerts
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - "Wallet500 Catalyst Wire"
+    types: [completed]
+  schedule:
+    - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/catalyst_focus.py'
+      - 'tests/test_catalyst_focus.py'
+      - '.github/workflows/catalyst-focus.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-catalyst-focus-alerts
+  cancel-in-progress: false
+
+jobs:
+  focus:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Wallet500 and test dependency
+        run: pip install -e . pytest
+      - name: Lock selective alert policy
+        run: pytest -q tests/test_catalyst_focus.py
+      - name: Run selective pre-listing focus monitor
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m wallet500.catalyst_focus
+      - name: Validate selective alert output
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('data/catalyst-focus-live.json').read_text())
+          assert d['mode']=='SELECTIVE_LISTING_FOCUS_ONLY'
+          assert d['policy']['raw_listing_telegram'] is False
+          assert d['policy']['selected_candidates_monitored_until_listing'] is True
+          assert d['policy']['followup_only_on_material_change'] is True
+          assert d['policy']['automatic_trade'] is False
+          for x in d.get('new_evaluations',[]):
+              if x.get('focus_eligible'):
+                  assert x.get('decision_score',0) >= d['policy']['focus_threshold']
+                  assert x.get('dex_url')
+                  assert (x.get('market') or {}).get('token_identity_verified') is True
+                  assert (x.get('market') or {}).get('liquidity_usd',0) >= d['policy']['hard_liquidity_floor_usd']
+          print('CATALYST_FOCUS_POLICY_OK', d.get('counts'))
+          PY
+      - name: Persist focus state and evidence
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-catalyst-focus-bot'
+          git config user.email 'wallet500-catalyst-focus-bot@users.noreply.github.com'
+          git add data/catalyst-focus-live.json data/catalyst-focus-state.json
+          if git diff --cached --quiet; then
+            echo 'No focus state change'
+            exit 0
+          fi
+          git commit -m 'data: refresh selective catalyst focus [skip ci]'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo 'CATALYST_FOCUS_PUBLISH_REJECTED: rebase conflict'
+              exit 1
+            fi
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 3
+          done
+          exit 1
