@@ -25,6 +25,7 @@ on:
       - 'src/wallet500/holder_truth_provider.py'
       - 'src/wallet500/revival_holder_tracker_v3.py'
       - 'src/wallet500/revival_prewaking_wallet_evidence_v2.py'
+      - 'scripts/atomic_publish.py'
       - 'tests/test_candidate_evidence_envelope.py'
       - 'tests/test_pending_confirmation_truth_normalizer.py'
       - 'tests/test_decision_snapshot_guard.py'
@@ -79,67 +80,20 @@ jobs:
             tests/test_revival_funnel_diagnostics.py \
             tests/test_cross_signal_fusion_v2.py \
             tests/test_cex_fast_lane_collection.py
-      - name: Build canonical evidence envelope
-        run: python -m wallet500.candidate_evidence_envelope
-      - name: Normalize pending confirmation truth semantics
-        run: python -m wallet500.pending_confirmation_truth_normalizer
-      - name: Refresh evidence-aware REAL ALERT feed
-        run: python -m wallet500.real_alerts
-      - name: Refresh funnel diagnostics
-        run: python -m wallet500.revival_funnel_diagnostics
-      - name: Refresh dashboard cross-signal fusion
-        run: python -m wallet500.cross_signal_fusion_v2
-      - name: Enforce decision snapshot coherence
-        run: python -m wallet500.decision_snapshot_guard
-      - name: Validate truth contracts
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          e=json.loads(Path('data/candidate-evidence-envelope.json').read_text())
-          r=json.loads(Path('data/real-alerts.json').read_text())
-          f=json.loads(Path('data/revival-funnel-diagnostics.json').read_text())
-          x=json.loads(Path('data/cross-signal-fusion-v2.json').read_text())
-          g=json.loads(Path('data/decision-snapshot-integrity.json').read_text())
-          if e.get('mode')!='RESEARCH_ONLY_CANDIDATE_EVIDENCE_ENVELOPE_V1': raise SystemExit('ENVELOPE_MODE_INVALID')
-          if e.get('production_change') is not False or e.get('automatic_buy') is not False: raise SystemExit('ENVELOPE_PRODUCTION_LEAK')
-          truth=e.get('truth_contract') or {}
-          if truth.get('minimum_market_age_days')!=180: raise SystemExit('ENVELOPE_AGE_SCOPE_INVALID')
-          if truth.get('exact_pair_required') is not True: raise SystemExit('ENVELOPE_PAIR_GUARD_MISSING')
-          if truth.get('missing_evidence_never_positive') is not True: raise SystemExit('ENVELOPE_MISSING_EVIDENCE_GUARD')
-          if truth.get('stale_evidence_never_positive') is not True: raise SystemExit('ENVELOPE_STALE_EVIDENCE_GUARD')
-          if truth.get('concentration_is_risk_context_only') is not True: raise SystemExit('ENVELOPE_CONCENTRATION_GUARD')
-          if truth.get('pending_semantics_missing_or_unverified_only') is not True: raise SystemExit('ENVELOPE_PENDING_SEMANTICS_INVALID')
-          if truth.get('verified_not_positive_is_not_pending') is not True: raise SystemExit('ENVELOPE_VERIFIED_NEUTRAL_SEMANTICS_INVALID')
-          if truth.get('normalizer_changes_real_alert_gate') is not False: raise SystemExit('ENVELOPE_NORMALIZER_REAL_ALERT_LEAK')
-          if truth.get('solana_mintable_tokens_allowed') is not False: raise SystemExit('ENVELOPE_MINTABLE_GUARD_MISSING')
-          if truth.get('solana_unknown_mintability_allowed') is not False: raise SystemExit('ENVELOPE_UNKNOWN_MINTABILITY_GUARD_MISSING')
-          if g.get('passed') is not True: raise SystemExit('DECISION_SNAPSHOT_GUARD_FAILED')
-          if int(r.get('version') or 0)<3: raise SystemExit('REAL_ALERT_V3_MISSING')
-          if (r.get('truth_contract') or {}).get('evidence_ready_is_visible_but_does_not_auto_promote_to_real_alert') is not True: raise SystemExit('REAL_ALERT_EVIDENCE_GUARD_MISSING')
-          if (r.get('truth_contract') or {}).get('solana_mintable_tokens_allowed') is not False: raise SystemExit('REAL_ALERT_MINTABLE_GUARD_MISSING')
-          if int(f.get('version') or 0)<2 or 'evidence_promotion' not in (f.get('lanes') or {}): raise SystemExit('FUNNEL_EVIDENCE_LANE_MISSING')
-          if x.get('mode')!='RESEARCH_ONLY_CROSS_SIGNAL_FUSION_V2' or x.get('automatic_buy') is not False: raise SystemExit('FUSION_TRUTH_INVALID')
-          if (x.get('truth_contract') or {}).get('does_not_modify_real_alert_gate') is not True: raise SystemExit('FUSION_REAL_ALERT_LEAK')
-          print('CANDIDATE_EVIDENCE_TRUTH_OK',e.get('counts'))
-          print('DECISION_SNAPSHOT_GUARD_OK',g.get('counts'))
-          print('FUSION_REFRESH_OK',x.get('counts'))
-          PY
-      - name: Publish coherent derived decision snapshot
+
+      - name: Recompute and atomically publish coherent decision snapshot
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'wallet500-evidence-bot'
           git config user.email 'wallet500-evidence-bot@users.noreply.github.com'
 
-          # Never copy derived files calculated from an older checkout onto a
-          # newer main. Every attempt resets to latest main and recomputes all
-          # dashboard-facing evidence from that exact source state.
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
             source_sha="$(git rev-parse HEAD)"
             export SOURCE_SHA="$source_sha"
+
             python -m wallet500.candidate_evidence_envelope
             python -m wallet500.pending_confirmation_truth_normalizer
             python -m wallet500.real_alerts
@@ -160,17 +114,36 @@ jobs:
               'decision_integrity':'data/decision-snapshot-integrity.json',
           }
           payloads={k:Path(v).read_bytes() for k,v in files.items()}
-          guard=json.loads(payloads['decision_integrity'].decode('utf-8'))
-          real=json.loads(payloads['real_alerts'].decode('utf-8'))
-          if guard.get('passed') is not True:
-              raise SystemExit('DECISION_PUBLICATION_GUARD_NOT_PASS')
-          truth=real.get('truth_contract') or {}
-          if truth.get('minimum_market_age_days') != 180 or truth.get('exact_dex_pair_required') is not True:
-              raise SystemExit('DECISION_PUBLICATION_REAL_ALERT_TRUTH_DRIFT')
+          e=json.loads(payloads['candidate_evidence'].decode('utf-8'))
+          r=json.loads(payloads['real_alerts'].decode('utf-8'))
+          f=json.loads(payloads['revival_funnel'].decode('utf-8'))
+          x=json.loads(payloads['cross_signal_fusion'].decode('utf-8'))
+          g=json.loads(payloads['decision_integrity'].decode('utf-8'))
+
+          if e.get('mode')!='RESEARCH_ONLY_CANDIDATE_EVIDENCE_ENVELOPE_V1': raise SystemExit('ENVELOPE_MODE_INVALID')
+          if e.get('production_change') is not False or e.get('automatic_buy') is not False: raise SystemExit('ENVELOPE_PRODUCTION_LEAK')
+          truth=e.get('truth_contract') or {}
+          if truth.get('minimum_market_age_days')!=180: raise SystemExit('ENVELOPE_AGE_SCOPE_INVALID')
+          if truth.get('exact_pair_required') is not True: raise SystemExit('ENVELOPE_PAIR_GUARD_MISSING')
+          if truth.get('missing_evidence_never_positive') is not True: raise SystemExit('ENVELOPE_MISSING_EVIDENCE_GUARD')
+          if truth.get('stale_evidence_never_positive') is not True: raise SystemExit('ENVELOPE_STALE_EVIDENCE_GUARD')
+          if truth.get('concentration_is_risk_context_only') is not True: raise SystemExit('ENVELOPE_CONCENTRATION_GUARD')
+          if truth.get('pending_semantics_missing_or_unverified_only') is not True: raise SystemExit('ENVELOPE_PENDING_SEMANTICS_INVALID')
+          if truth.get('verified_not_positive_is_not_pending') is not True: raise SystemExit('ENVELOPE_VERIFIED_NEUTRAL_SEMANTICS_INVALID')
+          if truth.get('normalizer_changes_real_alert_gate') is not False: raise SystemExit('ENVELOPE_NORMALIZER_REAL_ALERT_LEAK')
+          if truth.get('solana_mintable_tokens_allowed') is not False: raise SystemExit('ENVELOPE_MINTABLE_GUARD_MISSING')
+          if truth.get('solana_unknown_mintability_allowed') is not False: raise SystemExit('ENVELOPE_UNKNOWN_MINTABILITY_GUARD_MISSING')
+          if g.get('passed') is not True: raise SystemExit('DECISION_SNAPSHOT_GUARD_FAILED')
+          if int(r.get('version') or 0)<3: raise SystemExit('REAL_ALERT_V3_MISSING')
+          if (r.get('truth_contract') or {}).get('evidence_ready_is_visible_but_does_not_auto_promote_to_real_alert') is not True: raise SystemExit('REAL_ALERT_EVIDENCE_GUARD_MISSING')
+          if (r.get('truth_contract') or {}).get('solana_mintable_tokens_allowed') is not False: raise SystemExit('REAL_ALERT_MINTABLE_GUARD_MISSING')
+          if int(f.get('version') or 0)<2 or 'evidence_promotion' not in (f.get('lanes') or {}): raise SystemExit('FUNNEL_EVIDENCE_LANE_MISSING')
+          if x.get('mode')!='RESEARCH_ONLY_CROSS_SIGNAL_FUSION_V2' or x.get('automatic_buy') is not False: raise SystemExit('FUSION_TRUTH_INVALID')
+          if (x.get('truth_contract') or {}).get('does_not_modify_real_alert_gate') is not True: raise SystemExit('FUSION_REAL_ALERT_LEAK')
+
           run_id=str(os.environ.get('GITHUB_RUN_ID') or '').strip()
           source_sha=str(os.environ.get('SOURCE_SHA') or '').strip()
-          if not run_id or len(source_sha)!=40:
-              raise SystemExit('DECISION_PUBLICATION_SOURCE_ID_INVALID')
+          if not run_id or len(source_sha)!=40: raise SystemExit('DECISION_PUBLICATION_SOURCE_ID_INVALID')
           proof={
               'version':1,
               'created_at':datetime.now(timezone.utc).isoformat(),
@@ -187,27 +160,36 @@ jobs:
           }
           Path('data/decision-publish-evidence.json').write_text(
               json.dumps(proof,ensure_ascii=False,indent=2,sort_keys=True)+'\n',encoding='utf-8')
+          print('CANDIDATE_EVIDENCE_TRUTH_OK',e.get('counts'))
           print('DECISION_PUBLICATION_PROOF_READY',proof['generation_id'],proof['hashes']['real_alerts'])
           PY
 
-            git add \
+            set +e
+            python scripts/atomic_publish.py \
+              --base "$source_sha" \
+              --fail-on-newer \
+              --message 'data: refresh coherent candidate evidence snapshot' \
               data/candidate-evidence-envelope.json \
               data/real-alerts.json \
               data/revival-funnel-diagnostics.json \
               data/cross-signal-fusion-v2.json \
               data/decision-snapshot-integrity.json \
               data/decision-publish-evidence.json
-            if git diff --cached --quiet; then
-              echo 'CANDIDATE_EVIDENCE_NO_DATA_CHANGE'
-              exit 0
-            fi
-            git commit -m 'data: refresh coherent candidate evidence snapshot'
-            if git push origin HEAD:main; then
+            rc=$?
+            set -e
+
+            if [ "$rc" -eq 0 ]; then
               echo 'CANDIDATE_EVIDENCE_COHERENT_PUBLISH_OK'
               exit 0
             fi
-            echo "CANDIDATE_EVIDENCE_RECOMPUTE_RETRY attempt=$attempt"
-            sleep 3
+            if [ "$rc" -eq 75 ]; then
+              echo "CANDIDATE_EVIDENCE_RECOMPUTE_REQUIRED attempt=$attempt"
+              sleep 1
+              continue
+            fi
+            echo "::error::CANDIDATE_EVIDENCE_ATOMIC_PUBLISH_FAILED rc=$rc"
+            exit "$rc"
           done
-          echo '::error::CANDIDATE_EVIDENCE_COHERENT_PUBLISH_RACE_EXHAUSTED'
+
+          echo '::error::CANDIDATE_EVIDENCE_RECOMPUTE_EXHAUSTED'
           exit 1
