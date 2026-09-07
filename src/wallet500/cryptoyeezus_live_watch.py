@@ -24,7 +24,13 @@ LATEST_PATH = Path(os.getenv("YEEZUS_LATEST_PATH", str(DATA_DIR / "cryptoyeezus-
 TICKER_RE = re.compile(r"(?<![\w$])\$([A-Za-z][A-Za-z0-9_]{1,14})\b")
 EVM_RE = re.compile(r"\b0x[a-fA-F0-9]{40}\b")
 SOL_RE = re.compile(r"(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{32,44}(?![1-9A-HJ-NP-Za-km-z])")
+URL_RE = re.compile(r"https?://\S+", re.I)
 DEX_RE = re.compile(r"https?://(?:www\.)?dexscreener\.com/([a-zA-Z0-9_-]+)/([a-zA-Z0-9]+)[^\s<>\"]*", re.I)
+PRIMARY_TICKER_RE = re.compile(
+    r"(?:bag(?:ging)?(?:\s+(?:a|the))?|gambl\w*|ape\w*|punt\w*|buy(?:ing)?|bought|loading|load|adding|added|entry|position)"
+    r"[^$\n]{0,55}\$([A-Za-z][A-Za-z0-9_]{1,14})\b",
+    re.I,
+)
 
 CALL_WORDS = (
     "bag", "gambl", "ape", "aped", "punt", "buy", "bought", "loading",
@@ -55,7 +61,7 @@ def _write(path: Path, payload) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _norm_symbol(value: str) -> str:
+def _norm_symbol(value: object) -> str:
     return str(value or "").strip().upper().lstrip("$")
 
 
@@ -64,22 +70,16 @@ def _post_key(row: dict) -> str:
 
 
 def extract_refs(text: str) -> dict:
+    """Extract only explicit identifiers from post body; URLs are not contracts."""
     text = str(text or "")
-    tickers = []
-    seen = set()
+
+    tickers: list[str] = []
+    seen_tickers: set[str] = set()
     for raw in TICKER_RE.findall(text):
         sym = _norm_symbol(raw)
-        if sym and sym not in seen:
-            seen.add(sym)
+        if sym and sym not in seen_tickers:
+            seen_tickers.add(sym)
             tickers.append(sym)
-
-    contracts = []
-    for raw in EVM_RE.findall(text):
-        if raw.lower() not in {x.lower() for x in contracts}:
-            contracts.append(raw)
-    for raw in SOL_RE.findall(text):
-        if any(c.isdigit() for c in raw) and raw not in contracts:
-            contracts.append(raw)
 
     dex_links = []
     for m in DEX_RE.finditer(text):
@@ -89,7 +89,28 @@ def extract_refs(text: str) -> dict:
             "pair_address": m.group(2),
         })
 
-    return {"tickers": tickers, "contracts": contracts, "dex_links": dex_links}
+    # A DexScreener pair path is pair evidence, not an explicit token CA. Strip
+    # all URLs first, then strip EVM addresses before the base58 scan so a
+    # substring such as `x111...` can never be misclassified as Solana.
+    body = URL_RE.sub(" ", text)
+    evm = []
+    seen_contracts: set[str] = set()
+    for raw in EVM_RE.findall(body):
+        low = raw.lower()
+        if low not in seen_contracts:
+            seen_contracts.add(low)
+            evm.append(raw)
+    base58_body = EVM_RE.sub(" ", body)
+    sol = []
+    for raw in SOL_RE.findall(base58_body):
+        if not any(c.isdigit() for c in raw):
+            continue
+        low = raw.lower()
+        if low not in seen_contracts:
+            seen_contracts.add(low)
+            sol.append(raw)
+
+    return {"tickers": tickers, "contracts": [*evm, *sol], "dex_links": dex_links}
 
 
 def looks_like_call(text: str, refs: dict | None = None) -> bool:
@@ -106,18 +127,25 @@ def repeat_is_material(text: str, refs: dict | None = None) -> bool:
     return bool(refs["contracts"] or refs["dex_links"]) or any(word in low for word in REPEAT_MATERIAL_WORDS)
 
 
+def _primary_symbol(text: str, refs: dict, market: dict | None) -> str | None:
+    if market and market.get("symbol"):
+        return _norm_symbol(market["symbol"])
+    match = PRIMARY_TICKER_RE.search(str(text or ""))
+    if match:
+        return _norm_symbol(match.group(1))
+    tickers = refs.get("tickers") or []
+    return _norm_symbol(tickers[0]) if len(tickers) == 1 else None
+
+
 def _safe_pair_snapshot(pair: dict, expected_symbols: list[str] | None = None) -> tuple[dict | None, list[str]]:
     if not isinstance(pair, dict):
         return None, ["PAIR_PAYLOAD_INVALID"]
     base = pair.get("baseToken") or {}
-    symbol = _norm_symbol(base.get("symbol") or "")
+    symbol = _norm_symbol(base.get("symbol"))
     expected = {_norm_symbol(x) for x in (expected_symbols or []) if _norm_symbol(x)}
-    flags = []
+    flags: list[str] = []
     if expected and symbol and symbol not in expected:
-        flags.append("SYMBOL_MISMATCH")
-        return None, flags
-
-    liq = (pair.get("liquidity") or {}).get("usd")
+        return None, ["SYMBOL_MISMATCH"]
     volume = pair.get("volume") or {}
     price_change = pair.get("priceChange") or {}
     return {
@@ -129,7 +157,7 @@ def _safe_pair_snapshot(pair: dict, expected_symbols: list[str] | None = None) -
         "price_usd": pair.get("priceUsd"),
         "market_cap_usd": pair.get("marketCap"),
         "fdv_usd": pair.get("fdv"),
-        "liquidity_usd": liq,
+        "liquidity_usd": (pair.get("liquidity") or {}).get("usd"),
         "volume_h1_usd": volume.get("h1"),
         "volume_h24_usd": volume.get("h24"),
         "price_change_h1_pct": price_change.get("h1"),
@@ -150,9 +178,7 @@ def resolve_market_identity(refs: dict) -> tuple[dict | None, list[str]]:
         if not chain or not pair_address:
             continue
         try:
-            payload = _get_json(
-                f"https://api.dexscreener.com/latest/dex/pairs/{quote(chain)}/{quote(pair_address)}"
-            )
+            payload = _get_json(f"https://api.dexscreener.com/latest/dex/pairs/{quote(chain)}/{quote(pair_address)}")
             pairs = payload.get("pairs") or []
             if pairs:
                 snap, pair_flags = _safe_pair_snapshot(pairs[0], expected)
@@ -160,34 +186,31 @@ def resolve_market_identity(refs: dict) -> tuple[dict | None, list[str]]:
                 if snap:
                     snap["identity_evidence"] = "EXACT_DEXSCREENER_PAIR_LINK"
                     snap["pair_identity_locked"] = True
-                    return snap, flags
+                    return snap, sorted(set(flags))
         except Exception as exc:
             flags.append(f"DEX_PAIR_LOOKUP_FAILED:{type(exc).__name__}")
 
     for contract in refs.get("contracts") or []:
         try:
-            payload = _get_json(
-                "https://api.dexscreener.com/latest/dex/tokens/" + quote(contract)
-            )
+            payload = _get_json("https://api.dexscreener.com/latest/dex/tokens/" + quote(contract))
             candidates = []
             for pair in payload.get("pairs") or []:
                 base = pair.get("baseToken") or {}
                 if str(base.get("address") or "").lower() != str(contract).lower():
                     continue
-                liq = (pair.get("liquidity") or {}).get("usd")
                 try:
-                    liq_n = float(liq or 0)
+                    liq = float((pair.get("liquidity") or {}).get("usd") or 0)
                 except (TypeError, ValueError):
-                    liq_n = 0.0
-                candidates.append((liq_n, pair))
-            candidates.sort(key=lambda x: x[0], reverse=True)
+                    liq = 0.0
+                candidates.append((liq, pair))
+            candidates.sort(key=lambda item: item[0], reverse=True)
             for _, pair in candidates[:5]:
                 snap, pair_flags = _safe_pair_snapshot(pair, expected)
                 flags.extend(pair_flags)
                 if snap:
                     snap["identity_evidence"] = "EXACT_CONTRACT_DEXSCREENER_DEEPEST_POOL"
                     snap["pair_identity_locked"] = True
-                    return snap, flags
+                    return snap, sorted(set(flags))
         except Exception as exc:
             flags.append(f"DEX_TOKEN_LOOKUP_FAILED:{type(exc).__name__}")
 
@@ -207,7 +230,7 @@ def _fetch_telegram() -> tuple[list[dict], dict]:
 
 def _fetch_x() -> tuple[list[dict], dict]:
     rows, status = scan_x({"official_x": X_URL})
-    rows = [r for r in rows if str(r.get("author") or "").lower() == X_HANDLE.lower()]
+    rows = [r for r in rows if str(r.get("author") or "").lower().lstrip("@") == X_HANDLE.lower()]
     status = dict(status or {})
     status["count_after_author_lock"] = len(rows)
     return rows, status
@@ -215,10 +238,9 @@ def _fetch_x() -> tuple[list[dict], dict]:
 
 def fetch_sources(state: dict) -> tuple[list[dict], dict]:
     tg_rows, tg_status = _fetch_telegram()
-
     run_count = int(state.get("run_count") or 0)
     every = max(1, int(os.getenv("YEEZUS_X_POLL_EVERY_CYCLES", "6")))
-    should_poll_x = run_count <= 1 or (run_count % every) == 0
+    should_poll_x = run_count <= 1 or run_count % every == 0
     if should_poll_x:
         x_rows, x_status = _fetch_x()
     else:
@@ -239,36 +261,33 @@ def fetch_sources(state: dict) -> tuple[list[dict], dict]:
     return rows, {"telegram": tg_status, "x": x_status}
 
 
-def _token_record_key(refs: dict, market: dict | None) -> str | None:
+def _token_record_key(refs: dict, market: dict | None, symbol: str | None = None) -> str | None:
     if market and market.get("token_address"):
         return "ca:" + str(market["token_address"]).lower()
     if refs.get("contracts"):
         return "ca:" + str(refs["contracts"][0]).lower()
-    if refs.get("tickers"):
-        return "symbol:" + _norm_symbol(refs["tickers"][0])
+    if symbol:
+        return "symbol:" + _norm_symbol(symbol)
     return None
 
 
-def _find_existing_token_key(tokens: dict, refs: dict, market: dict | None) -> str | None:
-    direct = _token_record_key(refs, market)
+def _find_existing_token_key(tokens: dict, refs: dict, market: dict | None, symbol: str | None) -> str | None:
+    direct = _token_record_key(refs, market, symbol)
     if direct and direct in tokens:
         return direct
-
-    symbols = {_norm_symbol(x) for x in refs.get("tickers") or []}
+    symbols = {_norm_symbol(symbol)} if symbol else set()
     if market and market.get("symbol"):
-        symbols.add(_norm_symbol(market.get("symbol")))
+        symbols.add(_norm_symbol(market["symbol"]))
     addresses = {str(x).lower() for x in refs.get("contracts") or []}
     if market and market.get("token_address"):
         addresses.add(str(market["token_address"]).lower())
-
     for key, row in tokens.items():
         if not isinstance(row, dict):
             continue
-        row_symbol = _norm_symbol(row.get("symbol") or "")
-        row_address = str(row.get("token_address") or "").lower()
-        if row_symbol and row_symbol in symbols:
+        if _norm_symbol(row.get("symbol")) in symbols and _norm_symbol(row.get("symbol")):
             return key
-        if row_address and row_address in addresses:
+        address = str(row.get("token_address") or "").lower()
+        if address and address in addresses:
             return key
     return None
 
@@ -291,8 +310,8 @@ def _same_token(a: dict, b: dict) -> bool:
     ba = str(bm.get("token_address") or b.get("explicit_contract") or "").lower()
     if aa and ba:
         return aa == ba
-    sa = _norm_symbol(a.get("symbol") or am.get("symbol") or "")
-    sb = _norm_symbol(b.get("symbol") or bm.get("symbol") or "")
+    sa = _norm_symbol(a.get("symbol") or am.get("symbol"))
+    sb = _norm_symbol(b.get("symbol") or bm.get("symbol"))
     return bool(sa and sb and sa == sb)
 
 
@@ -306,10 +325,7 @@ def _find_cross_post(event: dict, prior_events: list[dict], window_minutes: int 
         if not _same_token(event, prior):
             continue
         pwhen = _dt(prior.get("published_at") or prior.get("observed_at"))
-        if pwhen is None:
-            continue
-        delta = abs((when - pwhen).total_seconds())
-        if delta <= window_minutes * 60:
+        if pwhen and abs((when - pwhen).total_seconds()) <= window_minutes * 60:
             return prior
     return None
 
@@ -334,9 +350,8 @@ def _alert_text(event: dict) -> str:
         lines.append(f"Post: {event['url']}")
     if market.get("dex_url"):
         lines.append(f"Dex: {market['dex_url']}")
-    flags = event.get("risk_flags") or []
-    if flags:
-        lines.append("Flags: " + ", ".join(flags[:5]))
+    if event.get("risk_flags"):
+        lines.append("Flags: " + ", ".join(event["risk_flags"][:5]))
     lines.append("Research alert only • no automatic buy")
     return "\n".join(lines)
 
@@ -350,11 +365,7 @@ def _send_alert(event: dict) -> dict:
         message_id, attempts = _send(token, chat_id, _alert_text(event))
         return {"attempted": True, "sent": True, "message_id": message_id, "attempts": attempts}
     except Exception as exc:
-        return {
-            "attempted": True,
-            "sent": False,
-            "reason": f"{type(exc).__name__}:{str(exc)[:160]}",
-        }
+        return {"attempted": True, "sent": False, "reason": f"{type(exc).__name__}:{str(exc)[:160]}"}
 
 
 def _event_from_row(row: dict, state: dict, observed_at: str, resolve_market: bool = True) -> dict | None:
@@ -362,25 +373,20 @@ def _event_from_row(row: dict, state: dict, observed_at: str, resolve_market: bo
     refs = extract_refs(text)
     if not looks_like_call(text, refs):
         return None
-
     market, flags = resolve_market_identity(refs) if resolve_market else (None, [])
+    symbol = _primary_symbol(text, refs, market)
+    if not symbol and not refs.get("contracts") and not market:
+        return None
+
     tokens = state.setdefault("tokens", {})
-    existing_key = _find_existing_token_key(tokens, refs, market)
-    proposed_key = _token_record_key(refs, market)
-    key = existing_key or proposed_key
+    existing_key = _find_existing_token_key(tokens, refs, market, symbol)
+    key = existing_key or _token_record_key(refs, market, symbol)
     if not key:
         return None
 
-    symbol = None
-    if refs.get("tickers"):
-        symbol = refs["tickers"][0]
-    elif market and market.get("symbol"):
-        symbol = market["symbol"]
-
-    event_type = "REPEAT_PROMOTION" if existing_key else "FIRST_MENTION"
     event = {
         "event_id": _post_key(row) + ":" + key,
-        "event_type": event_type,
+        "event_type": "REPEAT_PROMOTION" if existing_key else "FIRST_MENTION",
         "caller": "CryptoYeezus",
         "source": str(row.get("source") or "").lower(),
         "source_post_id": row.get("id"),
@@ -418,7 +424,6 @@ def _event_from_row(row: dict, state: dict, observed_at: str, resolve_market: bo
             record["symbol"] = symbol
         record["last_promotion_at"] = row.get("published_at") or observed_at
         record["last_promotion_source"] = event["source"]
-
     return event
 
 
@@ -432,9 +437,8 @@ def run() -> dict:
         "tokens": {},
     })
     state["run_count"] = int(state.get("run_count") or 0) + 1
-
     rows, provider_status = fetch_sources(state)
-    seen = set(str(x) for x in (state.get("seen_posts") or []))
+    seen = {str(x) for x in state.get("seen_posts") or []}
     new_rows = [r for r in rows if _post_key(r) not in seen]
 
     calls_doc = _load(CALLS_PATH, {
@@ -450,8 +454,7 @@ def run() -> dict:
 
     if not state.get("bootstrapped"):
         for row in rows:
-            key = _post_key(row)
-            seen.add(key)
+            seen.add(_post_key(row))
             event = _event_from_row(row, state, observed_at, resolve_market=False)
             if event:
                 event["baseline_only"] = True
@@ -462,12 +465,10 @@ def run() -> dict:
     else:
         status = "OK"
         for row in new_rows:
-            key = _post_key(row)
-            seen.add(key)
+            seen.add(_post_key(row))
             event = _event_from_row(row, state, observed_at, resolve_market=True)
             if not event:
                 continue
-
             cross_post = _find_cross_post(event, events)
             if cross_post:
                 event["event_type"] = "CROSS_POST_DUPLICATE"
@@ -480,17 +481,12 @@ def run() -> dict:
                     "source_post_id": event.get("source_post_id"),
                 })
             else:
-                should_alert = event["event_type"] == "FIRST_MENTION" or repeat_is_material(
-                    event["text"], extract_refs(event["text"])
-                )
-                if should_alert:
-                    event["alert"] = _send_alert(event)
-                else:
-                    event["alert"] = {
-                        "attempted": False,
-                        "sent": False,
-                        "reason": "NON_MATERIAL_REPEAT_PROMOTION",
-                    }
+                should_alert = event["event_type"] == "FIRST_MENTION" or repeat_is_material(event["text"], extract_refs(event["text"]))
+                event["alert"] = _send_alert(event) if should_alert else {
+                    "attempted": False,
+                    "sent": False,
+                    "reason": "NON_MATERIAL_REPEAT_PROMOTION",
+                }
             events.append(event)
             new_events.append(event)
 
@@ -523,7 +519,6 @@ def run() -> dict:
         "latest_events": new_events[-20:],
         "automatic_buy": False,
     }
-
     _write(STATE_PATH, state)
     _write(CALLS_PATH, calls_doc)
     _write(LATEST_PATH, latest)
