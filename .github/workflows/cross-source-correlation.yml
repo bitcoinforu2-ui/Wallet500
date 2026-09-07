@@ -12,13 +12,17 @@ on:
   pull_request:
     paths:
       - 'src/wallet500/cross_source_correlation.py'
+      - 'src/wallet500/cross_source_identity_guard.py'
       - 'tests/test_cross_source_correlation.py'
+      - 'tests/test_cross_source_identity_guard.py'
       - '.github/workflows/cross-source-correlation.yml'
   push:
     branches: [main]
     paths:
       - 'src/wallet500/cross_source_correlation.py'
+      - 'src/wallet500/cross_source_identity_guard.py'
       - 'tests/test_cross_source_correlation.py'
+      - 'tests/test_cross_source_identity_guard.py'
       - '.github/workflows/cross-source-correlation.yml'
 
 permissions:
@@ -26,8 +30,9 @@ permissions:
 
 # This is the single cross-source/manual-watchlist publisher. Sharing the Live
 # mutex is intentional: source scanners stay independent, while truth-state
-# publication is serialized. If an older pending aggregation is superseded,
-# the newest run recomputes from persistent ledgers so source evidence is not lost.
+# publication is serialized. If main changes while this run is publishing, the
+# output is recomputed from the newest persistent ledgers instead of rebasing a
+# generated snapshot across another generated snapshot.
 concurrency:
   group: wallet500-live-scan-publisher
   cancel-in-progress: false
@@ -40,21 +45,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install Wallet500 and tests
         run: pip install -e . pytest
       - name: Lock cross-source identity and independence semantics
-        run: pytest -q tests/test_cross_source_correlation.py
+        run: pytest -q tests/test_cross_source_correlation.py tests/test_cross_source_identity_guard.py
       - name: Recompute correlation from all persistent source ledgers
-        run: python -m wallet500.cross_source_correlation
+        run: |
+          python -m wallet500.cross_source_correlation
+          python -m wallet500.cross_source_identity_guard
       - name: Validate correlation truth boundary
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
+          ZERO='0x0000000000000000000000000000000000000000'
           c=Path('data/cross-source-correlation.json')
           w=Path('data/manual-watchlist.json')
           for p in (c,w):
@@ -68,6 +76,9 @@ jobs:
           policy=corr.get('policy') or {}
           if 'one source owner counts once' not in str(policy.get('independence') or ''):
               raise SystemExit('FATAL independent-source dedupe contract missing')
+          guard=corr.get('identity_guard') or {}
+          if guard.get('fail_closed') is not True or guard.get('source_ledgers_modified') is not False:
+              raise SystemExit('FATAL identity guard contract missing')
           for asset in (corr.get('assets') or {}).values():
               if asset.get('continuous_rescan') is not True:
                   raise SystemExit('FATAL continuous-rescan contract missing')
@@ -75,6 +86,8 @@ jobs:
                   raise SystemExit('FATAL research-only gate missing')
               if asset.get('automatic_trade') is not False:
                   raise SystemExit('FATAL automatic-trade leak')
+              if str(asset.get('chain') or '').lower() in {'ethereum','bsc','arbitrum','base'} and str(asset.get('token') or '').lower()==ZERO:
+                  raise SystemExit('FATAL EVM native/zero sentinel misclassified as exact token contract')
               count=int(asset.get('source_confirmation_count') or 0)
               tier=asset.get('confirmation_tier')
               if count == 2 and tier != 'DOUBLE_SOURCE_CONFIRMED':
@@ -85,6 +98,8 @@ jobs:
               if isinstance(row,dict) and row.get('source')=='CROSS_SOURCE_CORRELATION':
                   if row.get('research_only_until_wallet500_gates_pass') is not True:
                       raise SystemExit('FATAL correlated watchlist bypass flag missing')
+                  if str(row.get('chain') or '').lower() in {'ethereum','bsc','arbitrum','base'} and str(row.get('token') or '').lower()==ZERO:
+                      raise SystemExit('FATAL invalid generated watch identity')
           print('CROSS_SOURCE_CORRELATION_OK',corr.get('counts'))
           PY
       - name: Publish correlated research watchlist
@@ -92,22 +107,39 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-correlation-bot'
           git config user.email 'wallet500-correlation-bot@users.noreply.github.com'
-          git add data/cross-source-correlation.json data/manual-watchlist.json
-          if git diff --cached --quiet; then
-            echo 'No correlated truth-state change'
-            exit 0
-          fi
-          git commit -m 'data: refresh cross-source correlation and research watchlist'
+
+          validate_latest() {
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          ZERO='0x0000000000000000000000000000000000000000'
+          corr=json.loads(Path('data/cross-source-correlation.json').read_text())
+          if corr.get('automatic_trade') is not False: raise SystemExit('FATAL automatic-trade leak')
+          guard=corr.get('identity_guard') or {}
+          if guard.get('fail_closed') is not True: raise SystemExit('FATAL identity guard missing')
+          for asset in (corr.get('assets') or {}).values():
+              if str(asset.get('chain') or '').lower() in {'ethereum','bsc','arbitrum','base'} and str(asset.get('token') or '').lower()==ZERO:
+                  raise SystemExit('FATAL invalid exact identity after recompute')
+          PY
+          }
+
           for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            if ! git rebase origin/main; then
-              git rebase --abort || true
-              echo 'CROSS_SOURCE_PUBLISH_REJECTED: rebase conflict; next aggregation will recompute from persistent ledgers'
-              exit 1
+            echo "publish attempt ${attempt}"
+            git fetch --depth=1 origin main
+            git reset --hard origin/main
+            python -m wallet500.cross_source_correlation
+            python -m wallet500.cross_source_identity_guard
+            validate_latest
+            git add data/cross-source-correlation.json data/manual-watchlist.json
+            if git diff --cached --quiet; then
+              echo 'No correlated truth-state change'
+              exit 0
             fi
+            git commit -m 'data: refresh cross-source correlation and research watchlist'
             if git push origin HEAD:main; then exit 0; fi
             sleep 3
           done
+          echo 'CROSS_SOURCE_PUBLISH_REJECTED: main changed across all bounded recompute attempts'
           exit 1
 
   test-only:
@@ -120,4 +152,4 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -e . pytest
-      - run: pytest -q tests/test_cross_source_correlation.py
+      - run: pytest -q tests/test_cross_source_correlation.py tests/test_cross_source_identity_guard.py
