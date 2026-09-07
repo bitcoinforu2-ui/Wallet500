@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-07T06:47:45.522071+00:00",
+  "updated_at": "2026-09-07T06:58:20.683543+00:00",
   "mode": "CONTINUOUS_CROSS_SOURCE_CORRELATION_RESEARCH_ONLY",
   "automatic_trade": false,
   "policy": {
@@ -9,29 +9,20 @@
     "persistence": "prior evidence is retained in source ledgers; every scan recomputes and can upgrade an already-known asset",
     "multiplier": "discovery confirmation only; never multiplies or bypasses production trade gates",
     "truth_boundary": "all normal Wallet500 exact-pair, liquidity, survival, risk, holder/cluster and execution gates remain mandatory",
-    "invalid_identity": "EVM zero/native sentinel is never an exact token contract; generated correlation/watchlist surfaces fail closed while source ledgers remain immutable"
+    "invalid_identity": "EVM zero/native sentinel is never an exact token contract; generated correlation/watchlist surfaces fail closed while source ledgers remain immutable",
+    "catalyst_symbol_identity": "CEX catalyst evidence contributes cross-source confirmation only after exact symbol+chain+contract registry verification; symbol-only collisions are removed before publication"
   },
   "counts": {
     "input_evidence": 230,
-    "correlated_assets": 64,
-    "exact_identity_assets": 64,
-    "multi_source_assets": 9,
-    "double_or_better_exchange_assets": 9,
-    "upgraded_this_scan": 1,
-    "invalid_exact_identity_dropped": 1
+    "correlated_assets": 39,
+    "exact_identity_assets": 39,
+    "multi_source_assets": 0,
+    "double_or_better_exchange_assets": 0,
+    "upgraded_this_scan": 0,
+    "invalid_exact_identity_dropped": 1,
+    "blocked_catalyst_evidence_removed": 118
   },
-  "upgrades": [
-    {
-      "asset_key": "bsc:0xfa6d9b504848606eb9aec04ccc161d169b3f2159",
-      "at": "2026-09-07T06:47:45.522071+00:00",
-      "previous_source_confirmation_count": 1,
-      "new_source_confirmation_count": 2,
-      "confirmation_tier": "DOUBLE_SOURCE_CONFIRMED",
-      "new_sources": [
-        "weex"
-      ]
-    }
-  ],
+  "upgrades": [],
   "assets": {
     "solana:f6ae23539f26a31419199bbd9e2ff4ec": {
       "asset_key": "solana:f6ae23539f26a31419199bbd9e2ff4ec",
@@ -135,367 +126,6 @@
         }
       ]
     },
-    "solana:3wtGGWZ8wLWW6BqtC5rxmkHdqvM62atUcGTH4cw3pump": {
-      "asset_key": "solana:3wtGGWZ8wLWW6BqtC5rxmkHdqvM62atUcGTH4cw3pump",
-      "chain": "solana",
-      "token": "3wtGGWZ8wLWW6BqtC5rxmkHdqvM62atUcGTH4cw3pump",
-      "symbol": "ALPHA",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-06T19:48:11.336833+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 2,
-      "exchange_confirmation_count": 2,
-      "surface_count": 3,
-      "event_count": 9,
-      "source_category_count": 1,
-      "sources_seen": [
-        "binance",
-        "mexc"
-      ],
-      "exchange_sources_seen": [
-        "binance",
-        "mexc"
-      ],
-      "source_surfaces_seen": [
-        "BINANCE_TELEGRAM",
-        "MEXC_FUTURES_LISTINGS",
-        "MEXC_SPOT_LISTINGS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "DOUBLE_SOURCE_CONFIRMED",
-      "discovery_confirmation_multiplier": 2.0,
-      "source_first_seen_spread_seconds": 36983,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:d12f2d1711e712e958d289e8",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "3wtGGWZ8wLWW6BqtC5rxmkHdqvM62atUcGTH4cw3pump",
-          "chain": "solana",
-          "symbol": "ALPHA",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-06T19:48:11.336833+00:00"
-        },
-        {
-          "evidence_id": "catalyst:25271b782f07f5c0afd076fb",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_FUTURES_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.mexc.com/announcements/alpha-trader",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "3wtGGWZ8wLWW6BqtC5rxmkHdqvM62atUcGTH4cw3pump",
-          "chain": "solana",
-          "symbol": "ALPHA",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T04:18:04.513273+00:00"
-        },
-        {
-          "evidence_id": "catalyst:794196d6f13e3f06a6ad9d6a",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_SPOT_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.mexc.com/announcements/alpha-trader",
-          "event_type": "PREMARKET_OR_AUCTION",
-          "token": "3wtGGWZ8wLWW6BqtC5rxmkHdqvM62atUcGTH4cw3pump",
-          "chain": "solana",
-          "symbol": "ALPHA",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T04:18:04.513273+00:00"
-        },
-        {
-          "evidence_id": "catalyst:d86afbd153b30c9f00c49d19",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "3wtGGWZ8wLWW6BqtC5rxmkHdqvM62atUcGTH4cw3pump",
-          "chain": "solana",
-          "symbol": "ALPHA",
-          "first_seen_at": "2026-09-06T20:11:49.494674+00:00",
-          "last_seen_at": "2026-09-06T21:02:33.947822+00:00"
-        },
-        {
-          "evidence_id": "catalyst:8c070f5110bb08a0a881f745",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "3wtGGWZ8wLWW6BqtC5rxmkHdqvM62atUcGTH4cw3pump",
-          "chain": "solana",
-          "symbol": "ALPHA",
-          "first_seen_at": "2026-09-06T21:20:54.428172+00:00",
-          "last_seen_at": "2026-09-07T01:03:54.334476+00:00"
-        },
-        {
-          "evidence_id": "catalyst:9a148c31ef85af7b13e82bcd",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "3wtGGWZ8wLWW6BqtC5rxmkHdqvM62atUcGTH4cw3pump",
-          "chain": "solana",
-          "symbol": "ALPHA",
-          "first_seen_at": "2026-09-07T01:16:28.699689+00:00",
-          "last_seen_at": "2026-09-07T05:52:53.429133+00:00"
-        },
-        {
-          "evidence_id": "catalyst:c40e29b132ec96c3d5b6754b",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_FUTURES_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.mexc.com/announcements/alpha-trader",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "3wtGGWZ8wLWW6BqtC5rxmkHdqvM62atUcGTH4cw3pump",
-          "chain": "solana",
-          "symbol": "ALPHA",
-          "first_seen_at": "2026-09-07T04:39:33.515725+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:4be09439577a4183ebdde574",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_SPOT_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.mexc.com/announcements/alpha-trader",
-          "event_type": "PREMARKET_OR_AUCTION",
-          "token": "3wtGGWZ8wLWW6BqtC5rxmkHdqvM62atUcGTH4cw3pump",
-          "chain": "solana",
-          "symbol": "ALPHA",
-          "first_seen_at": "2026-09-07T04:39:33.515725+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:fc1ecaa68d10d772ba87bf0d",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "3wtGGWZ8wLWW6BqtC5rxmkHdqvM62atUcGTH4cw3pump",
-          "chain": "solana",
-          "symbol": "ALPHA",
-          "first_seen_at": "2026-09-07T06:04:34.937671+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "ethereum:0x6c76de483f1752ac8473e2b4983a873991e70da7": {
-      "asset_key": "ethereum:0x6c76de483f1752ac8473e2b4983a873991e70da7",
-      "chain": "ethereum",
-      "token": "0x6c76de483f1752ac8473e2b4983a873991e70da7",
-      "symbol": "BTR",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-06T19:48:11.336833+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 1,
-      "event_count": 2,
-      "source_category_count": 1,
-      "sources_seen": [
-        "htx"
-      ],
-      "exchange_sources_seen": [
-        "htx"
-      ],
-      "source_surfaces_seen": [
-        "HTX_NEW_LISTINGS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 38229,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:4917551654e5f37a703791ba",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "htx",
-          "source_id": "HTX_NEW_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.htx.com/en-us/support/65042129021546/",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "0x6C76dE483F1752Ac8473e2B4983A873991e70dA7",
-          "chain": "ethereum",
-          "symbol": "BTR",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T06:04:34.937671+00:00"
-        },
-        {
-          "evidence_id": "catalyst:39f4f9678350edd0a7202d4f",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "htx",
-          "source_id": "HTX_NEW_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.htx.com/en-us/support/65042129021546/",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "0x6C76dE483F1752Ac8473e2B4983A873991e70dA7",
-          "chain": "ethereum",
-          "symbol": "BTR",
-          "first_seen_at": "2026-09-07T06:25:20.680451+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "solana:3xvLSHrLcM7246X1vu34cM9gNX741kQrzqj6T2HhLvXp": {
-      "asset_key": "solana:3xvLSHrLcM7246X1vu34cM9gNX741kQrzqj6T2HhLvXp",
-      "chain": "solana",
-      "token": "3xvLSHrLcM7246X1vu34cM9gNX741kQrzqj6T2HhLvXp",
-      "symbol": "COIN",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-06T19:48:11.336833+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 3,
-      "exchange_confirmation_count": 3,
-      "surface_count": 3,
-      "event_count": 5,
-      "source_category_count": 1,
-      "sources_seen": [
-        "bingx",
-        "bitget",
-        "htx"
-      ],
-      "exchange_sources_seen": [
-        "bingx",
-        "bitget",
-        "htx"
-      ],
-      "source_surfaces_seen": [
-        "BINGX_LISTINGS",
-        "BITGET_ANNOUNCEMENT_API",
-        "HTX_NEW_LISTINGS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "MULTI_SOURCE_CONFIRMED",
-      "discovery_confirmation_multiplier": 3.0,
-      "source_first_seen_spread_seconds": 38229,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:5a173ce7cf35840512104870",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "bitget",
-          "source_id": "BITGET_ANNOUNCEMENT_API",
-          "source_kind": "OFFICIAL_ANNOUNCEMENT_API",
-          "source_category": "exchange",
-          "source_url": "https://www.bitget.com/en/support/articles/12560603893912",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "3xvLSHrLcM7246X1vu34cM9gNX741kQrzqj6T2HhLvXp",
-          "chain": "solana",
-          "symbol": "COIN",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:898463bf1a29ee828d01ad39",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "htx",
-          "source_id": "HTX_NEW_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.htx.com/en-us/support/list/360000039942/",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "3xvLSHrLcM7246X1vu34cM9gNX741kQrzqj6T2HhLvXp",
-          "chain": "solana",
-          "symbol": "COIN",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T06:04:34.937671+00:00"
-        },
-        {
-          "evidence_id": "catalyst:7b461dd014f6bae3bca9aa4e",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "bingx",
-          "source_id": "BINGX_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://bingx.com/en/perpetual/BTC-USD",
-          "event_type": "OFFICIAL_CATALYST",
-          "token": "3xvLSHrLcM7246X1vu34cM9gNX741kQrzqj6T2HhLvXp",
-          "chain": "solana",
-          "symbol": "COIN",
-          "first_seen_at": "2026-09-06T20:11:49.494674+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:238744cca910a146adeeca0f",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "bitget",
-          "source_id": "BITGET_ANNOUNCEMENT_API",
-          "source_kind": "OFFICIAL_ANNOUNCEMENT_API",
-          "source_category": "exchange",
-          "source_url": "https://www.bitget.com/en/support/articles/12560603894305",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "3xvLSHrLcM7246X1vu34cM9gNX741kQrzqj6T2HhLvXp",
-          "chain": "solana",
-          "symbol": "COIN",
-          "first_seen_at": "2026-09-07T06:04:34.937671+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:25910b74b43d36f64a9a2298",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "htx",
-          "source_id": "HTX_NEW_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.htx.com/en-us/support/list/360000039942/",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "3xvLSHrLcM7246X1vu34cM9gNX741kQrzqj6T2HhLvXp",
-          "chain": "solana",
-          "symbol": "COIN",
-          "first_seen_at": "2026-09-07T06:25:20.680451+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
     "base:0xf3081494b87e8d5fb7960f066e931d1d0e6e3d67": {
       "asset_key": "base:0xf3081494b87e8d5fb7960f066e931d1d0e6e3d67",
       "chain": "base",
@@ -559,94 +189,6 @@
           "chain": "base",
           "symbol": "TAO",
           "first_seen_at": "2026-09-07T06:25:20.680451+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "solana:MukLDtJ8Cx9DxLbeyLRSWPSposTMWuwHANbuaudpump": {
-      "asset_key": "solana:MukLDtJ8Cx9DxLbeyLRSWPSposTMWuwHANbuaudpump",
-      "chain": "solana",
-      "token": "MukLDtJ8Cx9DxLbeyLRSWPSposTMWuwHANbuaudpump",
-      "symbol": "OTC",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-06T19:48:11.336833+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 3,
-      "exchange_confirmation_count": 3,
-      "surface_count": 3,
-      "event_count": 3,
-      "source_category_count": 1,
-      "sources_seen": [
-        "crypto.com",
-        "kraken",
-        "weex"
-      ],
-      "exchange_sources_seen": [
-        "crypto.com",
-        "kraken",
-        "weex"
-      ],
-      "source_surfaces_seen": [
-        "CRYPTOCOM_PRODUCT_NEWS",
-        "KRAKEN_ROADMAP",
-        "WEEX_LISTINGS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "MULTI_SOURCE_CONFIRMED",
-      "discovery_confirmation_multiplier": 3.0,
-      "source_first_seen_spread_seconds": 0,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:cb5c5afc31c7d3c32a69d45a",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "crypto.com",
-          "source_id": "CRYPTOCOM_PRODUCT_NEWS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://crypto.com/us/product-news/exchange-otc-options",
-          "event_type": "OFFICIAL_CATALYST",
-          "token": "MukLDtJ8Cx9DxLbeyLRSWPSposTMWuwHANbuaudpump",
-          "chain": "solana",
-          "symbol": "OTC",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:c7ba49365677d550332966e1",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "kraken",
-          "source_id": "KRAKEN_ROADMAP",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.kraken.com/institutions/otc",
-          "event_type": "EXCHANGE_ROADMAP",
-          "token": "MukLDtJ8Cx9DxLbeyLRSWPSposTMWuwHANbuaudpump",
-          "chain": "solana",
-          "symbol": "OTC",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:41e16451f916ef0d5b8316ad",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "weex",
-          "source_id": "WEEX_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.weex.com/help/categories/4467195499673",
-          "event_type": "FUTURES_LISTING",
-          "token": "MukLDtJ8Cx9DxLbeyLRSWPSposTMWuwHANbuaudpump",
-          "chain": "solana",
-          "symbol": "OTC",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
           "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
         }
       ]
@@ -755,58 +297,6 @@
         }
       ]
     },
-    "solana:CARDSccUMFKoPRZxt5vt3ksUbxEFEcnZ3H2pd3dKxYjp": {
-      "asset_key": "solana:CARDSccUMFKoPRZxt5vt3ksUbxEFEcnZ3H2pd3dKxYjp",
-      "chain": "solana",
-      "token": "CARDSccUMFKoPRZxt5vt3ksUbxEFEcnZ3H2pd3dKxYjp",
-      "symbol": "CARDS",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-06T19:48:11.336833+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 1,
-      "event_count": 1,
-      "source_category_count": 1,
-      "sources_seen": [
-        "crypto.com"
-      ],
-      "exchange_sources_seen": [
-        "crypto.com"
-      ],
-      "source_surfaces_seen": [
-        "CRYPTOCOM_PRODUCT_NEWS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 0,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:53c1fe4ba88e987087326c7c",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "crypto.com",
-          "source_id": "CRYPTOCOM_PRODUCT_NEWS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://crypto.com/us/cards",
-          "event_type": "EXCHANGE_ROADMAP",
-          "token": "CARDSccUMFKoPRZxt5vt3ksUbxEFEcnZ3H2pd3dKxYjp",
-          "chain": "solana",
-          "symbol": "CARDS",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
     "bsc:0x20ee7b720f4e4c4ffcb00c4065cdae55271aecca": {
       "asset_key": "bsc:0x20ee7b720f4e4c4ffcb00c4065cdae55271aecca",
       "chain": "bsc",
@@ -855,368 +345,6 @@
           "chain": "bsc",
           "symbol": "NFT",
           "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "solana:6NspJqVFceCiU5D1YgVq7waYoC394Vhqxwg7cSJdFtVE": {
-      "asset_key": "solana:6NspJqVFceCiU5D1YgVq7waYoC394Vhqxwg7cSJdFtVE",
-      "chain": "solana",
-      "token": "6NspJqVFceCiU5D1YgVq7waYoC394Vhqxwg7cSJdFtVE",
-      "symbol": "FROG",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-06T19:48:11.336833+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 1,
-      "event_count": 4,
-      "source_category_count": 1,
-      "sources_seen": [
-        "lbank"
-      ],
-      "exchange_sources_seen": [
-        "lbank"
-      ],
-      "source_surfaces_seen": [
-        "LBANK_ANNOUNCEMENTS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 38229,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:522bbcc419055c19c3f2ad9b",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096521454307770368",
-          "event_type": "FUTURES_LISTING",
-          "token": "6NspJqVFceCiU5D1YgVq7waYoC394Vhqxwg7cSJdFtVE",
-          "chain": "solana",
-          "symbol": "FROG",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T04:18:04.513273+00:00"
-        },
-        {
-          "evidence_id": "catalyst:ea80297e40a3434263d02790",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096521454307770368",
-          "event_type": "FUTURES_LISTING",
-          "token": "6NspJqVFceCiU5D1YgVq7waYoC394Vhqxwg7cSJdFtVE",
-          "chain": "solana",
-          "symbol": "FROG",
-          "first_seen_at": "2026-09-07T04:39:33.515725+00:00",
-          "last_seen_at": "2026-09-07T05:16:01.516596+00:00"
-        },
-        {
-          "evidence_id": "catalyst:2e59c6a593faa1ebfe89d4f5",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096521454307770368",
-          "event_type": "FUTURES_LISTING",
-          "token": "6NspJqVFceCiU5D1YgVq7waYoC394Vhqxwg7cSJdFtVE",
-          "chain": "solana",
-          "symbol": "FROG",
-          "first_seen_at": "2026-09-07T05:30:55.978399+00:00",
-          "last_seen_at": "2026-09-07T06:04:34.937671+00:00"
-        },
-        {
-          "evidence_id": "catalyst:7006d4552fa68ae5920e1980",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096521454307770368",
-          "event_type": "FUTURES_LISTING",
-          "token": "6NspJqVFceCiU5D1YgVq7waYoC394Vhqxwg7cSJdFtVE",
-          "chain": "solana",
-          "symbol": "FROG",
-          "first_seen_at": "2026-09-07T06:25:20.680451+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "solana:HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR": {
-      "asset_key": "solana:HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-      "chain": "solana",
-      "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-      "symbol": "ZCAT",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-06T19:48:11.336833+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 2,
-      "exchange_confirmation_count": 2,
-      "surface_count": 2,
-      "event_count": 15,
-      "source_category_count": 1,
-      "sources_seen": [
-        "lbank",
-        "mexc"
-      ],
-      "exchange_sources_seen": [
-        "lbank",
-        "mexc"
-      ],
-      "source_surfaces_seen": [
-        "LBANK_ANNOUNCEMENTS",
-        "MEXC_TELEGRAM"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "DOUBLE_SOURCE_CONFIRMED",
-      "discovery_confirmation_multiplier": 2.0,
-      "source_first_seen_spread_seconds": 39506,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:7d0ea55109b77f78ba272521",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096525163339186176",
-          "event_type": "FUTURES_LISTING",
-          "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-          "chain": "solana",
-          "symbol": "ZCAT",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T05:16:01.516596+00:00"
-        },
-        {
-          "evidence_id": "catalyst:3a040d9cf8b15fb562be00f5",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/MEXC_OfficialAnnouncements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-          "chain": "solana",
-          "symbol": "ZCAT",
-          "first_seen_at": "2026-09-07T03:54:21.474252+00:00",
-          "last_seen_at": "2026-09-07T03:54:21.474252+00:00"
-        },
-        {
-          "evidence_id": "catalyst:c1e08f6f390c20c2f734600c",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/MEXC_OfficialAnnouncements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-          "chain": "solana",
-          "symbol": "ZCAT",
-          "first_seen_at": "2026-09-07T04:07:16.631044+00:00",
-          "last_seen_at": "2026-09-07T04:07:16.631044+00:00"
-        },
-        {
-          "evidence_id": "catalyst:d0c3adedfe1292f715d2d0b4",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/MEXC_OfficialAnnouncements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-          "chain": "solana",
-          "symbol": "ZCAT",
-          "first_seen_at": "2026-09-07T04:18:04.513273+00:00",
-          "last_seen_at": "2026-09-07T04:18:04.513273+00:00"
-        },
-        {
-          "evidence_id": "catalyst:16833bbad5d36b9e58d45dde",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/MEXC_OfficialAnnouncements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-          "chain": "solana",
-          "symbol": "ZCAT",
-          "first_seen_at": "2026-09-07T04:39:33.515725+00:00",
-          "last_seen_at": "2026-09-07T04:39:33.515725+00:00"
-        },
-        {
-          "evidence_id": "catalyst:c4e5a93018e12197371e1edf",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/MEXC_OfficialAnnouncements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-          "chain": "solana",
-          "symbol": "ZCAT",
-          "first_seen_at": "2026-09-07T04:52:38.241604+00:00",
-          "last_seen_at": "2026-09-07T05:04:25.611793+00:00"
-        },
-        {
-          "evidence_id": "catalyst:6c870e1a11ce181a66e0b9c4",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/MEXC_OfficialAnnouncements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-          "chain": "solana",
-          "symbol": "ZCAT",
-          "first_seen_at": "2026-09-07T05:16:01.516596+00:00",
-          "last_seen_at": "2026-09-07T05:16:01.516596+00:00"
-        },
-        {
-          "evidence_id": "catalyst:c230d4541175a332db3d6bf3",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096525163339186176",
-          "event_type": "FUTURES_LISTING",
-          "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-          "chain": "solana",
-          "symbol": "ZCAT",
-          "first_seen_at": "2026-09-07T05:30:55.978399+00:00",
-          "last_seen_at": "2026-09-07T06:04:34.937671+00:00"
-        },
-        {
-          "evidence_id": "catalyst:f2cf8b69e12b86af4632dfa2",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/MEXC_OfficialAnnouncements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-          "chain": "solana",
-          "symbol": "ZCAT",
-          "first_seen_at": "2026-09-07T05:30:55.978399+00:00",
-          "last_seen_at": "2026-09-07T05:30:55.978399+00:00"
-        },
-        {
-          "evidence_id": "catalyst:3ca4351dba9b31eb930a8d33",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/MEXC_OfficialAnnouncements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-          "chain": "solana",
-          "symbol": "ZCAT",
-          "first_seen_at": "2026-09-07T05:39:27.404667+00:00",
-          "last_seen_at": "2026-09-07T05:39:27.404667+00:00"
-        },
-        {
-          "evidence_id": "catalyst:6400ed6912e67e3602594985",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/MEXC_OfficialAnnouncements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-          "chain": "solana",
-          "symbol": "ZCAT",
-          "first_seen_at": "2026-09-07T05:52:53.429133+00:00",
-          "last_seen_at": "2026-09-07T05:52:53.429133+00:00"
-        },
-        {
-          "evidence_id": "catalyst:16d79ea19e5feb19c7e5ba6b",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/MEXC_OfficialAnnouncements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-          "chain": "solana",
-          "symbol": "ZCAT",
-          "first_seen_at": "2026-09-07T06:04:34.937671+00:00",
-          "last_seen_at": "2026-09-07T06:04:34.937671+00:00"
-        },
-        {
-          "evidence_id": "catalyst:88f89b12f892ca5f3f93c76a",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096525163339186176",
-          "event_type": "FUTURES_LISTING",
-          "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-          "chain": "solana",
-          "symbol": "ZCAT",
-          "first_seen_at": "2026-09-07T06:25:20.680451+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:b39baed7068bad64c4ad91de",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/MEXC_OfficialAnnouncements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-          "chain": "solana",
-          "symbol": "ZCAT",
-          "first_seen_at": "2026-09-07T06:25:20.680451+00:00",
-          "last_seen_at": "2026-09-07T06:33:37.969370+00:00"
-        },
-        {
-          "evidence_id": "catalyst:ecb1d1f090d4cd24d9a93bd7",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/MEXC_OfficialAnnouncements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
-          "chain": "solana",
-          "symbol": "ZCAT",
-          "first_seen_at": "2026-09-07T06:46:37.737338+00:00",
           "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
         }
       ]
@@ -1303,222 +431,6 @@
         }
       ]
     },
-    "solana:8Aq4fWMgPqJbF3w8w8PnLDRVUAFe4mzsCvPKxAArbonk": {
-      "asset_key": "solana:8Aq4fWMgPqJbF3w8w8PnLDRVUAFe4mzsCvPKxAArbonk",
-      "chain": "solana",
-      "token": "8Aq4fWMgPqJbF3w8w8PnLDRVUAFe4mzsCvPKxAArbonk",
-      "symbol": "REAL",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-06T19:48:11.336833+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 3,
-      "exchange_confirmation_count": 3,
-      "surface_count": 4,
-      "event_count": 8,
-      "source_category_count": 1,
-      "sources_seen": [
-        "binance",
-        "crypto.com",
-        "mexc"
-      ],
-      "exchange_sources_seen": [
-        "binance",
-        "crypto.com",
-        "mexc"
-      ],
-      "source_surfaces_seen": [
-        "BINANCE_TELEGRAM",
-        "CRYPTOCOM_PRODUCT_NEWS",
-        "MEXC_FUTURES_LISTINGS",
-        "MEXC_SPOT_LISTINGS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "MULTI_SOURCE_CONFIRMED",
-      "discovery_confirmation_multiplier": 3.0,
-      "source_first_seen_spread_seconds": 36983,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:3dcdec8afde938525c0b54d5",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Aq4fWMgPqJbF3w8w8PnLDRVUAFe4mzsCvPKxAArbonk",
-          "chain": "solana",
-          "symbol": "REAL",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-06T19:48:11.336833+00:00"
-        },
-        {
-          "evidence_id": "catalyst:93eb2903163f7c42510c4eb7",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "crypto.com",
-          "source_id": "CRYPTOCOM_PRODUCT_NEWS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://crypto.com/us/product-news/cdc-travel-launch",
-          "event_type": "OFFICIAL_CATALYST",
-          "token": "8Aq4fWMgPqJbF3w8w8PnLDRVUAFe4mzsCvPKxAArbonk",
-          "chain": "solana",
-          "symbol": "REAL",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:ec577b577ed8543523f1f9d1",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_FUTURES_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.mexc.com/announcements/new-listings/futures-19",
-          "event_type": "FUTURES_LISTING",
-          "token": "8Aq4fWMgPqJbF3w8w8PnLDRVUAFe4mzsCvPKxAArbonk",
-          "chain": "solana",
-          "symbol": "REAL",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:088f5f8f6967afa94b4cfe89",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_SPOT_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.mexc.com/announcements/new-listings/spot-18",
-          "event_type": "FUTURES_LISTING",
-          "token": "8Aq4fWMgPqJbF3w8w8PnLDRVUAFe4mzsCvPKxAArbonk",
-          "chain": "solana",
-          "symbol": "REAL",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:408380f355a9a4d17204d4ae",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Aq4fWMgPqJbF3w8w8PnLDRVUAFe4mzsCvPKxAArbonk",
-          "chain": "solana",
-          "symbol": "REAL",
-          "first_seen_at": "2026-09-06T20:11:49.494674+00:00",
-          "last_seen_at": "2026-09-06T21:02:33.947822+00:00"
-        },
-        {
-          "evidence_id": "catalyst:2698ae6ab02ba1ff182b0b6b",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Aq4fWMgPqJbF3w8w8PnLDRVUAFe4mzsCvPKxAArbonk",
-          "chain": "solana",
-          "symbol": "REAL",
-          "first_seen_at": "2026-09-06T21:20:54.428172+00:00",
-          "last_seen_at": "2026-09-07T01:03:54.334476+00:00"
-        },
-        {
-          "evidence_id": "catalyst:a76ccf0d1638ba0a683b1b45",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Aq4fWMgPqJbF3w8w8PnLDRVUAFe4mzsCvPKxAArbonk",
-          "chain": "solana",
-          "symbol": "REAL",
-          "first_seen_at": "2026-09-07T01:16:28.699689+00:00",
-          "last_seen_at": "2026-09-07T05:52:53.429133+00:00"
-        },
-        {
-          "evidence_id": "catalyst:80dc1cf7073939cccafd0058",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Aq4fWMgPqJbF3w8w8PnLDRVUAFe4mzsCvPKxAArbonk",
-          "chain": "solana",
-          "symbol": "REAL",
-          "first_seen_at": "2026-09-07T06:04:34.937671+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "solana:6GmAFSYs4gk3FDao5FzzySQpPZaWsa4rUJHacpMpUNgx": {
-      "asset_key": "solana:6GmAFSYs4gk3FDao5FzzySQpPZaWsa4rUJHacpMpUNgx",
-      "chain": "solana",
-      "token": "6GmAFSYs4gk3FDao5FzzySQpPZaWsa4rUJHacpMpUNgx",
-      "symbol": "STONK",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-06T19:48:11.336833+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 1,
-      "event_count": 1,
-      "source_category_count": 1,
-      "sources_seen": [
-        "mexc"
-      ],
-      "exchange_sources_seen": [
-        "mexc"
-      ],
-      "source_surfaces_seen": [
-        "MEXC_FUTURES_LISTINGS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 0,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:794b5e0e412107e940c37879",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_FUTURES_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.mexc.com/announcements/new-listings/futures-19",
-          "event_type": "FUTURES_LISTING",
-          "token": "6GmAFSYs4gk3FDao5FzzySQpPZaWsa4rUJHacpMpUNgx",
-          "chain": "solana",
-          "symbol": "STONK",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
     "solana:Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk": {
       "asset_key": "solana:Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk",
       "chain": "solana",
@@ -1567,656 +479,6 @@
           "chain": "solana",
           "symbol": "USELESS",
           "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "moonriver:MOVR": {
-      "asset_key": "moonriver:MOVR",
-      "chain": "moonriver",
-      "token": "MOVR",
-      "symbol": "MOVR",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-06T19:48:11.336833+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 1,
-      "event_count": 1,
-      "source_category_count": 1,
-      "sources_seen": [
-        "crypto.com"
-      ],
-      "exchange_sources_seen": [
-        "crypto.com"
-      ],
-      "source_surfaces_seen": [
-        "CRYPTOCOM_PRODUCT_NEWS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 0,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:d0f6bca2ada60523a7e8530d",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "crypto.com",
-          "source_id": "CRYPTOCOM_PRODUCT_NEWS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://crypto.com/us/product-news/glmr-movr-chain-migration",
-          "event_type": "FUTURES_LISTING",
-          "token": "MOVR",
-          "chain": "moonriver",
-          "symbol": "MOVR",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "solana:Bm3dgkZrjH7eaz1GBH1R2ZHkp7nZUoPNJhjekoxepump": {
-      "asset_key": "solana:Bm3dgkZrjH7eaz1GBH1R2ZHkp7nZUoPNJhjekoxepump",
-      "chain": "solana",
-      "token": "Bm3dgkZrjH7eaz1GBH1R2ZHkp7nZUoPNJhjekoxepump",
-      "symbol": "MYRO",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-06T19:48:11.336833+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 1,
-      "event_count": 1,
-      "source_category_count": 1,
-      "sources_seen": [
-        "crypto.com"
-      ],
-      "exchange_sources_seen": [
-        "crypto.com"
-      ],
-      "source_surfaces_seen": [
-        "CRYPTOCOM_PRODUCT_NEWS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 0,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:5fccd7f6215d2a9e7f18c373",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "crypto.com",
-          "source_id": "CRYPTOCOM_PRODUCT_NEWS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://crypto.com/us/product-news/myro-contract-swap",
-          "event_type": "FUTURES_LISTING",
-          "token": "Bm3dgkZrjH7eaz1GBH1R2ZHkp7nZUoPNJhjekoxepump",
-          "chain": "solana",
-          "symbol": "MYRO",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "solana:DitHyRMQiSDhn5cnKMJV2CDDt6sVct96YrECiM49pump": {
-      "asset_key": "solana:DitHyRMQiSDhn5cnKMJV2CDDt6sVct96YrECiM49pump",
-      "chain": "solana",
-      "token": "DitHyRMQiSDhn5cnKMJV2CDDt6sVct96YrECiM49pump",
-      "symbol": "HOUSE",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-06T19:48:11.336833+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 1,
-      "event_count": 1,
-      "source_category_count": 1,
-      "sources_seen": [
-        "crypto.com"
-      ],
-      "exchange_sources_seen": [
-        "crypto.com"
-      ],
-      "source_surfaces_seen": [
-        "CRYPTOCOM_PRODUCT_NEWS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 0,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:ca9981bd061a281e3be449e6",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "crypto.com",
-          "source_id": "CRYPTOCOM_PRODUCT_NEWS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://crypto.com/us/product-news/aergo-token-swap-and-rebrand-to-hpp",
-          "event_type": "FUTURES_LISTING",
-          "token": "DitHyRMQiSDhn5cnKMJV2CDDt6sVct96YrECiM49pump",
-          "chain": "solana",
-          "symbol": "HOUSE",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "solana:DKu9kykSfbN5LBfFXtNNDPaX35o4Fv6vJ9FKk7pZpump": {
-      "asset_key": "solana:DKu9kykSfbN5LBfFXtNNDPaX35o4Fv6vJ9FKk7pZpump",
-      "chain": "solana",
-      "token": "DKu9kykSfbN5LBfFXtNNDPaX35o4Fv6vJ9FKk7pZpump",
-      "symbol": "AVA",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-06T19:48:11.336833+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 1,
-      "event_count": 9,
-      "source_category_count": 1,
-      "sources_seen": [
-        "binance"
-      ],
-      "exchange_sources_seen": [
-        "binance"
-      ],
-      "source_surfaces_seen": [
-        "BINANCE_TELEGRAM"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 39506,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:beb188a094de7390efbeec2a",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "DKu9kykSfbN5LBfFXtNNDPaX35o4Fv6vJ9FKk7pZpump",
-          "chain": "solana",
-          "symbol": "AVA",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-06T21:02:33.947822+00:00"
-        },
-        {
-          "evidence_id": "catalyst:ec4d3a5eaa42afb9d370ae84",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "DKu9kykSfbN5LBfFXtNNDPaX35o4Fv6vJ9FKk7pZpump",
-          "chain": "solana",
-          "symbol": "AVA",
-          "first_seen_at": "2026-09-06T21:20:54.428172+00:00",
-          "last_seen_at": "2026-09-07T00:04:26.875260+00:00"
-        },
-        {
-          "evidence_id": "catalyst:5b65a6d0eccf01b0c9a73400",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "DKu9kykSfbN5LBfFXtNNDPaX35o4Fv6vJ9FKk7pZpump",
-          "chain": "solana",
-          "symbol": "AVA",
-          "first_seen_at": "2026-09-07T00:18:21.187962+00:00",
-          "last_seen_at": "2026-09-07T02:04:46.338661+00:00"
-        },
-        {
-          "evidence_id": "catalyst:60990788cae6d0e58f7d361d",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "DKu9kykSfbN5LBfFXtNNDPaX35o4Fv6vJ9FKk7pZpump",
-          "chain": "solana",
-          "symbol": "AVA",
-          "first_seen_at": "2026-09-07T02:22:11.895155+00:00",
-          "last_seen_at": "2026-09-07T02:39:49.555895+00:00"
-        },
-        {
-          "evidence_id": "catalyst:a357b31cc7884d53b92a35de",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "DKu9kykSfbN5LBfFXtNNDPaX35o4Fv6vJ9FKk7pZpump",
-          "chain": "solana",
-          "symbol": "AVA",
-          "first_seen_at": "2026-09-07T02:51:30.245669+00:00",
-          "last_seen_at": "2026-09-07T04:18:04.513273+00:00"
-        },
-        {
-          "evidence_id": "catalyst:b5ad4306f149a88837388997",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "DKu9kykSfbN5LBfFXtNNDPaX35o4Fv6vJ9FKk7pZpump",
-          "chain": "solana",
-          "symbol": "AVA",
-          "first_seen_at": "2026-09-07T04:39:33.515725+00:00",
-          "last_seen_at": "2026-09-07T05:39:27.404667+00:00"
-        },
-        {
-          "evidence_id": "catalyst:ba49d23f00a423943965d24e",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "DKu9kykSfbN5LBfFXtNNDPaX35o4Fv6vJ9FKk7pZpump",
-          "chain": "solana",
-          "symbol": "AVA",
-          "first_seen_at": "2026-09-07T05:52:53.429133+00:00",
-          "last_seen_at": "2026-09-07T05:52:53.429133+00:00"
-        },
-        {
-          "evidence_id": "catalyst:f976fcd4c313f60fe7143c05",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "DKu9kykSfbN5LBfFXtNNDPaX35o4Fv6vJ9FKk7pZpump",
-          "chain": "solana",
-          "symbol": "AVA",
-          "first_seen_at": "2026-09-07T06:04:34.937671+00:00",
-          "last_seen_at": "2026-09-07T06:33:37.969370+00:00"
-        },
-        {
-          "evidence_id": "catalyst:158acc22f4abb768f4c619b5",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "DKu9kykSfbN5LBfFXtNNDPaX35o4Fv6vJ9FKk7pZpump",
-          "chain": "solana",
-          "symbol": "AVA",
-          "first_seen_at": "2026-09-07T06:46:37.737338+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "solana:8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump": {
-      "asset_key": "solana:8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-      "chain": "solana",
-      "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-      "symbol": "PENGUIN",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-06T19:48:11.336833+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 1,
-      "event_count": 19,
-      "source_category_count": 1,
-      "sources_seen": [
-        "binance"
-      ],
-      "exchange_sources_seen": [
-        "binance"
-      ],
-      "source_surfaces_seen": [
-        "BINANCE_TELEGRAM"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 38726,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:15f2a4b179c6e9167082c639",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-06T19:48:11.336833+00:00",
-          "last_seen_at": "2026-09-06T19:48:11.336833+00:00"
-        },
-        {
-          "evidence_id": "catalyst:4d0bb30af00b47cf3fae51b4",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-06T20:11:49.494674+00:00",
-          "last_seen_at": "2026-09-06T21:02:33.947822+00:00"
-        },
-        {
-          "evidence_id": "catalyst:eadd8e6098778994b34c54fc",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-06T21:20:54.428172+00:00",
-          "last_seen_at": "2026-09-06T22:35:48.356163+00:00"
-        },
-        {
-          "evidence_id": "catalyst:0832c4869c6f76547ddf70ca",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-06T22:47:38.236964+00:00",
-          "last_seen_at": "2026-09-07T00:04:26.875260+00:00"
-        },
-        {
-          "evidence_id": "catalyst:43b18332302de648297b7222",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-07T00:18:21.187962+00:00",
-          "last_seen_at": "2026-09-07T00:18:21.187962+00:00"
-        },
-        {
-          "evidence_id": "catalyst:532795f6f6a2ccc1ecb052a3",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-07T00:28:53.666919+00:00",
-          "last_seen_at": "2026-09-07T00:38:12.941704+00:00"
-        },
-        {
-          "evidence_id": "catalyst:865af21cd19b3690f5617f5f",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-07T00:52:05.092977+00:00",
-          "last_seen_at": "2026-09-07T00:52:05.092977+00:00"
-        },
-        {
-          "evidence_id": "catalyst:018fa395d67b793f51d3cc15",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-07T01:03:54.334476+00:00",
-          "last_seen_at": "2026-09-07T01:52:50.224378+00:00"
-        },
-        {
-          "evidence_id": "catalyst:e93d0cbf7ea24b2feb9bb0b9",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-07T02:04:46.338661+00:00",
-          "last_seen_at": "2026-09-07T03:23:15.180574+00:00"
-        },
-        {
-          "evidence_id": "catalyst:ee5bcfe6d04a9f43fbddd3a3",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-07T03:38:02.248526+00:00",
-          "last_seen_at": "2026-09-07T03:54:21.474252+00:00"
-        },
-        {
-          "evidence_id": "catalyst:afcd667b6a629b89891bdb34",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-07T04:07:16.631044+00:00",
-          "last_seen_at": "2026-09-07T04:18:04.513273+00:00"
-        },
-        {
-          "evidence_id": "catalyst:e09995bcbb6ce40a1b636d03",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-07T04:39:33.515725+00:00",
-          "last_seen_at": "2026-09-07T04:52:38.241604+00:00"
-        },
-        {
-          "evidence_id": "catalyst:06a5a7ca4857259bd83e0107",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-07T05:04:25.611793+00:00",
-          "last_seen_at": "2026-09-07T05:16:01.516596+00:00"
-        },
-        {
-          "evidence_id": "catalyst:5592fea2429e58dbd8c3796f",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-07T05:30:55.978399+00:00",
-          "last_seen_at": "2026-09-07T05:30:55.978399+00:00"
-        },
-        {
-          "evidence_id": "catalyst:642bf656fe6154717de9e1ce",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-07T05:39:27.404667+00:00",
-          "last_seen_at": "2026-09-07T05:39:27.404667+00:00"
-        },
-        {
-          "evidence_id": "catalyst:4d2ecac83e27020d77175fa9",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-07T05:52:53.429133+00:00",
-          "last_seen_at": "2026-09-07T05:52:53.429133+00:00"
-        },
-        {
-          "evidence_id": "catalyst:b0121c2802dfe61d85737d16",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-07T06:04:34.937671+00:00",
-          "last_seen_at": "2026-09-07T06:04:34.937671+00:00"
-        },
-        {
-          "evidence_id": "catalyst:93574ebf714111f7fe55c03f",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-07T06:25:20.680451+00:00",
-          "last_seen_at": "2026-09-07T06:25:20.680451+00:00"
-        },
-        {
-          "evidence_id": "catalyst:f1986de560bace117a122ae8",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "LAUNCHPOOL_ALPHA_AIRDROP",
-          "token": "8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
-          "chain": "solana",
-          "symbol": "PENGUIN",
-          "first_seen_at": "2026-09-07T06:33:37.969370+00:00",
           "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
         }
       ]
@@ -3409,73 +1671,6 @@
         }
       ]
     },
-    "solana:6MQpbiTC2YcogidTmKqMLK82qvE9z5QEm7EP3AEDpump": {
-      "asset_key": "solana:6MQpbiTC2YcogidTmKqMLK82qvE9z5QEm7EP3AEDpump",
-      "chain": "solana",
-      "token": "6MQpbiTC2YcogidTmKqMLK82qvE9z5QEm7EP3AEDpump",
-      "symbol": "MASK",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-06T20:36:59.735161+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:04:34.937671+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 1,
-      "event_count": 2,
-      "source_category_count": 1,
-      "sources_seen": [
-        "coinbase"
-      ],
-      "exchange_sources_seen": [
-        "coinbase"
-      ],
-      "source_surfaces_seen": [
-        "COINBASE_PRODUCTS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 837,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:1825987d011c9ba96582ea2e",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "coinbase",
-          "source_id": "COINBASE_PRODUCTS",
-          "source_kind": "OFFICIAL_MACHINE_STATE",
-          "source_category": "exchange",
-          "source_url": "https://api.exchange.coinbase.com/products",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "6MQpbiTC2YcogidTmKqMLK82qvE9z5QEm7EP3AEDpump",
-          "chain": "solana",
-          "symbol": "MASK",
-          "first_seen_at": "2026-09-06T20:36:59.735161+00:00",
-          "last_seen_at": "2026-09-07T05:52:53.429133+00:00"
-        },
-        {
-          "evidence_id": "catalyst:e9f85598bbb4d41a4bc0965c",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "coinbase",
-          "source_id": "COINBASE_PRODUCTS",
-          "source_kind": "OFFICIAL_MACHINE_STATE",
-          "source_category": "exchange",
-          "source_url": "https://api.exchange.coinbase.com/products",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "6MQpbiTC2YcogidTmKqMLK82qvE9z5QEm7EP3AEDpump",
-          "chain": "solana",
-          "symbol": "MASK",
-          "first_seen_at": "2026-09-06T20:50:57.261055+00:00",
-          "last_seen_at": "2026-09-07T06:04:34.937671+00:00"
-        }
-      ]
-    },
     "bsc:0xf00600ebc7633462bc4f9c61ea2ce99f5aaebd4a": {
       "asset_key": "bsc:0xf00600ebc7633462bc4f9c61ea2ce99f5aaebd4a",
       "chain": "bsc",
@@ -4515,58 +2710,6 @@
         }
       ]
     },
-    "ethereum:0xe172e9b6cfbeeb5593bdce3f077356fdb33af904": {
-      "asset_key": "ethereum:0xe172e9b6cfbeeb5593bdce3f077356fdb33af904",
-      "chain": "ethereum",
-      "token": "0xe172e9b6cfbeeb5593bdce3f077356fdb33af904",
-      "symbol": "FOLD",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-07T02:04:46.338661+00:00",
-      "last_seen_any_source_at": "2026-09-07T03:01:13.716960+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 1,
-      "event_count": 1,
-      "source_category_count": 1,
-      "sources_seen": [
-        "lbank"
-      ],
-      "exchange_sources_seen": [
-        "lbank"
-      ],
-      "source_surfaces_seen": [
-        "LBANK_ANNOUNCEMENTS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 0,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:7e7a4849710d6a85f1bd7e4b",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2090790193404575744",
-          "event_type": "FUTURES_LISTING",
-          "token": "0xe172e9b6cfbeeb5593bdce3f077356fdb33af904",
-          "chain": "ethereum",
-          "symbol": "FOLD",
-          "first_seen_at": "2026-09-07T02:04:46.338661+00:00",
-          "last_seen_at": "2026-09-07T03:01:13.716960+00:00"
-        }
-      ]
-    },
     "ethereum:0xe6fd75ff38adca4b97fbcd938c86b98772431867": {
       "asset_key": "ethereum:0xe6fd75ff38adca4b97fbcd938c86b98772431867",
       "chain": "ethereum",
@@ -4634,820 +2777,6 @@
         }
       ]
     },
-    "bsc:0xfe189e97832da1573e4e4ff034f4ffc3a15c7777": {
-      "asset_key": "bsc:0xfe189e97832da1573e4e4ff034f4ffc3a15c7777",
-      "chain": "bsc",
-      "token": "0xfe189e97832da1573e4e4ff034f4ffc3a15c7777",
-      "symbol": "MARSCOIN",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-07T03:54:21.474252+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 2,
-      "exchange_confirmation_count": 2,
-      "surface_count": 2,
-      "event_count": 9,
-      "source_category_count": 1,
-      "sources_seen": [
-        "binance",
-        "htx"
-      ],
-      "exchange_sources_seen": [
-        "binance",
-        "htx"
-      ],
-      "source_surfaces_seen": [
-        "BINANCE_TELEGRAM",
-        "HTX_NEW_LISTINGS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "DOUBLE_SOURCE_CONFIRMED",
-      "discovery_confirmation_multiplier": 2.0,
-      "source_first_seen_spread_seconds": 9059,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:e9206092475ff96cf5296a23",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "0xfe189e97832da1573e4e4ff034f4ffc3a15c7777",
-          "chain": "bsc",
-          "symbol": "MARSCOIN",
-          "first_seen_at": "2026-09-07T03:54:21.474252+00:00",
-          "last_seen_at": "2026-09-07T04:18:04.513273+00:00"
-        },
-        {
-          "evidence_id": "catalyst:cecb5598ad8f31bff42ae72d",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "htx",
-          "source_id": "HTX_NEW_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.htx.com/en-us/support/105042825010269/",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "0xfe189e97832da1573e4e4ff034f4ffc3a15c7777",
-          "chain": "bsc",
-          "symbol": "MARSCOIN",
-          "first_seen_at": "2026-09-07T03:54:21.474252+00:00",
-          "last_seen_at": "2026-09-07T06:04:34.937671+00:00"
-        },
-        {
-          "evidence_id": "catalyst:7d306b51b54af3efd76d8b8e",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "0xfe189e97832da1573e4e4ff034f4ffc3a15c7777",
-          "chain": "bsc",
-          "symbol": "MARSCOIN",
-          "first_seen_at": "2026-09-07T04:39:33.515725+00:00",
-          "last_seen_at": "2026-09-07T04:39:33.515725+00:00"
-        },
-        {
-          "evidence_id": "catalyst:b80d73d4beeb5fe5eedceb44",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "0xfe189e97832da1573e4e4ff034f4ffc3a15c7777",
-          "chain": "bsc",
-          "symbol": "MARSCOIN",
-          "first_seen_at": "2026-09-07T04:52:38.241604+00:00",
-          "last_seen_at": "2026-09-07T05:16:01.516596+00:00"
-        },
-        {
-          "evidence_id": "catalyst:1a7316aabc43e4f7a705f6b1",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "0xfe189e97832da1573e4e4ff034f4ffc3a15c7777",
-          "chain": "bsc",
-          "symbol": "MARSCOIN",
-          "first_seen_at": "2026-09-07T05:30:55.978399+00:00",
-          "last_seen_at": "2026-09-07T05:30:55.978399+00:00"
-        },
-        {
-          "evidence_id": "catalyst:a76e3efb323198814a3e21e9",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "0xfe189e97832da1573e4e4ff034f4ffc3a15c7777",
-          "chain": "bsc",
-          "symbol": "MARSCOIN",
-          "first_seen_at": "2026-09-07T05:39:27.404667+00:00",
-          "last_seen_at": "2026-09-07T05:52:53.429133+00:00"
-        },
-        {
-          "evidence_id": "catalyst:0faed322d9328cffc82b368e",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "0xfe189e97832da1573e4e4ff034f4ffc3a15c7777",
-          "chain": "bsc",
-          "symbol": "MARSCOIN",
-          "first_seen_at": "2026-09-07T06:04:34.937671+00:00",
-          "last_seen_at": "2026-09-07T06:04:34.937671+00:00"
-        },
-        {
-          "evidence_id": "catalyst:78ebb95ff6a11c2670bfab47",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "binance",
-          "source_id": "BINANCE_TELEGRAM",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://t.me/s/binance_announcements",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "0xfe189e97832da1573e4e4ff034f4ffc3a15c7777",
-          "chain": "bsc",
-          "symbol": "MARSCOIN",
-          "first_seen_at": "2026-09-07T06:25:20.680451+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:a86a87f5971d3d00841176cd",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "htx",
-          "source_id": "HTX_NEW_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.htx.com/en-us/support/105042825010269/",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "0xfe189e97832da1573e4e4ff034f4ffc3a15c7777",
-          "chain": "bsc",
-          "symbol": "MARSCOIN",
-          "first_seen_at": "2026-09-07T06:25:20.680451+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "solana:E4Ap4icMLwKot8rkkTbq5JkS5kZxt5XCE3yfxbzYBjHx": {
-      "asset_key": "solana:E4Ap4icMLwKot8rkkTbq5JkS5kZxt5XCE3yfxbzYBjHx",
-      "chain": "solana",
-      "token": "E4Ap4icMLwKot8rkkTbq5JkS5kZxt5XCE3yfxbzYBjHx",
-      "symbol": "BTC",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-07T03:54:21.474252+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 5,
-      "exchange_confirmation_count": 5,
-      "surface_count": 6,
-      "event_count": 6,
-      "source_category_count": 1,
-      "sources_seen": [
-        "coinbase",
-        "coinex",
-        "crypto.com",
-        "kraken",
-        "mexc"
-      ],
-      "exchange_sources_seen": [
-        "coinbase",
-        "coinex",
-        "crypto.com",
-        "kraken",
-        "mexc"
-      ],
-      "source_surfaces_seen": [
-        "COINBASE_PRODUCTS",
-        "COINEX_NEW_LISTINGS",
-        "CRYPTOCOM_PRODUCT_NEWS",
-        "KRAKEN_ROADMAP",
-        "MEXC_FUTURES_LISTINGS",
-        "MEXC_SPOT_LISTINGS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "HIGH_DENSITY_MULTI_SOURCE",
-      "discovery_confirmation_multiplier": 4.0,
-      "source_first_seen_spread_seconds": 0,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:c0201733bc8e7fa360a2e3ae",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "coinbase",
-          "source_id": "COINBASE_PRODUCTS",
-          "source_kind": "OFFICIAL_MACHINE_STATE",
-          "source_category": "exchange",
-          "source_url": "https://api.exchange.coinbase.com/products",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "E4Ap4icMLwKot8rkkTbq5JkS5kZxt5XCE3yfxbzYBjHx",
-          "chain": "solana",
-          "symbol": "BTC",
-          "first_seen_at": "2026-09-07T03:54:21.474252+00:00",
-          "last_seen_at": "2026-09-07T03:54:21.474252+00:00"
-        },
-        {
-          "evidence_id": "catalyst:f16b7b5db6314df7cb6f2fe2",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "coinex",
-          "source_id": "COINEX_NEW_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.coinex.com/price/btc",
-          "event_type": "FUTURES_LISTING",
-          "token": "E4Ap4icMLwKot8rkkTbq5JkS5kZxt5XCE3yfxbzYBjHx",
-          "chain": "solana",
-          "symbol": "BTC",
-          "first_seen_at": "2026-09-07T03:54:21.474252+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:2b020184eaafdc0aa770ada9",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "crypto.com",
-          "source_id": "CRYPTOCOM_PRODUCT_NEWS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://crypto.com/us/product-news/btc-rewards-crypto-visa-card",
-          "event_type": "OFFICIAL_CATALYST",
-          "token": "E4Ap4icMLwKot8rkkTbq5JkS5kZxt5XCE3yfxbzYBjHx",
-          "chain": "solana",
-          "symbol": "BTC",
-          "first_seen_at": "2026-09-07T03:54:21.474252+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:8a7f4a94ed2020a2fd10249c",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "kraken",
-          "source_id": "KRAKEN_ROADMAP",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.kraken.com/convert/btc/usd",
-          "event_type": "EXCHANGE_ROADMAP",
-          "token": "E4Ap4icMLwKot8rkkTbq5JkS5kZxt5XCE3yfxbzYBjHx",
-          "chain": "solana",
-          "symbol": "BTC",
-          "first_seen_at": "2026-09-07T03:54:21.474252+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:abea0296292dc56e8beeba39",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_FUTURES_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.mexc.com/futures/BTC_USDT?utm_source=mexc&utm_medium=futurespageheader",
-          "event_type": "FUTURES_LISTING",
-          "token": "E4Ap4icMLwKot8rkkTbq5JkS5kZxt5XCE3yfxbzYBjHx",
-          "chain": "solana",
-          "symbol": "BTC",
-          "first_seen_at": "2026-09-07T03:54:21.474252+00:00",
-          "last_seen_at": "2026-09-07T04:18:04.513273+00:00"
-        },
-        {
-          "evidence_id": "catalyst:fb627a4ffc4b974495893ec9",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_SPOT_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.mexc.com/futures/BTC_USDT?utm_source=mexc&utm_medium=futurespageheader",
-          "event_type": "FUTURES_LISTING",
-          "token": "E4Ap4icMLwKot8rkkTbq5JkS5kZxt5XCE3yfxbzYBjHx",
-          "chain": "solana",
-          "symbol": "BTC",
-          "first_seen_at": "2026-09-07T03:54:21.474252+00:00",
-          "last_seen_at": "2026-09-07T04:18:04.513273+00:00"
-        }
-      ]
-    },
-    "solana:A7bdiYdS5GjqGFtxf17ppRHtDKPkkRqbKtR27dxvQXaS": {
-      "asset_key": "solana:A7bdiYdS5GjqGFtxf17ppRHtDKPkkRqbKtR27dxvQXaS",
-      "chain": "solana",
-      "token": "A7bdiYdS5GjqGFtxf17ppRHtDKPkkRqbKtR27dxvQXaS",
-      "symbol": "ZEC",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-07T03:54:21.474252+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 2,
-      "exchange_confirmation_count": 2,
-      "surface_count": 3,
-      "event_count": 4,
-      "source_category_count": 1,
-      "sources_seen": [
-        "coinbase",
-        "mexc"
-      ],
-      "exchange_sources_seen": [
-        "coinbase",
-        "mexc"
-      ],
-      "source_surfaces_seen": [
-        "COINBASE_PRODUCTS",
-        "MEXC_FUTURES_LISTINGS",
-        "MEXC_SPOT_LISTINGS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "DOUBLE_SOURCE_CONFIRMED",
-      "discovery_confirmation_multiplier": 2.0,
-      "source_first_seen_spread_seconds": 2712,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:511e6c354c66fb2329af15e5",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "coinbase",
-          "source_id": "COINBASE_PRODUCTS",
-          "source_kind": "OFFICIAL_MACHINE_STATE",
-          "source_category": "exchange",
-          "source_url": "https://api.exchange.coinbase.com/products",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "A7bdiYdS5GjqGFtxf17ppRHtDKPkkRqbKtR27dxvQXaS",
-          "chain": "solana",
-          "symbol": "ZEC",
-          "first_seen_at": "2026-09-07T03:54:21.474252+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:75b76973f69f32cb118f427f",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "coinbase",
-          "source_id": "COINBASE_PRODUCTS",
-          "source_kind": "OFFICIAL_MACHINE_STATE",
-          "source_category": "exchange",
-          "source_url": "https://api.exchange.coinbase.com/products",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "A7bdiYdS5GjqGFtxf17ppRHtDKPkkRqbKtR27dxvQXaS",
-          "chain": "solana",
-          "symbol": "ZEC",
-          "first_seen_at": "2026-09-07T04:39:33.515725+00:00",
-          "last_seen_at": "2026-09-07T06:33:37.969370+00:00"
-        },
-        {
-          "evidence_id": "catalyst:68519c8f11f17549acbaedc2",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_FUTURES_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.mexc.com/futures/ZEC_USDT?utm_source=mexc&utm_medium=futurespageheader",
-          "event_type": "FUTURES_LISTING",
-          "token": "A7bdiYdS5GjqGFtxf17ppRHtDKPkkRqbKtR27dxvQXaS",
-          "chain": "solana",
-          "symbol": "ZEC",
-          "first_seen_at": "2026-09-07T04:39:33.515725+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:775120a44f0faefea1f13400",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_SPOT_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.mexc.com/futures/ZEC_USDT?utm_source=mexc&utm_medium=futurespageheader",
-          "event_type": "FUTURES_LISTING",
-          "token": "A7bdiYdS5GjqGFtxf17ppRHtDKPkkRqbKtR27dxvQXaS",
-          "chain": "solana",
-          "symbol": "ZEC",
-          "first_seen_at": "2026-09-07T04:39:33.515725+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "solana:HmJDgky11u77hpBss6D8sjNpYPD5B6fWgSVDj58jpump": {
-      "asset_key": "solana:HmJDgky11u77hpBss6D8sjNpYPD5B6fWgSVDj58jpump",
-      "chain": "solana",
-      "token": "HmJDgky11u77hpBss6D8sjNpYPD5B6fWgSVDj58jpump",
-      "symbol": "SOLCAT",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-07T03:54:21.474252+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 1,
-      "event_count": 3,
-      "source_category_count": 1,
-      "sources_seen": [
-        "lbank"
-      ],
-      "exchange_sources_seen": [
-        "lbank"
-      ],
-      "source_surfaces_seen": [
-        "LBANK_ANNOUNCEMENTS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 5794,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:746769128de12b114f0e8f2b",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096555057326587904",
-          "event_type": "FUTURES_LISTING",
-          "token": "HmJDgky11u77hpBss6D8sjNpYPD5B6fWgSVDj58jpump",
-          "chain": "solana",
-          "symbol": "SOLCAT",
-          "first_seen_at": "2026-09-07T03:54:21.474252+00:00",
-          "last_seen_at": "2026-09-07T04:18:04.513273+00:00"
-        },
-        {
-          "evidence_id": "catalyst:d77a192155ebac8b2fd429b5",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096555057326587904",
-          "event_type": "FUTURES_LISTING",
-          "token": "HmJDgky11u77hpBss6D8sjNpYPD5B6fWgSVDj58jpump",
-          "chain": "solana",
-          "symbol": "SOLCAT",
-          "first_seen_at": "2026-09-07T04:39:33.515725+00:00",
-          "last_seen_at": "2026-09-07T05:16:01.516596+00:00"
-        },
-        {
-          "evidence_id": "catalyst:bba8822f75e4f9af532ba312",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096555057326587904",
-          "event_type": "FUTURES_LISTING",
-          "token": "HmJDgky11u77hpBss6D8sjNpYPD5B6fWgSVDj58jpump",
-          "chain": "solana",
-          "symbol": "SOLCAT",
-          "first_seen_at": "2026-09-07T05:30:55.978399+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "bsc:0xfa6d9b504848606eb9aec04ccc161d169b3f2159": {
-      "asset_key": "bsc:0xfa6d9b504848606eb9aec04ccc161d169b3f2159",
-      "chain": "bsc",
-      "token": "0xfa6d9b504848606eb9aec04ccc161d169b3f2159",
-      "symbol": "BREW",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-07T03:54:21.474252+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 2,
-      "exchange_confirmation_count": 2,
-      "surface_count": 2,
-      "event_count": 5,
-      "source_category_count": 1,
-      "sources_seen": [
-        "lbank",
-        "weex"
-      ],
-      "exchange_sources_seen": [
-        "lbank",
-        "weex"
-      ],
-      "source_surfaces_seen": [
-        "LBANK_ANNOUNCEMENTS",
-        "WEEX_SPOT_INSTRUMENTS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "DOUBLE_SOURCE_CONFIRMED",
-      "discovery_confirmation_multiplier": 2.0,
-      "source_first_seen_spread_seconds": 10336,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:384ccea58f4f4e4100186495",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096794708746436608",
-          "event_type": "FUTURES_LISTING",
-          "token": "0xfa6d9b504848606eb9aec04ccc161d169b3f2159",
-          "chain": "bsc",
-          "symbol": "BREW",
-          "first_seen_at": "2026-09-07T03:54:21.474252+00:00",
-          "last_seen_at": "2026-09-07T04:18:04.513273+00:00"
-        },
-        {
-          "evidence_id": "catalyst:507d49aa0543044a2df0a576",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096815132016377856",
-          "event_type": "FUTURES_LISTING",
-          "token": "0xfa6d9b504848606eb9aec04ccc161d169b3f2159",
-          "chain": "bsc",
-          "symbol": "BREW",
-          "first_seen_at": "2026-09-07T04:39:33.515725+00:00",
-          "last_seen_at": "2026-09-07T05:16:01.516596+00:00"
-        },
-        {
-          "evidence_id": "catalyst:37e4ca0274843e84c6e3a965",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096815132016377856",
-          "event_type": "FUTURES_LISTING",
-          "token": "0xfa6d9b504848606eb9aec04ccc161d169b3f2159",
-          "chain": "bsc",
-          "symbol": "BREW",
-          "first_seen_at": "2026-09-07T05:30:55.978399+00:00",
-          "last_seen_at": "2026-09-07T06:04:34.937671+00:00"
-        },
-        {
-          "evidence_id": "catalyst:823a0f1466b0e2c982bb3bf6",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096815132016377856",
-          "event_type": "FUTURES_LISTING",
-          "token": "0xfa6d9b504848606eb9aec04ccc161d169b3f2159",
-          "chain": "bsc",
-          "symbol": "BREW",
-          "first_seen_at": "2026-09-07T06:25:20.680451+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        },
-        {
-          "evidence_id": "catalyst:6de88656625eabacdd437b2d",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "weex",
-          "source_id": "WEEX_SPOT_INSTRUMENTS",
-          "source_kind": "OFFICIAL_MACHINE_STATE",
-          "source_category": "exchange",
-          "source_url": "https://api-spot.weex.com/api/v3/exchangeInfo",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "0xfa6d9b504848606eb9aec04ccc161d169b3f2159",
-          "chain": "bsc",
-          "symbol": "BREW",
-          "first_seen_at": "2026-09-07T06:46:37.737338+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "bsc:0x7bc70ae0f2a67d2fdc0180a697a611f21c857777": {
-      "asset_key": "bsc:0x7bc70ae0f2a67d2fdc0180a697a611f21c857777",
-      "chain": "bsc",
-      "token": "0x7bc70ae0f2a67d2fdc0180a697a611f21c857777",
-      "symbol": "BEN",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-07T03:54:21.474252+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 1,
-      "event_count": 4,
-      "source_category_count": 1,
-      "sources_seen": [
-        "lbank"
-      ],
-      "exchange_sources_seen": [
-        "lbank"
-      ],
-      "source_surfaces_seen": [
-        "LBANK_ANNOUNCEMENTS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 9059,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:2c2bad05a417bfb96ac7f3f1",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096804716414500864",
-          "event_type": "FUTURES_LISTING",
-          "token": "0x7bc70ae0f2a67d2fdc0180a697a611f21c857777",
-          "chain": "bsc",
-          "symbol": "BEN",
-          "first_seen_at": "2026-09-07T03:54:21.474252+00:00",
-          "last_seen_at": "2026-09-07T04:18:04.513273+00:00"
-        },
-        {
-          "evidence_id": "catalyst:16699ec4a7ebbfb9777f2be5",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096804716414500864",
-          "event_type": "FUTURES_LISTING",
-          "token": "0x7bc70ae0f2a67d2fdc0180a697a611f21c857777",
-          "chain": "bsc",
-          "symbol": "BEN",
-          "first_seen_at": "2026-09-07T04:39:33.515725+00:00",
-          "last_seen_at": "2026-09-07T05:16:01.516596+00:00"
-        },
-        {
-          "evidence_id": "catalyst:57630aa69f99384ddce4b427",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096804716414500864",
-          "event_type": "FUTURES_LISTING",
-          "token": "0x7bc70ae0f2a67d2fdc0180a697a611f21c857777",
-          "chain": "bsc",
-          "symbol": "BEN",
-          "first_seen_at": "2026-09-07T05:30:55.978399+00:00",
-          "last_seen_at": "2026-09-07T06:04:34.937671+00:00"
-        },
-        {
-          "evidence_id": "catalyst:e641f47f40ccbffece7592fa",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096804716414500864",
-          "event_type": "FUTURES_LISTING",
-          "token": "0x7bc70ae0f2a67d2fdc0180a697a611f21c857777",
-          "chain": "bsc",
-          "symbol": "BEN",
-          "first_seen_at": "2026-09-07T06:25:20.680451+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "bsc:0x2ab8a4dd2191989ac2898006df350b236d2b7777": {
-      "asset_key": "bsc:0x2ab8a4dd2191989ac2898006df350b236d2b7777",
-      "chain": "bsc",
-      "token": "0x2ab8a4dd2191989ac2898006df350b236d2b7777",
-      "symbol": "SUE",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-07T03:54:21.474252+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 1,
-      "event_count": 1,
-      "source_category_count": 1,
-      "sources_seen": [
-        "mexc"
-      ],
-      "exchange_sources_seen": [
-        "mexc"
-      ],
-      "source_surfaces_seen": [
-        "MEXC_FUTURES_LISTINGS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 0,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:609ffd2af99b1aa895ed6a42",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_FUTURES_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.mexc.com/announcements/new-listings/futures-19",
-          "event_type": "FUTURES_LISTING",
-          "token": "0x2ab8a4dd2191989ac2898006df350b236d2b7777",
-          "chain": "bsc",
-          "symbol": "SUE",
-          "first_seen_at": "2026-09-07T03:54:21.474252+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
-    "bsc:0xe9bc5c6a86caa44fd7b469bf3cc7c563e4f77777": {
-      "asset_key": "bsc:0xe9bc5c6a86caa44fd7b469bf3cc7c563e4f77777",
-      "chain": "bsc",
-      "token": "0xe9bc5c6a86caa44fd7b469bf3cc7c563e4f77777",
-      "symbol": "MAX",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-07T03:54:21.474252+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 1,
-      "event_count": 1,
-      "source_category_count": 1,
-      "sources_seen": [
-        "mexc"
-      ],
-      "exchange_sources_seen": [
-        "mexc"
-      ],
-      "source_surfaces_seen": [
-        "MEXC_FUTURES_LISTINGS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 0,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:98860631f8dd08cd0f4f9df4",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "mexc",
-          "source_id": "MEXC_FUTURES_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.mexc.com/announcements/new-listings/futures-19",
-          "event_type": "FUTURES_LISTING",
-          "token": "0xe9bc5c6a86caa44fd7b469bf3cc7c563e4f77777",
-          "chain": "bsc",
-          "symbol": "MAX",
-          "first_seen_at": "2026-09-07T03:54:21.474252+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
-        }
-      ]
-    },
     "ethereum:0x77fba179c79de5b7653f68b5039af940ada60ce0": {
       "asset_key": "ethereum:0x77fba179c79de5b7653f68b5039af940ada60ce0",
       "chain": "ethereum",
@@ -5512,89 +2841,6 @@
           "symbol": "FORTH",
           "first_seen_at": "2026-09-07T05:04:25.611793+00:00",
           "last_seen_at": "2026-09-07T06:25:20.680451+00:00"
-        }
-      ]
-    },
-    "solana:CaWZeUM4FvX9dPkjGc2xHS6tSN3qJfTWyvaG77aM5o7h": {
-      "asset_key": "solana:CaWZeUM4FvX9dPkjGc2xHS6tSN3qJfTWyvaG77aM5o7h",
-      "chain": "solana",
-      "token": "CaWZeUM4FvX9dPkjGc2xHS6tSN3qJfTWyvaG77aM5o7h",
-      "symbol": "AGI",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-07T04:18:04.513273+00:00",
-      "last_seen_any_source_at": "2026-09-07T06:46:37.737338+00:00",
-      "source_confirmation_count": 1,
-      "exchange_confirmation_count": 1,
-      "surface_count": 2,
-      "event_count": 3,
-      "source_category_count": 1,
-      "sources_seen": [
-        "lbank"
-      ],
-      "exchange_sources_seen": [
-        "lbank"
-      ],
-      "source_surfaces_seen": [
-        "LBANK_ANNOUNCEMENTS",
-        "LBANK_SPOT_INSTRUMENTS"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "SINGLE_SOURCE",
-      "discovery_confirmation_multiplier": 1.0,
-      "source_first_seen_spread_seconds": 7636,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:6743192b5422fd9e9aaf10f2",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_SPOT_INSTRUMENTS",
-          "source_kind": "OFFICIAL_MACHINE_STATE",
-          "source_category": "exchange",
-          "source_url": "https://api.lbank.info/v2/currencyPairs.do",
-          "event_type": "SPOT_LISTING_EXPECTED",
-          "token": "CaWZeUM4FvX9dPkjGc2xHS6tSN3qJfTWyvaG77aM5o7h",
-          "chain": "solana",
-          "symbol": "AGI",
-          "first_seen_at": "2026-09-07T04:18:04.513273+00:00",
-          "last_seen_at": "2026-09-07T04:18:04.513273+00:00"
-        },
-        {
-          "evidence_id": "catalyst:8a0d27bf9d942a4414b8870f",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096830836593655808",
-          "event_type": "FUTURES_LISTING",
-          "token": "CaWZeUM4FvX9dPkjGc2xHS6tSN3qJfTWyvaG77aM5o7h",
-          "chain": "solana",
-          "symbol": "AGI",
-          "first_seen_at": "2026-09-07T05:30:55.978399+00:00",
-          "last_seen_at": "2026-09-07T06:04:34.937671+00:00"
-        },
-        {
-          "evidence_id": "catalyst:ea29ffb4707f4278cee5e8ef",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "lbank",
-          "source_id": "LBANK_ANNOUNCEMENTS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.lbank.com/support/articles/2096830836593655808",
-          "event_type": "FUTURES_LISTING",
-          "token": "CaWZeUM4FvX9dPkjGc2xHS6tSN3qJfTWyvaG77aM5o7h",
-          "chain": "solana",
-          "symbol": "AGI",
-          "first_seen_at": "2026-09-07T06:25:20.680451+00:00",
-          "last_seen_at": "2026-09-07T06:46:37.737338+00:00"
         }
       ]
     },
@@ -5827,8 +3073,237 @@
     "fail_closed": true,
     "source_ledgers_modified": false,
     "invalid_exact_identity_dropped": 1,
+    "blocked_catalyst_evidence_removed": 118,
+    "blocked_catalyst_event_ids": [
+      "catalyst:018fa395d67b793f51d3cc15",
+      "catalyst:044e998d7723188e8415c84d",
+      "catalyst:06a5a7ca4857259bd83e0107",
+      "catalyst:0832c4869c6f76547ddf70ca",
+      "catalyst:088f5f8f6967afa94b4cfe89",
+      "catalyst:0ab2b8882ecd25e652e0d1bb",
+      "catalyst:0e8111d41876865f5c7192b7",
+      "catalyst:0faed322d9328cffc82b368e",
+      "catalyst:10b0108a999fc469d180a6a1",
+      "catalyst:10e65de8399755b07e2fb1d9",
+      "catalyst:11211842106599aa51f968d6",
+      "catalyst:119616b88fd4894265a17ef9",
+      "catalyst:12c8bbd48e53fd0b4222fc6c",
+      "catalyst:148b77a967d9c220ce7e6cc7",
+      "catalyst:158acc22f4abb768f4c619b5",
+      "catalyst:15f2a4b179c6e9167082c639",
+      "catalyst:16699ec4a7ebbfb9777f2be5",
+      "catalyst:16833bbad5d36b9e58d45dde",
+      "catalyst:16d79ea19e5feb19c7e5ba6b",
+      "catalyst:171e321b0f380a90c3379554",
+      "catalyst:1825987d011c9ba96582ea2e",
+      "catalyst:1a7316aabc43e4f7a705f6b1",
+      "catalyst:201f53731f512f68ef77cd91",
+      "catalyst:238744cca910a146adeeca0f",
+      "catalyst:25271b782f07f5c0afd076fb",
+      "catalyst:25910b74b43d36f64a9a2298",
+      "catalyst:2698ae6ab02ba1ff182b0b6b",
+      "catalyst:29e58a7e262c131e0093f8ae",
+      "catalyst:2b020184eaafdc0aa770ada9",
+      "catalyst:2b272524cabf41433b4c5f39",
+      "catalyst:2be02debdafa413f45c6fdf3",
+      "catalyst:2c2bad05a417bfb96ac7f3f1",
+      "catalyst:2e59c6a593faa1ebfe89d4f5",
+      "catalyst:30247938febc228a85717893",
+      "catalyst:30479fb448c063e355d19a5c",
+      "catalyst:37e4ca0274843e84c6e3a965",
+      "catalyst:384ccea58f4f4e4100186495",
+      "catalyst:3880af926c779f237b06eefc",
+      "catalyst:39f4f9678350edd0a7202d4f",
+      "catalyst:3a040d9cf8b15fb562be00f5",
+      "catalyst:3ca4351dba9b31eb930a8d33",
+      "catalyst:3d72035e321f0f08e3e17d41",
+      "catalyst:3d93be80e671ed1b9e445b86",
+      "catalyst:3dcdec8afde938525c0b54d5",
+      "catalyst:408380f355a9a4d17204d4ae",
+      "catalyst:40c1d71f00750c999b4775fc",
+      "catalyst:41e16451f916ef0d5b8316ad",
+      "catalyst:42ed60106c892dafdabf268f",
+      "catalyst:43b18332302de648297b7222",
+      "catalyst:47b8511dfac2e0c1b119a875",
+      "catalyst:4917551654e5f37a703791ba",
+      "catalyst:4be09439577a4183ebdde574",
+      "catalyst:4c8784a0feff1317eba32dd1",
+      "catalyst:4d0bb30af00b47cf3fae51b4",
+      "catalyst:4d2ecac83e27020d77175fa9",
+      "catalyst:507d49aa0543044a2df0a576",
+      "catalyst:511e6c354c66fb2329af15e5",
+      "catalyst:522bbcc419055c19c3f2ad9b",
+      "catalyst:532795f6f6a2ccc1ecb052a3",
+      "catalyst:53c1fe4ba88e987087326c7c",
+      "catalyst:5592fea2429e58dbd8c3796f",
+      "catalyst:56b4121323ac705d2b0857e8",
+      "catalyst:57630aa69f99384ddce4b427",
+      "catalyst:585ab56129a25eb476bb9939",
+      "catalyst:594e796ec5e4e409937ba101",
+      "catalyst:5a173ce7cf35840512104870",
+      "catalyst:5b65a6d0eccf01b0c9a73400",
+      "catalyst:5c2b79ae6fb90486bc3f5d81",
+      "catalyst:5fccd7f6215d2a9e7f18c373",
+      "catalyst:60990788cae6d0e58f7d361d",
+      "catalyst:609ffd2af99b1aa895ed6a42",
+      "catalyst:6400ed6912e67e3602594985",
+      "catalyst:642bf656fe6154717de9e1ce",
+      "catalyst:6743192b5422fd9e9aaf10f2",
+      "catalyst:68519c8f11f17549acbaedc2",
+      "catalyst:6c870e1a11ce181a66e0b9c4",
+      "catalyst:6cad727944de2760c334a84d",
+      "catalyst:6de88656625eabacdd437b2d",
+      "catalyst:7006d4552fa68ae5920e1980",
+      "catalyst:7102ceb732e6bee6da3abfc2",
+      "catalyst:71f478dd7b7298dba6da7653",
+      "catalyst:746769128de12b114f0e8f2b",
+      "catalyst:74ec198d2fb43e13e912713b",
+      "catalyst:75b76973f69f32cb118f427f",
+      "catalyst:775120a44f0faefea1f13400",
+      "catalyst:78ebb95ff6a11c2670bfab47",
+      "catalyst:794196d6f13e3f06a6ad9d6a",
+      "catalyst:794b5e0e412107e940c37879",
+      "catalyst:7a9ab54806840516e2bafcf4",
+      "catalyst:7b461dd014f6bae3bca9aa4e",
+      "catalyst:7d0ea55109b77f78ba272521",
+      "catalyst:7d306b51b54af3efd76d8b8e",
+      "catalyst:7dbc5e8dc995c1928c77d400",
+      "catalyst:7e7a4849710d6a85f1bd7e4b",
+      "catalyst:7ed6a17836b1803c4cbba068",
+      "catalyst:80dc1cf7073939cccafd0058",
+      "catalyst:823a0f1466b0e2c982bb3bf6",
+      "catalyst:838cb4c29e18c4b6fae78f63",
+      "catalyst:865af21cd19b3690f5617f5f",
+      "catalyst:88f89b12f892ca5f3f93c76a",
+      "catalyst:898463bf1a29ee828d01ad39",
+      "catalyst:8a0d27bf9d942a4414b8870f",
+      "catalyst:8a7f4a94ed2020a2fd10249c",
+      "catalyst:8a9712089c31779891404209",
+      "catalyst:8c070f5110bb08a0a881f745",
+      "catalyst:8db1e635b22cdf7535abb986",
+      "catalyst:8f31b99e4abdba43c2695b8c",
+      "catalyst:90a8c82700071758eeed2eb6",
+      "catalyst:93574ebf714111f7fe55c03f",
+      "catalyst:93eb2903163f7c42510c4eb7",
+      "catalyst:950cfac9c3274e19d6e8288a",
+      "catalyst:95d888e13c94d61f52125d33",
+      "catalyst:98860631f8dd08cd0f4f9df4",
+      "catalyst:9906a25152b447280fa54d69",
+      "catalyst:9a148c31ef85af7b13e82bcd",
+      "catalyst:9a26a34aa498157ad3b93bfd",
+      "catalyst:9a30c7198b9563d109ddd2c4",
+      "catalyst:9a3103301d0ad5b6bd93d8a2",
+      "catalyst:9f6165cdc44d844df819da53",
+      "catalyst:9f669c9e33669168f8a724a2",
+      "catalyst:a357b31cc7884d53b92a35de",
+      "catalyst:a5f935c5055e8257bbca3126",
+      "catalyst:a6aaa6a1246ce6c354203e95",
+      "catalyst:a73c75a187c7fce5be78ce56",
+      "catalyst:a76ccf0d1638ba0a683b1b45",
+      "catalyst:a76e3efb323198814a3e21e9",
+      "catalyst:a86a87f5971d3d00841176cd",
+      "catalyst:abea0296292dc56e8beeba39",
+      "catalyst:ad5bf9e07da42667d5e7c992",
+      "catalyst:afcd667b6a629b89891bdb34",
+      "catalyst:b0121c2802dfe61d85737d16",
+      "catalyst:b39baed7068bad64c4ad91de",
+      "catalyst:b5ad4306f149a88837388997",
+      "catalyst:b61c1fa0a2fe649111b239e3",
+      "catalyst:b80d73d4beeb5fe5eedceb44",
+      "catalyst:ba49d23f00a423943965d24e",
+      "catalyst:bba8822f75e4f9af532ba312",
+      "catalyst:beb188a094de7390efbeec2a",
+      "catalyst:c0201733bc8e7fa360a2e3ae",
+      "catalyst:c1e08f6f390c20c2f734600c",
+      "catalyst:c230d4541175a332db3d6bf3",
+      "catalyst:c2ee03984ed782a8efa98c44",
+      "catalyst:c37345957a9c39ea2883d21f",
+      "catalyst:c40e29b132ec96c3d5b6754b",
+      "catalyst:c4e5a93018e12197371e1edf",
+      "catalyst:c7ba49365677d550332966e1",
+      "catalyst:c9d2e91570a14d103faf1ce9",
+      "catalyst:ca9981bd061a281e3be449e6",
+      "catalyst:cb5c5afc31c7d3c32a69d45a",
+      "catalyst:cdf92316bf2d397b193a5443",
+      "catalyst:cecb5598ad8f31bff42ae72d",
+      "catalyst:cf5abd7e8dd794ea41aa3e79",
+      "catalyst:d06b0e3bbf7b19bf0f033c7c",
+      "catalyst:d0c3adedfe1292f715d2d0b4",
+      "catalyst:d0f6bca2ada60523a7e8530d",
+      "catalyst:d12f2d1711e712e958d289e8",
+      "catalyst:d17227d2f2f9c9191e8d0836",
+      "catalyst:d2f7082c7cf117c0723f091d",
+      "catalyst:d378cd4dbe2fb1f08e102345",
+      "catalyst:d5b2636b48b8788880649d6e",
+      "catalyst:d664571a28792149276235a9",
+      "catalyst:d6b7215cd5b2262c8ebe03f5",
+      "catalyst:d77a192155ebac8b2fd429b5",
+      "catalyst:d810d52c0ded8aed154bbf23",
+      "catalyst:d86afbd153b30c9f00c49d19",
+      "catalyst:d93986b5f9d1f6261778fb01",
+      "catalyst:dc09bbb02dec73e53746816a",
+      "catalyst:e09995bcbb6ce40a1b636d03",
+      "catalyst:e0f192c37de79be6c543f9a3",
+      "catalyst:e641f47f40ccbffece7592fa",
+      "catalyst:e6b42bf31698c67ebdde0c16",
+      "catalyst:e9206092475ff96cf5296a23",
+      "catalyst:e93d0cbf7ea24b2feb9bb0b9",
+      "catalyst:e9f85598bbb4d41a4bc0965c",
+      "catalyst:ea29ffb4707f4278cee5e8ef",
+      "catalyst:ea80297e40a3434263d02790",
+      "catalyst:eadd8e6098778994b34c54fc",
+      "catalyst:ebccebca82e0a7e9a39c2352",
+      "catalyst:ec3cce9d3f690c497b944039",
+      "catalyst:ec4d3a5eaa42afb9d370ae84",
+      "catalyst:ec577b577ed8543523f1f9d1",
+      "catalyst:ecb1d1f090d4cd24d9a93bd7",
+      "catalyst:ed6e4c819d3a666c1d6b5fa8",
+      "catalyst:ee5bcfe6d04a9f43fbddd3a3",
+      "catalyst:f0cea94bee8b0f6998751f58",
+      "catalyst:f16b7b5db6314df7cb6f2fe2",
+      "catalyst:f1986de560bace117a122ae8",
+      "catalyst:f2cf8b69e12b86af4632dfa2",
+      "catalyst:f44ee86fb7118208137486c1",
+      "catalyst:f976fcd4c313f60fe7143c05",
+      "catalyst:f9e56e1ac22fb16ed6193ae9",
+      "catalyst:fb627a4ffc4b974495893ec9",
+      "catalyst:fba65b6c22683cfac5508a0a",
+      "catalyst:fbf72e3710ea7d7c7e290f20",
+      "catalyst:fc1ecaa68d10d772ba87bf0d"
+    ],
+    "blocked_catalyst_reasons": {
+      "MISSING_SYMBOL_CHAIN_OR_CONTRACT": 73,
+      "SYMBOL_NOT_IN_EXACT_CEX_IDENTITY_REGISTRY": 122
+    },
+    "catalyst_assets_dropped": 25,
+    "catalyst_assets_downgraded": 0,
     "dropped_asset_keys": [
-      "ethereum:0x0000000000000000000000000000000000000000"
+      "solana:3wtGGWZ8wLWW6BqtC5rxmkHdqvM62atUcGTH4cw3pump",
+      "ethereum:0x6c76de483f1752ac8473e2b4983a873991e70da7",
+      "solana:3xvLSHrLcM7246X1vu34cM9gNX741kQrzqj6T2HhLvXp",
+      "solana:MukLDtJ8Cx9DxLbeyLRSWPSposTMWuwHANbuaudpump",
+      "solana:CARDSccUMFKoPRZxt5vt3ksUbxEFEcnZ3H2pd3dKxYjp",
+      "solana:6NspJqVFceCiU5D1YgVq7waYoC394Vhqxwg7cSJdFtVE",
+      "solana:HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
+      "solana:8Aq4fWMgPqJbF3w8w8PnLDRVUAFe4mzsCvPKxAArbonk",
+      "solana:6GmAFSYs4gk3FDao5FzzySQpPZaWsa4rUJHacpMpUNgx",
+      "moonriver:MOVR",
+      "solana:Bm3dgkZrjH7eaz1GBH1R2ZHkp7nZUoPNJhjekoxepump",
+      "solana:DitHyRMQiSDhn5cnKMJV2CDDt6sVct96YrECiM49pump",
+      "solana:DKu9kykSfbN5LBfFXtNNDPaX35o4Fv6vJ9FKk7pZpump",
+      "solana:8Jx8AAHj86wbQgUTjGuj6GTTL5Ps3cqxKRTvpaJApump",
+      "solana:6MQpbiTC2YcogidTmKqMLK82qvE9z5QEm7EP3AEDpump",
+      "ethereum:0x0000000000000000000000000000000000000000",
+      "ethereum:0xe172e9b6cfbeeb5593bdce3f077356fdb33af904",
+      "bsc:0xfe189e97832da1573e4e4ff034f4ffc3a15c7777",
+      "solana:E4Ap4icMLwKot8rkkTbq5JkS5kZxt5XCE3yfxbzYBjHx",
+      "solana:A7bdiYdS5GjqGFtxf17ppRHtDKPkkRqbKtR27dxvQXaS",
+      "solana:HmJDgky11u77hpBss6D8sjNpYPD5B6fWgSVDj58jpump",
+      "bsc:0xfa6d9b504848606eb9aec04ccc161d169b3f2159",
+      "bsc:0x7bc70ae0f2a67d2fdc0180a697a611f21c857777",
+      "bsc:0x2ab8a4dd2191989ac2898006df350b236d2b7777",
+      "bsc:0xe9bc5c6a86caa44fd7b469bf3cc7c563e4f77777",
+      "solana:CaWZeUM4FvX9dPkjGc2xHS6tSN3qJfTWyvaG77aM5o7h"
     ]
   }
 }
