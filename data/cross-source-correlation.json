@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-07T02:47:04.480807+00:00",
+  "updated_at": "2026-09-07T02:50:49.220931+00:00",
   "mode": "CONTINUOUS_CROSS_SOURCE_CORRELATION_RESEARCH_ONLY",
   "automatic_trade": false,
   "policy": {
@@ -8,15 +8,17 @@
     "independence": "one source owner counts once even when multiple pages/APIs/Telegram surfaces repeat it",
     "persistence": "prior evidence is retained in source ledgers; every scan recomputes and can upgrade an already-known asset",
     "multiplier": "discovery confirmation only; never multiplies or bypasses production trade gates",
-    "truth_boundary": "all normal Wallet500 exact-pair, liquidity, survival, risk, holder/cluster and execution gates remain mandatory"
+    "truth_boundary": "all normal Wallet500 exact-pair, liquidity, survival, risk, holder/cluster and execution gates remain mandatory",
+    "invalid_identity": "EVM zero/native sentinel is never an exact token contract; generated correlation/watchlist surfaces fail closed while source ledgers remain immutable"
   },
   "counts": {
     "input_evidence": 108,
-    "correlated_assets": 47,
-    "exact_identity_assets": 47,
-    "multi_source_assets": 4,
-    "double_or_better_exchange_assets": 4,
-    "upgraded_this_scan": 0
+    "correlated_assets": 46,
+    "exact_identity_assets": 46,
+    "multi_source_assets": 3,
+    "double_or_better_exchange_assets": 3,
+    "upgraded_this_scan": 0,
+    "invalid_exact_identity_dropped": 1
   },
   "upgrades": [],
   "assets": {
@@ -27,7 +29,7 @@
       "symbol": null,
       "identity_confidence": "EXACT_CHAIN_CONTRACT",
       "first_seen_any_source_at": "2026-08-29T11:48:29.623784+00:00",
-      "last_seen_any_source_at": "2026-09-07T02:33:26.556999+00:00",
+      "last_seen_any_source_at": "2026-09-07T02:45:56.092635+00:00",
       "source_confirmation_count": 1,
       "exchange_confirmation_count": 1,
       "surface_count": 1,
@@ -67,7 +69,7 @@
           "token": "f6ae23539f26a31419199bbd9e2ff4ec",
           "chain": "solana",
           "first_seen_at": "2026-08-29T11:48:29.623784+00:00",
-          "last_seen_at": "2026-09-07T02:33:26.556999+00:00"
+          "last_seen_at": "2026-09-07T02:45:56.092635+00:00"
         }
       ]
     },
@@ -78,7 +80,7 @@
       "symbol": null,
       "identity_confidence": "EXACT_CHAIN_CONTRACT",
       "first_seen_any_source_at": "2026-09-01T05:28:06.312340+00:00",
-      "last_seen_any_source_at": "2026-09-07T02:33:26.556999+00:00",
+      "last_seen_any_source_at": "2026-09-07T02:45:56.092635+00:00",
       "source_confirmation_count": 1,
       "exchange_confirmation_count": 1,
       "surface_count": 1,
@@ -118,7 +120,7 @@
           "token": "7254c6983f789939e7c65d7483a9473f",
           "chain": "solana",
           "first_seen_at": "2026-09-01T05:28:06.312340+00:00",
-          "last_seen_at": "2026-09-07T02:33:26.556999+00:00"
+          "last_seen_at": "2026-09-07T02:45:56.092635+00:00"
         }
       ]
     },
@@ -3257,76 +3259,6 @@
         }
       ]
     },
-    "ethereum:0x0000000000000000000000000000000000000000": {
-      "asset_key": "ethereum:0x0000000000000000000000000000000000000000",
-      "chain": "ethereum",
-      "token": "0x0000000000000000000000000000000000000000",
-      "symbol": "ETH",
-      "identity_confidence": "EXACT_CHAIN_CONTRACT",
-      "first_seen_any_source_at": "2026-09-07T02:04:46.338661+00:00",
-      "last_seen_any_source_at": "2026-09-07T02:39:49.555895+00:00",
-      "source_confirmation_count": 2,
-      "exchange_confirmation_count": 2,
-      "surface_count": 2,
-      "event_count": 2,
-      "source_category_count": 1,
-      "sources_seen": [
-        "coinex",
-        "kraken"
-      ],
-      "exchange_sources_seen": [
-        "coinex",
-        "kraken"
-      ],
-      "source_surfaces_seen": [
-        "COINEX_NEW_LISTINGS",
-        "KRAKEN_ROADMAP"
-      ],
-      "lanes_seen": [
-        "CATALYST_WIRE"
-      ],
-      "source_categories_seen": [
-        "exchange"
-      ],
-      "confirmation_tier": "DOUBLE_SOURCE_CONFIRMED",
-      "discovery_confirmation_multiplier": 2.0,
-      "source_first_seen_spread_seconds": 0,
-      "continuous_rescan": true,
-      "automatic_trade": false,
-      "research_only_until_wallet500_gates_pass": true,
-      "evidence": [
-        {
-          "evidence_id": "catalyst:d93986b5f9d1f6261778fb01",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "coinex",
-          "source_id": "COINEX_NEW_LISTINGS",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.coinex.com/price/eth",
-          "event_type": "FUTURES_LISTING",
-          "token": "0x0000000000000000000000000000000000000000",
-          "chain": "ethereum",
-          "symbol": "ETH",
-          "first_seen_at": "2026-09-07T02:04:46.338661+00:00",
-          "last_seen_at": "2026-09-07T02:39:49.555895+00:00"
-        },
-        {
-          "evidence_id": "catalyst:9a3103301d0ad5b6bd93d8a2",
-          "lane": "CATALYST_WIRE",
-          "source_owner": "kraken",
-          "source_id": "KRAKEN_ROADMAP",
-          "source_kind": "OFFICIAL_PAGE_OR_SOCIAL",
-          "source_category": "exchange",
-          "source_url": "https://www.kraken.com/convert/eth/usd",
-          "event_type": "EXCHANGE_ROADMAP",
-          "token": "0x0000000000000000000000000000000000000000",
-          "chain": "ethereum",
-          "symbol": "ETH",
-          "first_seen_at": "2026-09-07T02:04:46.338661+00:00",
-          "last_seen_at": "2026-09-07T02:39:49.555895+00:00"
-        }
-      ]
-    },
     "ethereum:0xe172e9b6cfbeeb5593bdce3f077356fdb33af904": {
       "asset_key": "ethereum:0xe172e9b6cfbeeb5593bdce3f077356fdb33af904",
       "chain": "ethereum",
@@ -3384,5 +3316,13 @@
     "existing_rows_enriched": 4,
     "cross_source_rows_added": 43,
     "total_rows": 49
+  },
+  "identity_guard": {
+    "fail_closed": true,
+    "source_ledgers_modified": false,
+    "invalid_exact_identity_dropped": 1,
+    "dropped_asset_keys": [
+      "ethereum:0x0000000000000000000000000000000000000000"
+    ]
   }
 }
