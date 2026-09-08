@@ -19,9 +19,13 @@ permissions:
 
 # Freshness-first serialized publishing lane. Immutable scan data can never
 # overwrite paths changed on main after the scan source SHA.
+# Do not cancel an in-flight publisher: frequent workflow_run/schedule triggers
+# previously starved publication by repeatedly killing the only run able to
+# advance data/publish-evidence.json. Serialization plus source-run watermarking
+# already makes queued runs safe and stale runs exit cleanly.
 concurrency:
   group: wallet500-verified-snapshot-publisher
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   publish:
