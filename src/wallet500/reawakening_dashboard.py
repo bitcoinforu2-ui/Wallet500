@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from .reawakening_shadow import (
+    MAX_GAIN_SINCE_REJECT_PCT,
     MIN_CONFIRMATION_SPAN_MINUTES,
+    MIN_GAIN_SINCE_REJECT_PCT,
     MIN_LIQUIDITY_RETENTION,
     MIN_LIQUIDITY_USD,
     MIN_MARKET_AGE_DAYS,
@@ -178,11 +180,16 @@ def build(output_dir: str = "data") -> dict:
         market_age_days = _f(snap.get("market_age_min_days") or record.get("market_age_min_days"))
         liquidity_recovered_for_watch = _f(metrics.get("liquidity_usd")) >= MIN_LIQUIDITY_USD
         activity_returning = activity_passed >= 1
+        exact_pair_current = _same_pair(chain, latest.get("pair_address"), pair)
+        gain_since_reject_pct = _f(metrics.get("gain_since_reject_pct"), -10_000.0)
+        anti_chase_window = MIN_GAIN_SINCE_REJECT_PCT <= gain_since_reject_pct <= MAX_GAIN_SINCE_REJECT_PCT
         if (
             not market_age_verified
             or market_age_days < MIN_MARKET_AGE_DAYS
             or not liquidity_recovered_for_watch
             or not activity_returning
+            or not exact_pair_current
+            or not anti_chase_window
         ):
             continue
 
@@ -287,7 +294,11 @@ def build(output_dir: str = "data") -> dict:
             "near_recovery_shown": len(near_rows),
         },
         "rule": {
+            "minimum_market_age_days": 90,
             "liquidity_floor_usd": 15000,
+            "near_recovery_requires_current_exact_pair": True,
+            "near_recovery_requires_anti_chase_window": True,
+            "near_recovery_requires_returning_activity": True,
             "exact_pair_locked": True,
             "confirmation_observations": REQUIRED_CONSECUTIVE,
             "confirmation_span_minutes": MIN_CONFIRMATION_SPAN_MINUTES,

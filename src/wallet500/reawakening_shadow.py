@@ -9,7 +9,7 @@ MODE = "RESEARCH_ONLY_SURVIVOR_REAWAKENING_V2"
 CONTRACT = "FALSE_NEGATIVE_RECOVERY_RECHECK_V2"
 
 MIN_LIQUIDITY_USD = 15_000.0
-MIN_MARKET_AGE_DAYS = 60
+MIN_MARKET_AGE_DAYS = 90
 MIN_CONFIRMATION_SPAN_MINUTES = 15.0
 MIN_LIQUIDITY_RETENTION = 0.90
 MIN_GAIN_SINCE_REJECT_PCT = -25.0
@@ -143,7 +143,7 @@ def eligible_reject(record: dict) -> tuple[bool, list[str]]:
     )
     checks = {
         "source_live_survival_failed": str(record.get("first_reject_source") or "") == ELIGIBLE_SOURCE,
-        "veteran_age_verified_60d_plus": age_verified and age_days >= MIN_MARKET_AGE_DAYS,
+        "veteran_age_verified_90d_plus": age_verified and age_days >= MIN_MARKET_AGE_DAYS,
         "liquidity_only_failure_present": liquidity_failed_current_policy,
         "other_quality_checks_passed": "PASSED_SCORE_LIQUIDITY_VOLUME_ACTIVITY_MANIPULATION" in reasons,
         "no_hard_reversal_reason": not bool(reasons & HARD_EXCLUDED_REASONS),

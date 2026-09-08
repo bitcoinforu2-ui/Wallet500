@@ -159,9 +159,9 @@ def test_run_uses_outcome_tracker_history_only_after_v2_start(tmp_path):
     assert target["evidence_source"] == "OUTCOME_TRACKER_EXACT_PAIR_HISTORY"
     assert target["v2_started_at"] == "2026-09-01T10:01:00+00:00"
 
-def test_reawakening_age_gate_is_fail_closed_at_60_days():
+def test_reawakening_age_gate_is_fail_closed_at_90_days():
     young = reject_record()
-    young["first_reject_snapshot"]["market_age_min_days"] = 59
+    young["first_reject_snapshot"]["market_age_min_days"] = 89
     assert eligible_reject(young)[0] is False
 
     unknown = reject_record()
@@ -169,6 +169,6 @@ def test_reawakening_age_gate_is_fail_closed_at_60_days():
     assert eligible_reject(unknown)[0] is False
 
     boundary = reject_record()
-    boundary["first_reject_snapshot"]["market_age_min_days"] = 60
+    boundary["first_reject_snapshot"]["market_age_min_days"] = 90
     assert eligible_reject(boundary)[0] is True
 
