@@ -10,7 +10,7 @@ DATA = Path("data")
 
 # Veteran-only is a project scope invariant, not a learned alpha threshold.
 # Signal thresholds still require prospective evidence; the universe boundary does not.
-PROJECT_SCOPE_MIN_AGE_DAYS = 60
+PROJECT_SCOPE_MIN_AGE_DAYS = 90
 APPROVED_PRODUCTION_MIN_AGE_DAYS = PROJECT_SCOPE_MIN_AGE_DAYS
 
 
@@ -54,7 +54,7 @@ def run(
             "accepted": 0,
             "quarantined": len(raw),
             "identity_rule": "EXACT_CHAIN_TOKEN_AND_LOCKED_PAIR_REQUIRED; SYMBOL_NOT_USED",
-            "governance_rule": "VETERAN_ONLY_SCOPE_MUST_BE_180D_EVERYWHERE; SIGNAL_THRESHOLDS_REMAIN_SEPARATELY_GOVERNED",
+            "governance_rule": "VETERAN_ONLY_SCOPE_MUST_BE_90D_EVERYWHERE; SIGNAL_THRESHOLDS_REMAIN_SEPARATELY_GOVERNED",
             "rejections": rejected,
         }
         audit_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
