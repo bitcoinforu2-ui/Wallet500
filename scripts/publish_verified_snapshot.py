@@ -6,6 +6,8 @@ Rules:
 - never overwrite a path that changed on main after the source scan;
 - bind publication proof to the effective canonical real-alerts.json digest;
 - preserve a newer, independently verified coherent decision snapshot as one unit;
+- only preserve a newer decision snapshot when its bound REAL ALERT feed itself
+  satisfies the canonical production truth contract;
 - if real-alerts changed without a valid coherent decision proof, treat the scan as
   superseded instead of weakening verification;
 - use commit-tree compare-and-swap retries, never force-push.
@@ -38,6 +40,9 @@ DECISION_OWNED_LIVE_PATHS = {
     "data/real-alerts.json",
     "data/revival-funnel-diagnostics.json",
 }
+
+PRODUCTION_MIN_MARKET_AGE_DAYS = 180
+PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD = 50000.0
 
 
 def git(*args: str, env: dict[str, str] | None = None, input_text: str | None = None,
@@ -139,12 +144,34 @@ def _parent_bytes(parent: str, rel: str) -> bytes | None:
     return p.stdout if p.returncode == 0 else None
 
 
+def _bound_real_alerts_passes_production_contract(raw: bytes) -> bool:
+    """Fail closed unless the bound REAL ALERT feed declares production invariants."""
+    try:
+        feed = json.loads(raw.decode("utf-8"))
+        truth = feed.get("truth_contract")
+        if not isinstance(truth, dict):
+            return False
+        age = float(truth.get("minimum_market_age_days"))
+        liquidity = float(truth.get("minimum_execution_pool_liquidity_usd"))
+    except (TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return (
+        age >= PRODUCTION_MIN_MARKET_AGE_DAYS
+        and liquidity >= PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD
+        and truth.get("exact_onchain_identity_required") is True
+        and truth.get("exact_dex_pair_required") is True
+        and truth.get("symbol_only_never_actionable") is True
+        and truth.get("cex_only_never_real_alert") is True
+    )
+
+
 def verified_decision_snapshot(parent: str) -> dict | None:
     """Return proof only when every bound decision file on parent matches its hash.
 
-    This is deliberately fail-closed. A malformed/missing proof, missing file, or
-    single digest mismatch means the verified publisher must not preserve the newer
-    decision generation as trusted canonical state.
+    This is deliberately fail-closed. A malformed/missing proof, missing file,
+    single digest mismatch, or bound REAL ALERT feed that does not independently
+    satisfy the production truth contract means the verified publisher must not
+    preserve the newer decision generation as trusted canonical state.
     """
     raw = _parent_bytes(parent, DECISION_PROOF)
     if raw is None:
@@ -162,6 +189,7 @@ def verified_decision_snapshot(parent: str) -> dict | None:
     hashes = proof.get("hashes")
     if not isinstance(hashes, dict):
         return None
+    bodies: dict[str, bytes] = {}
     for key, rel in DECISION_HASH_PATHS.items():
         expected = str(hashes.get(key) or "")
         body = _parent_bytes(parent, rel)
@@ -169,6 +197,9 @@ def verified_decision_snapshot(parent: str) -> dict | None:
             return None
         if hashlib.sha256(body).hexdigest() != expected:
             return None
+        bodies[key] = body
+    if not _bound_real_alerts_passes_production_contract(bodies["real_alerts"]):
+        return None
     return proof
 
 
