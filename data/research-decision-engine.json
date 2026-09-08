@@ -13,7 +13,7 @@
   ],
   "decision_states": {
     "REJECT": 0,
-    "MORE_DATA": 3,
+    "MORE_DATA": 4,
     "SHADOW_TEST": 0,
     "APPROVED_CANDIDATE": 0
   },
@@ -82,13 +82,39 @@
         "Are candidate wallets independently funded, or do they share non-CEX first-funder/common-funder relationships?",
         "Do accumulation, holder growth and net CEX outflow precede price/volume revival on the exact pair?"
       ]
+    },
+    {
+      "hypothesis_id": "CASE::DUSD",
+      "source_research_ids": [
+        "case-study-dusd"
+      ],
+      "feature_or_rule": "EXACT_PAIR_LIQUIDITY_ACCELERATION,H1_TRANSACTION_ACCELERATION,H1_BUY_SELL_IMBALANCE,HOLDER_ACCOUNT_GROWTH,WHALE_SUPPLY_FLOW,SUPPLY_CONTRACTION_FORWARD_DELTA",
+      "proposal_type": "CASE_STUDY_HYPOTHESIS",
+      "sample_size": 1,
+      "positive_cases": 0,
+      "baseline_rate_pct": null,
+      "candidate_rate_pct": null,
+      "lift_pct": null,
+      "forward_only_evidence_count": 1,
+      "lookahead_check": "PASS",
+      "safety_regression_check": "PASS",
+      "hard_rule_change_allowed": false,
+      "recommendation": "MORE_DATA",
+      "decision_note": "Convert repeated case-study pattern into a measurable cohort feature before any filter change.",
+      "research_questions": [
+        "Does exact-pair liquidity expand before price acceleration or only after it?",
+        "Do H1 transactions, buy/sell balance and H1 volume accelerate before a revival move?",
+        "Does holder/token-account growth precede price and liquidity expansion?",
+        "Do >=0.1% supply accounts accumulate or distribute before large moves?",
+        "Does circulating supply decrease measurably between forward snapshots, consistent with the claimed burn mechanism?"
+      ]
     }
   ],
   "next_human_decision": [],
   "source_health": {
     "filter_advisor_loaded": true,
     "rejected_outcomes_loaded": true,
-    "case_studies_loaded": 2
+    "case_studies_loaded": 3
   },
-  "generated_at": "2026-09-08T07:34:20.887575+00:00"
+  "generated_at": "2026-09-08T08:37:08.236879+00:00"
 }
