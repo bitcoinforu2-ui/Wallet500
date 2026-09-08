@@ -11,7 +11,7 @@ class Settings:
     signatures_per_wallet: int = field(default_factory=lambda: int(os.getenv("WALLET500_SIGNATURES", "20")))
     anomaly_threshold: float = field(default_factory=lambda: float(os.getenv("WALLET500_ANOMALY_THRESHOLD", "60")))
     # Canonical veteran/revival execution floor. Research lanes may be stricter,
-    # but the verified operator contract itself must remain exactly 90d / $15K.
+    # but the verified operator contract itself must remain exactly 180d / $50K.
     verified_min_liquidity_usd: float = field(default_factory=lambda: float(os.getenv(
         "WALLET500_VERIFIED_MIN_LIQUIDITY_USD", str(int(CANONICAL_MIN_EXECUTION_LIQUIDITY_USD))
     )))
