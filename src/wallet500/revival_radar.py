@@ -6,8 +6,10 @@ from datetime import datetime, timezone
 from statistics import median
 from .market_data import snapshot
 
-OLD_MIN_AGE_DAYS = 7.0
-OLD_PREFERRED_AGE_DAYS = 30.0
+# Project invariant: Revival Radar is veteran-only. Keep the legacy constant
+# names for compatibility with older imports, but the canonical scope is 90d.
+OLD_MIN_AGE_DAYS = 90.0
+OLD_PREFERRED_AGE_DAYS = 90.0
 DEFAULT_BATCH_SIZE = 300
 MAX_WORKERS = 8
 
@@ -56,9 +58,9 @@ def _score(s: dict, history: list[dict], now_dt) -> dict:
             **s,
             'revival_score':0,
             'revival_eligible':False,
-            'revival_reasons':['PAIR_LT_7D_OR_AGE_UNKNOWN'],
+            'revival_reasons':['PAIR_LT_90D_OR_AGE_UNKNOWN'],
             'pair_age_days':round(age_days,2) if age_days is not None else None,
-            'old_coin_age_class':'INELIGIBLE_LT_7D_OR_UNKNOWN',
+            'old_coin_age_class':'INELIGIBLE_LT_90D_OR_UNKNOWN',
         }
 
     v1=float(s.get('volume_h1') or 0); v24=float(s.get('volume_h24') or 0)
@@ -82,7 +84,7 @@ def _score(s: dict, history: list[dict], now_dt) -> dict:
 
     score=0; reasons=[]
     if age_days >= OLD_PREFERRED_AGE_DAYS:
-        score+=5; reasons.append('established pool age 30d+')
+        score+=5; reasons.append('verified veteran pool age 90d+')
     if volume_clock>=4: score+=28; reasons.append(f'24h-normalized volume acceleration {volume_clock:.1f}x')
     elif volume_clock>=2.5: score+=20; reasons.append(f'24h-normalized volume acceleration {volume_clock:.1f}x')
     elif volume_clock>=1.8: score+=12; reasons.append(f'24h-normalized volume acceleration {volume_clock:.1f}x')
@@ -100,7 +102,7 @@ def _score(s: dict, history: list[dict], now_dt) -> dict:
     if pc1>=12: score+=10; reasons.append(f'1h revival momentum +{pc1:.1f}%')
     elif pc1>=5: score+=5; reasons.append(f'1h revival momentum +{pc1:.1f}%')
     if pc5>=5: score+=5; reasons.append(f'5m impulse +{pc5:.1f}%')
-    if liq>=15000: score+=5; reasons.append('tradable liquidity 50k+')
+    if liq>=15000: score+=5; reasons.append('tradable liquidity 15k+')
 
     score=min(100,int(score))
     return {
@@ -109,7 +111,7 @@ def _score(s: dict, history: list[dict], now_dt) -> dict:
         'revival_eligible':True,
         'revival_reasons':reasons,
         'pair_age_days':round(age_days,2),
-        'old_coin_age_class':'PREFERRED_30D_PLUS' if age_days >= OLD_PREFERRED_AGE_DAYS else 'ESTABLISHED_7D_PLUS',
+        'old_coin_age_class':'VETERAN_90D_PLUS',
         'revival_metrics':{
             'volume_clock_ratio':round(volume_clock,2),
             'tx_clock_ratio':round(tx_clock,2),
@@ -122,8 +124,8 @@ def _score(s: dict, history: list[dict], now_dt) -> dict:
 
 
 def _fetch_selected(item):
-    k,c,t,is_manual=item
-    return item, snapshot(c,t)
+    k,c,t,is_manual,locked_pair=item
+    return item, snapshot(c,t,locked_pair or None)
 
 
 def run_revival_scan(out, discovery_state, manual_watch=None, now=None, batch_size: int=DEFAULT_BATCH_SIZE, threshold: int=55) -> dict:
@@ -157,12 +159,17 @@ def run_revival_scan(out, discovery_state, manual_watch=None, now=None, batch_si
         c=x.get('chain'); t=x.get('token') or x.get('mint')
         if c and t:
             k=_key(c,t)
-            if k not in seen: pool.append((k,c,t,True)); seen.add(k)
+            if k not in seen:
+                rec=records.get(k) if isinstance(records.get(k),dict) else {}
+                pool.append((k,c,t,True,rec.get('pair_address'))); seen.add(k)
     # Rotate across every token already discovered on Solana / Ethereum / BSC.
+    # Once a pair is observed it is immutable for that history lineage. This
+    # prevents baselines from silently mixing two pools for the same token.
     for k,m in sorted(((discovery_state.get('tokens') or {}).items())):
         c=m.get('chain'); t=m.get('token')
         if c in {'solana','ethereum','bsc'} and t and k not in seen:
-            pool.append((k,c,t,False)); seen.add(k)
+            rec=records.get(k) if isinstance(records.get(k),dict) else {}
+            pool.append((k,c,t,False,rec.get('pair_address'))); seen.add(k)
 
     manual=[x for x in pool if x[3]]
     rotating=[x for x in pool if not x[3]]
@@ -179,8 +186,8 @@ def run_revival_scan(out, discovery_state, manual_watch=None, now=None, batch_si
     now_dt=datetime.fromisoformat(now.replace('Z','+00:00'))
     snapshots=[]; alerts=[]; errors=[]
     fetched=[]
-    # DEX lookups are I/O bound. Parallel fetching increases old-pool coverage
-    # without extending the primary 15-minute live lane linearly.
+    # DEX lookups are I/O bound. Parallel fetching increases veteran-pool coverage
+    # without extending the primary live lane linearly.
     with ThreadPoolExecutor(max_workers=min(MAX_WORKERS,max(1,len(selected)))) as pool_exec:
         futures={pool_exec.submit(_fetch_selected,item):item for item in selected}
         for fut in as_completed(futures):
@@ -188,36 +195,50 @@ def run_revival_scan(out, discovery_state, manual_watch=None, now=None, batch_si
             try:
                 fetched.append(fut.result())
             except Exception as e:
-                _,c,t,_=item
-                errors.append({'chain':c,'token':t,'error':f'{type(e).__name__}: {e}'[:300]})
+                _,c,t,_,locked_pair=item
+                errors.append({'chain':c,'token':t,'pair_address':locked_pair,'error':f'{type(e).__name__}: {e}'[:300]})
 
+    pair_lock_migrations=0
     for item,s in fetched:
-        k,c,t,is_manual=item
+        k,c,t,is_manual,locked_pair=item
         if not s:
-            errors.append({'chain':c,'token':t,'error':'NO_MARKET_SNAPSHOT'})
+            errors.append({'chain':c,'token':t,'pair_address':locked_pair,'error':'NO_MARKET_SNAPSHOT'})
             continue
         rec=records.get(k) if isinstance(records.get(k),dict) else {}
         hist=rec.get('history') if isinstance(rec.get('history'),list) else []
+        observed_pair=s.get('pair_address')
+        # Legacy state had token-level history without a pair lock. Do not carry
+        # that potentially mixed history into the new immutable-pair lineage.
+        if not locked_pair and hist:
+            hist=[]
+            pair_lock_migrations+=1
+        if locked_pair and observed_pair and str(observed_pair).lower()!=str(locked_pair).lower() and c in {'ethereum','bsc'}:
+            errors.append({'chain':c,'token':t,'pair_address':locked_pair,'observed_pair_address':observed_pair,'error':'PAIR_IDENTITY_DRIFT'})
+            continue
+        if locked_pair and observed_pair and observed_pair!=locked_pair and c=='solana':
+            errors.append({'chain':c,'token':t,'pair_address':locked_pair,'observed_pair_address':observed_pair,'error':'PAIR_IDENTITY_DRIFT'})
+            continue
         scored=_score(s,hist,now_dt)
         scored['revival_manual_watch']=is_manual
         scored['revival_observed_at']=now
-        scored['revival_source']='DEX_ROTATING_DISCOVERY_STATE'
+        scored['revival_source']='DEX_ROTATING_DISCOVERY_STATE_EXACT_PAIR_LOCKED'
+        scored['pair_identity_locked']=bool(observed_pair)
         snapshots.append(scored)
-        hrow={'observed_at':now,'price_usd':s.get('price_usd'),'liquidity_usd':s.get('liquidity_usd'),'volume_h1':s.get('volume_h1'),'tx_h1':int(s.get('buys_h1') or 0)+int(s.get('sells_h1') or 0),'revival_score':scored.get('revival_score')}
+        hrow={'observed_at':now,'pair_address':observed_pair,'price_usd':s.get('price_usd'),'liquidity_usd':s.get('liquidity_usd'),'volume_h1':s.get('volume_h1'),'tx_h1':int(s.get('buys_h1') or 0)+int(s.get('sells_h1') or 0),'revival_score':scored.get('revival_score')}
         hist=(hist+[hrow])[-48:]
-        records[k]={'chain':c,'token':t,'history':hist,'last_score':scored.get('revival_score',0),'last_seen':now,'pair_age_days':scored.get('pair_age_days'),'old_coin_age_class':scored.get('old_coin_age_class')}
+        records[k]={'chain':c,'token':t,'pair_address':observed_pair,'pair_identity_locked':bool(observed_pair),'history':hist,'last_score':scored.get('revival_score',0),'last_seen':now,'pair_age_days':scored.get('pair_age_days'),'old_coin_age_class':scored.get('old_coin_age_class')}
         if scored.get('revival_eligible') and int(scored.get('revival_score') or 0)>=threshold:
             alerts.append(scored)
 
     alerts.sort(key=lambda x:(x.get('revival_score',0),x.get('volume_h1',0)),reverse=True)
     by_chain={c:sum(1 for x in snapshots if x.get('chain')==c) for c in ('solana','ethereum','bsc')}
     age_eligible=sum(1 for x in snapshots if x.get('revival_eligible'))
-    preferred_30d=sum(1 for x in snapshots if x.get('old_coin_age_class')=='PREFERRED_30D_PLUS')
+    veteran_90d=sum(1 for x in snapshots if x.get('old_coin_age_class')=='VETERAN_90D_PLUS')
     state={
-        'version':4,
+        'version':5,
         'cursor':next_cursor,
         'updated_at':now,
-        'method':'DEX_OLD_COIN_REVIVAL_ROTATING_EXACT_PAIR_SCAN_80_20_EXPERIMENT',
+        'method':'DEX_VETERAN_REVIVAL_ROTATING_EXACT_PAIR_LOCKED_SCAN',
         'min_age_days':OLD_MIN_AGE_DAYS,
         'preferred_age_days':OLD_PREFERRED_AGE_DAYS,
         'batch_size':batch_size,
@@ -225,7 +246,8 @@ def run_revival_scan(out, discovery_state, manual_watch=None, now=None, batch_si
         'universe_size':len(pool),
         'scanned_this_run':len(snapshots),
         'age_eligible_this_run':age_eligible,
-        'preferred_30d_plus_this_run':preferred_30d,
+        'veteran_90d_plus_this_run':veteran_90d,
+        'pair_lock_migrations_this_run':pair_lock_migrations,
         'alerts_this_run':len(alerts),
         'errors_this_run':len(errors),
         'scanned_by_chain':by_chain,
