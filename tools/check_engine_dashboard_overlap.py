@@ -131,9 +131,15 @@ def main() -> int:
             elif age > 30:
                 add("WARN", "SOURCE_AGING", f"{name} source is aging", source=name, age_minutes=round(age, 1))
         if times.get("real") and times.get("pre"):
-            skew = abs((times["real"] - times["pre"]).total_seconds()) / 60
-            if skew > args.max_skew_minutes:
-                add("CRITICAL", "ENGINE_DASH_FRESHNESS_SKEW", "PRE-T0 materially trails production alert feed", skew_minutes=round(skew, 1))
+            # Direction matters: PRE-T0 is problematic only when it trails the
+            # production alert feed. A newer PRE-T0 feed with an older REAL feed
+            # is a production-feed freshness issue already reported by SOURCE_AGING/STALE,
+            # not evidence that PRE-T0 is lagging.
+            pre_trails_real = (times["real"] - times["pre"]).total_seconds() / 60
+            if pre_trails_real > args.max_skew_minutes:
+                add("CRITICAL", "ENGINE_DASH_FRESHNESS_SKEW", "PRE-T0 materially trails production alert feed", skew_minutes=round(pre_trails_real, 1))
+            elif pre_trails_real < -args.max_skew_minutes:
+                add("WARN", "PRODUCTION_FEED_TRAILS_PRET0", "Production alert feed materially trails PRE-T0 research feed", skew_minutes=round(abs(pre_trails_real), 1))
 
     counts = {
         "critical": sum(x["severity"] == "CRITICAL" for x in findings),
