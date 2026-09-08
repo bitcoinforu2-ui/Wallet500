@@ -10,7 +10,7 @@ class Settings:
     anomaly_threshold: float = field(default_factory=lambda: float(os.getenv("WALLET500_ANOMALY_THRESHOLD", "60")))
     # Production/verified truth floor. Lower-liquidity research lanes must keep
     # their own explicit constants and may never weaken this default.
-    verified_min_liquidity_usd: float = field(default_factory=lambda: float(os.getenv("WALLET500_VERIFIED_MIN_LIQUIDITY_USD", "15000")))
+    verified_min_liquidity_usd: float = field(default_factory=lambda: float(os.getenv("WALLET500_VERIFIED_MIN_LIQUIDITY_USD", "50000")))
     wallet_forensics_max_tokens: int = field(default_factory=lambda: int(os.getenv("WALLET500_FORENSICS_MAX_TOKENS", "5")))
     wallet_forensics_signatures: int = field(default_factory=lambda: int(os.getenv("WALLET500_FORENSICS_SIGNATURES", "12")))
     workflow_degraded_seconds: int = field(default_factory=lambda: int(os.getenv("WALLET500_WORKFLOW_DEGRADED_SECONDS", "600")))
