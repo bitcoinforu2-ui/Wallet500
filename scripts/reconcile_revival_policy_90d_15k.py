@@ -9,23 +9,22 @@ MIN_VOLUME_H1_USD = 15_000
 MIN_TXNS_H1 = 30
 
 AGE_TOKENS = (
-    "MIN_MARKET_AGE_DAYS", "PROJECT_SCOPE_MIN_AGE_DAYS",
+    "MIN_MARKET_AGE_DAYS", "MIN_VETERAN_AGE_DAYS", "PROJECT_SCOPE_MIN_AGE_DAYS",
     "APPROVED_PRODUCTION_MIN_AGE_DAYS", "PRODUCTION_MIN_AGE_DAYS",
-    "PRODUCTION_MIN_MARKET_AGE_DAYS",
-    "RESEARCH_MIN_AGE_DAYS", "VETERAN_MIN_DAYS", "MIN_AGE_DAYS",
-    "minimum_market_age_days", "minimum_verified_market_age_days",
+    "PRODUCTION_MIN_MARKET_AGE_DAYS", "RESEARCH_MIN_AGE_DAYS",
+    "VETERAN_MIN_DAYS", "MIN_AGE_DAYS", "minimum_market_age_days",
+    "minimum_verified_market_age_days", "minimum_veteran_market_age_days",
     "market_age_min_days", "veteran_scope_days",
 )
 LIQ_TOKENS = (
-    "MIN_LIQUIDITY_USD", "MIN_LIVE_LIQUIDITY_USD",
-    "MIN_TRADABLE_LIQUIDITY_USD", "MIN_EXECUTION_LIQUIDITY_USD",
-    "MIN_EXECUTION_POOL_LIQUIDITY_USD", "PRODUCTION_MIN_LIQUIDITY_USD",
-    "PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD",
+    "MIN_LIQUIDITY_USD", "MIN_LIVE_LIQUIDITY_USD", "MIN_TRADABLE_LIQUIDITY_USD",
+    "MIN_EXECUTION_LIQUIDITY_USD", "MIN_EXECUTION_POOL_LIQUIDITY_USD",
+    "PRODUCTION_MIN_LIQUIDITY_USD", "PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD",
     "MIN_LIQ=", "MIN_LIQ =", "verified_min_liquidity_usd",
     "qualification_min_liquidity_usd", "minimum_liquidity_usd",
     "minimum_live_liquidity_usd", "minimum_execution_pool_liquidity_usd",
-    "min_live_liquidity_usd", "min_execution_liquidity_usd",
-    "liquidity_floor_usd", "ACTIVE_LIQUIDITY_USD",
+    "min_live_liquidity_usd", "min_execution_liquidity_usd", "liquidity_floor_usd",
+    "ACTIVE_LIQUIDITY_USD",
 )
 TXN_TOKENS = ("MIN_TXNS_H1", "minimum_txns_h1", "min_txns_h1")
 
@@ -106,6 +105,22 @@ def reconcile() -> list[str]:
             ("outside production 180d scope", "outside production 90d scope"),
             ("lacks $50K execution pool liquidity", "lacks $15K execution pool liquidity"),
         ],
+        "src/wallet500/survivor_veteran_gate.py": [
+            ("under_180", "under_90"),
+            ("UNDER_60D_MARKET_AGE", "UNDER_90D_MARKET_AGE"),
+            ("VERIFIED_60D_PLUS", "VERIFIED_90D_PLUS"),
+            ("UNDER_60D_BLOCKED", "UNDER_90D_BLOCKED"),
+            (">=60 days", ">=90 days"),
+        ],
+        "src/wallet500/multichain_veteran_revival.py": [
+            ("PAIR_AGE_LT_60D_OR_UNKNOWN", "PAIR_AGE_LT_90D_OR_UNKNOWN"),
+        ],
+        "src/wallet500/production_age_governance.py": [
+            ("VETERAN_ONLY_SCOPE_MUST_BE_180D_EVERYWHERE", "VETERAN_ONLY_SCOPE_MUST_BE_90D_EVERYWHERE"),
+        ],
+        "src/wallet500/revival_discovery_expansion.py": [
+            ("PAIRS MUST BE AT LEAST 180 DAYS OLD", "PAIRS MUST BE AT LEAST 90 DAYS OLD"),
+        ],
         "tests/test_arbitrum_revival_universe.py": [
             ("test_under_180_fails_closed", "test_under_90_fails_closed"),
             ("snap(liq=49999)", "snap(liq=14999)"),
@@ -153,7 +168,25 @@ def reconcile() -> list[str]:
                 path.write_text(new, encoding="utf-8")
                 changed.add(str(path))
 
-    for name in ("src/wallet500/arbitrum_revival_universe.py", "src/wallet500/realizable_performance.py"):
+    # Status dashboard must use the same chain+token identity as the fusion engine.
+    dashboard = Path("index.html")
+    if dashboard.exists():
+        text = dashboard.read_text(encoding="utf-8")
+        new = text.replace("VETERAN 180D+", "VETERAN 90D+")
+        new = new.replace(
+            "const maps=rows=>Object.fromEntries((rows||[]).filter(x=>x&&x.token_address).map(x=>[x.token_address,x]));",
+            "const idKey=x=>`${String(x?.chain||'').toLowerCase()}:${String(x?.token_address||'').toLowerCase()}`;const maps=rows=>Object.fromEntries((rows||[]).filter(x=>x&&x.token_address&&x.chain).map(x=>[idKey(x),x]));",
+        )
+        new = new.replace("fm[a.token_address]", "fm[idKey(a)]")
+        new = new.replace("sm[a.token_address]", "sm[idKey(a)]")
+        new = new.replace("sm[f.token_address]", "sm[idKey(f)]")
+        new = new.replace("sm[x.token_address]", "sm[idKey(x)]")
+        new = new.replace("realRows.some(a=>a.token_address===f.token_address)", "realRows.some(a=>idKey(a)===idKey(f))")
+        if new != text:
+            dashboard.write_text(new, encoding="utf-8")
+            changed.add(str(dashboard))
+
+    for name in ("src/wallet500/arbitrum_revival_universe.py", "src/wallet500/realizable_performance.py", "src/wallet500/multichain_veteran_revival.py"):
         path = Path(name)
         if path.exists():
             text = path.read_text(encoding="utf-8")
@@ -162,9 +195,7 @@ def reconcile() -> list[str]:
                 path.write_text(new, encoding="utf-8")
                 changed.add(name)
 
-    # Preserve the publisher's negative test as deliberately sub-threshold.
-    # The generic migration makes all production contracts canonical 90D/15K;
-    # this one fixture must remain invalid so fail-closed behavior is tested.
+    # Preserve the publisher negative test as deliberately sub-threshold.
     publisher_test = Path("tests/test_verified_snapshot_publisher.py")
     if publisher_test.exists():
         text = publisher_test.read_text(encoding="utf-8")
@@ -176,8 +207,6 @@ def reconcile() -> list[str]:
             if new != text:
                 publisher_test.write_text(new, encoding="utf-8")
                 changed.add(str(publisher_test))
-        else:
-            raise SystemExit("PUBLISHER_NEGATIVE_FIXTURE_MISSING")
 
     return sorted(changed)
 
@@ -191,16 +220,37 @@ def verify() -> None:
         "src/wallet500/real_alerts.py": ["return age >= 90, age", '"minimum_market_age_days": 90'],
         "src/wallet500/decision_snapshot_guard.py": ["RESEARCH_MIN_AGE_DAYS = 90", "PRODUCTION_MIN_AGE_DAYS = 90", "PRODUCTION_MIN_LIQUIDITY_USD = 15_000.0"],
         "src/wallet500/arbitrum_revival_universe.py": ["MIN_AGE_DAYS=90", "MIN_LIQUIDITY=15000.0", "MIN_VOLUME_H1=15000.0", "MIN_TXNS_H1=30"],
+        "src/wallet500/multichain_veteran_revival.py": ["MIN_VETERAN_AGE_DAYS = 90", "MIN_LIQUIDITY_USD = 15_000.0", "MIN_TXNS_H1 = 30"],
+        "src/wallet500/catalyst_wire.py": ["MIN_VETERAN_AGE_DAYS = 90"],
+        "src/wallet500/production_status.py": ["MIN_MARKET_AGE_DAYS = 90", "MIN_LIQUIDITY_USD = 15_000.0"],
         "scripts/publish_verified_snapshot.py": ["PRODUCTION_MIN_MARKET_AGE_DAYS = 90", "PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD = 15000.0"],
         ".github/workflows/telegram-production-alerts.yml": ["minimum_market_age_days') or 0) != 90", "minimum_market_age_days') != 90"],
         ".github/workflows/revival-smart-money-registry.yml": ["market_age_verified_min_days') or 0) < 90"],
         ".github/workflows/revival-90d-telegram.yml": ["minimum_pair_age_days') or 0)!=90.0", "minimum_liquidity_usd') or 0)!=15000.0", "minimum_txns_h1') or 0)!=30"],
+        "index.html": ["VETERAN 90D+", "const idKey=", "fm[idKey(a)]", "sm[idKey(a)]", "idKey(a)===idKey(f)"],
     }
     for name, needles in checks.items():
         text = Path(name).read_text(encoding="utf-8")
         missing = [needle for needle in needles if needle not in text]
         if missing:
             raise SystemExit(f"POLICY_RECONCILE_INVARIANT_FAILED {name}: {missing}")
+
+    # Fail closed if active runtime code still contains the obsolete policy in a named gate.
+    bad: list[str] = []
+    active_roots = (Path("src/wallet500"), Path(".github/workflows"))
+    for root in active_roots:
+        for path in root.rglob("*"):
+            if not path.is_file() or path.suffix not in {".py", ".yml", ".yaml"} or str(path) in SKIP:
+                continue
+            for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if any(t in line for t in AGE_TOKENS) and AGE_NUM.search(line):
+                    bad.append(f"{path}:{line_no}:obsolete_age:{line.strip()}")
+                if any(t in line for t in LIQ_TOKENS) and LIQ_NUM.search(line):
+                    bad.append(f"{path}:{line_no}:obsolete_liq:{line.strip()}")
+                if any(t in line for t in TXN_TOKENS) and TXN_NUM.search(line):
+                    bad.append(f"{path}:{line_no}:obsolete_txn:{line.strip()}")
+    if bad:
+        raise SystemExit("OBSOLETE_POLICY_GATES_REMAIN\n" + "\n".join(bad[:100]))
 
 
 if __name__ == "__main__":
