@@ -1,10 +1,8 @@
-from datetime import datetime, timedelta, timezone
-
 from wallet500.revival_forensics_v2 import (
     MIN_AGE_DAYS,
-    build_t0,
+    _qualifies_t0,
+    exact_pair,
     pct,
-    select_exact_pair_observation,
     sha256,
 )
 
@@ -15,52 +13,29 @@ def test_pct():
     assert pct(0, 2) is None
 
 
-def test_build_t0_locks_age_pair_and_hash():
-    coin = {
-        "token_address": "mint",
-        "symbol": "OLD",
+def test_revival_forensics_age_pair_gate_is_90d_and_fail_closed():
+    assert MIN_AGE_DAYS == 90
+
+    valid = {
         "watch_status": "WAKING_MARKET_ONLY",
         "market_age_verified": True,
-        "market_age_min_days": MIN_AGE_DAYS,
-        "market_age_evidence_at": "2025-01-01T00:00:00+00:00",
-        "market_age_evidence_source": "TEST",
+        "market_age_min_days": 90,
         "dex_pair_address": "pair",
-        "price_usd": 1.0,
-        "dex_pair_liquidity_usd": 100000,
-        "market_cap_usd": 1000000,
-        "revival_score_verified": 80,
     }
-    target = {"confirmation_status": "UNCONFIRMED_RESEARCH", "confirmation_score": 50}
-    t0 = build_t0(coin, target, "2026-09-02T12:00:00+00:00", "2026-09-02T12:05:00+00:00")
-    assert t0["market_age_min_days"] == 60
-    assert t0["pair_address"] == "pair"
-    assert t0["blockers"] == []
-    assert len(t0["evidence_sha256"]) == 64
+    assert _qualifies_t0(valid) is True
+    assert exact_pair(valid) == "pair"
 
+    too_young = dict(valid, market_age_min_days=89)
+    assert _qualifies_t0(too_young) is False
 
-def test_build_t0_fails_closed_under_180():
-    coin = {
-        "token_address": "mint",
-        "market_age_verified": True,
-        "market_age_min_days": 59,
-        "dex_pair_address": "pair",
-        "price_usd": 1,
-        "dex_pair_liquidity_usd": 100000,
-    }
-    t0 = build_t0(coin, {}, "2026-09-02T12:00:00+00:00", "2026-09-02T12:00:01+00:00")
-    assert "AGE_NOT_VERIFIED_60D_PLUS" in t0["blockers"]
+    age_unverified = dict(valid, market_age_verified=False)
+    assert _qualifies_t0(age_unverified) is False
 
+    no_pair = dict(valid, dex_pair_address="")
+    assert _qualifies_t0(no_pair) is False
 
-def test_exact_pair_forward_only_horizon_selection():
-    t0 = datetime(2026, 9, 2, 12, 0, tzinfo=timezone.utc)
-    history = [
-        {"at": (t0 + timedelta(minutes=4)).isoformat(), "pair_address": "pair", "price_usd": 1.01},
-        {"at": (t0 + timedelta(minutes=5)).isoformat(), "pair_address": "other", "price_usd": 9},
-        {"at": (t0 + timedelta(minutes=6)).isoformat(), "pair_address": "pair", "price_usd": 1.05},
-    ]
-    row = select_exact_pair_observation(history, "pair", t0 + timedelta(minutes=5), 8)
-    assert row["price_usd"] == 1.05
-    assert row["pair_address"] == "pair"
+    wrong_lane = dict(valid, watch_status="OTHER")
+    assert _qualifies_t0(wrong_lane) is False
 
 
 def test_hash_stable():
