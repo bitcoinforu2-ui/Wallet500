@@ -79,6 +79,10 @@ def main() -> None:
         ("market_age_pair_days\"] < 180", "market_age_pair_days\"] < 90"),
         ("market_age_registry_days\"] > 180", "market_age_registry_days\"] > 90"),
     ])
+    replace("tests/test_real_alerts.py", [
+        ("EXECUTION_POOL_LIQUIDITY_LT_50K", "EXECUTION_POOL_LIQUIDITY_LT_15K"),
+        ("test_total_liquidity_over_50k_cannot_rescue_thin_execution_pool", "test_total_liquidity_cannot_rescue_sub_15k_execution_pool"),
+    ])
 
     # A narrow invariant scan catches the exact kind of hidden gate that caused this incident.
     critical = {
