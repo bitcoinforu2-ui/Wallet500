@@ -52,6 +52,10 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
+          # Editable installs can refresh tracked setuptools metadata. It is build
+          # output, not runtime truth state, and must never block the atomic
+          # forward-state rebase/publish path.
+          git restore --worktree -- src/wallet500.egg-info || true
           git add data/cryptoyeezus-live-state.json data/cryptoyeezus-calls.json data/cryptoyeezus-live-latest.json
           if git diff --cached --quiet; then
             echo 'No state change to commit'
