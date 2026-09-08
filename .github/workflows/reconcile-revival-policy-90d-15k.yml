@@ -1,6 +1,7 @@
 name: Wallet500 Reconcile Revival Policy 90D 15K
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -16,7 +17,7 @@ concurrency:
 jobs:
   reconcile:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,198 +27,22 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Reconcile all active Revival policy contracts
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          AGE_DAYS = 90
-          MIN_LIQ = 15_000
-          MIN_VOL_H1 = 15_000
-          MIN_TXNS_H1 = 30
-
-          AGE_TOKENS = (
-              'MIN_MARKET_AGE_DAYS', 'PROJECT_SCOPE_MIN_AGE_DAYS',
-              'APPROVED_PRODUCTION_MIN_AGE_DAYS', 'PRODUCTION_MIN_AGE_DAYS',
-              'RESEARCH_MIN_AGE_DAYS', 'VETERAN_MIN_DAYS', 'MIN_AGE_DAYS',
-              'minimum_market_age_days', 'minimum_verified_market_age_days',
-              'market_age_min_days', 'veteran_scope_days',
-          )
-          LIQ_TOKENS = (
-              'MIN_LIQUIDITY_USD', 'MIN_LIVE_LIQUIDITY_USD',
-              'MIN_TRADABLE_LIQUIDITY_USD', 'MIN_EXECUTION_LIQUIDITY_USD',
-              'MIN_EXECUTION_POOL_LIQUIDITY_USD', 'PRODUCTION_MIN_LIQUIDITY_USD',
-              'MIN_LIQ=', 'MIN_LIQ =', 'verified_min_liquidity_usd',
-              'qualification_min_liquidity_usd', 'minimum_liquidity_usd',
-              'minimum_live_liquidity_usd', 'minimum_execution_pool_liquidity_usd',
-              'min_live_liquidity_usd', 'min_execution_liquidity_usd',
-              'liquidity_floor_usd', 'ACTIVE_LIQUIDITY_USD',
-          )
-          TXN_TOKENS = ('MIN_TXNS_H1', 'minimum_txns_h1', 'min_txns_h1')
-
-          age_num = re.compile(r'(?<!\d)(?:60|180)(?:\.0)?(?!\d)')
-          liq_num = re.compile(r'(?<!\d)(?:50_000|50000)(?:\.0)?(?!\d)')
-          txn_num = re.compile(r'(?<!\d)50(?!\d)')
-
-          skip = {
-              '.github/workflows/reconcile-revival-policy-90d-15k.yml',
-              '.github/workflows/policy-threshold-migration-60d-15k.yml',
-              'scripts/migrate_revival_policy_60d_15k.py',
-              'scripts/migrate_revival_policy_60d_15k_fixups.py',
-          }
-          changed = set()
-
-          def repl_num(match, integer):
-              raw = match.group(0)
-              return f'{integer}.0' if raw.endswith('.0') else str(integer)
-
-          for base in (Path('src/wallet500'), Path('tests'), Path('.github/workflows')):
-              if not base.exists():
-                  continue
-              for path in base.rglob('*'):
-                  if not path.is_file() or path.suffix not in {'.py', '.yml', '.yaml'}:
-                      continue
-                  name = str(path)
-                  if name in skip:
-                      continue
-                  text = path.read_text(encoding='utf-8')
-                  out = []
-                  touched = False
-                  for line in text.splitlines(keepends=True):
-                      new = line
-                      if any(tok in new for tok in AGE_TOKENS):
-                          new = age_num.sub(lambda m: repl_num(m, AGE_DAYS), new)
-                      if any(tok in new for tok in LIQ_TOKENS):
-                          def liq_repl(m):
-                              raw = m.group(0)
-                              if '_' in raw:
-                                  return '15_000.0' if raw.endswith('.0') else '15_000'
-                              return '15000.0' if raw.endswith('.0') else '15000'
-                          new = liq_num.sub(liq_repl, new)
-                      if any(tok in new for tok in TXN_TOKENS):
-                          new = txn_num.sub(str(MIN_TXNS_H1), new)
-                      touched |= new != line
-                      out.append(new)
-                  if touched:
-                      path.write_text(''.join(out), encoding='utf-8')
-                      changed.add(name)
-
-          explicit = {
-              'src/wallet500/real_alerts.py': [
-                  ('return age >= 180, age', 'return age >= 90, age'),
-                  ('"VETERAN_AGE_180D"', '"VETERAN_AGE_90D"'),
-                  ('VERIFIED_MARKET_AGE_180D_REQUIRED', 'VERIFIED_MARKET_AGE_90D_REQUIRED'),
-              ],
-              'src/wallet500/revival_forensics_v2.py': [
-                  ('AGE_NOT_VERIFIED_60D_PLUS', 'AGE_NOT_VERIFIED_90D_PLUS'),
-              ],
-              'src/wallet500/mature_age_gate.py': [
-                  ('UNDER_60_DAYS', 'UNDER_90_DAYS'),
-                  ('UNDER_60_DAYS_OR_AGE_UNVERIFIED', 'UNDER_90_DAYS_OR_AGE_UNVERIFIED'),
-                  ('VERIFIED_MARKET_AGE_GTE_60_DAYS_ONLY', 'VERIFIED_MARKET_AGE_GTE_90_DAYS_ONLY'),
-                  ('AT_LEAST_60_DAYS_OF_MARKET_HISTORY', 'AT_LEAST_90_DAYS_OF_MARKET_HISTORY'),
-              ],
-              'src/wallet500/decision_snapshot_guard.py': [
-                  ('enforce 60d scope', 'enforce 90d scope'),
-                  ('enforce 180d', 'enforce 90d'),
-                  ('remain 180d', 'remain 90d'),
-                  ('production 180d scope', 'production 90d scope'),
-                  ('outside production 180d scope', 'outside production 90d scope'),
-                  ('lacks $50K execution pool liquidity', 'lacks $15K execution pool liquidity'),
-              ],
-          }
-          for name, swaps in explicit.items():
-              path = Path(name)
-              if not path.exists():
-                  continue
-              text = path.read_text(encoding='utf-8')
-              new = text
-              for old, replacement in swaps:
-                  new = new.replace(old, replacement)
-              if new != text:
-                  path.write_text(new, encoding='utf-8')
-                  changed.add(name)
-
-          # Consistent human-facing blocker labels. Compatibility JSON field names such
-          # as market_age_verified_60d_plus are intentionally retained until all stored
-          # snapshots have regenerated; numeric age is the authoritative gate.
-          safe_string_swaps = {
-              'EXECUTION_POOL_LIQUIDITY_LT_50K': 'EXECUTION_POOL_LIQUIDITY_LT_15K',
-              'CURRENT_LIQUIDITY_BELOW_50K': 'CURRENT_LIQUIDITY_BELOW_15K',
-              'LIQUIDITY_LT_50K': 'LIQUIDITY_LT_15K',
-              'VETERAN_AGE_180D': 'VETERAN_AGE_90D',
-              'VERIFIED_MARKET_AGE_180D_REQUIRED': 'VERIFIED_MARKET_AGE_90D_REQUIRED',
-              'PREWAKING_AGE_POLICY_INVALID': 'PREWAKING_AGE_POLICY_INVALID',
-          }
-          for base in (Path('src/wallet500'), Path('tests'), Path('.github/workflows')):
-              if not base.exists():
-                  continue
-              for path in base.rglob('*'):
-                  if not path.is_file() or path.suffix not in {'.py', '.yml', '.yaml'} or str(path) in skip:
-                      continue
-                  text = path.read_text(encoding='utf-8')
-                  new = text
-                  for old, replacement in safe_string_swaps.items():
-                      new = new.replace(old, replacement)
-                  if new != text:
-                      path.write_text(new, encoding='utf-8')
-                      changed.add(str(path))
-
-          # Arbitrum and realizable-performance activity floors must match the active
-          # 90D/15K alert contract (30 H1 transactions).
-          for name in ('src/wallet500/arbitrum_revival_universe.py', 'src/wallet500/realizable_performance.py'):
-              path = Path(name)
-              if path.exists():
-                  text = path.read_text(encoding='utf-8')
-                  new = text.replace('MIN_TXNS_H1=50', 'MIN_TXNS_H1=30').replace('MIN_TXNS_H1 = 50', 'MIN_TXNS_H1 = 30')
-                  if new != text:
-                      path.write_text(new, encoding='utf-8')
-                      changed.add(name)
-
-          # Remove obsolete migration machinery so it cannot be accidentally re-run.
-          for name in (
-              '.github/workflows/policy-threshold-migration-60d-15k.yml',
-              'scripts/migrate_revival_policy_60d_15k.py',
-              'scripts/migrate_revival_policy_60d_15k_fixups.py',
-          ):
-              p = Path(name)
-              if p.exists():
-                  p.unlink()
-                  changed.add(name)
-
-          # Hard invariants: active runtime truth is 90D / 15K / 15K H1 / 30 H1 txns.
-          checks = {
-              'src/wallet500/config.py': ['WALLET500_VERIFIED_MIN_LIQUIDITY_USD", "15000"'],
-              'src/wallet500/mature_age_gate.py': ['MIN_MARKET_AGE_DAYS = 90'],
-              'src/wallet500/candidate_evidence_envelope.py': ['MIN_MARKET_AGE_DAYS = 90', 'MIN_EXECUTION_LIQUIDITY_USD = 15_000.0'],
-              'src/wallet500/revival_forensics_v2.py': ['MIN_AGE_DAYS = 90'],
-              'src/wallet500/real_alerts.py': ['return age >= 90, age', '"minimum_market_age_days": 90'],
-              'src/wallet500/decision_snapshot_guard.py': ['RESEARCH_MIN_AGE_DAYS = 90', 'PRODUCTION_MIN_AGE_DAYS = 90', 'PRODUCTION_MIN_LIQUIDITY_USD = 15_000.0'],
-              'src/wallet500/arbitrum_revival_universe.py': ['MIN_AGE_DAYS=90', 'MIN_LIQUIDITY=15000.0', 'MIN_VOLUME_H1=15000.0', 'MIN_TXNS_H1=30'],
-              '.github/workflows/telegram-production-alerts.yml': ["minimum_market_age_days') or 0) != 90", "minimum_market_age_days') != 90"],
-              '.github/workflows/revival-smart-money-registry.yml': ["market_age_verified_min_days') or 0) < 90"],
-              '.github/workflows/revival-90d-telegram.yml': ["minimum_pair_age_days') or 0)!=90.0", "minimum_liquidity_usd') or 0)!=15000.0", "minimum_txns_h1') or 0)!=30"],
-          }
-          for name, needles in checks.items():
-              text = Path(name).read_text(encoding='utf-8')
-              missing = [needle for needle in needles if needle not in text]
-              if missing:
-                  raise SystemExit(f'POLICY_RECONCILE_INVARIANT_FAILED {name}: {missing}')
-
-          print('REVIVAL_POLICY_RECONCILED', {'age_days': AGE_DAYS, 'liquidity_usd': MIN_LIQ, 'volume_h1_usd': MIN_VOL_H1, 'txns_h1': MIN_TXNS_H1})
-          print('CHANGED_PATHS', len(changed))
-          for name in sorted(changed):
-              print(name)
-          PY
+      - name: Reconcile all active Revival policy contracts and dashboard identity joins
+        run: python scripts/reconcile_revival_policy_90d_15k.py
 
       - name: Install package and tests
-        run: |
-          python -m pip install -e . pytest
+        run: python -m pip install -e . pytest
 
       - name: Compile engine
         run: python -m compileall -q src/wallet500
+
+      - name: Syntax-check decision dashboards
+        run: |
+          node --check dashboard-live-price.js
+          node --check dashboard-live-price-core.js
+          node --check dashboard-truth-overlap.js
+          node --check data/dashboard-live-price-core.js
+          node --check data/dashboard-truth-overlap.js
 
       - name: Run policy-critical tests
         run: |
@@ -225,31 +50,36 @@ jobs:
             tests/test_revival_90d_telegram.py \
             tests/test_real_alerts.py \
             tests/test_decision_snapshot_guard.py \
+            tests/test_production_status.py \
+            tests/test_multichain_veteran_revival.py \
+            tests/test_catalyst_wire.py \
             tests/test_revival_wallet_evidence.py \
             tests/test_revival_wallet_registry.py \
             tests/test_revival_prewaking_rotation.py \
             tests/test_revival_prewaking_wallet_evidence_v2.py \
             tests/test_revival_prewaking_wallet_retention.py
 
+      - name: Run identity and engine-dashboard audits
+        run: |
+          python tools/check_engine_dashboard_overlap.py --strict --max-skew-minutes 30
+          python tools/check_identity_alignment.py
+
       - name: Run full unit test suite
         run: python -m pytest -q
 
-      - name: Commit only after all tests pass
+      - name: Commit only after every guard passes
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'wallet500-policy-bot'
           git config user.email 'wallet500-policy-bot@users.noreply.github.com'
-
-          # One-shot reconciler removes itself after success; Git history keeps the audit trail.
           git rm -f .github/workflows/reconcile-revival-policy-90d-15k.yml
           git add -A
           if git diff --cached --quiet; then
             echo 'REVIVAL_POLICY_ALREADY_CLEAN'
             exit 0
           fi
-          git commit -m 'policy: unify Revival runtime at 90d 15k'
-
+          git commit -m 'policy: unify active Revival runtime at 90d 15k and chain-token dashboard identity'
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             if git rebase origin/main && git push origin HEAD:main; then
