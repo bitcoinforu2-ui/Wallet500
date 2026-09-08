@@ -158,3 +158,37 @@ def test_run_sanitizes_concentrated_pool_before_real_alert_file_is_publishable(t
     assert row["liquidity_usd"] is None
     assert row["pool_tvl_usd"] == 143_345.3
     assert "EXECUTION_DEPTH_UNVERIFIED_CONCENTRATED_POOL" in row["blockers"]
+
+
+def test_pair_metadata_is_atomic_and_never_mixes_dex_from_other_pool(tmp_path):
+    mint = "Mint111111111111111111111111111111111111111"
+    ray_pair = "RayPair111111111111111111111111111111111111"
+    met_pair = "MetPair111111111111111111111111111111111111"
+
+    cex = base_cex(liq=90_000)
+    cex.update({
+        "pair_address": met_pair,
+        "dex": "meteora",
+        "dex_url": f"https://dexscreener.com/solana/{met_pair}",
+        "execution_pool_liquidity_usd": 90_000,
+    })
+    p = precursor(status="INSUFFICIENT_PRECURSOR_EVIDENCE")
+    p.update({
+        "pair_address": ray_pair,
+        "dex": "raydium",
+        "dex_url": f"https://dexscreener.com/solana/{ray_pair}",
+        "execution_pool_liquidity_usd": 1_000_000,
+        "dex_liquidity_usd": 1_000_000,
+    })
+    seed(tmp_path, [cex], [p])
+
+    result = build(tmp_path)
+    assert result["verified_watch"]
+    row = result["verified_watch"][0]
+    assert row["pair_address"] == ray_pair
+    assert row["dex"] == "raydium"
+    assert ray_pair in row["dex_url"]
+    assert met_pair not in row["dex_url"]
+    assert row["pair_metadata_atomic"] is True
+    assert row["readiness_gates"]["EXECUTION_LIQUIDITY"] is True
+    assert row["missing_gates"] == ["STRONG_DECISION_LANE"]
