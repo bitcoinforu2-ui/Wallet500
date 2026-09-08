@@ -1,0 +1,67 @@
+name: Wallet500 Session Stability Validation
+
+on:
+  pull_request:
+    paths:
+      - 'src/wallet500/cyberleek_wallet_flow_no_batch.py'
+      - 'src/wallet500/cryptoyeezus_source_wallet_watch.py'
+      - 'tests/test_cyberleek_wallet_flow_no_batch.py'
+      - 'tests/test_cryptoyeezus_source_wallet_watch.py'
+      - '.github/workflows/cyberleek-wallet-flow.yml'
+      - '.github/workflows/revival-wallet-coverage-probe.yml'
+      - '.github/workflows/cryptoyeezus-live-watch.yml'
+      - '.github/workflows/cryptoyeezus-source-wallet-watch.yml'
+      - '.github/workflows/session-stability-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Compile changed runtime modules
+        run: |
+          python -m py_compile \
+            src/wallet500/cyberleek_wallet_flow_no_batch.py \
+            src/wallet500/cryptoyeezus_source_wallet_watch.py \
+            src/wallet500/cryptoyeezus_live_watch.py \
+            src/wallet500/revival_wallet_coverage_probe.py
+      - name: Focused regression tests
+        run: |
+          python -m pytest -q \
+            tests/test_cyberleek_wallet_flow_no_batch.py \
+            tests/test_cryptoyeezus_source_wallet_watch.py \
+            tests/test_cryptoyeezus_live_watch.py \
+            tests/test_revival_wallet_coverage_probe.py
+      - name: Static truth and publish-hygiene checks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          checks={
+            '.github/workflows/cyberleek-wallet-flow.yml': ['git reset --hard HEAD','git clean -fd','tests/test_cyberleek_wallet_flow_no_batch.py'],
+            '.github/workflows/revival-wallet-coverage-probe.yml': ['git reset --hard HEAD','git clean -fd'],
+            '.github/workflows/cryptoyeezus-live-watch.yml': ["YEEZUS_X_POLL_EVERY_CYCLES: '1'",'YEEZUS_X_WAS_NOT_CHECKED_THIS_RUN','git reset --hard HEAD'],
+            '.github/workflows/cryptoyeezus-source-wallet-watch.yml': ['JCxTzSXz1f8s3UEtYQzaDdBDWneaD6yo1cX38RBf6Rjd','UNVERIFIED_SOURCE_WALLET_EVENT','git reset --hard HEAD'],
+          }
+          for name, needles in checks.items():
+              text=Path(name).read_text()
+              for needle in needles:
+                  assert needle in text, (name, needle)
+          src=Path('src/wallet500/cryptoyeezus_source_wallet_watch.py').read_text()
+          assert 'simulation_only' in src and 'real_trade_claimed' in src
+          assert 'SIGNED_WALLET_TWO_SIDED_BALANCE_DELTA_PLUS_DEX_SWAP_EVIDENCE' in src
+          cy=Path('src/wallet500/cyberleek_wallet_flow_no_batch.py').read_text()
+          assert 'decoded_non_swap_pair_touches_are_not_rpc_failures' in cy
+          print('SESSION_STABILITY_STATIC_TRUTH_OK')
+          PY

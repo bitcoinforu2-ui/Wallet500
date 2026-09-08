@@ -72,19 +72,29 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-wallet-probe-bot'
           git config user.email 'wallet500-wallet-probe-bot@users.noreply.github.com'
+          git restore --worktree -- src/wallet500.egg-info || true
           git add data/revival-wallet-coverage-probe.json data/revival-wallet-coverage-probe-state.json
           if git diff --cached --quiet; then
             echo 'WALLET_PROBE_NO_DATA_CHANGE'
             exit 0
           fi
           git commit -m 'data: refresh broad wallet coverage probe'
+          git reset --hard HEAD
+          git clean -fd
           for attempt in 1 2 3 4 5; do
-            if git pull --rebase origin main && git push origin HEAD:main; then
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo "WALLET_PROBE_REBASE_CONTENTION attempt=${attempt}"
+              [ "$attempt" -eq 5 ] && exit 1
+              sleep $((attempt * 2))
+              continue
+            fi
+            if git push origin HEAD:main; then
               echo 'WALLET_PROBE_PUBLISH_OK'
               exit 0
             fi
-            git rebase --abort || true
-            sleep 3
+            sleep $((attempt * 2))
           done
           echo '::error::WALLET_PROBE_PUBLISH_RACE_EXHAUSTED'
           exit 1
