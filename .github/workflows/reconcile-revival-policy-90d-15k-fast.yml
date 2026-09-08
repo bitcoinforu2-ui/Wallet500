@@ -47,7 +47,7 @@ jobs:
           sed -i 's/cex\["market_age_min_days"\] = 90/cex["market_age_min_days"] = 89/g' tests/test_real_alerts.py
           sed -i 's/p\["market_age_min_days"\] = 90/p["market_age_min_days"] = 89/g' tests/test_real_alerts.py
           sed -i 's/test_total_liquidity_over_50k_cannot_rescue_thin_execution_pool/test_total_liquidity_over_15k_cannot_rescue_thin_execution_pool/g' tests/test_real_alerts.py
-          sed -i 's/test_deep_exact_execution_pool_over_50k_passes_even_if_stale_thin_row_exists/test_deep_exact_execution_pool_over_15k_passes_even_if_stale_thin_execution_pool/g' tests/test_real_alerts.py
+          sed -i 's/test_deep_exact_execution_pool_over_50k_passes_even_if_stale_thin_row_exists/test_deep_exact_execution_pool_over_15k_passes_even_if_stale_thin_row_exists/g' tests/test_real_alerts.py
           sed -i 's/research_scope_days"\] == 60/research_scope_days"] == 90/g' tests/test_decision_snapshot_guard.py
           sed -i 's/production_scope_days"\] == 180/production_scope_days"] == 90/g' tests/test_decision_snapshot_guard.py
           sed -i 's/production_minimum_execution_pool_liquidity_usd"\] == 50_000/production_minimum_execution_pool_liquidity_usd"] == 15_000/g' tests/test_decision_snapshot_guard.py
@@ -89,20 +89,21 @@ jobs:
           # Workflow files are published separately through the authorized GitHub connection.
           git restore --source=HEAD -- .github/workflows
           rm -f scripts/migrate_revival_policy_60d_15k.py scripts/migrate_revival_policy_60d_15k_fixups.py
+
+          # Tests/compile create generated files. Some legacy generated files are tracked,
+          # so first delete all runtime output and then restore tracked copies from HEAD.
           find . -type d -name '__pycache__' -prune -exec rm -rf {} +
-          # Editable installs refresh tracked setuptools metadata; it is build output,
-          # not policy truth state, so restore the tracked copy before staging.
-          git restore --worktree -- src/wallet500.egg-info || true
+          find . -type f -name '*.pyc' -delete
+          git restore --worktree -- ':(glob)**/__pycache__/**' ':(glob)**/*.pyc' src/wallet500.egg-info 2>/dev/null || true
+
           if ! git diff --quiet -- .github/workflows; then
             echo '::error::WORKFLOW_CHANGE_LEAK_IN_CONTENT_COMMIT'
             exit 1
           fi
-          if find . -type d -name '__pycache__' -print -quit | grep -q .; then
-            echo '::error::PYCACHE_CLEANUP_FAILED'
-            exit 1
-          fi
-          if ! git diff --quiet -- src/wallet500.egg-info; then
-            echo '::error::EGG_INFO_RESTORE_FAILED'
+          generated_diff="$(git diff --name-only -- ':(glob)**/__pycache__/**' ':(glob)**/*.pyc' src/wallet500.egg-info || true)"
+          if [ -n "$generated_diff" ]; then
+            printf '%s\n' "$generated_diff"
+            echo '::error::GENERATED_ARTIFACT_RESTORE_FAILED'
             exit 1
           fi
           echo 'CLEAN_NON_WORKFLOW_POLICY_COMMIT_READY'
@@ -114,11 +115,17 @@ jobs:
           git config user.name 'wallet500-policy-bot'
           git config user.email 'wallet500-policy-bot@users.noreply.github.com'
           git add -A src tests scripts
+
+          # Double fail-closed: never allow generated build output into the policy commit.
+          git restore --staged --worktree -- ':(glob)**/__pycache__/**' ':(glob)**/*.pyc' src/wallet500.egg-info 2>/dev/null || true
+
           if git diff --cached --name-only | grep -q '^\.github/workflows/'; then
             echo '::error::WORKFLOW_FILE_STAGED_WITHOUT_WORKFLOW_PERMISSION'
             exit 1
           fi
-          if git diff --cached --name-only | grep -E '(__pycache__|\.pyc$|wallet500\.egg-info)' >/dev/null; then
+          generated_staged="$(git diff --cached --name-only | grep -E '(__pycache__|\.pyc$|wallet500\.egg-info)' || true)"
+          if [ -n "$generated_staged" ]; then
+            printf '%s\n' "$generated_staged"
             echo '::error::GENERATED_ARTIFACT_STAGED'
             exit 1
           fi
@@ -141,4 +148,4 @@ jobs:
           echo '::error::REVIVAL_POLICY_CONTENT_PUBLISH_RACE_EXHAUSTED'
           exit 1
 
-# Audit trigger: 2026-09-08 canonical 90D / $15K policy reconciliation retry after tracked-build-output fix
+# Audit trigger: 2026-09-08 canonical 90D / $15K policy reconciliation retry after tracked-pycache restore fix
