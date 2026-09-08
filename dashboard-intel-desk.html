@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#080b10">
+<title>Wallet500 · Intel Desk</title>
+<style>
+:root{
+  --bg:#080b10;--panel:#0e131b;--panel2:#121925;--line:#222c3a;--text:#f3f6fb;--muted:#8f9aad;
+  --green:#51e1a7;--amber:#ffbf5b;--red:#ff6b7a;--blue:#71a7ff;--purple:#ae8cff;--cyan:#69d6e6;
+  --shadow:0 18px 55px rgba(0,0,0,.32);--radius:18px
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+body{min-height:100vh}
+button,input,a{font:inherit}
+button{color:inherit}
+a{color:inherit;text-decoration:none}
+.mono{direction:ltr;unicode-bidi:embed;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.app{max-width:1600px;margin:auto;padding:18px 18px 92px}
+.topbar{display:flex;gap:14px;align-items:center;justify-content:space-between;margin-bottom:14px}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:40px;height:40px;border:1px solid #324052;border-radius:13px;display:grid;place-items:center;background:linear-gradient(145deg,#101827,#0b1018);box-shadow:var(--shadow);font-weight:900}
+.brand h1{font-size:16px;margin:0;letter-spacing:.04em}
+.brand small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.statusline{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.badge{padding:6px 9px;border-radius:999px;border:1px solid var(--line);background:#101620;color:var(--muted);font-size:11px;white-space:nowrap}
+.badge.ok{color:var(--green);border-color:rgba(81,225,167,.3);background:rgba(81,225,167,.07)}
+.badge.warn{color:var(--amber);border-color:rgba(255,191,91,.3);background:rgba(255,191,91,.07)}
+.badge.bad{color:var(--red);border-color:rgba(255,107,122,.3);background:rgba(255,107,122,.07)}
+.nav{display:flex;gap:7px;overflow:auto;padding:2px 0 12px;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav a{border:1px solid var(--line);background:#0d1219;border-radius:11px;padding:8px 11px;color:var(--muted);font-size:12px;white-space:nowrap}
+.nav a.active{color:var(--text);border-color:#40506a;background:#121a26}
+.summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.summary-card{border:1px solid var(--line);background:linear-gradient(180deg,#101620,#0b1017);border-radius:15px;padding:12px}
+.summary-card .label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.summary-card .value{font-size:24px;font-weight:850;margin-top:4px;direction:ltr;text-align:right}
+.summary-card .sub{font-size:10px;color:var(--muted);margin-top:4px}
+.shell{display:grid;grid-template-columns:minmax(285px,355px) minmax(0,1fr);gap:12px;align-items:start}
+.master,.detail{border:1px solid var(--line);background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow)}
+.master{position:sticky;top:10px;max-height:calc(100vh - 36px);display:flex;flex-direction:column;overflow:hidden}
+.master-head{padding:12px;border-bottom:1px solid var(--line)}
+.search{width:100%;border:1px solid var(--line);background:#090e14;color:var(--text);padding:10px 12px;border-radius:11px;outline:none}
+.search:focus{border-color:#4d6282}
+.filters{display:flex;gap:6px;overflow:auto;margin-top:9px;scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.filter{border:1px solid var(--line);background:#0a0f16;color:var(--muted);border-radius:999px;padding:5px 9px;font-size:10px;white-space:nowrap;cursor:pointer}
+.filter.active{color:#fff;border-color:#4a5c78;background:#172131}
+.candidates{overflow:auto;padding:7px}
+.coin{border:1px solid transparent;border-radius:13px;padding:10px;cursor:pointer;margin-bottom:5px;background:#0c1118}
+.coin:hover{background:#101823}
+.coin.active{background:#121b28;border-color:#31415a}
+.coin-top{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.coin-name{display:flex;gap:8px;align-items:center;min-width:0}
+.coin-name b{font-size:13px}
+.chain{font-size:9px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 5px;text-transform:uppercase}
+.score{font-weight:850;font-size:18px;direction:ltr}
+.coin-meta{display:flex;gap:9px;margin-top:6px;color:var(--muted);font-size:10px;direction:ltr;justify-content:flex-end}
+.coin-state{margin-top:7px;display:flex;justify-content:space-between;align-items:center;gap:6px}
+.state{font-size:9px;font-weight:800;letter-spacing:.04em;border-radius:999px;padding:4px 7px}
+.state.high{color:var(--green);background:rgba(81,225,167,.09)}
+.state.build{color:var(--amber);background:rgba(255,191,91,.09)}
+.state.block{color:var(--red);background:rgba(255,107,122,.09)}
+.state.low{color:var(--muted);background:#151b24}
+.detail{min-height:720px;overflow:hidden}
+.hero{padding:18px;border-bottom:1px solid var(--line);background:linear-gradient(120deg,#111925,#0d1219 70%)}
+.hero-top{display:flex;gap:14px;justify-content:space-between;align-items:flex-start}
+.token-title h2{margin:0;font-size:25px}
+.token-title .identity{color:var(--muted);font-size:10px;margin-top:5px;max-width:760px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hero-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.btn{border:1px solid #34435a;background:#111a26;border-radius:10px;padding:7px 10px;font-size:11px;cursor:pointer}
+.btn:hover{border-color:#597293}
+.hero-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:16px}
+.metric{border:1px solid var(--line);background:#0b1017;border-radius:13px;padding:11px}
+.metric .k{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.07em}
+.metric .v{font-size:24px;font-weight:900;margin-top:3px;direction:ltr;text-align:right}
+.metric .note{font-size:9px;color:var(--muted);margin-top:2px}
+.tabs{display:flex;gap:4px;padding:10px 12px;border-bottom:1px solid var(--line);overflow:auto;scrollbar-width:none;background:#0c1118}
+.tabs::-webkit-scrollbar{display:none}
+.tab{border:0;background:transparent;color:var(--muted);padding:8px 11px;border-radius:9px;cursor:pointer;font-size:11px;white-space:nowrap}
+.tab.active{color:#fff;background:#172131}
+.content{padding:14px}
+.section{border:1px solid var(--line);background:#0b1017;border-radius:14px;padding:13px;margin-bottom:10px}
+.section h3{font-size:12px;margin:0 0 10px}
+.section .desc{font-size:10px;color:var(--muted);line-height:1.55}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.lanes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.lane{border:1px solid var(--line);background:#0d131c;border-radius:12px;padding:10px}
+.lane-top{display:flex;justify-content:space-between;gap:8px;font-size:10px}
+.lane-title{font-weight:750}
+.lane-meta{color:var(--muted);direction:ltr}
+.bar{height:6px;background:#202936;border-radius:99px;overflow:hidden;margin-top:8px}
+.fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan));border-radius:99px}
+.lane.missing .fill{width:0!important}
+.lane.missing{opacity:.58}
+.lane-foot{font-size:9px;color:var(--muted);margin-top:7px;line-height:1.4}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:9px;border:1px solid var(--line);background:#101620;border-radius:999px;padding:5px 7px;color:var(--muted)}
+.chip.good{color:var(--green);border-color:rgba(81,225,167,.25)}
+.chip.risk{color:var(--red);border-color:rgba(255,107,122,.25)}
+.chip.warn{color:var(--amber);border-color:rgba(255,191,91,.25)}
+.kv{display:grid;grid-template-columns:160px 1fr;gap:7px 10px;font-size:10px}
+.kv div:nth-child(odd){color:var(--muted)}
+.kv div:nth-child(even){direction:ltr;text-align:left;overflow-wrap:anywhere}
+.source{display:flex;justify-content:space-between;gap:9px;padding:8px 0;border-bottom:1px solid #17202b;font-size:10px}
+.source:last-child{border-bottom:0}
+.source .fresh{color:var(--green)}
+.source .stale{color:var(--red)}
+.empty{border:1px dashed #2b3749;border-radius:13px;padding:24px;text-align:center;color:var(--muted);font-size:11px;line-height:1.6}
+.graph-wrap{height:330px;border:1px solid var(--line);border-radius:13px;background:radial-gradient(circle at 50% 50%,#121c29,#090e14 70%);overflow:hidden;position:relative}
+.graph-wrap svg{width:100%;height:100%;display:block}
+.node circle{fill:#172538;stroke:#70a7ff;stroke-width:2}
+.node.token circle{stroke:#51e1a7;fill:#123026}
+.node text{fill:#dce5f2;font-size:10px;text-anchor:middle}
+.edge{stroke:#40536e;stroke-width:1.5;opacity:.8}
+.proof-ok{color:var(--green);font-weight:800}
+.proof-bad{color:var(--red);font-weight:800}
+.footer-note{color:var(--muted);font-size:9px;line-height:1.6;margin-top:10px}
+.loading{display:grid;place-items:center;min-height:520px;color:var(--muted)}
+.mobile-nav{display:none}
+@media(max-width:980px){
+ .app{padding:12px 10px 92px}.summary{grid-template-columns:repeat(2,1fr)}.summary-card:last-child{grid-column:1/-1}.shell{grid-template-columns:1fr}.master{position:relative;top:0;max-height:none}.master.compact .candidates{max-height:330px}.detail{min-height:620px}.hero-metrics{grid-template-columns:repeat(2,1fr)}.lanes,.grid2{grid-template-columns:1fr}.kv{grid-template-columns:120px 1fr}
+ .mobile-nav{display:flex;position:fixed;z-index:30;bottom:0;left:0;right:0;padding:7px max(8px,env(safe-area-inset-right)) calc(7px + env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));background:rgba(7,10,15,.96);backdrop-filter:blur(16px);border-top:1px solid var(--line);gap:5px}.mobile-nav button{flex:1;border:0;background:transparent;color:var(--muted);padding:8px 3px;font-size:9px;border-radius:9px}.mobile-nav button.active{background:#172131;color:#fff}
+}
+@media(max-width:520px){.topbar{align-items:flex-start}.statusline{max-width:50%}.statusline .badge:not(.policy){display:none}.summary-card .value{font-size:21px}.hero{padding:14px}.hero-top{display:block}.hero-actions{justify-content:flex-start;margin-top:10px}.token-title h2{font-size:22px}.content{padding:10px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar"><div class="brand"><div class="logo">W5</div><div><h1>Wallet500 · Intel Desk</h1><small>Verified Intelligence · Arkham-style research workspace</small></div></div><div class="statusline"><span class="badge policy ok">90D / $15K / EXACT PAIR</span><span class="badge" id="dataHealth">DATA …</span><span class="badge" id="updatedAt">UPDATE …</span></div></header>
+  <nav class="nav"><a href="/Wallet500/">🔥 Live</a><a class="active" href="/Wallet500/intel/">🧠 Intel</a><a href="/Wallet500/catalyst/">⚡ Catalyst</a><a href="/Wallet500/alerts/">🚨 Alerts</a><a href="/Wallet500/status/">📊 Status</a><a href="/Wallet500/performance/">💵 Proof</a><a href="/Wallet500/social/">📡 Social</a></nav>
+  <section class="summary" id="summary">
+    <div class="summary-card"><div class="label">High Confluence</div><div class="value" id="sumHigh">—</div><div class="sub">strongest multi-lane research</div></div><div class="summary-card"><div class="label">Building</div><div class="value" id="sumBuild">—</div><div class="sub">evidence still forming</div></div><div class="summary-card"><div class="label">Blocked</div><div class="value" id="sumBlocked">—</div><div class="sub">hard truth veto</div></div><div class="summary-card"><div class="label">Universe</div><div class="value" id="sumUniverse">—</div><div class="sub">fresh exact identities in matrix</div></div><div class="summary-card"><div class="label">Source Health</div><div class="value" id="sumHealth">—</div><div class="sub">fresh point-in-time inputs</div></div>
+  </section>
+  <main class="shell"><aside class="master compact"><div class="master-head"><input class="search" id="search" placeholder="חיפוש מטבע / contract / chain"><div class="filters" id="filters"><button class="filter active" data-filter="ALL">הכול</button><button class="filter" data-filter="HIGH_CONFLUENCE">HIGH</button><button class="filter" data-filter="BUILDING_CONFLUENCE">BUILDING</button><button class="filter" data-filter="LOW_CONFIDENCE">LOW</button><button class="filter" data-filter="BLOCKED">BLOCKED</button></div></div><div class="candidates" id="candidates"><div class="empty">טוען Confluence Matrix…</div></div></aside><section class="detail" id="detail"><div class="loading">ממתין ל־verified confluence data…</div></section></main>
+</div>
+<div class="mobile-nav" id="mobileNav"><button data-tab="overview" class="active">Overview</button><button data-tab="wallets">Wallets</button><button data-tab="holders">Holders</button><button data-tab="social">Social</button><button data-tab="proof">Proof</button></div>
+<script>
+const BASE='/Wallet500/data/';
+const FILES=[['matrix','confluence-matrix.json',true],['fusion','cross-signal-fusion-v2.json',false],['real','real-alerts.json',false],['holders','holder-concentration-shadow.json',false],['catalyst','catalyst-wire-live.json',false],['paid','paid-order-truth.json',false],['proof','decision-publish-evidence.json',false],['status','production-status.json',false],['social','social-intelligence-v2.json',false],['funding','funding-cluster-intelligence.json',false]];
+const state={data:{},rows:[],selected:null,filter:'ALL',query:'',tab:'overview'};
+const $=s=>document.querySelector(s);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const num=v=>Number.isFinite(Number(v))?Number(v):0;const fmt=v=>v==null?'—':Number(v).toLocaleString('en-US',{maximumFractionDigits:2});const short=s=>{s=String(s||'');return s.length>18?s.slice(0,8)+'…'+s.slice(-6):s};const age=t=>{if(!t)return'—';const d=(Date.now()-new Date(t).getTime())/1000;if(!Number.isFinite(d))return'—';if(d<90)return Math.max(0,Math.round(d))+'s';if(d<5400)return Math.round(d/60)+'m';return(d/3600).toFixed(1)+'h'};const key=x=>`${String(x?.chain||x?.network||'').toLowerCase()}::${x?.token_address||x?.token||x?.mint||x?.contract||''}`;const pair=x=>String(x?.pair_address||x?.entry_pair_address||'');const match=(rows,coin)=>{const k=key(coin),p=pair(coin);return(rows||[]).find(x=>key(x)===k&&(!p||!pair(x)||pair(x)===p))||(rows||[]).find(x=>key(x)===k)||null};const list=(x,...names)=>{if(Array.isArray(x))return x;if(!x||typeof x!=='object')return[];for(const n of names)if(Array.isArray(x[n]))return x[n];return[]};
+async function get(name,required){try{const r=await fetch(BASE+name+'?v='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error(r.status);const txt=await r.text();if(!txt.trim())throw new Error('empty');return JSON.parse(txt)}catch(e){if(required)throw e;return null}}
+async function load(){try{const vals=await Promise.all(FILES.map(x=>get(x[1],x[2])));FILES.forEach((x,i)=>state.data[x[0]]=vals[i]);const m=state.data.matrix;state.rows=Array.isArray(m?.tokens)?m.tokens:[];summary();renderList();const hash=decodeURIComponent(location.hash.slice(1));state.selected=state.rows.find(x=>key(x)===hash)||state.rows[0]||null;renderDetail()}catch(e){$('#detail').innerHTML=`<div class="loading"><div><b>Confluence Matrix עדיין לא זמין</b><br><small>${esc(e.message)}</small><br><br>המערכת נכשלת סגור ולא מציגה ציון חלופי.</div></div>`;$('#dataHealth').textContent='DATA FAIL-CLOSED';$('#dataHealth').className='badge bad'}}
+function summary(){const m=state.data.matrix||{},c=m.counts||{},h=m.source_health_summary||{};$('#sumHigh').textContent=fmt(c.high_confluence);$('#sumBuild').textContent=fmt(c.building_confluence);$('#sumBlocked').textContent=fmt(c.blocked);$('#sumUniverse').textContent=fmt(c.tokens);$('#sumHealth').textContent=`${fmt(h.fresh)}/${fmt(h.total)}`;const healthy=h.primary_fusion_fresh===true;$('#dataHealth').textContent=healthy?'DATA HEALTHY':'DATA DEGRADED';$('#dataHealth').className='badge '+(healthy?'ok':'bad');$('#updatedAt').textContent='UPDATE '+age(m.generated_at);$('#updatedAt').className='badge '+(age(m.generated_at).includes('h')?'warn':'ok')}
+function stateClass(s){return s==='HIGH_CONFLUENCE'?'high':s==='BUILDING_CONFLUENCE'?'build':s==='BLOCKED'?'block':'low'}
+function visibleRows(){const q=state.query.toLowerCase();return state.rows.filter(x=>(state.filter==='ALL'||x.confluence_status===state.filter)&&(!q||[x.symbol,x.chain,x.token_address,x.pair_address].some(v=>String(v||'').toLowerCase().includes(q))))}
+function renderList(){const rows=visibleRows();$('#candidates').innerHTML=rows.length?rows.map(x=>`<div class="coin ${state.selected&&key(state.selected)===key(x)?'active':''}" data-key="${esc(key(x))}"><div class="coin-top"><div class="coin-name"><b>${esc(x.symbol||short(x.token_address)||'UNKNOWN')}</b><span class="chain">${esc(x.chain)}</span></div><div class="score">${fmt(x.priority_score)}</div></div><div class="coin-meta"><span>α ${fmt(x.signal_alpha_score)}</span><span>conf ${fmt(x.confidence_pct)}%</span><span>risk -${fmt(x.risk_penalty)}</span></div><div class="coin-state"><span class="state ${stateClass(x.confluence_status)}">${esc(x.confluence_status)}</span><span class="mono">${esc(short(x.token_address))}</span></div></div>`).join(''):`<div class="empty">אין מועמדים בפילטר הזה.</div>`;document.querySelectorAll('.coin').forEach(el=>el.onclick=()=>{state.selected=state.rows.find(x=>key(x)===el.dataset.key)||null;location.hash=encodeURIComponent(el.dataset.key);renderList();renderDetail()})}
+function metric(label,val,note=''){return`<div class="metric"><div class="k">${esc(label)}</div><div class="v">${esc(val)}</div><div class="note">${esc(note)}</div></div>`}
+function laneLabel(n){return({wallet_alpha:'Wallet Alpha',market_microstructure:'Market',execution_copyability:'Copyability',holder_growth:'Holder Growth',funding_cluster_independence:'Funding Independence',social_narrative:'Social / Narrative',official_catalyst:'Official Catalyst',independent_confirmation:'Independent Confirm',cex_acceleration:'CEX Acceleration',price_anti_chase:'Anti-Chase'})[n]||n}
+function laneCards(x){return Object.entries(x.lanes||{}).map(([n,l])=>`<div class="lane ${l.available?'':'missing'}"><div class="lane-top"><span class="lane-title">${esc(laneLabel(n))}</span><span class="lane-meta">${l.available?fmt(l.score):'MISSING'} · w${fmt(l.weight)}</span></div><div class="bar"><div class="fill" style="width:${l.available?Math.max(2,num(l.score)):0}%"></div></div><div class="lane-foot">${esc(l.detail||'')}<br>${l.available?`coverage ${fmt(num(l.coverage_factor)*100)}% · ${esc(l.source||'')}`:'לא נספר כ־0; מוריד confidence בלבד'}</div></div>`).join('')}
+function chips(items,kind=''){return`<div class="chips">${(items||[]).map(v=>`<span class="chip ${kind}">${esc(v)}</span>`).join('')||'<span class="chip">none</span>'}</div>`}
+function exactLink(x){return x.dex_url?`<a class="btn" target="_blank" rel="noopener" href="${esc(x.dex_url)}">DexScreener ↗</a>`:(x.chain&&x.pair_address?`<a class="btn" target="_blank" rel="noopener" href="https://dexscreener.com/${encodeURIComponent(x.chain)}/${encodeURIComponent(x.pair_address)}">DexScreener ↗</a>`:'')}
+function hero(x){return`<div class="hero"><div class="hero-top"><div class="token-title"><h2>${esc(x.symbol||'UNKNOWN')} <span class="state ${stateClass(x.confluence_status)}">${esc(x.confluence_status)}</span></h2><div class="identity mono">${esc(x.chain)} · ${esc(x.token_address)} · pair ${esc(x.pair_address||'UNVERIFIED')}</div></div><div class="hero-actions">${exactLink(x)}<button class="btn" id="copyToken">Copy contract</button></div></div><div class="hero-metrics">${metric('Priority',fmt(x.priority_score),'rank after confidence + execution + risk')}${metric('Signal Alpha',fmt(x.signal_alpha_score),'observed predictive lanes only')}${metric('Confidence',fmt(x.confidence_pct)+'%','missing evidence lowers this')}${metric('Copyability',x.copyability_score==null?'—':fmt(x.copyability_score),'execution quality, not alpha')}</div></div>`}
+function tabs(){return`<div class="tabs">${[['overview','Overview'],['wallets','Wallets'],['holders','Holders'],['social','Social'],['proof','Proof']].map(([k,t])=>`<button class="tab ${state.tab===k?'active':''}" data-tab="${k}">${t}</button>`).join('')}</div>`}
+function overview(x){return`<div class="content"><div class="grid2"><div class="section"><h3>WHY NOW</h3>${chips(x.why_now,'good')}<div class="footer-note">רק evidence חי וזמין. missing data לא מומצא.</div></div><div class="section"><h3>WHAT BLOCKS / RISKS</h3>${chips(x.what_blocks,(x.hard_blockers||[]).length?'risk':'warn')}<div class="footer-note">Hard blocker מאפס Priority. Soft risk נשאר נפרד מה־Alpha.</div></div></div><div class="section"><h3>Confluence Matrix · weights = 100</h3><div class="lanes">${laneCards(x)}</div></div><div class="grid2"><div class="section"><h3>Risk Ledger</h3><div class="kv"><div>Total penalty</div><div>-${fmt(x.risk_penalty)}</div><div>Late move</div><div>${x.risk?.fusion?.late_move?'YES · -18':'NO'}</div><div>Manipulation</div><div>${fmt(x.risk?.fusion?.manipulation_score)} / 100</div><div>Concentration</div><div>-${fmt(x.risk?.holder_concentration?.penalty)}</div><div>Paid promotion</div><div>${x.risk?.paid_promotion?.verified_active_paid_order?'VERIFIED · -5':'none verified'}</div></div></div><div class="section"><h3>Truth Contract</h3><div class="kv"><div>Veteran age</div><div>≥ 90 days</div><div>Execution floor</div><div>≥ $15,000</div><div>Identity</div><div>exact chain + token</div><div>Pair</div><div>exact pair required</div><div>Auto buy</div><div>FALSE</div><div>Score semantics</div><div>research ranking, not probability</div></div></div></div></div>`}
+function walletEvidence(x){const lane=x.lanes?.wallet_alpha||{},fund=x.lanes?.funding_cluster_independence||{};return`<div class="grid2"><div class="section"><h3>Wallet Alpha · w22</h3><div class="kv"><div>Available</div><div>${lane.available?'YES':'NO'}</div><div>Score</div><div>${lane.available?fmt(lane.score):'—'}</div><div>Coverage</div><div>${fmt(num(lane.coverage_factor)*100)}%</div><div>Source</div><div>${esc(lane.source||'—')}</div></div><div class="footer-note">${esc(lane.detail||'')}</div></div><div class="section"><h3>Funding Independence · w5</h3><div class="kv"><div>Available</div><div>${fund.available?'YES':'NO'}</div><div>Score</div><div>${fund.available?fmt(fund.score):'—'}</div><div>Shared funding</div><div>${fund.evidence?.shared_funding_pct==null?'—':fmt(fund.evidence.shared_funding_pct)+'%'}</div></div><div class="footer-note">${esc(fund.detail||'')}</div></div></div>`}
+function graphFor(x){const f=state.data.funding;if(!f)return`<div class="empty"><b>אין עדיין verified funding graph</b><br>ה־Intel Desk לא יצייר קשרים משוערים. ברגע שיהיו source-of-funds / cluster edges מאומתים הם יוצגו כאן.</div>`;const r=match(list(f,'tokens','rows','candidates'),x);const nodes=Array.isArray(r?.nodes)?r.nodes:[],edges=Array.isArray(r?.edges)?r.edges:[];if(!nodes.length||!edges.length)return`<div class="empty"><b>No verified graph for this token</b><br>Funding lane נשאר MISSING ולא מקבל 0 מזויף.</div>`;const w=700,h=320,cx=w/2,cy=h/2;const pts=nodes.map((n,i)=>{const a=(Math.PI*2*i/Math.max(1,nodes.length))+Math.PI/6;const rad=i===0?0:Math.min(120+14*i,145);return{...n,x:cx+Math.cos(a)*rad,y:cy+Math.sin(a)*rad}});const by=new Map(pts.map((n,i)=>[String(n.id??i),n]));const es=edges.map(e=>{const a=by.get(String(e.source)),b=by.get(String(e.target));return a&&b?`<line class="edge" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`:''}).join('');const ns=pts.map((n,i)=>`<g class="node ${i===0?'token':''}" transform="translate(${n.x},${n.y})"><circle r="${i===0?25:19}"/><text y="4">${esc(short(n.label||n.id||'wallet'))}</text></g>`).join('');return`<div class="graph-wrap"><svg viewBox="0 0 ${w} ${h}" role="img">${es}${ns}</svg></div>`}
+function wallets(x){return`<div class="content">${walletEvidence(x)}<div class="section"><h3>Verified Relationship Graph</h3>${graphFor(x)}<div class="footer-note">הגרף מוצג רק מ־nodes/edges מאומתים. אין inference לפי symbol.</div></div></div>`}
+function holders(x){const h=match(list(state.data.holders,'rows'),x),lane=x.lanes?.holder_growth||{};return`<div class="content"><div class="grid2"><div class="section"><h3>Holder Growth · w8</h3><div class="kv"><div>Score</div><div>${lane.available?fmt(lane.score):'—'}</div><div>Coverage</div><div>${fmt(num(lane.coverage_factor)*100)}%</div><div>Source</div><div>${esc(lane.source||'—')}</div></div></div><div class="section"><h3>Concentration Risk</h3>${h?`<div class="kv"><div>Risk score</div><div>${fmt(h.concentration_risk_score)}</div><div>Top 1</div><div>${fmt(h.top1_pct)}%</div><div>Top 10</div><div>${fmt(h.top10_pct)}%</div><div>Observed</div><div>${esc(h.observed_at||'—')}</div></div>`:`<div class="empty">אין concentration row מאומת למטבע הזה.</div>`}</div></div><div class="section"><h3>Semantics</h3><div class="desc">${esc(h?.semantics||'Holder concentration is risk-only. Missing data is not inferred.')}</div><div class="footer-note">RugCheck top-holder data מייצג token-account concentration, לא owner-cluster מוכח. לכן הוא לעולם לא מוסיף Alpha.</div></div></div>`}
+function social(x){const lane=x.lanes?.social_narrative||{},cat=x.lanes?.official_catalyst||{},paid=x.risk?.paid_promotion||{},ev=cat.evidence||{};return`<div class="content"><div class="grid2"><div class="section"><h3>Social / Narrative · w9</h3><div class="kv"><div>Score</div><div>${lane.available?fmt(lane.score):'—'}</div><div>Coverage</div><div>${fmt(num(lane.coverage_factor)*100)}%</div><div>Source</div><div>${esc(lane.source||'—')}</div></div><div class="footer-note">${esc(lane.detail||'')}</div></div><div class="section"><h3>Official Catalyst · w8</h3>${cat.available?`<div class="kv"><div>Type</div><div>${esc(ev.event_type||cat.detail)}</div><div>Impact</div><div>${fmt(cat.score)}</div><div>Observed</div><div>${esc(ev.observed_at||'—')}</div><div>Source</div><div>${ev.source_url?`<a target="_blank" rel="noopener" href="${esc(ev.source_url)}">${esc(ev.source_id||'official')} ↗</a>`:esc(ev.source_id||'—')}</div></div>`:`<div class="empty">אין catalyst רשמי עם identity guard PASS.</div>`}</div></div><div class="section"><h3>Promotion / Manipulation Context</h3>${paid.verified_active_paid_order?chips(['VERIFIED DEXSCREENER PAID ORDER'],'risk'):chips(['NO VERIFIED ACTIVE PAID ORDER'],'good')}<div class="footer-note">Paid promotion לעולם אינו Alpha; הוא רק risk/context.</div></div></div>`}
+function proof(x){const p=state.data.proof||{},m=state.data.matrix||{},pol=state.data.status?.policy||{},health=m.source_health||{};return`<div class="content"><div class="grid2"><div class="section"><h3>Exact Identity</h3><div class="kv"><div>Chain</div><div>${esc(x.chain)}</div><div>Token</div><div>${esc(x.token_address)}</div><div>Exact pair</div><div>${esc(x.pair_address||'UNVERIFIED')}</div><div>Policy</div><div>${pol.minimum_verified_market_age_days||90}D / $${fmt(pol.minimum_liquidity_usd||15000)}</div></div></div><div class="section"><h3>Decision Generation</h3><div class="kv"><div>Status</div><div class="${p.status==='VERIFIED_COHERENT_DECISION_SNAPSHOT'?'proof-ok':'proof-bad'}">${esc(p.status||'NO PROOF')}</div><div>Generation</div><div>${esc(p.generation_id||'—')}</div><div>Source SHA</div><div>${esc(p.source_sha||'—')}</div><div>Run</div><div>${esc(p.workflow_run_id||'—')}</div></div></div></div><div class="section"><h3>Point-in-Time Source Freshness</h3>${Object.entries(health).map(([n,h])=>`<div class="source"><span>${esc(n)}</span><span class="${h.fresh?'fresh':'stale'}">${h.fresh?'FRESH':'STALE/MISSING'} · ${h.age_seconds==null?'—':Math.round(h.age_seconds)+'s'}</span></div>`).join('')}</div><div class="section"><h3>Bound Hashes</h3>${p.hashes?`<div class="kv">${Object.entries(p.hashes).map(([k,v])=>`<div>${esc(k)}</div><div class="mono">${esc(v)}</div>`).join('')}</div>`:`<div class="empty">No proof hashes available.</div>`}</div><div class="footer-note">Proof tab מציג מה היה ידוע ומאומת בזמן הפרסום. הוא אינו משחזר Evidence בדיעבד.</div></div>`}
+function renderDetail(){const x=state.selected;if(!x){$('#detail').innerHTML='<div class="loading">אין candidate להצגה.</div>';return}$('#detail').innerHTML=hero(x)+tabs()+({overview,wallets,holders,social,proof})[state.tab](x);$('#copyToken')?.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(x.token_address);$('#copyToken').textContent='Copied ✓'}catch{}});document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab;syncMobile();renderDetail()})}
+function syncMobile(){document.querySelectorAll('#mobileNav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===state.tab))}
+$('#search').addEventListener('input',e=>{state.query=e.target.value;renderList()});document.querySelectorAll('.filter').forEach(b=>b.onclick=()=>{state.filter=b.dataset.filter;document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===b));renderList()});document.querySelectorAll('#mobileNav button').forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab;syncMobile();renderDetail();$('#detail').scrollIntoView({behavior:'smooth',block:'start'})});window.addEventListener('hashchange',()=>{const h=decodeURIComponent(location.hash.slice(1));const x=state.rows.find(r=>key(r)===h);if(x){state.selected=x;renderList();renderDetail()}});load();setInterval(load,60000);
+</script>
+</body>
+</html>
