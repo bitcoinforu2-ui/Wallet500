@@ -11,6 +11,7 @@ MIN_TXNS_H1 = 30
 AGE_TOKENS = (
     "MIN_MARKET_AGE_DAYS", "PROJECT_SCOPE_MIN_AGE_DAYS",
     "APPROVED_PRODUCTION_MIN_AGE_DAYS", "PRODUCTION_MIN_AGE_DAYS",
+    "PRODUCTION_MIN_MARKET_AGE_DAYS",
     "RESEARCH_MIN_AGE_DAYS", "VETERAN_MIN_DAYS", "MIN_AGE_DAYS",
     "minimum_market_age_days", "minimum_verified_market_age_days",
     "market_age_min_days", "veteran_scope_days",
@@ -19,6 +20,7 @@ LIQ_TOKENS = (
     "MIN_LIQUIDITY_USD", "MIN_LIVE_LIQUIDITY_USD",
     "MIN_TRADABLE_LIQUIDITY_USD", "MIN_EXECUTION_LIQUIDITY_USD",
     "MIN_EXECUTION_POOL_LIQUIDITY_USD", "PRODUCTION_MIN_LIQUIDITY_USD",
+    "PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD",
     "MIN_LIQ=", "MIN_LIQ =", "verified_min_liquidity_usd",
     "qualification_min_liquidity_usd", "minimum_liquidity_usd",
     "minimum_live_liquidity_usd", "minimum_execution_pool_liquidity_usd",
@@ -39,6 +41,7 @@ SKIP = {
     "scripts/migrate_revival_policy_60d_15k_fixups.py",
     "scripts/reconcile_revival_policy_90d_15k.py",
 }
+BASES = (Path("src/wallet500"), Path("tests"), Path("scripts"), Path(".github/workflows"))
 
 
 def _age_repl(match: re.Match[str]) -> str:
@@ -54,7 +57,7 @@ def _liq_repl(match: re.Match[str]) -> str:
 
 def reconcile() -> list[str]:
     changed: set[str] = set()
-    for base in (Path("src/wallet500"), Path("tests"), Path(".github/workflows")):
+    for base in BASES:
         if not base.exists():
             continue
         for path in base.rglob("*"):
@@ -103,6 +106,16 @@ def reconcile() -> list[str]:
             ("outside production 180d scope", "outside production 90d scope"),
             ("lacks $50K execution pool liquidity", "lacks $15K execution pool liquidity"),
         ],
+        "tests/test_arbitrum_revival_universe.py": [
+            ("test_under_180_fails_closed", "test_under_90_fails_closed"),
+            ("snap(liq=49999)", "snap(liq=14999)"),
+        ],
+        "tests/test_hot_healthy_radar.py": [
+            ("test_under_180_day_token_is_quarantined", "test_under_90_day_token_is_quarantined"),
+        ],
+        "tests/test_revival_forensics_v2.py": [
+            ("test_build_t0_fails_closed_under_180", "test_build_t0_fails_closed_under_90"),
+        ],
     }
     for name, replacements in explicit.items():
         path = Path(name)
@@ -122,8 +135,11 @@ def reconcile() -> list[str]:
         "LIQUIDITY_LT_50K": "LIQUIDITY_LT_15K",
         "VETERAN_AGE_180D": "VETERAN_AGE_90D",
         "VERIFIED_MARKET_AGE_180D_REQUIRED": "VERIFIED_MARKET_AGE_90D_REQUIRED",
+        "PAIR_AGE_LT_60D_OR_UNKNOWN": "PAIR_AGE_LT_90D_OR_UNKNOWN",
+        "UNDER_60D_MARKET_AGE": "UNDER_90D_MARKET_AGE",
+        "AGE_NOT_VERIFIED_60D_PLUS": "AGE_NOT_VERIFIED_90D_PLUS",
     }
-    for base in (Path("src/wallet500"), Path("tests"), Path(".github/workflows")):
+    for base in BASES:
         if not base.exists():
             continue
         for path in base.rglob("*"):
@@ -158,6 +174,7 @@ def verify() -> None:
         "src/wallet500/real_alerts.py": ["return age >= 90, age", '"minimum_market_age_days": 90'],
         "src/wallet500/decision_snapshot_guard.py": ["RESEARCH_MIN_AGE_DAYS = 90", "PRODUCTION_MIN_AGE_DAYS = 90", "PRODUCTION_MIN_LIQUIDITY_USD = 15_000.0"],
         "src/wallet500/arbitrum_revival_universe.py": ["MIN_AGE_DAYS=90", "MIN_LIQUIDITY=15000.0", "MIN_VOLUME_H1=15000.0", "MIN_TXNS_H1=30"],
+        "scripts/publish_verified_snapshot.py": ["PRODUCTION_MIN_MARKET_AGE_DAYS = 90", "PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD = 15000.0"],
         ".github/workflows/telegram-production-alerts.yml": ["minimum_market_age_days') or 0) != 90", "minimum_market_age_days') != 90"],
         ".github/workflows/revival-smart-money-registry.yml": ["market_age_verified_min_days') or 0) < 90"],
         ".github/workflows/revival-90d-telegram.yml": ["minimum_pair_age_days') or 0)!=90.0", "minimum_liquidity_usd') or 0)!=15000.0", "minimum_txns_h1') or 0)!=30"],
