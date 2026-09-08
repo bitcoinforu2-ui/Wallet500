@@ -41,46 +41,23 @@ jobs:
       - name: Normalize 90D 15K test semantics
         shell: bash
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          p = Path('tests/test_real_alerts.py')
-          s = p.read_text(encoding='utf-8')
-          s = s.replace('assert row["market_age_days"] >= 180', 'assert row["market_age_days"] >= 90')
-          s = s.replace('def test_under_180_days_fails_closed(tmp_path):', 'def test_under_90_days_fails_closed(tmp_path):')
-          old = '''def test_under_90_days_fails_closed(tmp_path):
-    cex = base_cex()
-    cex["market_age_min_days"] = 90
-    p = precursor()
-    p["market_age_min_days"] = 90
-'''
-          new = '''def test_under_90_days_fails_closed(tmp_path):
-    cex = base_cex()
-    cex["market_age_min_days"] = 89
-    p = precursor()
-    p["market_age_min_days"] = 89
-'''
-          if old not in s:
-              raise SystemExit('REAL_ALERT_90D_BOUNDARY_TEST_SHAPE_MISSING')
-          s = s.replace(old, new, 1)
-          s = s.replace('test_total_liquidity_over_50k_cannot_rescue_thin_execution_pool', 'test_total_liquidity_over_15k_cannot_rescue_thin_execution_pool')
-          s = s.replace('test_deep_exact_execution_pool_over_50k_passes_even_if_stale_thin_row_exists', 'test_deep_exact_execution_pool_over_15k_passes_even_if_stale_thin_row_exists')
-          p.write_text(s, encoding='utf-8')
-
-          p = Path('tests/test_decision_snapshot_guard.py')
-          s = p.read_text(encoding='utf-8')
-          s = s.replace('assert result["truth_contract"]["research_scope_days"] == 60', 'assert result["truth_contract"]["research_scope_days"] == 90')
-          s = s.replace('assert result["truth_contract"]["production_scope_days"] == 180', 'assert result["truth_contract"]["production_scope_days"] == 90')
-          s = s.replace('assert result["truth_contract"]["production_minimum_execution_pool_liquidity_usd"] == 50_000', 'assert result["truth_contract"]["production_minimum_execution_pool_liquidity_usd"] == 15_000')
-          s = s.replace('def test_guard_rejects_production_alert_under_180d_or_50k(tmp_path):', 'def test_guard_rejects_production_alert_under_90d_or_15k(tmp_path):')
-          if '"market_age_days": 179,' not in s or '"execution_pool_liquidity_usd": 49_999,' not in s:
-              raise SystemExit('DECISION_GUARD_90D_15K_BOUNDARY_TEST_SHAPE_MISSING')
-          s = s.replace('"market_age_days": 179,', '"market_age_days": 89,', 1)
-          s = s.replace('"execution_pool_liquidity_usd": 49_999,', '"execution_pool_liquidity_usd": 14_999,', 1)
-          p.write_text(s, encoding='utf-8')
-
-          print('POLICY_TEST_SEMANTICS_90D_15K_OK')
-          PY
+          set -euo pipefail
+          sed -i 's/assert row\["market_age_days"\] >= 180/assert row["market_age_days"] >= 90/g' tests/test_real_alerts.py
+          sed -i 's/test_under_180_days_fails_closed/test_under_90_days_fails_closed/g' tests/test_real_alerts.py
+          sed -i 's/cex\["market_age_min_days"\] = 90/cex["market_age_min_days"] = 89/g' tests/test_real_alerts.py
+          sed -i 's/p\["market_age_min_days"\] = 90/p["market_age_min_days"] = 89/g' tests/test_real_alerts.py
+          sed -i 's/test_total_liquidity_over_50k_cannot_rescue_thin_execution_pool/test_total_liquidity_over_15k_cannot_rescue_thin_execution_pool/g' tests/test_real_alerts.py
+          sed -i 's/test_deep_exact_execution_pool_over_50k_passes_even_if_stale_thin_row_exists/test_deep_exact_execution_pool_over_15k_passes_even_if_stale_thin_row_exists/g' tests/test_real_alerts.py
+          sed -i 's/research_scope_days"\] == 60/research_scope_days"] == 90/g' tests/test_decision_snapshot_guard.py
+          sed -i 's/production_scope_days"\] == 180/production_scope_days"] == 90/g' tests/test_decision_snapshot_guard.py
+          sed -i 's/production_minimum_execution_pool_liquidity_usd"\] == 50_000/production_minimum_execution_pool_liquidity_usd"] == 15_000/g' tests/test_decision_snapshot_guard.py
+          sed -i 's/test_guard_rejects_production_alert_under_180d_or_50k/test_guard_rejects_production_alert_under_90d_or_15k/g' tests/test_decision_snapshot_guard.py
+          sed -i 's/"market_age_days": 179/"market_age_days": 89/g' tests/test_decision_snapshot_guard.py
+          sed -i 's/"execution_pool_liquidity_usd": 49_999/"execution_pool_liquidity_usd": 14_999/g' tests/test_decision_snapshot_guard.py
+          grep -q 'test_under_90_days_fails_closed' tests/test_real_alerts.py
+          grep -q 'research_scope_days"] == 90' tests/test_decision_snapshot_guard.py
+          grep -q 'test_guard_rejects_production_alert_under_90d_or_15k' tests/test_decision_snapshot_guard.py
+          echo 'POLICY_TEST_SEMANTICS_90D_15K_OK'
 
       - name: Install package and tests
         run: python -m pip install -e . pytest
