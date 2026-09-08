@@ -101,7 +101,8 @@ jobs:
           dc=d.get('dedicated_forward_contract') or {}
           if dc.get('immutable_exact_pair') is not True or dc.get('token_identity_verified_required') is not True or dc.get('forward_only') is not True: raise SystemExit('DEDICATED_FORWARD_SHADOW_CONTRACT_INVALID')
           recovery=d.get('recovery_rule') or {}
-          if float(recovery.get('liquidity_gte_usd') or 0) != 50000.0: raise SystemExit('LIQUIDITY_HARD_FLOOR_CHANGED')
+          if float(recovery.get('liquidity_gte_usd') or 0) != 15000.0: raise SystemExit('RECOVERY_LIQUIDITY_POLICY_DRIFT')
+          if float((db.get('rule') or {}).get('minimum_market_age_days') or 0) != 90.0: raise SystemExit('RECOVERY_AGE_POLICY_DRIFT')
           if recovery.get('exact_pair_locked') is not True: raise SystemExit('EXACT_PAIR_LOCK_MISSING')
           if recovery.get('observations_must_be_after_v2_started_at') is not True: raise SystemExit('FORWARD_ONLY_CUTOFF_MISSING')
           if float(recovery.get('confirmation_span_minutes_gte') or 0) < 15.0: raise SystemExit('CONFIRMATION_WINDOW_WEAKENED')
