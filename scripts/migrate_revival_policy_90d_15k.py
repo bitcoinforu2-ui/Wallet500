@@ -94,7 +94,40 @@ def main() -> None:
         if replace_text(path, semantic_swaps):
             changed.add(str(path))
 
-    # 3) Reawakening is the recovery lane that exposed the drift. Keep legacy 50K
+    # 3) Repair known research/Revival liquidity gates that can silently stay at 50K.
+    # Deliberately do not touch separate strict-production safety gates.
+    liquidity_fixups: dict[str, list[tuple[str, str]]] = {
+        "src/wallet500/hot_healthy_radar.py": [
+            ("MIN_LIQ = 50000.0", "MIN_LIQ = 15000.0"),
+            ("MIN_LIQ=50000.0", "MIN_LIQ=15000.0"),
+        ],
+        "src/wallet500/realizable_performance.py": [
+            ("MIN_LIQ=50000.0", "MIN_LIQ=15000.0"),
+            ("MIN_LIQ = 50000.0", "MIN_LIQ = 15000.0"),
+        ],
+        "src/wallet500/arbitrum_revival_universe.py": [
+            ("MIN_LIQUIDITY=50000.0", "MIN_LIQUIDITY=15000.0"),
+            ("MIN_LIQUIDITY = 50000.0", "MIN_LIQUIDITY = 15000.0"),
+        ],
+        "src/wallet500/quality_shadow.py": [
+            ('and _f(mark.get("liquidity_usd")) >= 50000', 'and _f(mark.get("liquidity_usd")) >= 15000'),
+        ],
+        "src/wallet500/external_only_paper.py": [
+            ("snap['liquidity_usd']<50000", "snap['liquidity_usd']<15000"),
+        ],
+        "src/wallet500/revival_prewaking_wallet_evidence.py": [
+            ('REVIVAL_PREWAKING_ACTIVE_LIQUIDITY_USD", "50000"', 'REVIVAL_PREWAKING_ACTIVE_LIQUIDITY_USD", "15000"'),
+        ],
+        "src/wallet500/config.py": [
+            ('WALLET500_VERIFIED_MIN_LIQUIDITY_USD", "50000"', 'WALLET500_VERIFIED_MIN_LIQUIDITY_USD", "15000"'),
+        ],
+    }
+    for name, replacements in liquidity_fixups.items():
+        path = Path(name)
+        if path.exists() and replace_text(path, replacements):
+            changed.add(str(path))
+
+    # 4) Reawakening is the recovery lane that exposed the drift. Keep legacy 50K
     # rejection reasons readable, but make the live V2 contract explicitly 90d + 15K.
     shadow = Path("src/wallet500/reawakening_shadow.py")
     shadow_text = shadow.read_text(encoding="utf-8")
@@ -109,7 +142,7 @@ def main() -> None:
     shadow.write_text(shadow_text, encoding="utf-8")
     changed.add(str(shadow))
 
-    # 4) The workflow truth validator was still hard-coded to the former $50K floor.
+    # 5) The workflow truth validator was still hard-coded to the former $50K floor.
     workflow = Path(".github/workflows/reawakening-shadow.yml")
     wf = workflow.read_text(encoding="utf-8")
     wf = wf.replace(
@@ -125,7 +158,7 @@ def main() -> None:
     workflow.write_text(wf, encoding="utf-8")
     changed.add(str(workflow))
 
-    # 5) Explicit boundary test: 89 days must fail; 90 days must pass.
+    # 6) Explicit boundary test: 89 days must fail; 90 days must pass.
     boundary_test = Path("tests/test_reawakening_shadow.py")
     bt = boundary_test.read_text(encoding="utf-8")
     bt = bt.replace("test_reawakening_age_gate_is_fail_closed_at_60_days", "test_reawakening_age_gate_is_fail_closed_at_90_days")
@@ -134,7 +167,7 @@ def main() -> None:
     boundary_test.write_text(bt, encoding="utf-8")
     changed.add(str(boundary_test))
 
-    # 6) Policy documentation reflects the current research-universe boundary only.
+    # 7) Policy documentation reflects the current research-universe boundary only.
     policy = Path("docs/OLD_COIN_REVIVAL_POLICY.md")
     if policy.exists():
         p = policy.read_text(encoding="utf-8")
@@ -144,14 +177,17 @@ def main() -> None:
             policy.write_text(p2, encoding="utf-8")
             changed.add(str(policy))
 
-    # 7) Fail the migration if the critical live contract is not exactly aligned.
+    # 8) Fail the migration if the critical live contract is not exactly aligned.
     shadow_now = shadow.read_text(encoding="utf-8")
     mature_now = Path("src/wallet500/mature_age_gate.py").read_text(encoding="utf-8")
     workflow_now = workflow.read_text(encoding="utf-8")
+    arbitrum_now = Path("src/wallet500/arbitrum_revival_universe.py").read_text(encoding="utf-8")
     assert "MIN_MARKET_AGE_DAYS = 90" in shadow_now
     assert "MIN_LIQUIDITY_USD = 15_000.0" in shadow_now
     assert '"minimum_market_age_days": MIN_MARKET_AGE_DAYS' in shadow_now
     assert "MIN_MARKET_AGE_DAYS = 90" in mature_now
+    assert "MIN_AGE_DAYS=90" in arbitrum_now or "MIN_AGE_DAYS = 90" in arbitrum_now
+    assert "MIN_LIQUIDITY=15000.0" in arbitrum_now or "MIN_LIQUIDITY = 15000.0" in arbitrum_now
     assert "REVIVAL_LIQUIDITY_POLICY_DRIFT" in workflow_now
     assert "REVIVAL_AGE_POLICY_DRIFT" in workflow_now
     assert "!= 15000.0" in workflow_now
