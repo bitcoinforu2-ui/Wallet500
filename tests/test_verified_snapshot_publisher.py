@@ -146,3 +146,37 @@ def test_publish_proof_binds_effective_and_snapshot_real_alert_digests(monkeypat
     assert published["snapshot_real_alerts_sha256"] == "snapshot-digest"
     assert published["real_alerts_sha256"] == "effective-digest"
     assert published["decision_snapshot_generation_id"] == proof["generation_id"]
+
+
+def test_snapshot_production_status_accepts_canonical_contract(tmp_path):
+    path = tmp_path / "files" / "data" / "production-status.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "cohort_rules": {
+                    "minimum_verified_market_age_days": 180,
+                    "minimum_liquidity_usd": 50000.0,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert mod._snapshot_production_status_passes_contract(tmp_path) is True
+
+
+def test_snapshot_production_status_fails_closed_on_legacy_research_contract(tmp_path):
+    path = tmp_path / "files" / "data" / "production-status.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "cohort_rules": {
+                    "minimum_verified_market_age_days": 60,
+                    "minimum_liquidity_usd": 15000.0,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert mod._snapshot_production_status_passes_contract(tmp_path) is False
