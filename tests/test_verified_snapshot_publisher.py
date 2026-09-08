@@ -22,8 +22,8 @@ def _decision_fixture():
         {
             "version": 3,
             "truth_contract": {
-                "minimum_market_age_days": 180,
-                "minimum_execution_pool_liquidity_usd": 50000.0,
+                "minimum_market_age_days": 90,
+                "minimum_execution_pool_liquidity_usd": 15000.0,
                 "exact_onchain_identity_required": True,
                 "exact_dex_pair_required": True,
                 "symbol_only_never_actionable": True,
@@ -74,15 +74,15 @@ def test_verified_decision_snapshot_fails_closed_on_one_digest_mismatch(monkeypa
     assert mod.verified_decision_snapshot("parent") is None
 
 
-def test_verified_decision_snapshot_fails_closed_on_research_real_alert_contract(monkeypatch):
+def test_verified_decision_snapshot_fails_closed_on_subthreshold_real_alert_contract(monkeypatch):
     proof, bodies = _decision_fixture()
     research = dict(bodies)
     research_body = json.dumps(
         {
             "version": 3,
             "truth_contract": {
-                "minimum_market_age_days": 60,
-                "minimum_execution_pool_liquidity_usd": 15000.0,
+                "minimum_market_age_days": 89,
+                "minimum_execution_pool_liquidity_usd": 14999.0,
                 "exact_onchain_identity_required": True,
                 "exact_dex_pair_required": True,
                 "symbol_only_never_actionable": True,
@@ -155,8 +155,8 @@ def test_snapshot_production_status_accepts_canonical_contract(tmp_path):
         json.dumps(
             {
                 "cohort_rules": {
-                    "minimum_verified_market_age_days": 180,
-                    "minimum_liquidity_usd": 50000.0,
+                    "minimum_verified_market_age_days": 90,
+                    "minimum_liquidity_usd": 15000.0,
                 }
             }
         ),
@@ -165,15 +165,15 @@ def test_snapshot_production_status_accepts_canonical_contract(tmp_path):
     assert mod._snapshot_production_status_passes_contract(tmp_path) is True
 
 
-def test_snapshot_production_status_fails_closed_on_legacy_research_contract(tmp_path):
+def test_snapshot_production_status_fails_closed_on_subthreshold_contract(tmp_path):
     path = tmp_path / "files" / "data" / "production-status.json"
     path.parent.mkdir(parents=True)
     path.write_text(
         json.dumps(
             {
                 "cohort_rules": {
-                    "minimum_verified_market_age_days": 60,
-                    "minimum_liquidity_usd": 15000.0,
+                    "minimum_verified_market_age_days": 89,
+                    "minimum_liquidity_usd": 14999.0,
                 }
             }
         ),
