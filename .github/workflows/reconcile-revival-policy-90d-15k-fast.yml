@@ -27,6 +27,13 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Normalize compact policy forms
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i 's/MIN_LIQUIDITY=50000\.0/MIN_LIQUIDITY=15000.0/g' src/wallet500/arbitrum_revival_universe.py
+          sed -i 's/MIN_LIQUIDITY = 50000\.0/MIN_LIQUIDITY = 15000.0/g' src/wallet500/arbitrum_revival_universe.py
+
       - name: Reconcile active Revival contracts
         run: python scripts/reconcile_revival_policy_90d_15k.py
 
