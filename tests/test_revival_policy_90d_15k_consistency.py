@@ -17,6 +17,24 @@ AGE_FILES = {
     "src/wallet500/production_age_governance.py": "PROJECT_SCOPE_MIN_AGE_DAYS",
     "src/wallet500/cex_fast_lane.py": "PROJECT_SCOPE_MIN_AGE_DAYS",
     "src/wallet500/arbitrum_revival_universe.py": "MIN_AGE_DAYS",
+    "src/wallet500/multichain_veteran_revival.py": "MIN_VETERAN_AGE_DAYS",
+    "src/wallet500/catalyst_wire.py": "MIN_VETERAN_AGE_DAYS",
+    "src/wallet500/production_status.py": "MIN_MARKET_AGE_DAYS",
+    "src/wallet500/decision_snapshot_guard.py": "PRODUCTION_MIN_AGE_DAYS",
+    "src/wallet500/liquidity_truth_guard.py": "PRODUCTION_MIN_MARKET_AGE_DAYS",
+}
+
+LIQUIDITY_FILES = {
+    "src/wallet500/reawakening_shadow.py": "MIN_LIQUIDITY_USD",
+    "src/wallet500/multichain_veteran_revival.py": "MIN_LIQUIDITY_USD",
+    "src/wallet500/arbitrum_revival_universe.py": "MIN_LIQUIDITY",
+    "src/wallet500/production_status.py": "MIN_LIQUIDITY_USD",
+    "src/wallet500/decision_snapshot_guard.py": "PRODUCTION_MIN_LIQUIDITY_USD",
+    "src/wallet500/candidate_evidence_envelope.py": "MIN_EXECUTION_LIQUIDITY_USD",
+    "src/wallet500/telegram_real_alerts_v2.py": "MIN_LIQUIDITY_USD",
+    "src/wallet500/hot_email_alerts.py": "MIN_LIQUIDITY_USD",
+    "src/wallet500/hot_healthy_radar.py": "MIN_LIQ",
+    "src/wallet500/production_risk_gate.py": "MIN_TRADABLE_LIQUIDITY_USD",
 }
 
 
@@ -39,6 +57,15 @@ def test_all_live_revival_age_gates_share_90_day_floor() -> None:
     assert drift == {}
 
 
+def test_all_live_revival_liquidity_gates_share_15k_floor() -> None:
+    drift = {}
+    for path, constant in LIQUIDITY_FILES.items():
+        value = _numeric_assignment(_text(path), constant)
+        if value != 15000.0:
+            drift[path] = value
+    assert drift == {}
+
+
 def test_reawakening_contract_is_exactly_90d_15k() -> None:
     text = _text("src/wallet500/reawakening_shadow.py")
     assert _numeric_assignment(text, "MIN_MARKET_AGE_DAYS") == 90.0
@@ -48,10 +75,25 @@ def test_reawakening_contract_is_exactly_90d_15k() -> None:
     assert "$15K Revival floor" in text
 
 
-def test_cross_chain_arbitrum_revival_uses_same_floor() -> None:
-    text = _text("src/wallet500/arbitrum_revival_universe.py")
-    assert _numeric_assignment(text, "MIN_AGE_DAYS") == 90.0
-    assert _numeric_assignment(text, "MIN_LIQUIDITY") == 15000.0
+def test_cross_chain_revival_uses_same_floor() -> None:
+    arbitrum = _text("src/wallet500/arbitrum_revival_universe.py")
+    assert _numeric_assignment(arbitrum, "MIN_AGE_DAYS") == 90.0
+    assert _numeric_assignment(arbitrum, "MIN_LIQUIDITY") == 15000.0
+
+    multichain = _text("src/wallet500/multichain_veteran_revival.py")
+    assert _numeric_assignment(multichain, "MIN_VETERAN_AGE_DAYS") == 90.0
+    assert _numeric_assignment(multichain, "MIN_LIQUIDITY_USD") == 15000.0
+    assert "PAIR_AGE_LT_90D_OR_UNKNOWN" in multichain
+
+
+def test_production_truth_guards_match_revival_scope() -> None:
+    production = _text("src/wallet500/production_status.py")
+    assert _numeric_assignment(production, "MIN_MARKET_AGE_DAYS") == 90.0
+    assert _numeric_assignment(production, "MIN_LIQUIDITY_USD") == 15000.0
+
+    guard = _text("src/wallet500/decision_snapshot_guard.py")
+    assert _numeric_assignment(guard, "PRODUCTION_MIN_AGE_DAYS") == 90.0
+    assert _numeric_assignment(guard, "PRODUCTION_MIN_LIQUIDITY_USD") == 15000.0
 
 
 def test_reawakening_workflow_validator_matches_runtime_policy() -> None:
@@ -63,10 +105,18 @@ def test_reawakening_workflow_validator_matches_runtime_policy() -> None:
     assert "LIQUIDITY_HARD_FLOOR_CHANGED" not in text
 
 
-def test_legacy_60d_semantic_keys_are_not_live_runtime_contracts() -> None:
+def test_legacy_age_semantic_keys_are_not_live_runtime_contracts() -> None:
+    markers = (
+        "age_verified_60d_plus",
+        "age_verified_180d_plus",
+        "veteran_age_verified_60d_plus",
+        "veteran_age_verified_180d_plus",
+        "PAIR_AGE_LT_60D_OR_UNKNOWN",
+        "PAIR_AGE_LT_180D_OR_UNKNOWN",
+    )
     forbidden = []
     for path in list(Path("src/wallet500").rglob("*.py")) + list(Path("tests").rglob("*.py")):
         text = path.read_text(encoding="utf-8")
-        if "age_verified_60d_plus" in text or "veteran_age_verified_60d_plus" in text:
+        if any(marker in text for marker in markers):
             forbidden.append(str(path))
     assert forbidden == []
