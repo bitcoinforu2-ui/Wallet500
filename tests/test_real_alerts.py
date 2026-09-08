@@ -107,7 +107,7 @@ def test_total_liquidity_over_50k_cannot_rescue_thin_execution_pool(tmp_path):
     row = result["verified_watch"][0]
     assert row["execution_pool_liquidity_usd"] == 8_700
     assert row["dex_total_liquidity_usd"] == 120_000
-    assert "EXECUTION_POOL_LIQUIDITY_LT_15K" in row["blockers"]
+    assert "EXECUTION_POOL_LIQUIDITY_LT_50K" in row["blockers"]
 
 
 def test_deep_exact_execution_pool_over_50k_passes_even_if_stale_thin_row_exists(tmp_path):
