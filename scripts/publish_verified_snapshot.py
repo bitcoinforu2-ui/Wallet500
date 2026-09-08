@@ -8,6 +8,8 @@ Rules:
 - preserve a newer, independently verified coherent decision snapshot as one unit;
 - only preserve a newer decision snapshot when its bound REAL ALERT feed itself
   satisfies the canonical production truth contract;
+- reject immutable source snapshots whose production-status policy metadata is
+  weaker than the canonical production truth contract;
 - if real-alerts changed without a valid coherent decision proof, treat the scan as
   superseded instead of weakening verification;
 - use commit-tree compare-and-swap retries, never force-push.
@@ -119,6 +121,10 @@ def validate_manifest(root: Path, source_run: int, source_sha: str) -> tuple[dic
     )
     if not real_item or not real_item.get("sha256"):
         raise RuntimeError("Verified snapshot missing immutable real-alerts.json digest")
+    if not _snapshot_production_status_passes_contract(root):
+        raise RuntimeError(
+            "Verified snapshot production-status policy is below canonical production contract"
+        )
     return manifest, manifest_bytes
 
 
@@ -162,6 +168,26 @@ def _bound_real_alerts_passes_production_contract(raw: bytes) -> bool:
         and truth.get("exact_dex_pair_required") is True
         and truth.get("symbol_only_never_actionable") is True
         and truth.get("cex_only_never_real_alert") is True
+    )
+
+
+def _snapshot_production_status_passes_contract(root: Path) -> bool:
+    """Reject stale immutable artifacts generated under weaker production gates."""
+    path = root / "files" / "data" / "production-status.json"
+    if not path.is_file():
+        return False
+    try:
+        status = json.loads(path.read_text(encoding="utf-8"))
+        rules = status.get("cohort_rules")
+        if not isinstance(rules, dict):
+            return False
+        age = float(rules.get("minimum_verified_market_age_days"))
+        liquidity = float(rules.get("minimum_liquidity_usd"))
+    except (TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return (
+        age >= PRODUCTION_MIN_MARKET_AGE_DAYS
+        and liquidity >= PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD
     )
 
 
