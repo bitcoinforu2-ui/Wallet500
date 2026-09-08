@@ -13,7 +13,11 @@ from typing import Any
 DATA = Path("data")
 FILTER_ADVISOR = DATA / "filter-tuning-advisor.json"
 REJECTED_OUTCOMES = DATA / "rejected-outcome-report.json"
-CASE_FILES = [DATA / "case-study-cyberleek.json", DATA / "case-study-doge1.json"]
+CASE_FILES = [
+    DATA / "case-study-cyberleek.json",
+    DATA / "case-study-doge1.json",
+    DATA / "case-study-dusd.json",
+]
 OUT = DATA / "research-decision-engine.json"
 
 HARD_RULES = [
