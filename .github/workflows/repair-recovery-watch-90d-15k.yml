@@ -65,23 +65,31 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
-          git add \
-            src/wallet500/reawakening_shadow.py \
-            src/wallet500/reawakening_dashboard.py \
-            tests/test_reawakening_shadow.py \
-            .github/workflows/reawakening-shadow.yml \
-            data/reawakening-shadow.json \
-            data/reawakening-shadow-state.json \
-            data/reawakening-forward-state.json \
-            data/reawakening-forward-report.json \
-            data/reawakening-dashboard.json
+
+          # Capture every tracked/untracked artifact produced by the repair/rebuild.
+          # The previous publisher staged only a hard-coded subset, leaving generated
+          # files dirty and causing `git pull --rebase` to fail before push.
+          git add -A
           if git diff --cached --quiet; then
             echo 'NO_CHANGES'
             exit 0
           fi
           git commit -m 'fix: align Recovery Watch to 90d 15k exact-pair truth'
+
+          # Rebase only from a clean worktree. If a late process touched a file,
+          # capture it into the same truth commit before attempting the rebase.
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            git add -A
+            git commit --amend --no-edit
+          fi
+          git status --porcelain
+          test -z "$(git status --porcelain)"
+
           for attempt in 1 2 3 4; do
-            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              exit 0
+            fi
+            git rebase --abort 2>/dev/null || true
             sleep $((attempt * 3))
           done
           exit 1
