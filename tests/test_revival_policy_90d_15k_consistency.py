@@ -106,15 +106,17 @@ def test_reawakening_workflow_validator_matches_runtime_policy() -> None:
 
 
 def test_legacy_age_semantic_keys_are_not_live_runtime_contracts() -> None:
-    # Construct legacy markers so the one-off migration script cannot rewrite
-    # this regression test into checking for the current 90d labels.
+    # Build legacy tokens from fragments so the one-off migration cannot mutate
+    # the test itself while it rewrites old runtime semantics.
+    old_60 = "6" + "0d_plus"
+    old_180 = "18" + "0d_plus"
     markers = (
-        "age_verified_" + "60d_plus",
-        "age_verified_" + "180d_plus",
-        "veteran_age_verified_" + "60d_plus",
-        "veteran_age_verified_" + "180d_plus",
-        "PAIR_AGE_LT_" + "60D_OR_UNKNOWN",
-        "PAIR_AGE_LT_" + "180D_OR_UNKNOWN",
+        "age_verified_" + old_60,
+        "age_verified_" + old_180,
+        "veteran_age_verified_" + old_60,
+        "veteran_age_verified_" + old_180,
+        "PAIR_AGE_LT_" + "6" + "0D_OR_UNKNOWN",
+        "PAIR_AGE_LT_" + "18" + "0D_OR_UNKNOWN",
     )
     forbidden = []
     for path in list(Path("src/wallet500").rglob("*.py")) + list(Path("tests").rglob("*.py")):
