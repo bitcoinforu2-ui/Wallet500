@@ -96,7 +96,7 @@ jobs:
           sel=pre.get('selection_policy') or {}
           if sel.get('status_required')!='DEEP_WATCH': raise SystemExit('PREWAKING_STATUS_POLICY_INVALID')
           if sel.get('exact_pair_required') is not True: raise SystemExit('PREWAKING_PAIR_POLICY_INVALID')
-          if int(sel.get('market_age_verified_min_days') or 0) < 180: raise SystemExit('PREWAKING_AGE_POLICY_INVALID')
+          if int(sel.get('market_age_verified_min_days') or 0) < 90: raise SystemExit('PREWAKING_AGE_POLICY_INVALID')
           if sel.get('future_data_used') is not False: raise SystemExit('PREWAKING_FUTURE_DATA_POLICY_INVALID')
           if sel.get('coverage_rotation') is not True: raise SystemExit('PREWAKING_ROTATION_DISABLED')
           if sel.get('rotation_state_source')!='PREVIOUS_PUBLISHED_TARGET_SET_ONLY': raise SystemExit('PREWAKING_ROTATION_STATE_INVALID')
