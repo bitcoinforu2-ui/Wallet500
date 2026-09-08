@@ -4,8 +4,13 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-MIN_MARKET_AGE_DAYS = 180
-MIN_LIQUIDITY_USD = 50_000.0
+from .policy import (
+    CANONICAL_MIN_EXECUTION_LIQUIDITY_USD,
+    CANONICAL_MIN_MARKET_AGE_DAYS,
+)
+
+MIN_MARKET_AGE_DAYS = CANONICAL_MIN_MARKET_AGE_DAYS
+MIN_LIQUIDITY_USD = CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
 
 
 def _load(path: Path, default):
