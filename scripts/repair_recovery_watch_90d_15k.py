@@ -23,6 +23,23 @@ replace_required(
     '"veteran_age_verified_90d_plus"',
 )
 
+# Keep the regression boundary aligned with the production/research policy.
+replace_required(
+    "tests/test_reawakening_shadow.py",
+    "def test_reawakening_age_gate_is_fail_closed_at_60_days():",
+    "def test_reawakening_age_gate_is_fail_closed_at_90_days():",
+)
+replace_required(
+    "tests/test_reawakening_shadow.py",
+    'young["first_reject_snapshot"]["market_age_min_days"] = 59',
+    'young["first_reject_snapshot"]["market_age_min_days"] = 89',
+)
+replace_required(
+    "tests/test_reawakening_shadow.py",
+    'boundary["first_reject_snapshot"]["market_age_min_days"] = 60',
+    'boundary["first_reject_snapshot"]["market_age_min_days"] = 90',
+)
+
 # Near-Recovery is not allowed to surface stale/mismatched exact-pair rows or deep-collapse rows.
 dash = Path("src/wallet500/reawakening_dashboard.py")
 text = dash.read_text(encoding="utf-8")
