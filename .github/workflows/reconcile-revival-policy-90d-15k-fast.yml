@@ -57,6 +57,7 @@ jobs:
           grep -q 'test_under_90_days_fails_closed' tests/test_real_alerts.py
           grep -q 'research_scope_days"] == 90' tests/test_decision_snapshot_guard.py
           grep -q 'test_guard_rejects_production_alert_under_90d_or_15k' tests/test_decision_snapshot_guard.py
+          grep -q 'test_snapshot_production_status_fails_closed_on_subthreshold_contract' tests/test_verified_snapshot_publisher.py
           echo 'POLICY_TEST_SEMANTICS_90D_15K_OK'
 
       - name: Install package and tests
@@ -71,6 +72,7 @@ jobs:
             tests/test_revival_90d_telegram.py \
             tests/test_real_alerts.py \
             tests/test_decision_snapshot_guard.py \
+            tests/test_verified_snapshot_publisher.py \
             tests/test_revival_wallet_evidence.py \
             tests/test_revival_wallet_registry.py \
             tests/test_revival_prewaking_rotation.py \
@@ -137,4 +139,4 @@ jobs:
           echo '::error::REVIVAL_POLICY_CONTENT_PUBLISH_RACE_EXHAUSTED'
           exit 1
 
-# Audit trigger: 2026-09-08 enforce canonical 90D / $15K policy and chain+token identity
+# Audit trigger: 2026-09-08 canonical 90D / $15K policy reconciliation retry after snapshot-test fix
