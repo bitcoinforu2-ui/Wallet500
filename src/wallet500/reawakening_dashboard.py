@@ -14,8 +14,6 @@ from typing import Any
 from .reawakening_shadow import (
     MIN_CONFIRMATION_SPAN_MINUTES,
     MIN_LIQUIDITY_RETENTION,
-    MIN_LIQUIDITY_USD,
-    MIN_MARKET_AGE_DAYS,
     REQUIRED_CONSECUTIVE,
     observation_passes,
 )
@@ -23,6 +21,12 @@ from .reawakening_shadow import (
 MODE = "RESEARCH_ONLY_REAWAKENING_DASHBOARD_V1"
 OUTPUT_FILE = "reawakening-dashboard.json"
 MAX_NEAR = 12
+
+# Research may keep collecting thinner exact-pair observations, but the user-facing
+# dashboard is a higher-signal surface. Keep low-liquidity/too-young research rows
+# out of the visible feed without deleting them from research state.
+DASHBOARD_MIN_LIQUIDITY_USD = 50_000.0
+DASHBOARD_MIN_MARKET_AGE_DAYS = 90.0
 
 
 def _load(path: Path, default: Any) -> Any:
@@ -74,6 +78,31 @@ def _symbol(record: dict, token: str) -> str:
             return str(value)
     token = str(token or "")
     return token[:8] + ("…" if len(token) > 8 else "") if token else "TOKEN"
+
+
+def _record_age_days(record: dict) -> tuple[bool, float]:
+    snap = record.get("first_reject_snapshot") if isinstance(record.get("first_reject_snapshot"), dict) else {}
+    verified = snap.get("market_age_verified") is True or record.get("market_age_verified") is True
+    days = _f(snap.get("market_age_min_days") or record.get("market_age_min_days"))
+    return verified, days
+
+
+def _visible_liquidity(row: dict) -> float:
+    metrics = row.get("metrics") if isinstance(row.get("metrics"), dict) else {}
+    return _f(
+        metrics.get("liquidity_usd")
+        or row.get("liquidity_usd")
+        or row.get("live_liquidity_usd")
+    )
+
+
+def _dashboard_visible(record: dict, row: dict) -> bool:
+    age_verified, age_days = _record_age_days(record)
+    return (
+        age_verified
+        and age_days >= DASHBOARD_MIN_MARKET_AGE_DAYS
+        and _visible_liquidity(row) >= DASHBOARD_MIN_LIQUIDITY_USD
+    )
 
 
 def _current_streak(
@@ -133,6 +162,7 @@ def build(output_dir: str = "data") -> dict:
     }
 
     near_rows: list[dict] = []
+    hidden_low_signal = 0
     for key, candidate in candidates.items():
         if key in trigger_keys or not isinstance(candidate, dict):
             continue
@@ -170,20 +200,17 @@ def build(output_dir: str = "data") -> dict:
 
         gate_passed = len(reasons)
         activity_passed = int(metrics.get("activity_checks_passed") or 0)
-        activity_available = int(metrics.get("activity_checks_available") or 0)
 
-        # Near-recovery is a positive recovery surface, not a list of every historical reject.
-        # Fail closed on market age, current liquidity and actual returning activity.
-        market_age_verified = snap.get("market_age_verified") is True or record.get("market_age_verified") is True
-        market_age_days = _f(snap.get("market_age_min_days") or record.get("market_age_min_days"))
-        liquidity_recovered_for_watch = _f(metrics.get("liquidity_usd")) >= MIN_LIQUIDITY_USD
+        age_verified, age_days = _record_age_days(record)
+        liquidity_recovered_for_dashboard = _f(metrics.get("liquidity_usd")) >= DASHBOARD_MIN_LIQUIDITY_USD
         activity_returning = activity_passed >= 1
         if (
-            not market_age_verified
-            or market_age_days < MIN_MARKET_AGE_DAYS
-            or not liquidity_recovered_for_watch
+            not age_verified
+            or age_days < DASHBOARD_MIN_MARKET_AGE_DAYS
+            or not liquidity_recovered_for_dashboard
             or not activity_returning
         ):
+            hidden_low_signal += 1
             continue
 
         waiting_confirmation = (
@@ -236,6 +263,9 @@ def build(output_dir: str = "data") -> dict:
             continue
         key = str(target.get("token_key") or "")
         record = records.get(key) if isinstance(records.get(key), dict) else {}
+        if not _dashboard_visible(record, target):
+            hidden_low_signal += 1
+            continue
         token = str(target.get("token") or "")
         triggers.append(
             {
@@ -249,7 +279,7 @@ def build(output_dir: str = "data") -> dict:
 
     now = datetime.now(timezone.utc).isoformat()
     payload = {
-        "version": 1,
+        "version": 2,
         "mode": MODE,
         "generated_at": now,
         "source_generated_at": shadow.get("generated_at") or report.get("updated_at"),
@@ -285,13 +315,16 @@ def build(output_dir: str = "data") -> dict:
             ),
             "reawakening_triggers": len(triggers),
             "near_recovery_shown": len(near_rows),
+            "hidden_below_dashboard_quality_floor": hidden_low_signal,
         },
         "rule": {
-            "liquidity_floor_usd": 15000,
+            "research_collection_liquidity_floor_usd": 15000,
+            "dashboard_visibility_liquidity_floor_usd": int(DASHBOARD_MIN_LIQUIDITY_USD),
+            "dashboard_visibility_market_age_days": int(DASHBOARD_MIN_MARKET_AGE_DAYS),
             "exact_pair_locked": True,
             "confirmation_observations": REQUIRED_CONSECUTIVE,
             "confirmation_span_minutes": MIN_CONFIRMATION_SPAN_MINUTES,
-            "marker_meaning": "All Reawakening V2 forward truth gates passed; research-only, not a BUY order.",
+            "marker_meaning": "All Reawakening V2 forward truth gates passed and dashboard visibility floor passed; research-only, not a BUY order.",
         },
         "triggers": triggers,
         "near_recovery": near_rows,

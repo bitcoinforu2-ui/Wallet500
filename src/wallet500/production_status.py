@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-MIN_MARKET_AGE_DAYS = 180
+MIN_MARKET_AGE_DAYS = 90
 MIN_LIQUIDITY_USD = 50_000.0
 
 
