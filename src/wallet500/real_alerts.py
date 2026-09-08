@@ -110,21 +110,18 @@ def _age_ok(*rows: dict) -> tuple[bool, int | None]:
 
 
 def _row_pair(row: dict) -> str | None:
-    pair = str(
-        row.get("pair_address")
-        or row.get("entry_pair_address")
-        or row.get("dex_pair_address")
-        or ""
-    ).strip()
+    pair = str(row.get("pair_address") or row.get("entry_pair_address") or row.get("dex_pair_address") or "").strip()
     return pair or None
 
 
 def _row_pair_exact(row: dict) -> bool:
     truth = row.get("truth") if isinstance(row.get("truth"), dict) else {}
+    identity = row.get("identity") if isinstance(row.get("identity"), dict) else {}
     return bool(
         str(row.get("identity_status") or "").startswith("DEX_VERIFIED")
         or row.get("exact_pair_verified") is True
         or truth.get("exact_pair_verified") is True
+        or identity.get("exact_pair_verified") is True
         or row.get("dex_link_type") == "DEXSCREENER_VERIFIED_PAIR"
         or row.get("measurement_status") == "VERIFIED_EXACT_PAIR"
         or row.get("pair_identity_locked") is True
@@ -142,6 +139,24 @@ def _pair_truth(*rows: dict) -> tuple[str | None, bool]:
     return None, False
 
 
+def _row_execution_liquidity(row: dict) -> tuple[float, float | None, str] | None:
+    if not isinstance(row, dict) or not _row_pair(row) or not _row_pair_exact(row):
+        return None
+    total = _num(row.get("dex_total_liquidity_usd"), -1)
+    total_value = total if total >= 0 else None
+    execution = _num(row.get("execution_pool_liquidity_usd"), -1)
+    if execution < 0:
+        truth = row.get("truth") if isinstance(row.get("truth"), dict) else {}
+        execution = _num(truth.get("execution_pool_liquidity_usd"), -1)
+    if execution >= 0:
+        return execution, total_value, "EXECUTION_POOL_LIQUIDITY_USD"
+    for key in ("dex_pair_liquidity_usd", "dex_liquidity_usd", "liquidity_usd", "current_liquidity_usd"):
+        value = _num(row.get(key), -1)
+        if value >= 0:
+            return value, total_value, f"LEGACY_EXACT_PAIR:{key}"
+    return None
+
+
 def _execution_liquidity_truth(*rows: dict) -> tuple[float, float | None, str | None, str | None]:
     """Return liquidity for an exact executable pair, never token-wide TVL."""
     explicit = []
@@ -152,7 +167,6 @@ def _execution_liquidity_truth(*rows: dict) -> tuple[float, float | None, str | 
         pair = _row_pair(row)
         if not pair or not _row_pair_exact(row):
             continue
-
         total = _num(row.get("dex_total_liquidity_usd"), -1)
         total_value = total if total >= 0 else None
         execution = _num(row.get("execution_pool_liquidity_usd"), -1)
@@ -162,17 +176,57 @@ def _execution_liquidity_truth(*rows: dict) -> tuple[float, float | None, str | 
         if execution >= 0:
             explicit.append((execution, total_value, pair, "EXECUTION_POOL_LIQUIDITY_USD"))
             continue
-
         for key in ("dex_pair_liquidity_usd", "dex_liquidity_usd", "liquidity_usd", "current_liquidity_usd"):
             value = _num(row.get(key), -1)
             if value >= 0:
                 legacy.append((value, total_value, pair, f"LEGACY_EXACT_PAIR:{key}"))
                 break
-
     candidates = explicit if explicit else legacy
     if not candidates:
         return 0.0, None, None, None
     return max(candidates, key=lambda x: x[0])
+
+
+def _same_pair(a: object, b: object) -> bool:
+    return bool(a and b and str(a).strip().lower() == str(b).strip().lower())
+
+
+def _pair_context(pair: str | None, *rows: dict) -> dict:
+    """Build market metadata only from rows carrying the selected exact pair.
+
+    Never mix pair address from one pool with dex/url/protocol metadata from another pool.
+    Among same-pair rows prefer the row with the strongest explicit execution liquidity,
+    then fill missing metadata only from other rows for that exact same pair.
+    """
+    if not pair:
+        return {}
+    matches = [r for r in rows if isinstance(r, dict) and _same_pair(_row_pair(r), pair) and _row_pair_exact(r)]
+    if not matches:
+        return {}
+
+    def rank(row: dict):
+        liq = _row_execution_liquidity(row)
+        value = liq[0] if liq else -1.0
+        explicit = 1 if row.get("execution_pool_liquidity_usd") not in (None, "") else 0
+        return explicit, value
+
+    matches.sort(key=rank, reverse=True)
+    out = dict(matches[0])
+    fields = (
+        "dex", "dex_id", "dex_url", "url", "dex_link", "pool_type", "protocol",
+        "market_protocol", "market_program", "price_usd", "dex_price_usd",
+        "current_price_usd", "reference_price", "dex_volume_h1", "dex_volume_h24",
+        "buys_h1", "sells_h1", "buys_h24", "sells_h24", "execution_depth_verified",
+        "execution_depth_usd_1pct", "execution_depth_usd_2pct", "execution_depth_usd_5pct",
+        "execution_depth_source", "concentrated_liquidity_pool",
+    )
+    for row in matches[1:]:
+        for field in fields:
+            if out.get(field) in (None, "") and row.get(field) not in (None, ""):
+                out[field] = row.get(field)
+    out["pair_address"] = pair
+    out["pair_metadata_atomic"] = True
+    return out
 
 
 def _identity_truth(*rows: dict) -> tuple[str | None, str | None, bool]:
@@ -201,13 +255,7 @@ def _price(*rows: dict) -> float | None:
         if not isinstance(row, dict):
             continue
         market = row.get("market") if isinstance(row.get("market"), dict) else {}
-        for value in (
-            row.get("price_usd"),
-            row.get("dex_price_usd"),
-            row.get("current_price_usd"),
-            row.get("reference_price"),
-            market.get("price_usd"),
-        ):
+        for value in (row.get("price_usd"), row.get("dex_price_usd"), row.get("current_price_usd"), row.get("reference_price"), market.get("price_usd")):
             v = _num(value, 0)
             if v > 0:
                 return v
@@ -231,10 +279,7 @@ def _index_rows(rows: list[dict]) -> dict[str, dict]:
     for row in rows:
         if not isinstance(row, dict):
             continue
-        k = _key(
-            _first(row.get("chain"), row.get("network")),
-            _first(row.get("token_address"), row.get("token"), row.get("mint")),
-        )
+        k = _key(_first(row.get("chain"), row.get("network")), _first(row.get("token_address"), row.get("token"), row.get("mint")))
         if k:
             out[k] = row
     return out
@@ -250,10 +295,7 @@ def _source_score(precursor: dict, waking: dict, cex: dict, active: dict, reviva
         lanes.append("WAKING_CONFIRMATION")
     if cex and _num(cex.get("cex_revival_score")) >= 35 and int(cex.get("coherent_confirmations") or 0) >= 2:
         lanes.append("CEX_REVIVAL")
-    if revival and (
-        revival.get("watch_status") in {"WAKING_MARKET_ONLY", "ABSORPTION_WATCH_DISCOVERY_EXPANSION"}
-        or (revival.get("order_flow_absorption") or {}).get("signal") is True
-    ):
+    if revival and (revival.get("watch_status") in {"WAKING_MARKET_ONLY", "ABSORPTION_WATCH_DISCOVERY_EXPANSION"} or (revival.get("order_flow_absorption") or {}).get("signal") is True):
         lanes.append("REVIVAL_MARKET_STRUCTURE")
     return lanes, len(set(lanes))
 
@@ -292,16 +334,7 @@ def _signal_context(precursor: dict, waking: dict, cex: dict, revival: dict, env
     return round(signal, 2), leader, clean
 
 
-def _readiness(
-    *,
-    exact_identity: bool,
-    exact_pair: bool,
-    age_ok: bool,
-    liquidity_ok: bool,
-    risk_clear: bool,
-    strong_decision: bool,
-    independent_confirmation: bool,
-) -> tuple[dict[str, bool], int]:
+def _readiness(*, exact_identity: bool, exact_pair: bool, age_ok: bool, liquidity_ok: bool, risk_clear: bool, strong_decision: bool, independent_confirmation: bool) -> tuple[dict[str, bool], int]:
     gates = {
         "EXACT_IDENTITY": bool(exact_identity),
         "EXACT_DEX_PAIR": bool(exact_pair),
@@ -332,8 +365,7 @@ def build(data_dir: Path = DATA) -> dict:
     now = now_dt.isoformat()
     previous_payload = _load(data_dir / "real-alerts.json", {})
     previous_tracking = previous_payload.get("watch_tracking") if isinstance(previous_payload.get("watch_tracking"), dict) else {}
-    previous_tracking_version = int(previous_tracking.get("version") or 0)
-    tracking_initialized = previous_tracking_version == WATCH_TRACKING_VERSION
+    tracking_initialized = int(previous_tracking.get("version") or 0) == WATCH_TRACKING_VERSION
     previous_registry = previous_tracking.get("active_registry") if isinstance(previous_tracking.get("active_registry"), dict) else {}
     previous_baseline_keys = set(previous_tracking.get("baseline_keys") or [])
     previous_watch_rows = _index_rows(list(previous_payload.get("verified_watch") or []))
@@ -353,12 +385,9 @@ def build(data_dir: Path = DATA) -> dict:
     active_rows = active_rows if isinstance(active_rows, list) else []
 
     indexes = {
-        "cex": _index_rows(cex_rows),
-        "precursor": _index_rows(precursor_rows),
-        "waking": _index_rows(waking_rows),
-        "revival": _index_rows(revival_rows),
-        "envelope": _index_rows(envelope_rows),
-        "active": _index_rows(active_rows),
+        "cex": _index_rows(cex_rows), "precursor": _index_rows(precursor_rows),
+        "waking": _index_rows(waking_rows), "revival": _index_rows(revival_rows),
+        "envelope": _index_rows(envelope_rows), "active": _index_rows(active_rows),
     }
     keys = set().union(*(set(index) for index in indexes.values()))
 
@@ -372,12 +401,15 @@ def build(data_dir: Path = DATA) -> dict:
         envelope = indexes["envelope"].get(k) or {}
         active = indexes["active"].get(k) or {}
         rows = (active, precursor, waking, cex, revival, envelope)
+
         chain, token, exact_identity = _identity_truth(*rows)
         pair, exact_pair = _pair_truth(*rows)
         execution_liq, total_dex_liq, execution_pair, liquidity_source = _execution_liquidity_truth(*rows)
         if execution_pair:
             pair = execution_pair
             exact_pair = True
+        pair_ctx = _pair_context(pair, *rows)
+
         age_ok, age_days = _age_ok(*rows)
         lanes, lane_count = _source_score(precursor, waking, cex, active, revival)
         blocked, risk_reasons = _risk_blocked(*rows)
@@ -412,25 +444,26 @@ def build(data_dir: Path = DATA) -> dict:
 
         signal_score, signal_leader, score_components = _signal_context(precursor, waking, cex, revival, envelope)
         readiness_gates, readiness_passed = _readiness(
-            exact_identity=exact_identity,
-            exact_pair=exact_pair,
-            age_ok=age_ok,
-            liquidity_ok=liquidity_ok,
-            risk_clear=not blocked,
-            strong_decision=strong_decision,
+            exact_identity=exact_identity, exact_pair=exact_pair, age_ok=age_ok,
+            liquidity_ok=liquidity_ok, risk_clear=not blocked, strong_decision=strong_decision,
             independent_confirmation=independent_confirmation,
         )
         radar_tier, risk_level = _clarity_tier(blockers, risk_reasons, liquidity_ok)
         missing_gates = [name for name, passed in readiness_gates.items() if not passed]
+
+        pair_dex = _first(pair_ctx.get("dex"), pair_ctx.get("dex_id"))
+        pair_url = _first(pair_ctx.get("dex_url"), pair_ctx.get("url"), pair_ctx.get("dex_link"))
+        pair_price = _price(pair_ctx) if pair_ctx else None
 
         item = {
             "symbol": _symbol(active, precursor, waking, cex, revival, envelope),
             "chain": chain,
             "token_address": token,
             "pair_address": pair,
-            "dex": _first(cex.get("dex"), active.get("dex"), revival.get("dex")),
-            "dex_url": _first(cex.get("dex_url"), active.get("url"), revival.get("dex_url"), revival.get("dex_link"), envelope.get("dex_url")),
-            "price_usd": _price(active, precursor, waking, cex, revival, envelope),
+            "dex": pair_dex,
+            "dex_url": pair_url,
+            "price_usd": pair_price if pair_price is not None else _price(*[r for r in rows if _same_pair(_row_pair(r), pair)]),
+            "pair_metadata_atomic": bool(pair_ctx),
             "liquidity_usd": execution_liq,
             "execution_pool_liquidity_usd": execution_liq,
             "dex_total_liquidity_usd": total_dex_liq,
@@ -472,16 +505,13 @@ def build(data_dir: Path = DATA) -> dict:
             "market_age_verified": age_ok,
             "blockers": blockers,
         }
+
         if not blockers:
             item["status"] = "REAL_ALERT"
             item["actionable_research_alert"] = True
             real_alerts.append(item)
         else:
-            watch_interest = bool(
-                lane_count >= 1
-                or envelope_status in {"EVIDENCE_READY", "VERIFIED_WATCH"}
-                or revival.get("watch_status") == "WAKING_MARKET_ONLY"
-            )
+            watch_interest = bool(lane_count >= 1 or envelope_status in {"EVIDENCE_READY", "VERIFIED_WATCH"} or revival.get("watch_status") == "WAKING_MARKET_ONLY")
             if exact_identity and exact_pair and age_ok and watch_interest:
                 if tracking_initialized:
                     if k in previous_registry:
@@ -511,31 +541,22 @@ def build(data_dir: Path = DATA) -> dict:
         if str(row.get("identity_status") or "").startswith("DEX_VERIFIED"):
             continue
         identity_pending.append({
-            "symbol": _symbol(row),
-            "cex_score": row.get("cex_revival_score"),
+            "symbol": _symbol(row), "cex_score": row.get("cex_revival_score"),
             "market_age_days": row.get("market_age_min_days"),
             "coherent_confirmations": row.get("coherent_confirmations"),
             "identity_status": row.get("identity_status") or "IDENTITY_PENDING",
             "identity_blocker": row.get("identity_blocker") or "EXACT_IDENTITY_NOT_VERIFIED",
-            "status": "IDENTITY_PENDING_NOT_ACTIONABLE",
-            "radar_tier": "IDENTITY_PENDING",
+            "status": "IDENTITY_PENDING_NOT_ACTIONABLE", "radar_tier": "IDENTITY_PENDING",
             "actionable_research_alert": False,
         })
 
     tier_priority = {"NEAR_ALERT": 3, "VERIFIED_WATCH": 2, "BLOCKED": 1}
     real_alerts.sort(key=lambda x: (x.get("signal_score") or 0, x.get("source_lane_count") or 0, x.get("execution_pool_liquidity_usd") or 0), reverse=True)
-    verified_watch.sort(
-        key=lambda x: (
-            tier_priority.get(x.get("radar_tier"), 0),
-            x.get("watch_is_new_24h") is True,
-            str(x.get("watch_added_at") or ""),
-            x.get("readiness_passed") or 0,
-            x.get("evidence_ready") is True,
-            x.get("source_lane_count") or 0,
-            x.get("signal_score") or 0,
-        ),
-        reverse=True,
-    )
+    verified_watch.sort(key=lambda x: (
+        tier_priority.get(x.get("radar_tier"), 0), x.get("watch_is_new_24h") is True,
+        str(x.get("watch_added_at") or ""), x.get("readiness_passed") or 0,
+        x.get("evidence_ready") is True, x.get("source_lane_count") or 0, x.get("signal_score") or 0,
+    ), reverse=True)
     identity_pending.sort(key=lambda x: (x.get("cex_score") or 0, x.get("coherent_confirmations") or 0), reverse=True)
 
     evidence_ready_count = sum(1 for row in envelope_rows if isinstance(row, dict) and row.get("status") == "EVIDENCE_READY")
@@ -548,10 +569,7 @@ def build(data_dir: Path = DATA) -> dict:
         rk = _key(row.get("chain"), row.get("token_address"))
         if rk and row.get("watch_added_at"):
             active_registry[rk] = row.get("watch_added_at")
-    if tracking_initialized:
-        baseline_keys = sorted(k for k in previous_baseline_keys if k in active_registry)
-    else:
-        baseline_keys = sorted(active_registry.keys())
+    baseline_keys = sorted(k for k in previous_baseline_keys if k in active_registry) if tracking_initialized else sorted(active_registry.keys())
 
     return {
         "version": 3,
@@ -559,19 +577,19 @@ def build(data_dir: Path = DATA) -> dict:
         "mode": "FAIL_CLOSED_REAL_ALERT_FEED_V3_EVIDENCE_ENVELOPE",
         "score_contract": {
             "signal_score_semantics": "maximum currently available subsystem signal; not a probability and not overall conviction",
-            "confirmation_total_lanes": SOURCE_LANE_TOTAL,
-            "readiness_gate_total": 7,
+            "confirmation_total_lanes": SOURCE_LANE_TOTAL, "readiness_gate_total": 7,
             "readiness_is_gate_completion_not_profit_probability": True,
             "radar_tiers": ["REAL_ALERT", "NEAR_ALERT", "VERIFIED_WATCH", "BLOCKED", "IDENTITY_PENDING"],
         },
         "truth_contract": {
             "focus": "VETERAN_COIN_REVIVAL_ONLY",
-            "minimum_market_age_days": 60,
+            "minimum_market_age_days": 180,
             "minimum_execution_pool_liquidity_usd": cfg.verified_min_liquidity_usd,
             "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
             "dex_total_liquidity_is_informational_only": True,
             "exact_onchain_identity_required": True,
             "exact_dex_pair_required": True,
+            "pair_market_metadata_must_match_exact_pair": True,
             "symbol_only_never_actionable": True,
             "cex_only_never_real_alert": True,
             "production_gate_or_strong_precursor_required": True,
@@ -581,20 +599,14 @@ def build(data_dir: Path = DATA) -> dict:
             "label_meaning": "REAL_ALERT means the system's strict research alert criteria are met; it is not a guarantee of profit or an instruction to buy.",
         },
         "watch_tracking": {
-            "version": WATCH_TRACKING_VERSION,
-            "new_watch_ttl_hours": WATCH_NEW_TTL_HOURS,
-            "display_timezone": "Asia/Jerusalem",
-            "new_watch_24h_count": new_watch_count,
-            "active_registry": active_registry,
-            "baseline_keys": baseline_keys,
+            "version": WATCH_TRACKING_VERSION, "new_watch_ttl_hours": WATCH_NEW_TTL_HOURS,
+            "display_timezone": "Asia/Jerusalem", "new_watch_24h_count": new_watch_count,
+            "active_registry": active_registry, "baseline_keys": baseline_keys,
         },
         "counts": {
-            "real_alerts": len(real_alerts),
-            "near_alert_not_real": near_count,
-            "verified_watch_core": plain_watch_count,
-            "blocked_verified_watch": blocked_count,
-            "verified_watch_not_real": len(verified_watch),
-            "new_watch_24h": new_watch_count,
+            "real_alerts": len(real_alerts), "near_alert_not_real": near_count,
+            "verified_watch_core": plain_watch_count, "blocked_verified_watch": blocked_count,
+            "verified_watch_not_real": len(verified_watch), "new_watch_24h": new_watch_count,
             "evidence_ready_research": evidence_ready_count,
             "identity_pending_not_actionable": len(identity_pending),
         },
@@ -607,7 +619,6 @@ def build(data_dir: Path = DATA) -> dict:
 
 def run(data_dir: Path = DATA) -> dict:
     from .liquidity_truth_guard import sanitize_real_alerts
-
     path = data_dir / "real-alerts.json"
     payload = build(data_dir)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
