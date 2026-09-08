@@ -15,20 +15,24 @@ on:
       - 'src/wallet500/candidate_evidence_envelope.py'
       - 'src/wallet500/pending_confirmation_truth_normalizer.py'
       - 'src/wallet500/decision_snapshot_guard.py'
+      - 'src/wallet500/mature_age_gate.py'
+      - 'src/wallet500/production_age_governance.py'
+      - 'src/wallet500/production_status.py'
       - 'src/wallet500/solana_mintability_gate.py'
       - 'src/wallet500/solana_mintability_public_guard.py'
       - 'src/wallet500/real_alerts.py'
       - 'src/wallet500/revival_funnel_diagnostics.py'
       - 'src/wallet500/cross_signal_fusion_v2.py'
-      - 'src/wallet500/production_age_governance.py'
       - 'src/wallet500/cex_fast_lane.py'
       - 'src/wallet500/holder_truth_provider.py'
       - 'src/wallet500/revival_holder_tracker_v3.py'
       - 'src/wallet500/revival_prewaking_wallet_evidence_v2.py'
       - 'scripts/atomic_publish.py'
+      - 'tests/test_mature_age_gate.py'
       - 'tests/test_candidate_evidence_envelope.py'
       - 'tests/test_pending_confirmation_truth_normalizer.py'
       - 'tests/test_decision_snapshot_guard.py'
+      - 'tests/test_production_status.py'
       - 'tests/test_solana_mintability_gate.py'
       - 'tests/test_solana_mintability_public_guard.py'
       - 'tests/test_real_alerts.py'
@@ -57,7 +61,7 @@ jobs:
   build:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -70,9 +74,11 @@ jobs:
       - name: Focused engine tests
         run: |
           python -m pytest -q \
+            tests/test_mature_age_gate.py \
             tests/test_candidate_evidence_envelope.py \
             tests/test_pending_confirmation_truth_normalizer.py \
             tests/test_decision_snapshot_guard.py \
+            tests/test_production_status.py \
             tests/test_solana_mintability_gate.py \
             tests/test_solana_mintability_public_guard.py \
             tests/test_real_alerts.py \
@@ -83,6 +89,8 @@ jobs:
 
       - name: Recompute and atomically publish coherent decision snapshot
         shell: bash
+        env:
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: |
           set -euo pipefail
           git config user.name 'wallet500-evidence-bot'
@@ -94,11 +102,17 @@ jobs:
             source_sha="$(git rev-parse HEAD)"
             export SOURCE_SHA="$source_sha"
 
+            # Refresh every policy-bearing source that participates in the decision
+            # snapshot. This prevents stale 60d metadata from being mixed with the
+            # canonical 90d / $15K policy after a partial upstream failure.
+            python -m wallet500.mature_age_gate --cex --revival
+            python -m wallet500.production_age_governance
             python -m wallet500.candidate_evidence_envelope
             python -m wallet500.pending_confirmation_truth_normalizer
             python -m wallet500.real_alerts
             python -m wallet500.revival_funnel_diagnostics
             python -m wallet500.cross_signal_fusion_v2
+            python -m wallet500.production_status
             python -m wallet500.decision_snapshot_guard
 
             python - <<'PY'
@@ -107,23 +121,37 @@ jobs:
           from pathlib import Path
 
           files={
+              'revival_universe':'data/revival-1000-latest.json',
+              'cex_revival':'data/cex-revival-radar.json',
+              'active_candidates':'data/active-qualified-candidates.json',
+              'active_age_gate':'data/active-qualified-age-gate.json',
               'candidate_evidence':'data/candidate-evidence-envelope.json',
               'real_alerts':'data/real-alerts.json',
               'revival_funnel':'data/revival-funnel-diagnostics.json',
               'cross_signal_fusion':'data/cross-signal-fusion-v2.json',
+              'production_status':'data/production-status.json',
               'decision_integrity':'data/decision-snapshot-integrity.json',
           }
           payloads={k:Path(v).read_bytes() for k,v in files.items()}
+          revival=json.loads(payloads['revival_universe'].decode('utf-8'))
+          cex=json.loads(payloads['cex_revival'].decode('utf-8'))
+          age=json.loads(payloads['active_age_gate'].decode('utf-8'))
           e=json.loads(payloads['candidate_evidence'].decode('utf-8'))
           r=json.loads(payloads['real_alerts'].decode('utf-8'))
           f=json.loads(payloads['revival_funnel'].decode('utf-8'))
           x=json.loads(payloads['cross_signal_fusion'].decode('utf-8'))
+          prod=json.loads(payloads['production_status'].decode('utf-8'))
           g=json.loads(payloads['decision_integrity'].decode('utf-8'))
 
+          if (revival.get('age_gate') or {}).get('minimum_market_age_days')!=90: raise SystemExit('REVIVAL_AGE_SCOPE_INVALID')
+          if (cex.get('age_gate') or {}).get('minimum_market_age_days')!=90: raise SystemExit('CEX_AGE_SCOPE_INVALID')
+          if age.get('minimum_market_age_days')!=90: raise SystemExit('ACTIVE_AGE_SCOPE_INVALID')
+          if age.get('project_scope_minimum_market_age_days')!=90: raise SystemExit('ACTIVE_PROJECT_SCOPE_INVALID')
           if e.get('mode')!='RESEARCH_ONLY_CANDIDATE_EVIDENCE_ENVELOPE_V1': raise SystemExit('ENVELOPE_MODE_INVALID')
           if e.get('production_change') is not False or e.get('automatic_buy') is not False: raise SystemExit('ENVELOPE_PRODUCTION_LEAK')
           truth=e.get('truth_contract') or {}
           if truth.get('minimum_market_age_days')!=90: raise SystemExit('ENVELOPE_AGE_SCOPE_INVALID')
+          if float(truth.get('minimum_execution_liquidity_usd') or truth.get('minimum_liquidity_usd') or 15000)!=15000: raise SystemExit('ENVELOPE_LIQUIDITY_SCOPE_INVALID')
           if truth.get('exact_pair_required') is not True: raise SystemExit('ENVELOPE_PAIR_GUARD_MISSING')
           if truth.get('missing_evidence_never_positive') is not True: raise SystemExit('ENVELOPE_MISSING_EVIDENCE_GUARD')
           if truth.get('stale_evidence_never_positive') is not True: raise SystemExit('ENVELOPE_STALE_EVIDENCE_GUARD')
@@ -138,14 +166,19 @@ jobs:
           if (r.get('truth_contract') or {}).get('evidence_ready_is_visible_but_does_not_auto_promote_to_real_alert') is not True: raise SystemExit('REAL_ALERT_EVIDENCE_GUARD_MISSING')
           if (r.get('truth_contract') or {}).get('solana_mintable_tokens_allowed') is not False: raise SystemExit('REAL_ALERT_MINTABLE_GUARD_MISSING')
           if int(f.get('version') or 0)<2 or 'evidence_promotion' not in (f.get('lanes') or {}): raise SystemExit('FUNNEL_EVIDENCE_LANE_MISSING')
+          if ((f.get('lanes') or {}).get('solana_veteran_revival') or {}).get('minimum_market_age_days')!=90: raise SystemExit('FUNNEL_AGE_SCOPE_INVALID')
           if x.get('mode')!='RESEARCH_ONLY_CROSS_SIGNAL_FUSION_V2' or x.get('automatic_buy') is not False: raise SystemExit('FUSION_TRUTH_INVALID')
           if (x.get('truth_contract') or {}).get('does_not_modify_real_alert_gate') is not True: raise SystemExit('FUSION_REAL_ALERT_LEAK')
+          policy=prod.get('policy') or {}
+          if policy.get('minimum_verified_market_age_days')!=90: raise SystemExit('PRODUCTION_STATUS_AGE_SCOPE_INVALID')
+          if float(policy.get('minimum_liquidity_usd') or 0)!=15000: raise SystemExit('PRODUCTION_STATUS_LIQUIDITY_SCOPE_INVALID')
+          if policy.get('exact_onchain_identity_required') is not True or policy.get('exact_dex_pair_required') is not True: raise SystemExit('PRODUCTION_STATUS_IDENTITY_SCOPE_INVALID')
 
           run_id=str(os.environ.get('GITHUB_RUN_ID') or '').strip()
           source_sha=str(os.environ.get('SOURCE_SHA') or '').strip()
           if not run_id or len(source_sha)!=40: raise SystemExit('DECISION_PUBLICATION_SOURCE_ID_INVALID')
           proof={
-              'version':1,
+              'version':2,
               'created_at':datetime.now(timezone.utc).isoformat(),
               'status':'VERIFIED_COHERENT_DECISION_SNAPSHOT',
               'producer':'CANDIDATE_EVIDENCE_ENVELOPE',
@@ -154,9 +187,11 @@ jobs:
               'generation_id':f'candidate-evidence:{run_id}:{source_sha}',
               'decision_validation':'PASS',
               'minimum_market_age_days':90,
+              'minimum_liquidity_usd':15000,
               'exact_pair_required':True,
+              'policy_surfaces_bound':['revival_universe','cex_revival','active_age_gate','candidate_evidence','real_alerts','revival_funnel','production_status','decision_integrity'],
               'hashes':{k:hashlib.sha256(v).hexdigest() for k,v in payloads.items()},
-              'proof_rule':'ATOMIC_COMMIT_BINDS_REAL_ALERTS_TO_COHERENT_DECISION_SNAPSHOT',
+              'proof_rule':'ATOMIC_COMMIT_BINDS_ALL_POLICY_BEARING_DECISION_SURFACES_TO_ONE_90D_15K_SNAPSHOT',
           }
           Path('data/decision-publish-evidence.json').write_text(
               json.dumps(proof,ensure_ascii=False,indent=2,sort_keys=True)+'\n',encoding='utf-8')
@@ -168,11 +203,16 @@ jobs:
             python scripts/atomic_publish.py \
               --base "$source_sha" \
               --fail-on-newer \
-              --message 'data: refresh coherent candidate evidence snapshot' \
+              --message 'data: refresh coherent 90d 15k decision policy snapshot' \
+              data/revival-1000-latest.json \
+              data/cex-revival-radar.json \
+              data/active-qualified-candidates.json \
+              data/active-qualified-age-gate.json \
               data/candidate-evidence-envelope.json \
               data/real-alerts.json \
               data/revival-funnel-diagnostics.json \
               data/cross-signal-fusion-v2.json \
+              data/production-status.json \
               data/decision-snapshot-integrity.json \
               data/decision-publish-evidence.json
             rc=$?
