@@ -66,6 +66,7 @@ jobs:
           if t.get('production_gate_changed') is not False or t.get('automatic_buy') is not False: raise SystemExit('REVIVAL_90D_PRODUCTION_GATE_CHANGED')
           if float(t.get('minimum_pair_age_days') or 0)!=90.0: raise SystemExit('REVIVAL_90D_AGE_DRIFT')
           if float(t.get('minimum_liquidity_usd') or 0)!=15000.0: raise SystemExit('REVIVAL_90D_LIQ_DRIFT')
+          if int(t.get('minimum_txns_h1') or 0)!=30: raise SystemExit('REVIVAL_90D_TXNS_H1_DRIFT')
           if t.get('exact_pair_required') is not True or t.get('exact_base_token_identity_required') is not True: raise SystemExit('REVIVAL_90D_IDENTITY_GUARD_MISSING')
           if t.get('notification_marker')!='🔥🔥🔥': raise SystemExit('REVIVAL_90D_FIRE_MARKER_MISSING')
           if t.get('no_historical_backfill') is not True or t.get('no_hindsight') is not True: raise SystemExit('REVIVAL_90D_FORWARD_ONLY_GUARD_MISSING')
