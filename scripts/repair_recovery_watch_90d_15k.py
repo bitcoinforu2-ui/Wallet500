@@ -23,7 +23,7 @@ replace_required(
     '"veteran_age_verified_90d_plus"',
 )
 
-# Keep the regression boundary aligned with the production/research policy.
+# Keep the regression boundary aligned with the canonical policy.
 replace_required(
     "tests/test_reawakening_shadow.py",
     "def test_reawakening_age_gate_is_fail_closed_at_60_days():",
@@ -98,20 +98,6 @@ elif '"minimum_market_age_days": 90' not in text:
     raise SystemExit("REAWAKENING_DASH_RULE_PATTERN_MISSING")
 dash.write_text(text, encoding="utf-8")
 
-# The scheduled Recovery workflow must validate the canonical 90d / $15k contract,
-# otherwise every future rebuild can fail and leave yesterday's stale dashboard feed visible.
-wf = Path(".github/workflows/reawakening-shadow.yml")
-text = wf.read_text(encoding="utf-8")
-text = text.replace(
-    "if float(recovery.get('liquidity_gte_usd') or 0) != 50000.0: raise SystemExit('LIQUIDITY_HARD_FLOOR_CHANGED')",
-    "if float(recovery.get('liquidity_gte_usd') or 0) != 15000.0: raise SystemExit('RECOVERY_LIQUIDITY_POLICY_DRIFT')",
-)
-anchor = "          if recovery.get('exact_pair_locked') is not True: raise SystemExit('EXACT_PAIR_LOCK_MISSING')\n"
-age_check = "          if float((db.get('rule') or {}).get('minimum_market_age_days') or 0) != 90.0: raise SystemExit('RECOVERY_AGE_POLICY_DRIFT')\n"
-if age_check not in text:
-    if anchor not in text:
-        raise SystemExit("REAWAKENING_WORKFLOW_VALIDATION_ANCHOR_MISSING")
-    text = text.replace(anchor, age_check + anchor)
-wf.write_text(text, encoding="utf-8")
-
+# Workflow validators are maintained directly in GitHub, not rewritten at runtime.
+# This keeps the Actions token from needing workflow-file write permission.
 print("RECOVERY_WATCH_90D_15K_REPAIR_READY")
