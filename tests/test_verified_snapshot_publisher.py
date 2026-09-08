@@ -40,6 +40,8 @@ def _decision_fixture():
         "status": "VERIFIED_COHERENT_DECISION_SNAPSHOT",
         "decision_validation": "PASS",
         "exact_pair_required": True,
+        "minimum_market_age_days": 90,
+        "minimum_liquidity_usd": 15000,
         "generation_id": "candidate-evidence:123:abc",
         "hashes": hashes,
     }
@@ -74,15 +76,14 @@ def test_verified_decision_snapshot_fails_closed_on_one_digest_mismatch(monkeypa
     assert mod.verified_decision_snapshot("parent") is None
 
 
-def test_verified_decision_snapshot_fails_closed_on_subthreshold_real_alert_contract(monkeypatch):
-    proof, bodies = _decision_fixture()
-    research = dict(bodies)
-    research_body = json.dumps(
+def _replace_real_alert_contract(proof, bodies, *, age, liquidity):
+    changed = dict(bodies)
+    body = json.dumps(
         {
             "version": 3,
             "truth_contract": {
-                "minimum_market_age_days": 89,
-                "minimum_execution_pool_liquidity_usd": 14999.0,
+                "minimum_market_age_days": age,
+                "minimum_execution_pool_liquidity_usd": liquidity,
                 "exact_onchain_identity_required": True,
                 "exact_dex_pair_required": True,
                 "symbol_only_never_actionable": True,
@@ -91,15 +92,34 @@ def test_verified_decision_snapshot_fails_closed_on_subthreshold_real_alert_cont
         },
         sort_keys=True,
     ).encode()
-    research[mod.DECISION_HASH_PATHS["real_alerts"]] = research_body
+    changed[mod.DECISION_HASH_PATHS["real_alerts"]] = body
     proof = dict(proof)
     proof["hashes"] = dict(proof["hashes"])
-    proof["hashes"]["real_alerts"] = hashlib.sha256(research_body).hexdigest()
+    proof["hashes"]["real_alerts"] = hashlib.sha256(body).hexdigest()
+    return proof, changed
+
+
+def test_verified_decision_snapshot_fails_closed_on_subthreshold_real_alert_contract(monkeypatch):
+    proof, bodies = _decision_fixture()
+    proof, changed = _replace_real_alert_contract(proof, bodies, age=89, liquidity=14999.0)
 
     def parent_bytes(parent, rel):
         if rel == mod.DECISION_PROOF:
             return json.dumps(proof).encode()
-        return research.get(rel)
+        return changed.get(rel)
+
+    monkeypatch.setattr(mod, "_parent_bytes", parent_bytes)
+    assert mod.verified_decision_snapshot("parent") is None
+
+
+def test_verified_decision_snapshot_rejects_stricter_policy_drift(monkeypatch):
+    proof, bodies = _decision_fixture()
+    proof, changed = _replace_real_alert_contract(proof, bodies, age=180, liquidity=50000.0)
+
+    def parent_bytes(parent, rel):
+        if rel == mod.DECISION_PROOF:
+            return json.dumps(proof).encode()
+        return changed.get(rel)
 
     monkeypatch.setattr(mod, "_parent_bytes", parent_bytes)
     assert mod.verified_decision_snapshot("parent") is None
@@ -148,35 +168,37 @@ def test_publish_proof_binds_effective_and_snapshot_real_alert_digests(monkeypat
     assert published["decision_snapshot_generation_id"] == proof["generation_id"]
 
 
-def test_snapshot_production_status_accepts_canonical_contract(tmp_path):
+def _write_status(tmp_path, age, liquidity, key="policy"):
     path = tmp_path / "files" / "data" / "production-status.json"
-    path.parent.mkdir(parents=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
             {
-                "cohort_rules": {
-                    "minimum_verified_market_age_days": 90,
-                    "minimum_liquidity_usd": 15000.0,
+                key: {
+                    "minimum_verified_market_age_days": age,
+                    "minimum_liquidity_usd": liquidity,
                 }
             }
         ),
         encoding="utf-8",
     )
+
+
+def test_snapshot_production_status_accepts_canonical_contract(tmp_path):
+    _write_status(tmp_path, 90, 15000.0)
+    assert mod._snapshot_production_status_passes_contract(tmp_path) is True
+
+
+def test_snapshot_production_status_accepts_legacy_shape_only_when_values_are_canonical(tmp_path):
+    _write_status(tmp_path, 90, 15000.0, key="cohort_rules")
     assert mod._snapshot_production_status_passes_contract(tmp_path) is True
 
 
 def test_snapshot_production_status_fails_closed_on_subthreshold_contract(tmp_path):
-    path = tmp_path / "files" / "data" / "production-status.json"
-    path.parent.mkdir(parents=True)
-    path.write_text(
-        json.dumps(
-            {
-                "cohort_rules": {
-                    "minimum_verified_market_age_days": 89,
-                    "minimum_liquidity_usd": 14999.0,
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
+    _write_status(tmp_path, 89, 14999.0)
+    assert mod._snapshot_production_status_passes_contract(tmp_path) is False
+
+
+def test_snapshot_production_status_rejects_stricter_policy_drift(tmp_path):
+    _write_status(tmp_path, 180, 50000.0)
     assert mod._snapshot_production_status_passes_contract(tmp_path) is False
