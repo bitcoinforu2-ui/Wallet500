@@ -1,0 +1,89 @@
+name: Wallet500 Reconcile Revival Policy 90D 15K Fast
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/reconcile-revival-policy-90d-15k-fast.yml'
+      - 'scripts/reconcile_revival_policy_90d_15k.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-reconcile-revival-policy-90d-15k
+  cancel-in-progress: true
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Reconcile active Revival contracts
+        run: python scripts/reconcile_revival_policy_90d_15k.py
+
+      - name: Install package and tests
+        run: python -m pip install -e . pytest
+
+      - name: Compile engine
+        run: python -m compileall -q src/wallet500
+
+      - name: Run policy-critical tests
+        run: |
+          python -m pytest -q \
+            tests/test_revival_90d_telegram.py \
+            tests/test_real_alerts.py \
+            tests/test_decision_snapshot_guard.py \
+            tests/test_revival_wallet_evidence.py \
+            tests/test_revival_wallet_registry.py \
+            tests/test_revival_prewaking_rotation.py \
+            tests/test_revival_prewaking_wallet_evidence_v2.py \
+            tests/test_revival_prewaking_wallet_retention.py
+
+      - name: Run full unit test suite
+        run: python -m pytest -q
+
+      - name: Remove obsolete migration machinery
+        shell: bash
+        run: |
+          rm -f \
+            .github/workflows/policy-threshold-migration-60d-15k.yml \
+            scripts/migrate_revival_policy_60d_15k.py \
+            scripts/migrate_revival_policy_60d_15k_fixups.py \
+            .github/workflows/reconcile-revival-policy-90d-15k.yml \
+            .github/workflows/reconcile-revival-policy-90d-15k-fast.yml \
+            scripts/reconcile_revival_policy_90d_15k.py
+
+      - name: Commit only after every test passes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-policy-bot'
+          git config user.email 'wallet500-policy-bot@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'REVIVAL_POLICY_ALREADY_CLEAN'
+            exit 0
+          fi
+          git commit -m 'policy: unify Revival runtime at 90d 15k'
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then
+              echo 'REVIVAL_POLICY_90D_15K_PUBLISH_OK'
+              exit 0
+            fi
+            git rebase --abort 2>/dev/null || true
+            echo "REVIVAL_POLICY_PUBLISH_RETRY attempt=$attempt"
+            sleep 3
+          done
+          echo '::error::REVIVAL_POLICY_PUBLISH_RACE_EXHAUSTED'
+          exit 1
