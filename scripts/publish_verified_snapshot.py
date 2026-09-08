@@ -6,10 +6,9 @@ Rules:
 - never overwrite a path that changed on main after the source scan;
 - bind publication proof to the effective canonical real-alerts.json digest;
 - preserve a newer, independently verified coherent decision snapshot as one unit;
-- only preserve a newer decision snapshot when its bound REAL ALERT feed itself
-  satisfies the canonical production truth contract;
-- reject immutable source snapshots whose production-status policy metadata is
-  weaker than the canonical production truth contract;
+- only preserve a newer decision snapshot when every proof-bound file matches;
+- reject immutable source snapshots whose policy metadata differs from the
+  canonical 90d / $15K veteran-revival contract, including stricter drift;
 - if real-alerts changed without a valid coherent decision proof, treat the scan as
   superseded instead of weakening verification;
 - use commit-tree compare-and-swap retries, never force-push.
@@ -26,25 +25,30 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
+from wallet500.policy import (
+    CANONICAL_MIN_EXECUTION_LIQUIDITY_USD,
+    CANONICAL_MIN_MARKET_AGE_DAYS,
+)
+
 DECISION_PROOF = "data/decision-publish-evidence.json"
 DECISION_HASH_PATHS = {
+    "revival_universe": "data/revival-1000-latest.json",
+    "cex_revival": "data/cex-revival-radar.json",
+    "active_candidates": "data/active-qualified-candidates.json",
+    "active_age_gate": "data/active-qualified-age-gate.json",
     "candidate_evidence": "data/candidate-evidence-envelope.json",
     "real_alerts": "data/real-alerts.json",
     "revival_funnel": "data/revival-funnel-diagnostics.json",
     "cross_signal_fusion": "data/cross-signal-fusion-v2.json",
+    "production_status": "data/production-status.json",
     "decision_integrity": "data/decision-snapshot-integrity.json",
 }
-# These are the decision-snapshot paths that can also be present in the Live Scan
-# artifact. If a newer coherent decision snapshot exists, preserve this set as a
-# unit instead of mixing generations.
-DECISION_OWNED_LIVE_PATHS = {
-    "data/candidate-evidence-envelope.json",
-    "data/real-alerts.json",
-    "data/revival-funnel-diagnostics.json",
-}
+# These policy-bearing decision paths can also be present in the Live Scan artifact.
+# A fresher verified generation must be preserved as one unit rather than mixed.
+DECISION_OWNED_LIVE_PATHS = set(DECISION_HASH_PATHS.values())
 
-PRODUCTION_MIN_MARKET_AGE_DAYS = 90
-PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD = 15000.0
+PRODUCTION_MIN_MARKET_AGE_DAYS = CANONICAL_MIN_MARKET_AGE_DAYS
+PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD = CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
 
 
 def git(*args: str, env: dict[str, str] | None = None, input_text: str | None = None,
@@ -123,7 +127,7 @@ def validate_manifest(root: Path, source_run: int, source_sha: str) -> tuple[dic
         raise RuntimeError("Verified snapshot missing immutable real-alerts.json digest")
     if not _snapshot_production_status_passes_contract(root):
         raise RuntimeError(
-            "Verified snapshot production-status policy is below canonical production contract"
+            "Verified snapshot production-status policy differs from canonical 90d / $15K contract"
         )
     return manifest, manifest_bytes
 
@@ -151,19 +155,19 @@ def _parent_bytes(parent: str, rel: str) -> bytes | None:
 
 
 def _bound_real_alerts_passes_production_contract(raw: bytes) -> bool:
-    """Fail closed unless the bound REAL ALERT feed declares production invariants."""
+    """Fail closed unless the bound REAL ALERT feed declares the exact contract."""
     try:
         feed = json.loads(raw.decode("utf-8"))
         truth = feed.get("truth_contract")
         if not isinstance(truth, dict):
             return False
-        age = float(truth.get("minimum_market_age_days"))
+        age = int(truth.get("minimum_market_age_days"))
         liquidity = float(truth.get("minimum_execution_pool_liquidity_usd"))
     except (TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
         return False
     return (
-        age >= PRODUCTION_MIN_MARKET_AGE_DAYS
-        and liquidity >= PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD
+        age == PRODUCTION_MIN_MARKET_AGE_DAYS
+        and liquidity == PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD
         and truth.get("exact_onchain_identity_required") is True
         and truth.get("exact_dex_pair_required") is True
         and truth.get("symbol_only_never_actionable") is True
@@ -172,23 +176,23 @@ def _bound_real_alerts_passes_production_contract(raw: bytes) -> bool:
 
 
 def _snapshot_production_status_passes_contract(root: Path) -> bool:
-    """Reject stale immutable artifacts generated under weaker production gates."""
+    """Reject any immutable artifact whose operator policy drifted from 90d/$15K."""
     path = root / "files" / "data" / "production-status.json"
     if not path.is_file():
         return False
     try:
         status = json.loads(path.read_text(encoding="utf-8"))
-        rules = status.get("cohort_rules")
+        rules = status.get("policy")
+        if not isinstance(rules, dict):
+            # Compatibility only for old test/artifact shapes; still exact-match.
+            rules = status.get("cohort_rules")
         if not isinstance(rules, dict):
             return False
-        age = float(rules.get("minimum_verified_market_age_days"))
+        age = int(rules.get("minimum_verified_market_age_days"))
         liquidity = float(rules.get("minimum_liquidity_usd"))
     except (TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
         return False
-    return (
-        age >= PRODUCTION_MIN_MARKET_AGE_DAYS
-        and liquidity >= PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD
-    )
+    return age == PRODUCTION_MIN_MARKET_AGE_DAYS and liquidity == PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD
 
 
 def verified_decision_snapshot(parent: str) -> dict | None:
@@ -196,8 +200,8 @@ def verified_decision_snapshot(parent: str) -> dict | None:
 
     This is deliberately fail-closed. A malformed/missing proof, missing file,
     single digest mismatch, or bound REAL ALERT feed that does not independently
-    satisfy the production truth contract means the verified publisher must not
-    preserve the newer decision generation as trusted canonical state.
+    satisfy the exact production truth contract means the verified publisher must
+    not preserve the newer decision generation as trusted canonical state.
     """
     raw = _parent_bytes(parent, DECISION_PROOF)
     if raw is None:
@@ -211,6 +215,10 @@ def verified_decision_snapshot(parent: str) -> dict | None:
     if proof.get("decision_validation") != "PASS":
         return None
     if proof.get("exact_pair_required") is not True:
+        return None
+    if int(proof.get("minimum_market_age_days") or 0) != PRODUCTION_MIN_MARKET_AGE_DAYS:
+        return None
+    if float(proof.get("minimum_liquidity_usd") or 0) != PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD:
         return None
     hashes = proof.get("hashes")
     if not isinstance(hashes, dict):
@@ -250,8 +258,6 @@ def _proof_blob(
         "generation_id": generation_id,
         "strict_validation": "PASS",
         "scope": "data/",
-        # Effective canonical digest after this commit, not necessarily the copy in
-        # the Live Scan artifact when a fresher coherent decision snapshot wins.
         "real_alerts_sha256": effective_real_digest,
         "snapshot_real_alerts_sha256": snapshot_real_digest,
         "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
@@ -329,14 +335,9 @@ def main() -> int:
                 rel = item["path"]
                 if rel == watermark:
                     continue
-
-                # A valid newer candidate/REAL ALERT/funnel snapshot is atomic. If
-                # any part is newer, preserve every overlapping part from that same
-                # generation to prevent denominator/semantic contamination.
                 if preserve_decision is not None and rel in DECISION_OWNED_LIVE_PATHS:
                     skipped.append(rel)
                     continue
-
                 if changed_since(source_sha, parent, rel):
                     skipped.append(rel)
                     continue
