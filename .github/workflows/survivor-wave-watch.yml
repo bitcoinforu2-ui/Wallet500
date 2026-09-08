@@ -103,7 +103,7 @@ jobs:
           if fusion6.get('probability_model_enabled') is not False: raise SystemExit('FUSION_UNCALIBRATED_PROBABILITY_ENABLED')
           contract=d.get('veteran_truth_contract') or {}
           if contract.get('focus')!='VETERAN_COIN_REVIVAL_ONLY': raise SystemExit('VETERAN_FOCUS_INVALID')
-          if float(contract.get('minimum_market_age_days') or 0) < 60: raise SystemExit('VETERAN_AGE_FLOOR_INVALID')
+          if float(contract.get('minimum_market_age_days') or 0) < 90: raise SystemExit('VETERAN_AGE_FLOOR_INVALID')
           if contract.get('unknown_age_policy')!='FAIL_CLOSED_NO_ALERT': raise SystemExit('VETERAN_FAIL_CLOSED_INVALID')
           eligible={}
           for x in d.get('tokens') or []:

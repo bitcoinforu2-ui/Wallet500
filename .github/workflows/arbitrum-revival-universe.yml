@@ -38,7 +38,7 @@ jobs:
           if d.get('mode')!='RESEARCH_ONLY_ARBITRUM_REVIVAL_UNIVERSE_V1': raise SystemExit('ARBITRUM_MODE_INVALID')
           if d.get('network')!='arbitrum' or d.get('automatic_buy') is not False: raise SystemExit('ARBITRUM_BOUNDARY_INVALID')
           c=d.get('filter_contract') or {}
-          if c.get('minimum_market_age_days')!=60 or float(c.get('minimum_live_liquidity_usd') or 0)<15000: raise SystemExit('ARBITRUM_HARD_GATE_DRIFT')
+          if c.get('minimum_market_age_days')!=90 or float(c.get('minimum_live_liquidity_usd') or 0)<15000: raise SystemExit('ARBITRUM_HARD_GATE_DRIFT')
           for x in d.get('tokens') or []:
             if x.get('actionable') is not False or x.get('production_portfolio_impact')!='NONE': raise SystemExit('ARBITRUM_PRODUCTION_LEAK')
             if not x.get('blockers') and (x.get('market_age_verified') is not True or x.get('exact_pair_verified') is not True or float(x.get('liquidity_usd') or 0)<15000): raise SystemExit('ARBITRUM_FILTER_FALSE_PASS')

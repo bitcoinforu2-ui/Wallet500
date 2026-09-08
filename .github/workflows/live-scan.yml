@@ -176,7 +176,7 @@ jobs:
           if int(rc.get('evidence_ready_research') or 0) != ready: raise SystemExit('LIVE_DECISION_EVIDENCE_COUNT_SKEW')
           if int(ep.get('evidence_ready') or 0) != ready: raise SystemExit('LIVE_FUNNEL_EVIDENCE_COUNT_SKEW')
           if e.get('production_change') is not False or e.get('automatic_buy') is not False: raise SystemExit('LIVE_ENVELOPE_PRODUCTION_LEAK')
-          if (e.get('truth_contract') or {}).get('minimum_market_age_days') != 60: raise SystemExit('LIVE_VETERAN_SCOPE_DRIFT')
+          if (e.get('truth_contract') or {}).get('minimum_market_age_days') != 90: raise SystemExit('LIVE_VETERAN_SCOPE_DRIFT')
           if s.get('automatic_buy') is not False: raise SystemExit('LIVE_SIGNAL_INTELLIGENCE_AUTO_BUY_LEAK')
           st=s.get('truth_contract') or {}
           if st.get('self_learning_requires_holdout_validation') is not True: raise SystemExit('LIVE_SELF_LEARNING_VALIDATION_CONTRACT_MISSING')

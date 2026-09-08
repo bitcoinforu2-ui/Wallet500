@@ -89,7 +89,7 @@ jobs:
           if d.get('network')!='solana' or d.get('production_portfolio_impact')!='NONE': raise SystemExit('REVIVAL_SAFETY_LABEL_INVALID')
           if d.get('no_hindsight') is not True or d.get('candidate_cap') is not None: raise SystemExit('REVIVAL_TRUTH_OR_CAP_VIOLATION')
           age_gate=d.get('age_gate') or {}
-          if age_gate.get('status')!='ENFORCED_FAIL_CLOSED' or int(age_gate.get('minimum_market_age_days') or 0)!=60: raise SystemExit('REVIVAL_60D_AGE_GATE_MISSING')
+          if age_gate.get('status')!='ENFORCED_FAIL_CLOSED' or int(age_gate.get('minimum_market_age_days') or 0)!=90: raise SystemExit('REVIVAL_90D_AGE_GATE_MISSING')
           contract=d.get('discovery_expansion_contract') or {}
           if contract.get('version')!='REVIVAL_DISCOVERY_ABSORPTION_EXPANSION_V2': raise SystemExit('DISCOVERY_EXPANSION_V2_CONTRACT_MISSING')
           if contract.get('fixed_candidate_cap') is not None or contract.get('production_portfolio_impact')!='NONE': raise SystemExit('DISCOVERY_EXPANSION_SAFETY_INVALID')
@@ -101,7 +101,7 @@ jobs:
           if strict_t0.get('production_portfolio_impact')!='NONE' or strict_t0.get('discovery_price_mutation')!='FORBIDDEN_AFTER_FIRST_LOCK': raise SystemExit('STRICT_T0_SAFETY_INVALID')
           coins=d.get('coins') or []
           if len(coins)<100: raise SystemExit('REVIVAL_UNIVERSE_TOO_SMALL')
-          if any(x.get('market_age_verified') is not True or int(x.get('market_age_min_days') or 0)<60 for x in coins): raise SystemExit('REVIVAL_UNDER_60_OR_UNVERIFIED_AGE_PRESENT')
+          if any(x.get('market_age_verified') is not True or int(x.get('market_age_min_days') or 0)<90 for x in coins): raise SystemExit('REVIVAL_UNDER_90_OR_UNVERIFIED_AGE_PRESENT')
           if any(x.get('network')!='solana' or x.get('network_verified') is not True for x in coins): raise SystemExit('NON_VERIFIED_SOLANA_PRESENT')
           if any(not looks_like_solana_address(x.get('token_address')) for x in coins): raise SystemExit('INVALID_SOLANA_ADDRESS')
           if any(x.get('pre_alpha_eligible') for x in coins): raise SystemExit('RESEARCH_LAYER_PROMOTED_PRE_ALPHA')
