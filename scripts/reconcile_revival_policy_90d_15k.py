@@ -162,6 +162,23 @@ def reconcile() -> list[str]:
                 path.write_text(new, encoding="utf-8")
                 changed.add(name)
 
+    # Preserve the publisher's negative test as deliberately sub-threshold.
+    # The generic migration makes all production contracts canonical 90D/15K;
+    # this one fixture must remain invalid so fail-closed behavior is tested.
+    publisher_test = Path("tests/test_verified_snapshot_publisher.py")
+    if publisher_test.exists():
+        text = publisher_test.read_text(encoding="utf-8")
+        marker = "def test_verified_decision_snapshot_fails_closed_on_research_real_alert_contract"
+        head, sep, tail = text.partition(marker)
+        if sep:
+            tail2 = tail.replace('"minimum_market_age_days": 90,', '"minimum_market_age_days": 89,', 1)
+            new = head + "def test_verified_decision_snapshot_fails_closed_on_subthreshold_real_alert_contract" + tail2
+            if new != text:
+                publisher_test.write_text(new, encoding="utf-8")
+                changed.add(str(publisher_test))
+        else:
+            raise SystemExit("PUBLISHER_NEGATIVE_FIXTURE_MISSING")
+
     return sorted(changed)
 
 
