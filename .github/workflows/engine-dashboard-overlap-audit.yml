@@ -13,7 +13,10 @@ on:
       - 'data/dashboard-truth-overlap.js'
       - 'dashboard-revival1000.html'
       - 'dashboard-live.html'
+      - 'index.html'
       - 'tools/check_engine_dashboard_overlap.py'
+      - 'tools/check_identity_alignment.py'
+      - 'src/wallet500/cross_signal_fusion_v2.py'
       - 'src/wallet500/revival_pre_t0_evidence_v2.py'
       - '.github/workflows/engine-dashboard-overlap-audit.yml'
   push:
@@ -26,12 +29,19 @@ on:
       - 'data/dashboard-truth-overlap.js'
       - 'dashboard-revival1000.html'
       - 'dashboard-live.html'
+      - 'index.html'
       - 'data/revival-pre-t0-evidence.json'
       - 'data/revival-pre-t0-evidence-ledger.json'
       - 'data/waking-pre-t0-confirmation.json'
       - 'data/revival-holder-latest.json'
       - 'data/real-alerts.json'
+      - 'data/cex-revival-radar.json'
+      - 'data/candidate-evidence-envelope.json'
+      - 'data/cross-signal-fusion-v2.json'
+      - 'data/catalyst-wire-live.json'
       - 'tools/check_engine_dashboard_overlap.py'
+      - 'tools/check_identity_alignment.py'
+      - 'src/wallet500/cross_signal_fusion_v2.py'
       - '.github/workflows/engine-dashboard-overlap-audit.yml'
 
 permissions:
@@ -51,7 +61,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Python syntax check
-        run: python -m py_compile tools/check_engine_dashboard_overlap.py
+        run: |
+          python -m py_compile tools/check_engine_dashboard_overlap.py
+          python -m py_compile tools/check_identity_alignment.py
       - name: Dashboard JavaScript syntax check
         run: |
           node --check dashboard-live-price.js
@@ -65,3 +77,6 @@ jobs:
       - name: Live freshness + truth contract
         if: github.event_name != 'pull_request'
         run: python tools/check_engine_dashboard_overlap.py --strict --max-skew-minutes 30
+      - name: Row-level chain token pair alignment
+        if: github.event_name != 'pull_request'
+        run: python tools/check_identity_alignment.py
