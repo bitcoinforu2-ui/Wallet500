@@ -1,0 +1,76 @@
+name: Wallet500 Revival Policy 90d 15k
+
+on:
+  push:
+    branches: [fix/revival-policy-90d-15k]
+    paths:
+      - 'scripts/migrate_revival_policy_90d_15k.py'
+      - 'tests/test_revival_policy_90d_15k_consistency.py'
+      - '.github/workflows/revival-policy-90d-15k.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-revival-policy-90d-15k
+  cancel-in-progress: true
+
+jobs:
+  migrate-and-validate:
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[policy-migration]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/revival-policy-90d-15k
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install
+        run: pip install -e . pytest
+
+      - name: Apply 90d / 15K policy migration
+        run: python scripts/migrate_revival_policy_90d_15k.py
+
+      - name: Validate policy and affected truth contracts
+        run: >-
+          python -m pytest -q
+          tests/test_revival_policy_90d_15k_consistency.py
+          tests/test_reawakening_shadow.py
+          tests/test_reawakening_forward_tracker.py
+          tests/test_reawakening_forward_fast_runner.py
+          tests/test_reawakening_dashboard.py
+          tests/test_reawakening_telegram.py
+          tests/test_mature_age_gate.py
+          tests/test_cex_identity_preflight.py
+          tests/test_cex_fast_lane_collection.py
+          tests/test_candidate_evidence_envelope.py
+          tests/test_real_alerts.py
+          tests/test_real_alerts_revival_bridge.py
+          tests/test_revival_funnel_diagnostics.py
+          tests/test_telegram_exact_pair.py
+          tests/test_system_health.py
+          tests/test_production_status.py
+          tests/test_decision_snapshot_guard.py
+          tests/test_multichain_veteran_revival.py
+          tests/test_arbitrum_revival_universe.py
+          tests/test_catalyst_wire.py
+          tests/test_hot_email_alerts.py
+
+      - name: Publish migration to repair branch
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-policy-bot'
+          git config user.email 'wallet500-policy-bot@users.noreply.github.com'
+          git add src tests .github/workflows docs/OLD_COIN_REVIVAL_POLICY.md || true
+          if git diff --cached --quiet; then
+            echo 'REVIVAL_POLICY_NO_CHANGE'
+            exit 0
+          fi
+          git commit -m 'fix: align Revival policy at 90d 15k [policy-migration]'
+          git push origin HEAD:fix/revival-policy-90d-15k
