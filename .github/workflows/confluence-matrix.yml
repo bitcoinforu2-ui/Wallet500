@@ -1,0 +1,90 @@
+name: Wallet500 Confluence Matrix
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/confluence_matrix.py'
+      - 'src/wallet500/policy.py'
+      - 'tests/test_confluence_matrix.py'
+      - 'tests/test_policy_contract.py'
+      - 'scripts/atomic_publish.py'
+      - '.github/workflows/confluence-matrix.yml'
+      - 'data/cross-signal-fusion-v2.json'
+      - 'data/real-alerts.json'
+      - 'data/candidate-evidence-envelope.json'
+      - 'data/holder-concentration-shadow.json'
+      - 'data/paid-order-truth.json'
+      - 'data/catalyst-wire-live.json'
+      - 'data/cex-revival-radar.json'
+      - 'data/funding-cluster-intelligence.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-confluence-matrix
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python -m pip install -e . pytest
+      - name: Test weighted truth contract
+        run: |
+          python -m pytest -q \
+            tests/test_confluence_matrix.py \
+            tests/test_policy_contract.py
+      - name: Build and atomically publish Confluence Matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-confluence-bot'
+          git config user.email 'wallet500-confluence-bot@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            source_sha="$(git rev-parse HEAD)"
+            python -m wallet500.confluence_matrix
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('data/confluence-matrix.json').read_text(encoding='utf-8'))
+          if p.get('mode')!='RESEARCH_ONLY_CONFLUENCE_MATRIX_V1': raise SystemExit('CONFLUENCE_MODE_INVALID')
+          if p.get('production_change') is not False or p.get('automatic_buy') is not False: raise SystemExit('CONFLUENCE_PRODUCTION_LEAK')
+          pol=p.get('canonical_policy') or {}
+          if pol.get('minimum_market_age_days') != 90: raise SystemExit('CONFLUENCE_AGE_POLICY_DRIFT')
+          if float(pol.get('minimum_execution_liquidity_usd') or 0) != 15000: raise SystemExit('CONFLUENCE_LIQUIDITY_POLICY_DRIFT')
+          weights=(p.get('weight_contract') or {}).get('weights') or {}
+          if abs(sum(float(v) for v in weights.values())-100.0) > 1e-9: raise SystemExit('CONFLUENCE_WEIGHT_SUM_INVALID')
+          truth=p.get('truth_contract') or {}
+          for key in ('stale_source_never_positive','missing_source_never_fabricated','provider_pnl_never_ground_truth','paid_promotion_never_positive_alpha','holder_concentration_never_positive_alpha'):
+              if truth.get(key) is not True: raise SystemExit('CONFLUENCE_TRUTH_CONTRACT_MISSING:'+key)
+          print('CONFLUENCE_TRUTH_OK', p.get('counts'), p.get('system_state'))
+          PY
+            set +e
+            python scripts/atomic_publish.py \
+              --base "$source_sha" \
+              --fail-on-newer \
+              --message 'data: refresh weighted confluence matrix' \
+              data/confluence-matrix.json
+            rc=$?
+            set -e
+            if [ "$rc" -eq 0 ]; then echo 'CONFLUENCE_ATOMIC_PUBLISH_OK'; exit 0; fi
+            if [ "$rc" -eq 75 ]; then echo "CONFLUENCE_RECOMPUTE_REQUIRED attempt=$attempt"; sleep 1; continue; fi
+            echo "::error::CONFLUENCE_ATOMIC_PUBLISH_FAILED rc=$rc"; exit "$rc"
+          done
+          echo '::error::CONFLUENCE_RECOMPUTE_EXHAUSTED'
+          exit 1
