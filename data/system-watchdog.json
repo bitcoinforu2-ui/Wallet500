@@ -1,34 +1,19 @@
 {
   "version": 1,
   "mode": "INDEPENDENT_OBSERVABILITY_NO_TRADING_POLICY_EFFECT",
-  "updated_at": "2026-09-08T20:09:29.777960+00:00",
-  "overall": "CRITICAL",
-  "incident_count": 6,
-  "critical_count": 1,
-  "high_count": 5,
-  "new_notifications": [
-    {
-      "code": "LIVE_SCAN_LATEST_FAILED",
-      "severity": "HIGH",
-      "detail": "latest Live Scan conclusion=failure",
-      "run_id": 34272775851
-    }
+  "updated_at": "2026-09-08T20:40:17.232013+00:00",
+  "overall": "DEGRADED",
+  "incident_count": 3,
+  "critical_count": 0,
+  "high_count": 3,
+  "new_notifications": [],
+  "recovered_codes": [
+    "LIVE_SCAN_LAST_SUCCESS_STALE",
+    "LIVE_SCAN_LATEST_FAILED",
+    "TELEGRAM_REPORT_STALE"
   ],
-  "recovered_codes": [],
   "real_alert_transitions_entered": [],
   "incidents": [
-    {
-      "code": "LIVE_SCAN_LAST_SUCCESS_STALE",
-      "severity": "CRITICAL",
-      "detail": "last successful Live Scan age=missings",
-      "run_id": null
-    },
-    {
-      "code": "LIVE_SCAN_LATEST_FAILED",
-      "severity": "HIGH",
-      "detail": "latest Live Scan conclusion=failure",
-      "run_id": 34272775851
-    },
     {
       "code": "PUBLIC_DASHBOARD_UNREACHABLE_OR_WRONG_BUILD",
       "severity": "HIGH",
@@ -37,63 +22,58 @@
     {
       "code": "SCHEDULER_TELEMETRY_STALE",
       "severity": "HIGH",
-      "detail": "scheduler-health.json age=73180.4s max=2700s"
+      "detail": "scheduler-health.json age=75027.8s max=2700s"
     },
     {
       "code": "SYSTEM_HEALTH_STALE",
       "severity": "HIGH",
-      "detail": "system-health.json age=73180.4s max=2700s"
-    },
-    {
-      "code": "TELEGRAM_REPORT_STALE",
-      "severity": "HIGH",
-      "detail": "telegram-alert-report.json age=73210.2s max=3600s"
+      "detail": "system-health.json age=75027.9s max=2700s"
     }
   ],
   "checks": {
     "real-alerts.json": {
-      "timestamp": "2026-09-08T19:54:22.536887+00:00",
-      "age_seconds": 907.2,
+      "timestamp": "2026-09-08T20:38:05.439873+00:00",
+      "age_seconds": 131.8,
       "max_age_seconds": 2700,
       "ok": true
     },
     "system-health.json": {
       "timestamp": "2026-09-07T23:49:49.373821+00:00",
-      "age_seconds": 73180.4,
+      "age_seconds": 75027.9,
       "max_age_seconds": 2700,
       "ok": false
     },
     "scheduler-health.json": {
       "timestamp": "2026-09-07T23:49:49.417306+00:00",
-      "age_seconds": 73180.4,
+      "age_seconds": 75027.8,
       "max_age_seconds": 2700,
       "ok": false
     },
     "telegram-alert-report.json": {
-      "timestamp": "2026-09-07T23:49:19.588964+00:00",
-      "age_seconds": 73210.2,
+      "timestamp": "2026-09-08T20:38:51.880327+00:00",
+      "age_seconds": 85.4,
       "max_age_seconds": 3600,
-      "ok": false
+      "ok": true
     },
     "real-alert-10usd-summary.json": {
-      "timestamp": "2026-09-08T19:50:49.751738+00:00",
-      "age_seconds": 1120.0,
+      "timestamp": "2026-09-08T20:38:54.070997+00:00",
+      "age_seconds": 83.2,
       "max_age_seconds": 3600,
       "ok": true
     },
     "github_live_scan": {
-      "latest_status": "completed",
-      "latest_conclusion": "failure",
-      "latest_created_at": "2026-09-08T20:05:41Z",
-      "latest_updated_at": "2026-09-08T20:08:02Z",
-      "latest_run_id": 34272775851,
-      "last_success_at": null,
-      "last_success_run_id": null
+      "latest_status": "in_progress",
+      "latest_conclusion": null,
+      "latest_created_at": "2026-09-08T20:38:37Z",
+      "latest_updated_at": "2026-09-08T20:39:09Z",
+      "latest_run_id": 34276005031,
+      "last_success_at": "2026-09-08T20:31:45Z",
+      "last_success_run_id": 34275060692
     },
     "public_surface": {
       "dashboard_ok": false,
       "real_feed_ok": true,
-      "real_feed_generated_at": "2026-09-08T19:54:22.536887+00:00"
+      "real_feed_generated_at": "2026-09-08T20:38:05.439873+00:00"
     }
   },
   "truth_contract": [
@@ -104,8 +84,8 @@
     "NEW_REAL_ALERT_TELEGRAM_GAPS_ARE_DETECTED_BY_EXACT_PAIR_TRANSITION"
   ],
   "notification": {
-    "attempted": true,
-    "sent": true,
-    "message_id": 386
+    "attempted": false,
+    "sent": false,
+    "reason": "NO_NEW_INCIDENTS"
   }
 }
