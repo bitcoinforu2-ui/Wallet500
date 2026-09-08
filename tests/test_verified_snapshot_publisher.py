@@ -18,6 +18,20 @@ def _decision_fixture():
         rel: json.dumps({"path": rel, "v": 1}, sort_keys=True).encode()
         for rel in mod.DECISION_HASH_PATHS.values()
     }
+    bodies[mod.DECISION_HASH_PATHS["real_alerts"]] = json.dumps(
+        {
+            "version": 3,
+            "truth_contract": {
+                "minimum_market_age_days": 180,
+                "minimum_execution_pool_liquidity_usd": 50000.0,
+                "exact_onchain_identity_required": True,
+                "exact_dex_pair_required": True,
+                "symbol_only_never_actionable": True,
+                "cex_only_never_real_alert": True,
+            },
+        },
+        sort_keys=True,
+    ).encode()
     hashes = {
         key: hashlib.sha256(bodies[rel]).hexdigest()
         for key, rel in mod.DECISION_HASH_PATHS.items()
@@ -55,6 +69,57 @@ def test_verified_decision_snapshot_fails_closed_on_one_digest_mismatch(monkeypa
         if rel == mod.DECISION_PROOF:
             return json.dumps(proof).encode()
         return broken.get(rel)
+
+    monkeypatch.setattr(mod, "_parent_bytes", parent_bytes)
+    assert mod.verified_decision_snapshot("parent") is None
+
+
+def test_verified_decision_snapshot_fails_closed_on_research_real_alert_contract(monkeypatch):
+    proof, bodies = _decision_fixture()
+    research = dict(bodies)
+    research_body = json.dumps(
+        {
+            "version": 3,
+            "truth_contract": {
+                "minimum_market_age_days": 60,
+                "minimum_execution_pool_liquidity_usd": 15000.0,
+                "exact_onchain_identity_required": True,
+                "exact_dex_pair_required": True,
+                "symbol_only_never_actionable": True,
+                "cex_only_never_real_alert": True,
+            },
+        },
+        sort_keys=True,
+    ).encode()
+    research[mod.DECISION_HASH_PATHS["real_alerts"]] = research_body
+    proof = dict(proof)
+    proof["hashes"] = dict(proof["hashes"])
+    proof["hashes"]["real_alerts"] = hashlib.sha256(research_body).hexdigest()
+
+    def parent_bytes(parent, rel):
+        if rel == mod.DECISION_PROOF:
+            return json.dumps(proof).encode()
+        return research.get(rel)
+
+    monkeypatch.setattr(mod, "_parent_bytes", parent_bytes)
+    assert mod.verified_decision_snapshot("parent") is None
+
+
+def test_verified_decision_snapshot_fails_closed_when_exact_identity_contract_missing(monkeypatch):
+    proof, bodies = _decision_fixture()
+    bad = dict(bodies)
+    feed = json.loads(bad[mod.DECISION_HASH_PATHS["real_alerts"]].decode())
+    feed["truth_contract"]["exact_onchain_identity_required"] = False
+    bad_body = json.dumps(feed, sort_keys=True).encode()
+    bad[mod.DECISION_HASH_PATHS["real_alerts"]] = bad_body
+    proof = dict(proof)
+    proof["hashes"] = dict(proof["hashes"])
+    proof["hashes"]["real_alerts"] = hashlib.sha256(bad_body).hexdigest()
+
+    def parent_bytes(parent, rel):
+        if rel == mod.DECISION_PROOF:
+            return json.dumps(proof).encode()
+        return bad.get(rel)
 
     monkeypatch.setattr(mod, "_parent_bytes", parent_bytes)
     assert mod.verified_decision_snapshot("parent") is None
