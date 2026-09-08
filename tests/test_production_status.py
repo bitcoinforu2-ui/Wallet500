@@ -31,7 +31,7 @@ def test_ready_no_signal_is_distinct_from_validation_failure(tmp_path):
     out = build(str(tmp_path))
     assert out["operator_status"] == "READY_NO_ACTIONABLE_SIGNAL"
     assert out["observability_status"] == "DEGRADED_NON_BLOCKING"
-    assert out["policy"]["minimum_verified_market_age_days"] == 90
+    assert out["policy"]["minimum_verified_market_age_days"] == 180
     assert out["policy"]["new_token_production_attention_pct"] == 0
     assert out["cex_revival"]["dex_verified"] == 4
     assert out["real_alert_feed"]["identity_pending_not_actionable"] == 44
