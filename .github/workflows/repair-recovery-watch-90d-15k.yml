@@ -1,0 +1,86 @@
+name: Wallet500 Repair Recovery Watch 90D 15K
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/repair_recovery_watch_90d_15k.py'
+      - '.github/workflows/repair-recovery-watch-90d-15k.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-recovery-policy-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply canonical Recovery Watch policy repair
+        run: python scripts/repair_recovery_watch_90d_15k.py
+      - name: Install and test Recovery V2
+        run: |
+          pip install -e . pytest
+          python -m pytest -q tests/test_reawakening_shadow.py tests/test_reawakening_forward_tracker.py tests/test_reawakening_forward_fast_runner.py tests/test_reawakening_dashboard.py tests/test_reawakening_telegram.py
+      - name: Rebuild forward-only Recovery V2 truth
+        env:
+          WALLET500_REAWAKENING_REQUEST_PAUSE_SECONDS: '0.22'
+        run: |
+          python -m wallet500.reawakening_forward_fast_runner
+          python -m wallet500.reawakening_dashboard
+      - name: Validate dashboard universe before publish
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('data/reawakening-dashboard.json').read_text())
+          rule=d.get('rule') or {}
+          assert float(rule.get('minimum_market_age_days') or 0) == 90.0
+          assert float(rule.get('liquidity_floor_usd') or 0) == 15000.0
+          assert rule.get('near_recovery_requires_current_exact_pair') is True
+          assert rule.get('near_recovery_requires_anti_chase_window') is True
+          assert rule.get('near_recovery_requires_returning_activity') is True
+          for row in d.get('near_recovery') or []:
+              m=row.get('metrics') or {}
+              assert float(m.get('liquidity_usd') or 0) >= 15000.0, row
+              assert int(m.get('activity_checks_passed') or 0) >= 1, row
+              gain=float(m.get('gain_since_reject_pct') or -10000)
+              assert -25.0 <= gain <= 50.0, row
+              assert row.get('pair_address'), row
+          print('RECOVERY_DASHBOARD_UNIVERSE_OK', d.get('counts'))
+          PY
+      - name: Commit repaired source and fresh dashboard feed
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          git add \
+            src/wallet500/reawakening_shadow.py \
+            src/wallet500/reawakening_dashboard.py \
+            .github/workflows/reawakening-shadow.yml \
+            data/reawakening-shadow.json \
+            data/reawakening-shadow-state.json \
+            data/reawakening-forward-state.json \
+            data/reawakening-forward-report.json \
+            data/reawakening-dashboard.json
+          if git diff --cached --quiet; then
+            echo 'NO_CHANGES'
+            exit 0
+          fi
+          git commit -m 'fix: align Recovery Watch to 90d 15k exact-pair truth'
+          for attempt in 1 2 3 4; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            sleep $((attempt * 3))
+          done
+          exit 1
