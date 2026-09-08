@@ -31,8 +31,30 @@ def _n(v, default=0.0):
         return default
 
 
+def _norm_chain(v: object) -> str:
+    return str(v or "").strip().lower()
+
+
+def _identity_key(chain: object, token: object) -> str | None:
+    c = _norm_chain(chain)
+    t = str(token or "").strip()
+    if not c or not t:
+        return None
+    if c in {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche", "fantom", "linea", "zksync", "mantle", "scroll", "blast"}:
+        t = t.lower()
+    return f"{c}:{t}"
+
+
 def _social_map(payload: dict) -> dict[str, dict]:
-    return {str(x.get("token_address")): x for x in (payload.get("tokens") or []) if isinstance(x, dict) and x.get("token_address")}
+    default_chain = payload.get("network") or payload.get("chain")
+    out: dict[str, dict] = {}
+    for row in payload.get("tokens") or []:
+        if not isinstance(row, dict) or not row.get("token_address"):
+            continue
+        key = _identity_key(row.get("chain") or row.get("network") or default_chain, row.get("token_address"))
+        if key:
+            out[key] = row
+    return out
 
 
 def score_row(row: dict, social: dict | None) -> dict:
@@ -140,7 +162,9 @@ def score_row(row: dict, social: dict | None) -> dict:
             public_channels[k]["raw_score"] = round(v["raw_score"], 1)
             public_channels[k]["confidence"] = round(v["confidence"], 1)
 
+    chain = _norm_chain(row.get("chain") or row.get("network")) or None
     return {
+        "chain": chain,
         "token_address": row.get("token_address"),
         "symbol": row.get("symbol"),
         "pair_address": row.get("pair_address"),
@@ -162,19 +186,23 @@ def score_row(row: dict, social: dict | None) -> dict:
 
 def build(data_dir: Path = DATA) -> dict:
     envelope = _load(data_dir / "candidate-evidence-envelope.json", {})
-    social = _social_map(_load(data_dir / "social-intelligence-v2.json", {}))
+    social_payload = _load(data_dir / "social-intelligence-v2.json", {})
+    social = _social_map(social_payload)
     rows = []
     for row in envelope.get("candidates") or []:
         if not isinstance(row, dict):
             continue
-        token = str(row.get("token_address") or "")
-        rows.append(score_row(row, social.get(token)))
+        key = _identity_key(row.get("chain") or row.get("network"), row.get("token_address"))
+        rows.append(score_row(row, social.get(key) if key else None))
     priority = {"FUSION_HOT":0,"FUSION_WARM":1,"FUSION_WATCH":2,"FUSION_QUIET":3,"INSUFFICIENT_COVERAGE":4,"HARD_TRUTH_BLOCKED":5}
     rows.sort(key=lambda x:(priority.get(x["fusion_status"],9),-x["fusion_score"],-x["coverage_weight_pct"]))
+    chains = sorted({str(x.get("chain")) for x in rows if x.get("chain")})
     return {
-        "version": 2,
+        "version": 3,
         "mode": MODE,
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "network": chains[0] if len(chains) == 1 else None,
+        "chains": chains,
         "production_portfolio_impact": "NONE",
         "automatic_buy": False,
         "no_hindsight": True,
@@ -185,6 +213,8 @@ def build(data_dir: Path = DATA) -> dict:
             "hard_truth_blockers_cannot_be_overridden": True,
             "social_cannot_override_identity_pair_liquidity_security": True,
             "narrative_is_confidence_weighted_before_fusion": True,
+            "chain_token_identity_key_required": True,
+            "token_only_cross_chain_join_forbidden": True,
         },
         "counts": {
             "tokens": len(rows),
