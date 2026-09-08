@@ -12,7 +12,7 @@ OUT = DATA / 'hot-healthy-radar.json'
 MIN_LIQ = 15000.0
 MIN_VOL = 15000.0
 MIN_TX = 50
-MIN_MARKET_AGE_DAYS = 60
+MIN_MARKET_AGE_DAYS = 90
 EVM_CHAINS = {'ethereum', 'eth', 'bsc', 'bnb', 'base', 'arbitrum', 'polygon', 'optimism', 'avalanche'}
 
 

@@ -43,8 +43,8 @@ DECISION_OWNED_LIVE_PATHS = {
     "data/revival-funnel-diagnostics.json",
 }
 
-PRODUCTION_MIN_MARKET_AGE_DAYS = 180
-PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD = 50000.0
+PRODUCTION_MIN_MARKET_AGE_DAYS = 90
+PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD = 15000.0
 
 
 def git(*args: str, env: dict[str, str] | None = None, input_text: str | None = None,

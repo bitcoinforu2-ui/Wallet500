@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 from .market_data import token_pairs
 
 DATA = Path("data")
-MIN_MARKET_AGE_DAYS = 60
+MIN_MARKET_AGE_DAYS = 90
 UA = {"User-Agent": "Wallet500/1.6", "Accept": "application/json"}
 CACHE_PATH = DATA / "mature-age-evidence-cache.json"
 
@@ -223,13 +223,13 @@ def enforce_cex(path: Path = DATA / "cex-revival-radar.json") -> dict:
         meta = _verified_meta_from_market(matches[0], "COINGECKO_ATH_OR_ATL_HISTORICAL_EVIDENCE_UNIQUE_SYMBOL")
         if not meta:
             evidence_at, age_days = earliest_market_evidence(matches[0])
-            rejected.append({"symbol": alert.get("symbol"), "base_symbol": base, "reason": "UNDER_60_DAYS" if age_days is not None else "AGE_UNVERIFIED", "market_age_min_days": age_days, "market_age_evidence_at": evidence_at, "coingecko_id": matches[0].get("id")})
+            rejected.append({"symbol": alert.get("symbol"), "base_symbol": base, "reason": "UNDER_90_DAYS" if age_days is not None else "AGE_UNVERIFIED", "market_age_min_days": age_days, "market_age_evidence_at": evidence_at, "coingecko_id": matches[0].get("id")})
             continue
         kept.append({**alert, **meta})
     payload["version"] = max(int(payload.get("version") or 0), 7)
     payload["alerts"], payload["alerts_count"] = kept, len(kept)
     payload["raw_alerts_before_age_gate"] = len(raw)
-    payload["age_gate"] = {"status": "ENFORCED_FAIL_CLOSED", "minimum_market_age_days": MIN_MARKET_AGE_DAYS, "accepted": len(kept), "rejected": len(rejected), "identity_rule": "CEX_SYMBOL_MUST_MAP_TO_EXACTLY_ONE_COINGECKO_MARKET", "evidence_rule": "EARLIEST_ATH_OR_ATL_DATE_MUST_PROVE_AT_LEAST_60_DAYS_OF_MARKET_HISTORY", "unknown_or_ambiguous_age": "REJECT", "rejections": rejected[:100]}
+    payload["age_gate"] = {"status": "ENFORCED_FAIL_CLOSED", "minimum_market_age_days": MIN_MARKET_AGE_DAYS, "accepted": len(kept), "rejected": len(rejected), "identity_rule": "CEX_SYMBOL_MUST_MAP_TO_EXACTLY_ONE_COINGECKO_MARKET", "evidence_rule": "EARLIEST_ATH_OR_ATL_DATE_MUST_PROVE_AT_LEAST_90_DAYS_OF_MARKET_HISTORY", "unknown_or_ambiguous_age": "REJECT", "rejections": rejected[:100]}
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return payload["age_gate"]
 
@@ -298,13 +298,13 @@ def enforce_revival(path: Path = DATA / "revival-1000-latest.json") -> dict:
                 if meta:
                     cache_hits += 1
         if not meta:
-            rejected.append({"symbol": coin.get("symbol"), "id": coin.get("id"), "source": coin.get("source"), "pair_age_days": coin.get("pair_age_days"), "reason": "UNDER_60_DAYS_OR_AGE_UNVERIFIED"})
+            rejected.append({"symbol": coin.get("symbol"), "id": coin.get("id"), "source": coin.get("source"), "pair_age_days": coin.get("pair_age_days"), "reason": "UNDER_90_DAYS_OR_AGE_UNVERIFIED"})
             continue
         kept.append({**coin, **meta})
     if cache_changed:
         _save_cache(cache)
     payload["coins"] = kept
-    payload["asset_age_filter"] = "VERIFIED_MARKET_AGE_GTE_60_DAYS_ONLY"
+    payload["asset_age_filter"] = "VERIFIED_MARKET_AGE_GTE_90_DAYS_ONLY"
     payload["age_gate"] = {
         "status": "ENFORCED_FAIL_CLOSED",
         "minimum_market_age_days": MIN_MARKET_AGE_DAYS,
@@ -394,11 +394,11 @@ def enforce_active_candidates(path: Path = DATA / "active-qualified-candidates.j
             continue
         meta = _oldest_exact_token_pair_meta(row)
         if not meta:
-            rejected.append({"chain": row.get("chain"), "token": row.get("token") or row.get("mint") or row.get("token_address"), "pair_address": row.get("pair_address"), "reason": "UNDER_60_DAYS_OR_EXACT_MARKET_AGE_UNVERIFIED"})
+            rejected.append({"chain": row.get("chain"), "token": row.get("token") or row.get("mint") or row.get("token_address"), "pair_address": row.get("pair_address"), "reason": "UNDER_90_DAYS_OR_EXACT_MARKET_AGE_UNVERIFIED"})
             continue
         kept.append({**row, **meta})
     path.write_text(json.dumps(kept, ensure_ascii=False, indent=2), encoding="utf-8")
-    report = {"version": 1, "generated_at": now_utc().isoformat(), "status": "ENFORCED_FAIL_CLOSED", "minimum_market_age_days": MIN_MARKET_AGE_DAYS, "raw_active_before_age_gate": len(raw), "accepted": len(kept), "rejected": len(rejected), "identity_rule": "EXACT_CHAIN_TOKEN_AND_LOCKED_PAIR_REQUIRED; SYMBOL_NOT_USED", "evidence_rule": "EXACT_LOCKED_PAIR_OR_OLDEST_CURRENT_EXACT_TOKEN_PAIR_MUST_PROVE_AT_LEAST_60_DAYS", "unknown_age": "REJECT", "rejections": rejected[:500]}
+    report = {"version": 1, "generated_at": now_utc().isoformat(), "status": "ENFORCED_FAIL_CLOSED", "minimum_market_age_days": MIN_MARKET_AGE_DAYS, "raw_active_before_age_gate": len(raw), "accepted": len(kept), "rejected": len(rejected), "identity_rule": "EXACT_CHAIN_TOKEN_AND_LOCKED_PAIR_REQUIRED; SYMBOL_NOT_USED", "evidence_rule": "EXACT_LOCKED_PAIR_OR_OLDEST_CURRENT_EXACT_TOKEN_PAIR_MUST_PROVE_AT_LEAST_90_DAYS", "unknown_age": "REJECT", "rejections": rejected[:500]}
     audit_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return report
 

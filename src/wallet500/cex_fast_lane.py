@@ -13,7 +13,7 @@ from .real_alerts import run as build_real_alerts
 from .liquidity_truth_guard import sanitize_cex_radar, sanitize_real_alerts
 
 DATA = Path("data")
-PROJECT_SCOPE_MIN_AGE_DAYS = 60
+PROJECT_SCOPE_MIN_AGE_DAYS = 90
 MIN_AGE_DAYS = PROJECT_SCOPE_MIN_AGE_DAYS
 APPROVED_PRODUCTION_MIN_AGE_DAYS = PROJECT_SCOPE_MIN_AGE_DAYS
 MIN_DEX_VOLUME_H24_USD = 10_000.0
@@ -177,7 +177,7 @@ def run(data_dir: Path = DATA) -> dict:
         blocked_payload = {**raw_payload, "version": max(int(raw_payload.get("version") or 0), 12), "alerts": [], "alerts_count": 0,
             "raw_alerts_before_age_gate": len(raw_rows), "raw_collection_generated_at": raw_payload.get("generated_at") or now,
             "collection_status": "FRESH_COLLECTION_CONTINUES", "spot_collection": {"generated_at": spot.get("generated_at"), "healthy_sources": spot.get("healthy_sources", 0), "markets_seen": spot.get("markets_seen", 0), "symbols_seen": spot.get("symbols_seen", 0), "watch_count": spot.get("watch_count", 0), "alerts_count": spot.get("alerts_count", 0), "production_portfolio_impact": "NONE"},
-            "age_gate": {"status": "BLOCKED_FAIL_CLOSED_VETERAN_SCOPE_POLICY_DRIFT", "minimum_market_age_days": MIN_AGE_DAYS, "project_scope_minimum_market_age_days": PROJECT_SCOPE_MIN_AGE_DAYS, "approved_production_minimum_market_age_days": APPROVED_PRODUCTION_MIN_AGE_DAYS, "accepted": 0, "rejected": len(raw_rows), "unknown_or_unresolved_identity": "REJECT", "production_change_allowed": False, "policy": "VETERAN_ONLY_SCOPE_MUST_BE_60D_EVERYWHERE; SIGNAL_THRESHOLDS_ARE_SEPARATELY_GOVERNED"},
+            "age_gate": {"status": "BLOCKED_FAIL_CLOSED_VETERAN_SCOPE_POLICY_DRIFT", "minimum_market_age_days": MIN_AGE_DAYS, "project_scope_minimum_market_age_days": PROJECT_SCOPE_MIN_AGE_DAYS, "approved_production_minimum_market_age_days": APPROVED_PRODUCTION_MIN_AGE_DAYS, "accepted": 0, "rejected": len(raw_rows), "unknown_or_unresolved_identity": "REJECT", "production_change_allowed": False, "policy": "VETERAN_ONLY_SCOPE_MUST_BE_90D_EVERYWHERE; SIGNAL_THRESHOLDS_ARE_SEPARATELY_GOVERNED"},
             "generated_identity_preflight_at": now, "fast_lane_degraded": {"at": now, "reason": "VETERAN_SCOPE_POLICY_DRIFT", "policy": "ACTIONABLE_CEX_OUTPUT_QUARANTINED; RAW_COLLECTION_CONTINUES"}}
         _write(radar_path, blocked_payload); real = _build_and_sanitize_real_alerts(data_dir)
         return {"status": "COLLECTED_BUT_ACTIONABLE_BLOCKED_BY_SCOPE_DRIFT", "generated_at": now, "raw_cex_alerts": len(raw_rows), "raw_cex_symbols_seen": raw.get("symbols_seen", 0), "spot_watch_count": spot.get("watch_count", 0), "spot_alerts_count": spot.get("alerts_count", 0), "spot_symbols_seen": spot.get("symbols_seen", 0), "registry_verified": 0, "external_age_identity_preflight": {"status": "NOT_RUN_POLICY_BLOCK"}, "external_error": None, "dex_identity": {"dex_verified": 0, "pair_pending": 0, "identity_pending": 0}, "real_alert_feed": real}

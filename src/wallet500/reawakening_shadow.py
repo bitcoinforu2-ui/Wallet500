@@ -134,7 +134,7 @@ def eligible_reject(record: dict) -> tuple[bool, list[str]]:
     age_days = _f(snap.get("market_age_min_days") or record.get("market_age_min_days"))
     first_liquidity = _f(snap.get("liquidity_usd"))
     had_liquidity_floor_reason = bool(
-        {"CURRENT_LIQUIDITY_BELOW_15K", "CURRENT_LIQUIDITY_BELOW_50K"} & reasons
+        {"CURRENT_LIQUIDITY_BELOW_15K", "CURRENT_LIQUIDITY_BELOW_15K"} & reasons
     )
     liquidity_failed_current_policy = (
         first_liquidity > 0

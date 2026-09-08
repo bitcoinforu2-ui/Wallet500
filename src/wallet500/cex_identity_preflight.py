@@ -11,7 +11,7 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 DATA = Path("data")
-MIN_MARKET_AGE_DAYS = 60
+MIN_MARKET_AGE_DAYS = 90
 UA = {"User-Agent": "Wallet500/1.7", "Accept": "application/json"}
 
 EXCHANGE_ALIASES = {

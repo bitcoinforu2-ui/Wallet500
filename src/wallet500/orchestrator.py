@@ -79,7 +79,7 @@ def run():
         "mode": "VETERAN_COIN_REVIVAL_ONLY",
         "production_primary": "ESTABLISHED_TOKEN_REVIVAL",
         "target_attention_pct": {"old_coin_revival": 100, "new_token_research": 0},
-        "minimum_verified_market_age_days": 60,
+        "minimum_verified_market_age_days": 90,
         "unknown_or_ambiguous_age": "REJECT_OR_PENDING_NOT_ACTIONABLE",
         "new_token_lane": "DISABLED",
         "minimum_exchange_confirmations": 2,
@@ -158,7 +158,7 @@ def run():
         "lane_health": "DISABLED_POLICY",
         "attention_budget_pct": 0,
         "purpose": "disabled: Wallet500 production and discovery policy is 100% veteran-token revival",
-        "minimum_veteran_market_age_days": 180,
+        "minimum_veteran_market_age_days": 90,
         "note": "New-token discovery/ranking is disabled. Historical files may remain only as legacy learning evidence.",
     }
     _write(out / "new-token-lab.json", new_lab)

@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-MIN_MARKET_AGE_DAYS = 60
+MIN_MARKET_AGE_DAYS = 90
 ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
 
 
@@ -436,7 +436,7 @@ def run() -> dict:
             "requires": [
                 "matching real-alerts.json row with status=REAL_ALERT and actionable_research_alert=true",
                 "market_age_verified=true",
-                "market_age_min_days>=60",
+                "market_age_min_days>=90",
                 "qualification=QUALIFIED or REVIVAL_QUALIFIED",
                 "live_survival_gate=ACTIVE",
                 "pump_dump_blocked=false",

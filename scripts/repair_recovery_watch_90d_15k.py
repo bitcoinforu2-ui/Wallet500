@@ -14,7 +14,7 @@ def replace_required(path: str, old: str, new: str) -> None:
 # Recovery V2 must use the same canonical veteran policy as Revival Radar.
 replace_required(
     "src/wallet500/reawakening_shadow.py",
-    "MIN_MARKET_AGE_DAYS = 60",
+    "MIN_MARKET_AGE_DAYS = 90",
     "MIN_MARKET_AGE_DAYS = 90",
 )
 replace_required(
@@ -36,7 +36,7 @@ replace_required(
 )
 replace_required(
     "tests/test_reawakening_shadow.py",
-    'boundary["first_reject_snapshot"]["market_age_min_days"] = 60',
+    'boundary["first_reject_snapshot"]["market_age_min_days"] = 90',
     'boundary["first_reject_snapshot"]["market_age_min_days"] = 90',
 )
 

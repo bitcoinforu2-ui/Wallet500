@@ -15,7 +15,7 @@ from .telegram_alerts import (
     _write,
 )
 
-MIN_MARKET_AGE_DAYS = 60
+MIN_MARKET_AGE_DAYS = 90
 MIN_LIQUIDITY_USD = 15_000.0
 
 

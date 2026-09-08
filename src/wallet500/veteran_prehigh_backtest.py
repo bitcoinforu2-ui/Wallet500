@@ -13,7 +13,7 @@ DATA = Path("data")
 WINNER_STUDY = DATA / "winner-separator-study.json"
 SURVIVOR = DATA / "survivor-wave-watch.json"
 OUT = DATA / "veteran-prehigh-backtest.json"
-MIN_AGE_DAYS = 60.0
+MIN_AGE_DAYS = 90.0
 LIQ_FLOOR = 50_000.0
 MAX_LEAD_HOURS = 6.0
 

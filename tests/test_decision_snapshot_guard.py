@@ -28,7 +28,7 @@ def seed(root: Path, ready=2, real_ready=2, funnel_ready=2, visible_ready=None, 
         "mode": "RESEARCH_ONLY_CANDIDATE_EVIDENCE_ENVELOPE_V1",
         "production_change": False,
         "automatic_buy": False,
-        "truth_contract": {"minimum_market_age_days": 60, "exact_pair_required": True},
+        "truth_contract": {"minimum_market_age_days": 90, "exact_pair_required": True},
         "counts": {"evidence_ready": ready},
         "candidates": [],
     })
@@ -54,11 +54,11 @@ def seed(root: Path, ready=2, real_ready=2, funnel_ready=2, visible_ready=None, 
     })
     write(root, "active-qualified-age-gate.json", {
         "status": age_status,
-        "minimum_market_age_days": 180,
-        "project_scope_minimum_market_age_days": 180,
+        "minimum_market_age_days": 90,
+        "project_scope_minimum_market_age_days": 90,
     })
     write(root, "production-status.json", {
-        "policy": {"minimum_verified_market_age_days": 180},
+        "policy": {"minimum_verified_market_age_days": 90},
     })
 
 
@@ -69,9 +69,9 @@ def test_guard_passes_coherent_snapshot(tmp_path):
     assert result["failure_count"] == 0
     assert result["counts"]["evidence_ready"] == 2
     assert result["counts"]["evidence_ready_visible"] == 2
-    assert result["truth_contract"]["research_scope_days"] == 60
-    assert result["truth_contract"]["production_scope_days"] == 180
-    assert result["truth_contract"]["production_minimum_execution_pool_liquidity_usd"] == 50_000
+    assert result["truth_contract"]["research_scope_days"] == 90
+    assert result["truth_contract"]["production_scope_days"] == 90
+    assert result["truth_contract"]["production_minimum_execution_pool_liquidity_usd"] == 15_000
 
 
 def test_guard_accepts_dormant_evidence_ready_as_visible_research(tmp_path):
@@ -103,7 +103,7 @@ def test_guard_detects_unapproved_age_quarantine(tmp_path):
     assert "STALE_AGE_GOVERNOR" in {x["code"] for x in result["failures"]}
 
 
-def test_guard_rejects_production_alert_under_180d_or_50k(tmp_path):
+def test_guard_rejects_production_alert_under_90d_or_15k(tmp_path):
     seed(tmp_path, ready=0, real_ready=0, funnel_ready=0, visible_ready=0)
     real = json.loads((tmp_path / "real-alerts.json").read_text(encoding="utf-8"))
     real["alerts"] = [{
@@ -113,8 +113,8 @@ def test_guard_rejects_production_alert_under_180d_or_50k(tmp_path):
         "exact_identity_verified": True,
         "exact_pair_verified": True,
         "market_age_verified": True,
-        "market_age_days": 179,
-        "execution_pool_liquidity_usd": 49_999,
+        "market_age_days": 89,
+        "execution_pool_liquidity_usd": 14_999,
         "automatic_buy": False,
     }]
     write(tmp_path, "real-alerts.json", real)

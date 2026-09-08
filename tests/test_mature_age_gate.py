@@ -38,7 +38,7 @@ def test_cex_gate_keeps_only_unique_verified_old_symbol(tmp_path, monkeypatch):
     assert out["alerts_count"] == 1
     assert out["alerts"][0]["symbol"] == "OLDUSDT"
     assert out["alerts"][0]["market_age_verified"] is True
-    assert out["alerts"][0]["market_age_min_days"] >= 60
+    assert out["alerts"][0]["market_age_min_days"] >= 90
 
 
 def test_revival_gate_accepts_exact_old_id_and_old_pair(tmp_path, monkeypatch):
@@ -66,7 +66,7 @@ def test_revival_gate_accepts_exact_old_id_and_old_pair(tmp_path, monkeypatch):
     assert report["accepted"] == 2
     assert {x["symbol"] for x in out["coins"]} == {"OLD", "EXP"}
     assert all(x["market_age_verified"] is True for x in out["coins"])
-    assert all(x["market_age_min_days"] >= 60 for x in out["coins"])
+    assert all(x["market_age_min_days"] >= 90 for x in out["coins"])
     assert out["counts"]["age_verified_60d_plus"] == 2
     assert out["counts"]["age_gate_rejected"] == 1
 
@@ -119,7 +119,7 @@ def test_active_gate_uses_exact_token_history_not_symbol(tmp_path, monkeypatch):
     assert len(out) == 1
     assert out[0]["token"] == "0xOLD"
     assert out[0]["market_age_verified"] is True
-    assert out[0]["market_age_min_days"] >= 60
+    assert out[0]["market_age_min_days"] >= 90
     assert out[0]["market_age_evidence_source"] == "DEXSCREENER_OLDEST_CURRENT_EXACT_TOKEN_PAIR_CREATED_AT"
     g.validate_active_file(active)
 
@@ -143,7 +143,7 @@ def test_active_gate_accepts_old_locked_pair_without_extra_lookup(tmp_path, monk
 def test_validate_file_fails_closed_on_unverified_row(tmp_path):
     p = tmp_path / "bad.json"
     p.write_text(json.dumps({
-        "age_gate": {"status": "ENFORCED_FAIL_CLOSED", "minimum_market_age_days": 60},
+        "age_gate": {"status": "ENFORCED_FAIL_CLOSED", "minimum_market_age_days": 90},
         "alerts": [{"symbol": "X", "market_age_verified": False, "market_age_min_days": 0}],
     }))
     try:

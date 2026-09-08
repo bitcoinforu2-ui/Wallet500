@@ -10,12 +10,12 @@ def test_full_filter_pass_is_research_only():
     assert r['blockers']==[] and r['market_age_verified'] is True
     assert r['revival_signal'] is True and r['actionable'] is False and r['production_portfolio_impact']=='NONE'
 
-def test_under_180_fails_closed():
+def test_under_90_fails_closed():
     r=a.classify({'token':'0x'+'2'*40},snap(age=30),datetime(2026,9,6,tzinfo=timezone.utc))
-    assert 'PAIR_AGE_LT_60D_OR_UNKNOWN' in r['blockers']
+    assert 'PAIR_AGE_LT_90D_OR_UNKNOWN' in r['blockers']
 
 def test_liquidity_floor_never_relaxed():
-    r=a.classify({'token':'0x'+'2'*40},snap(liq=49999),datetime(2026,9,6,tzinfo=timezone.utc))
+    r=a.classify({'token':'0x'+'2'*40},snap(liq=14999),datetime(2026,9,6,tzinfo=timezone.utc))
     assert 'LIVE_LIQUIDITY_LT_15K' in r['blockers']
 
 def test_no_pair_fails_closed_and_stays_research_only():

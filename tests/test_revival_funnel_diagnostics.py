@@ -13,7 +13,7 @@ def _write(path: Path, value) -> None:
 def test_diagnostics_separates_hard_blockers_from_pending_confirmations(tmp_path: Path) -> None:
     _write(tmp_path / "revival-1000-latest.json", {
         "generated_at": "2026-09-04T10:00:00Z",
-        "age_gate": {"status": "ENFORCED_FAIL_CLOSED", "minimum_market_age_days": 60},
+        "age_gate": {"status": "ENFORCED_FAIL_CLOSED", "minimum_market_age_days": 90},
         "counts": {"universe": 120, "age_verified_60d_plus": 120, "core_drawdown_watch": 30, "waking_market_only": 4, "pre_alpha": 0},
         "coins": [
             {"pre_alpha_eligible": False, "pre_alpha_blocker": "PENDING"},
@@ -98,7 +98,7 @@ def test_diagnostics_separates_hard_blockers_from_pending_confirmations(tmp_path
 
     assert out["version"] == 3
     assert out["production_change"] is False
-    assert out["lanes"]["solana_veteran_revival"]["minimum_market_age_days"] == 60
+    assert out["lanes"]["solana_veteran_revival"]["minimum_market_age_days"] == 90
     assert out["lanes"]["evidence_promotion"]["evidence_ready"] == 2
     assert out["lanes"]["evidence_promotion"]["pre_waking_evidence_ready"] == 4
     assert out["lanes"]["evidence_promotion"]["anomaly_watch"] == 6

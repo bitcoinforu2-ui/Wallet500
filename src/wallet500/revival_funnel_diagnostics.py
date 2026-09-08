@@ -134,7 +134,7 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
         "lanes": {
             "solana_veteran_revival": {
                 "source_generated_at": revival.get("generated_at") if isinstance(revival, dict) else None,
-                "minimum_market_age_days": _num(age_gate.get("minimum_market_age_days")) or 60,
+                "minimum_market_age_days": _num(age_gate.get("minimum_market_age_days")) or 90,
                 "age_gate_status": age_gate.get("status"),
                 "universe": _num(revival_counts.get("universe")),
                 "age_verified_60d_plus": _num(revival_counts.get("age_verified_60d_plus")),

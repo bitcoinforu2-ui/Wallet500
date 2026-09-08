@@ -40,7 +40,7 @@ def coverage(records: dict) -> dict:
     for key, rec in records.items():
         counts["market_t0"] += int(isinstance(rec.get("t0_features"), dict))
         counts["exact_pair"] += int(bool(rec.get("pair_address")))
-        counts["veteran_age"] += int(rec.get("market_age_verified") is True and float(rec.get("market_age_min_days_at_t0") or 0) >= 60)
+        counts["veteran_age"] += int(rec.get("market_age_verified") is True and float(rec.get("market_age_min_days_at_t0") or 0) >= 90)
         age_sources[str(rec.get("market_age_evidence_source") or "MISSING")] += 1
 
         status = str(rec.get("t0_context_status") or "NO_CONTEXT_STATUS")

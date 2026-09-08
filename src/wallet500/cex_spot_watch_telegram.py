@@ -11,7 +11,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 DATA = Path("data")
-MIN_MARKET_AGE_DAYS = 60
+MIN_MARKET_AGE_DAYS = 90
 MIN_RESEARCH_SCORE = 30
 MAX_LEADERBOARD_RANK = 10
 REENTRY_COOLDOWN_HOURS = 6

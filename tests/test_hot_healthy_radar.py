@@ -68,13 +68,13 @@ def test_live_mature_exact_pair_can_be_scored(monkeypatch):
     assert scored['dex_url'].endswith(PAIR)
 
 
-def test_under_180_day_token_is_quarantined(monkeypatch):
+def test_under_90_day_token_is_quarantined(monkeypatch):
     monkeypatch.setattr(radar, 'token_pairs', lambda chain, token: [_pair(days_ago=20)])
     monkeypatch.setattr(radar, 'pair_lookup', lambda chain, pair: None)
 
     live, reason = radar._live_exact_pair_truth(_record())
     assert live is None
-    assert reason == 'UNDER_60D_MARKET_AGE'
+    assert reason == 'UNDER_90D_MARKET_AGE'
 
 
 def test_stale_strong_history_cannot_override_collapsed_live_liquidity(monkeypatch):

@@ -22,13 +22,13 @@ def _heartbeat(tmp_path, created_at="2026-08-29T23:58:00+00:00"):
 def _policy_summary(updated_at, active=0, **extra):
     payload = {
         "updated_at": updated_at,
-        "qualification_min_liquidity_usd": 50000,
+        "qualification_min_liquidity_usd": 15000,
         "lane_health": {"old_coin_revival": "HEALTHY", "new_token_lab": "DISABLED_POLICY"},
         "intelligence_policy": {
             "mode": "VETERAN_COIN_REVIVAL_ONLY",
             "target_attention_pct": {"old_coin_revival": 100, "new_token_research": 0},
         },
-        "production_risk_gate": {"min_live_liquidity_usd": 50000},
+        "production_risk_gate": {"min_live_liquidity_usd": 15000},
         "active_qualified": active,
     }
     payload.update(extra)

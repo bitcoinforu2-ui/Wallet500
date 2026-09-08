@@ -109,7 +109,7 @@ def build(data_dir: Path = DATA) -> dict:
         "automatic_buy": False,
         "truth_contract": {
             "focus": "VETERAN_COIN_REVIVAL_ONLY",
-            "minimum_market_age_days": 60,
+            "minimum_market_age_days": 90,
             "real_alert_gate_changed": False,
             "real_alert_thresholds_weakened": False,
             "readiness_is_gate_completion_not_profit_probability": True,

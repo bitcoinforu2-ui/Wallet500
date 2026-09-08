@@ -9,10 +9,10 @@ from .solana_mintability_public_guard import sanitize_real_alerts
 
 DATA = Path("data")
 OUTPUT = DATA / "decision-snapshot-integrity.json"
-RESEARCH_MIN_AGE_DAYS = 60
+RESEARCH_MIN_AGE_DAYS = 90
 RESEARCH_MIN_LIQUIDITY_USD = 15_000.0
-PRODUCTION_MIN_AGE_DAYS = 180
-PRODUCTION_MIN_LIQUIDITY_USD = 50_000.0
+PRODUCTION_MIN_AGE_DAYS = 90
+PRODUCTION_MIN_LIQUIDITY_USD = 15_000.0
 PUBLIC_DECISION_SURFACES = ("alerts", "verified_watch", "evidence_ready", "dormant_no_activity")
 
 
@@ -223,7 +223,7 @@ def build(data_dir: Path = DATA) -> dict:
         fail("ENVELOPE_PRODUCTION_LEAK", "Evidence envelope must remain research-only")
     truth = envelope.get("truth_contract") if isinstance(envelope.get("truth_contract"), dict) else {}
     if _int(truth.get("minimum_market_age_days")) != RESEARCH_MIN_AGE_DAYS:
-        fail("ENVELOPE_AGE_SCOPE_DRIFT", "Research evidence envelope must enforce 60d scope", truth.get("minimum_market_age_days"))
+        fail("ENVELOPE_AGE_SCOPE_DRIFT", "Research evidence envelope must enforce 90d scope", truth.get("minimum_market_age_days"))
     if truth.get("exact_pair_required") is not True:
         fail("ENVELOPE_EXACT_PAIR_GUARD_MISSING", "Exact pair truth is mandatory")
 
@@ -243,11 +243,11 @@ def build(data_dir: Path = DATA) -> dict:
         fail("EVIDENCE_READY_VISIBILITY_SKEW", "Every canonical Evidence Ready token must remain visible on exactly one research surface, including dormant_no_activity", evidence_counts)
 
     if _int(age.get("minimum_market_age_days")) != PRODUCTION_MIN_AGE_DAYS:
-        fail("ACTIVE_AGE_GATE_SCOPE_DRIFT", "Active production age gate must enforce 180d", age.get("minimum_market_age_days"))
+        fail("ACTIVE_AGE_GATE_SCOPE_DRIFT", "Active production age gate must enforce 90d", age.get("minimum_market_age_days"))
     if age.get("status") == "QUARANTINED_FAIL_CLOSED_UNAPPROVED_POLICY":
         fail("STALE_AGE_GOVERNOR", "Legacy unapproved age-policy quarantine must not reappear")
     if age.get("project_scope_minimum_market_age_days") not in (None, PRODUCTION_MIN_AGE_DAYS):
-        fail("ACTIVE_PROJECT_SCOPE_DRIFT", "Production project scope must remain 180d", age.get("project_scope_minimum_market_age_days"))
+        fail("ACTIVE_PROJECT_SCOPE_DRIFT", "Production project scope must remain 90d", age.get("project_scope_minimum_market_age_days"))
 
     for row in envelope.get("candidates") or []:
         if not isinstance(row, dict) or row.get("status") != "EVIDENCE_READY":
@@ -275,16 +275,16 @@ def build(data_dir: Path = DATA) -> dict:
         if row.get("exact_identity_verified") is not True or row.get("exact_pair_verified") is not True:
             fail("REAL_ALERT_IDENTITY_BREACH", "REAL ALERT lacks exact identity/pair", row.get("token_address"))
         if row.get("market_age_verified") is not True or _int(row.get("market_age_days")) < PRODUCTION_MIN_AGE_DAYS:
-            fail("REAL_ALERT_AGE_BREACH", "REAL ALERT is outside production 180d scope", row.get("token_address"))
+            fail("REAL_ALERT_AGE_BREACH", "REAL ALERT is outside production 90d scope", row.get("token_address"))
         if _num(row.get("execution_pool_liquidity_usd")) < PRODUCTION_MIN_LIQUIDITY_USD:
-            fail("REAL_ALERT_LIQUIDITY_BREACH", "REAL ALERT lacks $50K execution pool liquidity", row.get("token_address"))
+            fail("REAL_ALERT_LIQUIDITY_BREACH", "REAL ALERT lacks $15K execution pool liquidity", row.get("token_address"))
         if row.get("automatic_buy") is True:
             fail("REAL_ALERT_AUTOBUY_BREACH", "REAL ALERT must not auto-buy", row.get("token_address"))
 
     if isinstance(production, dict) and production:
         policy = production.get("policy") if isinstance(production.get("policy"), dict) else {}
         if _int(policy.get("minimum_verified_market_age_days")) not in (0, PRODUCTION_MIN_AGE_DAYS):
-            fail("PRODUCTION_STATUS_SCOPE_DRIFT", "Production status must report 180d scope", policy.get("minimum_verified_market_age_days"))
+            fail("PRODUCTION_STATUS_SCOPE_DRIFT", "Production status must report 90d scope", policy.get("minimum_verified_market_age_days"))
 
     return {
         "version": 5,

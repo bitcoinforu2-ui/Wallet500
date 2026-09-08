@@ -9,7 +9,7 @@ from .market_data import snapshot
 
 DATA=Path('data'); OUT=DATA/'arbitrum-revival-universe.json'; STATE=DATA/'arbitrum-revival-state.json'
 CHAIN='arbitrum'; NETWORK='arbitrum'; MODE='RESEARCH_ONLY_ARBITRUM_REVIVAL_UNIVERSE_V1'
-MIN_AGE_DAYS=60; MIN_LIQUIDITY=50000.0; MIN_VOLUME_H1=15000.0; MIN_TXNS_H1=50
+MIN_AGE_DAYS=90; MIN_LIQUIDITY=15000.0; MIN_VOLUME_H1=15000.0; MIN_TXNS_H1=30
 BLOCKED={'USDC','USDT','DAI','USDE','WETH','WBTC','ARBETH','WSTETH','STETH'}
 
 def _load(p,default):
@@ -76,10 +76,10 @@ def classify(row,snap,now,previous=None):
         return {**row,'status':'INELIGIBLE_FAIL_CLOSED','blockers':['NO_VERIFIED_EXACT_PAIR'],'exact_pair_verified':False,'market_age_verified':False,'revival_signal':False,**boundary}
     age=_pair_age(snap.get('pair_created_at'),now); liq=float(snap.get('liquidity_usd') or 0); vol=float(snap.get('volume_h1') or 0); tx=int(snap.get('buys_h1') or 0)+int(snap.get('sells_h1') or 0)
     blockers=[]
-    if age is None or age<MIN_AGE_DAYS:blockers.append('PAIR_AGE_LT_60D_OR_UNKNOWN')
+    if age is None or age<MIN_AGE_DAYS:blockers.append('PAIR_AGE_LT_90D_OR_UNKNOWN')
     if liq<MIN_LIQUIDITY:blockers.append('LIVE_LIQUIDITY_LT_15K')
     if vol<MIN_VOLUME_H1:blockers.append('VOLUME_H1_LT_15K')
-    if tx<MIN_TXNS_H1:blockers.append('TXNS_H1_LT_50')
+    if tx<MIN_TXNS_H1:blockers.append('TXNS_H1_LT_30')
     prev=previous or {}; pv=float(prev.get('volume_h1') or 0); pl=float(prev.get('liquidity_usd') or 0)
     vchg=((vol/pv)-1)*100 if pv>0 else None; lchg=((liq/pl)-1)*100 if pl>0 else None
     revival=bool(not blockers and ((vchg is not None and vchg>=20) or float(snap.get('price_change_h1') or 0)>=5 or (int(snap.get('buys_h1') or 0)>=int(snap.get('sells_h1') or 0)*1.5)))

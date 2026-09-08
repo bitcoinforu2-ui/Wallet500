@@ -27,7 +27,7 @@ DATA = Path(os.getenv("WALLET500_OUTPUT_DIR", "data"))
 OUT = DATA / "catalyst-wire-live.json"
 LEDGER = DATA / "catalyst-wire-ledger.json"
 STATE = DATA / "catalyst-wire-state.json"
-MIN_VETERAN_AGE_DAYS = 180
+MIN_VETERAN_AGE_DAYS = 90
 MAX_WORKERS = 10
 
 UA = {
