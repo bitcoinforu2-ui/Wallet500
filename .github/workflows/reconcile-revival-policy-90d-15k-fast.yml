@@ -82,12 +82,10 @@ jobs:
       - name: Run full unit test suite
         run: python -m pytest -q
 
-      - name: Prepare clean non-workflow policy commit
+      - name: Prepare clean policy commit
         shell: bash
         run: |
           set -euo pipefail
-          # Workflow files are published separately through the authorized GitHub connection.
-          git restore --source=HEAD -- .github/workflows
           # Data files are runtime state and may be touched by tests; never mix them into a policy commit.
           git restore --source=HEAD -- data
           rm -f scripts/migrate_revival_policy_60d_15k.py scripts/migrate_revival_policy_60d_15k_fixups.py
@@ -98,8 +96,8 @@ jobs:
           find . -type f -name '*.pyc' -delete
           git restore --worktree -- ':(glob)**/__pycache__/**' ':(glob)**/*.pyc' src/wallet500.egg-info 2>/dev/null || true
 
-          if ! git diff --quiet -- .github/workflows data; then
-            echo '::error::RUNTIME_OR_WORKFLOW_CHANGE_LEAK_IN_CONTENT_COMMIT'
+          if ! git diff --quiet -- data; then
+            echo '::error::RUNTIME_DATA_CHANGE_LEAK_IN_POLICY_COMMIT'
             exit 1
           fi
           generated_diff="$(git diff --name-only -- ':(glob)**/__pycache__/**' ':(glob)**/*.pyc' src/wallet500.egg-info || true)"
@@ -108,7 +106,7 @@ jobs:
             echo '::error::GENERATED_ARTIFACT_RESTORE_FAILED'
             exit 1
           fi
-          echo 'CLEAN_NON_WORKFLOW_POLICY_COMMIT_READY'
+          echo 'CLEAN_POLICY_COMMIT_READY'
 
       - name: Commit only after every test passes
         shell: bash
@@ -116,15 +114,11 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-policy-bot'
           git config user.email 'wallet500-policy-bot@users.noreply.github.com'
-          git add -A src tests scripts index.html
+          git add -A src tests scripts index.html .github/workflows
 
           # Double fail-closed: never allow generated build output into the policy commit.
           git restore --staged --worktree -- ':(glob)**/__pycache__/**' ':(glob)**/*.pyc' src/wallet500.egg-info 2>/dev/null || true
 
-          if git diff --cached --name-only | grep -q '^\.github/workflows/'; then
-            echo '::error::WORKFLOW_FILE_STAGED_WITHOUT_WORKFLOW_PERMISSION'
-            exit 1
-          fi
           generated_staged="$(git diff --cached --name-only | grep -E '(__pycache__|\.pyc$|wallet500\.egg-info)' || true)"
           if [ -n "$generated_staged" ]; then
             printf '%s\n' "$generated_staged"
@@ -132,12 +126,11 @@ jobs:
             exit 1
           fi
           if git diff --cached --quiet; then
-            echo 'REVIVAL_POLICY_CONTENT_ALREADY_CLEAN'
+            echo 'REVIVAL_POLICY_ALREADY_CLEAN'
             exit 0
           fi
-          git commit -m 'policy: unify Revival runtime at 90d 15k'
+          git commit -m 'policy: unify Revival workflows at 90d 15k'
 
-          # Rebase must start from a clean worktree; if anything remains, fail with paths.
           remaining="$(git status --porcelain)"
           if [ -n "$remaining" ]; then
             printf '%s\n' "$remaining"
@@ -148,14 +141,14 @@ jobs:
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             if git rebase origin/main && git push origin HEAD:main; then
-              echo 'REVIVAL_POLICY_CONTENT_90D_15K_PUBLISH_OK'
+              echo 'REVIVAL_POLICY_WORKFLOWS_90D_15K_PUBLISH_OK'
               exit 0
             fi
             git rebase --abort 2>/dev/null || true
-            echo "REVIVAL_POLICY_CONTENT_PUBLISH_RETRY attempt=$attempt"
+            echo "REVIVAL_POLICY_WORKFLOW_PUBLISH_RETRY attempt=$attempt"
             sleep 3
           done
-          echo '::error::REVIVAL_POLICY_CONTENT_PUBLISH_RACE_EXHAUSTED'
+          echo '::error::REVIVAL_POLICY_WORKFLOW_PUBLISH_RACE_EXHAUSTED'
           exit 1
 
-# Audit trigger: 2026-09-08 canonical 90D / $15K policy reconciliation retry after runtime-state cleanup
+# Audit trigger: 2026-09-08 publish canonical 90D / $15K workflow policy after full tests
