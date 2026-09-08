@@ -1,0 +1,92 @@
+name: DUSD Exact-Pair Live Market
+
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dusd-live-market.yml'
+      - 'data/case-study-dusd.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dusd-exact-pair-live-market
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch and verify DUSD exact-pair live market
+        env:
+          CA: B8RHrVBxSjBGKqAbn1tXo6CWjvt5jFkkqjbCZtuDpump
+          PAIR: 2z2uBDXaAFishs6XRz2atV2Ro7jL8hfdUcKxTTfhjHDw
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, urllib.request
+          from datetime import datetime, timezone
+          from pathlib import Path
+          ca=os.environ['CA']; pair=os.environ['PAIR']
+          url=f'https://api.geckoterminal.com/api/v2/networks/solana/pools/{pair}'
+          req=urllib.request.Request(url,headers={'accept':'application/json','user-agent':'Wallet500-DUSD/1.0'})
+          with urllib.request.urlopen(req,timeout=20) as r: raw=json.load(r)
+          data=raw.get('data') or {}; a=data.get('attributes') or {}; rel=data.get('relationships') or {}
+          base=((rel.get('base_token') or {}).get('data') or {}).get('id',''); quote=((rel.get('quote_token') or {}).get('data') or {}).get('id','')
+          if ca not in (base,quote) and not str(base).endswith('_'+ca) and not str(quote).endswith('_'+ca):
+              raise SystemExit(f'Fail closed: DUSD exact CA not present in locked pair relationships: {base} / {quote}')
+          tx=a.get('transactions') or {}; vol=a.get('volume_usd') or {}; pc=a.get('price_change_percentage') or {}; now=datetime.now(timezone.utc).isoformat()
+          def num(x):
+              try:return float(x)
+              except:return None
+          def count(side):
+              try:return int((tx.get('h1') or {}).get(side))
+              except:return None
+          out={'version':1,'mode':'RESEARCH_ONLY_DUSD_EXACT_PAIR_CLOSE_WATCH_V1','observed_at':now,'production_portfolio_impact':'NONE','automatic_buy':False,
+            'token':{'symbol':'DUSD','name':'Deflationary USD','chain':'solana','contract_address':ca},
+            'exact_pair':{'pair_address':pair,'dex':'PumpSwap','identity_verified':True,'price_usd':num(a.get('base_token_price_usd')),'liquidity_usd':num(a.get('reserve_in_usd')),'volume_h1':num(vol.get('h1')),'volume_24h':num(vol.get('h24')),'buys_h1':count('buys'),'sells_h1':count('sells'),'price_change_h1_pct':num(pc.get('h1')),'price_change_h6_pct':num(pc.get('h6')),'price_change_24h_pct':num(pc.get('h24'))},
+            'source':{'name':'GeckoTerminal API','url':url},'freshness':{'status':'LIVE','max_age_minutes':30},'truth_contract':{'exact_token_required':True,'exact_pair_required':True,'no_hindsight':True,'research_only':True}}
+          if out['exact_pair']['price_usd'] is None or out['exact_pair']['liquidity_usd'] is None: raise SystemExit('Fail closed: DUSD exact-pair live price/liquidity missing')
+          pp=Path('data/dusd-live-market.json'); prev={}
+          if pp.exists():
+              try:prev=json.loads(pp.read_text())
+              except:prev={}
+          old=prev.get('exact_pair') or {}
+          def delta(new,oldv):
+              try:return round((float(new)/float(oldv)-1)*100,4) if float(oldv)!=0 else None
+              except:return None
+          out['changes_since_previous_live']={'price_pct':delta(out['exact_pair']['price_usd'],old.get('price_usd')),'liquidity_pct':delta(out['exact_pair']['liquidity_usd'],old.get('liquidity_usd')),'volume_h1_pct':delta(out['exact_pair']['volume_h1'],old.get('volume_h1')),'volume_24h_pct':delta(out['exact_pair']['volume_24h'],old.get('volume_24h'))}
+          Path('data').mkdir(exist_ok=True); pp.write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n',encoding='utf-8'); print(json.dumps(out,indent=2))
+          PY
+      - name: Validate DUSD truth contract
+        run: |
+          python - <<'PY'
+          import json
+          d=json.load(open('data/dusd-live-market.json'))
+          assert d['mode']=='RESEARCH_ONLY_DUSD_EXACT_PAIR_CLOSE_WATCH_V1'
+          assert d['token']['contract_address']=='B8RHrVBxSjBGKqAbn1tXo6CWjvt5jFkkqjbCZtuDpump'
+          assert d['exact_pair']['pair_address']=='2z2uBDXaAFishs6XRz2atV2Ro7jL8hfdUcKxTTfhjHDw'
+          assert d['exact_pair']['identity_verified'] is True
+          assert d['production_portfolio_impact']=='NONE' and d['automatic_buy'] is False
+          PY
+      - name: Publish DUSD live snapshot safely
+        run: |
+          set -euo pipefail
+          SNAP="$(mktemp)"; cp data/dusd-live-market.json "$SNAP"
+          git config user.name wallet500-bot; git config user.email wallet500-bot@users.noreply.github.com
+          for attempt in $(seq 1 12); do
+            git fetch origin main; git reset --hard origin/main; cp "$SNAP" data/dusd-live-market.json
+            git add data/dusd-live-market.json; git commit -m 'data: refresh DUSD exact-pair live market' || exit 0
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $(( attempt < 5 ? attempt : 5 ))
+          done
+          echo 'Fail closed: could not publish DUSD live snapshot after bounded retries'; exit 1
