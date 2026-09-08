@@ -191,4 +191,4 @@ def test_pair_metadata_is_atomic_and_never_mixes_dex_from_other_pool(tmp_path):
     assert met_pair not in row["dex_url"]
     assert row["pair_metadata_atomic"] is True
     assert row["readiness_gates"]["EXECUTION_LIQUIDITY"] is True
-    assert row["missing_gates"] == ["STRONG_DECISION_LANE"]
+    assert set(row["missing_gates"]) == {"STRONG_DECISION_LANE", "INDEPENDENT_CONFIRMATION"}
