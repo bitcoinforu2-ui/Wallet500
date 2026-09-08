@@ -7,9 +7,14 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
 
+from .policy import (
+    CANONICAL_MIN_EXECUTION_LIQUIDITY_USD,
+    CANONICAL_MIN_MARKET_AGE_DAYS,
+)
+
 HOT_MIN_SCORE = 75
-MIN_MARKET_AGE_DAYS = 90
-MIN_LIQUIDITY_USD = 15_000.0
+MIN_MARKET_AGE_DAYS = CANONICAL_MIN_MARKET_AGE_DAYS
+MIN_LIQUIDITY_USD = CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
 DEFAULT_RECIPIENT = "bitcoinforu2@gmail.com"
 
 
@@ -102,7 +107,7 @@ DEX: {identity['dex'] or 'n/a'}
 DEX URL: {identity['dexscreener_url'] or 'n/a'}
 Price reference: {row.get('price_usd') if row.get('price_usd') is not None else 'n/a'}
 
-This email is emitted only from data/real-alerts.json after exact identity, exact pair, verified market age >=180d and liquidity >=$50K are independently rechecked. It is research output, not a guarantee of profit or an automatic trade instruction.
+This email is emitted only from data/real-alerts.json after exact identity, exact pair, verified market age >=90d and execution liquidity >=$15K are independently rechecked. It is research output, not a guarantee of profit or an automatic trade instruction.
 
 Verified Intelligence. The Pure Truth.
 """
