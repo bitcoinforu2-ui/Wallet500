@@ -114,7 +114,7 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-policy-bot'
           git config user.email 'wallet500-policy-bot@users.noreply.github.com'
-          git add -A src tests scripts
+          git add -A src tests scripts index.html
 
           # Double fail-closed: never allow generated build output into the policy commit.
           git restore --staged --worktree -- ':(glob)**/__pycache__/**' ':(glob)**/*.pyc' src/wallet500.egg-info 2>/dev/null || true
@@ -135,6 +135,14 @@ jobs:
           fi
           git commit -m 'policy: unify Revival runtime at 90d 15k'
 
+          # Rebase must start from a clean worktree; if anything remains, fail with paths.
+          remaining="$(git status --porcelain)"
+          if [ -n "$remaining" ]; then
+            printf '%s\n' "$remaining"
+            echo '::error::UNSTAGED_POLICY_CHANGES_BEFORE_REBASE'
+            exit 1
+          fi
+
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             if git rebase origin/main && git push origin HEAD:main; then
@@ -148,4 +156,4 @@ jobs:
           echo '::error::REVIVAL_POLICY_CONTENT_PUBLISH_RACE_EXHAUSTED'
           exit 1
 
-# Audit trigger: 2026-09-08 canonical 90D / $15K policy reconciliation retry after tracked-pycache restore fix
+# Audit trigger: 2026-09-08 canonical 90D / $15K policy reconciliation retry after staging dashboard identity fix
