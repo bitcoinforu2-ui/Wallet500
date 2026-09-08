@@ -80,16 +80,28 @@ jobs:
       - name: Run full unit test suite
         run: python -m pytest -q
 
-      - name: Remove obsolete migration machinery
+      - name: Prepare clean non-workflow policy commit
         shell: bash
         run: |
-          rm -f \
-            .github/workflows/policy-threshold-migration-60d-15k.yml \
-            scripts/migrate_revival_policy_60d_15k.py \
-            scripts/migrate_revival_policy_60d_15k_fixups.py \
-            .github/workflows/reconcile-revival-policy-90d-15k.yml \
-            .github/workflows/reconcile-revival-policy-90d-15k-fast.yml \
-            scripts/reconcile_revival_policy_90d_15k.py
+          set -euo pipefail
+          # Workflow files are published separately through the authorized GitHub connection.
+          git restore --source=HEAD -- .github/workflows
+          rm -f scripts/migrate_revival_policy_60d_15k.py scripts/migrate_revival_policy_60d_15k_fixups.py
+          find . -type d -name '__pycache__' -prune -exec rm -rf {} +
+          rm -rf src/wallet500.egg-info
+          if ! git diff --quiet -- .github/workflows; then
+            echo '::error::WORKFLOW_CHANGE_LEAK_IN_CONTENT_COMMIT'
+            exit 1
+          fi
+          if find . -type d -name '__pycache__' -print -quit | grep -q .; then
+            echo '::error::PYCACHE_CLEANUP_FAILED'
+            exit 1
+          fi
+          if [ -d src/wallet500.egg-info ]; then
+            echo '::error::EGG_INFO_CLEANUP_FAILED'
+            exit 1
+          fi
+          echo 'CLEAN_NON_WORKFLOW_POLICY_COMMIT_READY'
 
       - name: Commit only after every test passes
         shell: bash
@@ -97,9 +109,17 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-policy-bot'
           git config user.email 'wallet500-policy-bot@users.noreply.github.com'
-          git add -A
+          git add -A src tests scripts
+          if git diff --cached --name-only | grep -q '^\.github/workflows/'; then
+            echo '::error::WORKFLOW_FILE_STAGED_WITHOUT_WORKFLOW_PERMISSION'
+            exit 1
+          fi
+          if git diff --cached --name-only | grep -E '(__pycache__|\.pyc$|wallet500\.egg-info)' >/dev/null; then
+            echo '::error::GENERATED_ARTIFACT_STAGED'
+            exit 1
+          fi
           if git diff --cached --quiet; then
-            echo 'REVIVAL_POLICY_ALREADY_CLEAN'
+            echo 'REVIVAL_POLICY_CONTENT_ALREADY_CLEAN'
             exit 0
           fi
           git commit -m 'policy: unify Revival runtime at 90d 15k'
@@ -107,12 +127,12 @@ jobs:
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             if git rebase origin/main && git push origin HEAD:main; then
-              echo 'REVIVAL_POLICY_90D_15K_PUBLISH_OK'
+              echo 'REVIVAL_POLICY_CONTENT_90D_15K_PUBLISH_OK'
               exit 0
             fi
             git rebase --abort 2>/dev/null || true
-            echo "REVIVAL_POLICY_PUBLISH_RETRY attempt=$attempt"
+            echo "REVIVAL_POLICY_CONTENT_PUBLISH_RETRY attempt=$attempt"
             sleep 3
           done
-          echo '::error::REVIVAL_POLICY_PUBLISH_RACE_EXHAUSTED'
+          echo '::error::REVIVAL_POLICY_CONTENT_PUBLISH_RACE_EXHAUSTED'
           exit 1
