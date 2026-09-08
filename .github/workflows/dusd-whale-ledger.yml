@@ -1,0 +1,128 @@
+name: DUSD Holder + Whale + Supply Ledger
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dusd-whale-ledger.yml'
+      - 'data/case-study-dusd.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dusd-whale-ledger
+  cancel-in-progress: true
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Build timestamp-safe DUSD holder whale and supply snapshot
+        env:
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+          CA: B8RHrVBxSjBGKqAbn1tXo6CWjvt5jFkkqjbCZtuDpump
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, urllib.request
+          from datetime import datetime, timezone
+          from pathlib import Path
+          rpc=os.environ.get('SOLANA_RPC_URL','').strip(); mint=os.environ['CA']
+          if not rpc: raise SystemExit('Fail closed: SOLANA_RPC_URL secret required')
+          def call(method,params):
+              b=json.dumps({'jsonrpc':'2.0','id':1,'method':method,'params':params}).encode()
+              q=urllib.request.Request(rpc,data=b,headers={'content-type':'application/json'},method='POST')
+              with urllib.request.urlopen(q,timeout=45) as r:o=json.load(r)
+              if o.get('error'): raise SystemExit(f'RPC {method}: {o["error"]}')
+              return o.get('result')
+          sv=(call('getTokenSupply',[mint,{'commitment':'confirmed'}]) or {}).get('value') or {}
+          supply=int(sv.get('amount') or 0); decimals=int(sv.get('decimals') or 0)
+          if supply<=0: raise SystemExit('Fail closed: invalid DUSD supply')
+          accts=call('getProgramAccounts',['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',{'commitment':'confirmed','encoding':'jsonParsed','filters':[{'dataSize':165},{'memcmp':{'offset':0,'bytes':mint}}]}]) or []
+          positive_accounts=0
+          for a in accts:
+              try:
+                  amt=int(a['account']['data']['parsed']['info']['tokenAmount']['amount'])
+                  if amt>0: positive_accounts+=1
+              except: pass
+          if positive_accounts<=0: raise SystemExit('Fail closed: DUSD positive token-account count unavailable')
+          largest=(call('getTokenLargestAccounts',[mint,{'commitment':'confirmed'}]) or {}).get('value') or []
+          threshold=supply*0.001; whales=[]
+          for a in largest:
+              raw=int(a.get('amount') or 0)
+              if raw>=threshold: whales.append({'token_account':a.get('address'),'raw_balance':str(raw),'balance':raw/(10**decimals),'supply_pct':round(raw/supply*100,6)})
+          whales.sort(key=lambda x:int(x['raw_balance']),reverse=True)
+          now=datetime.now(timezone.utc).isoformat(); hist=Path('data/dusd-whale-ledger.json')
+          ledger={'version':1,'mode':'RESEARCH_ONLY_DUSD_ONCHAIN_FORWARD_LEDGER_V1','mint':mint,'threshold_supply_pct':0.1,'snapshots':[],'no_hindsight':True,'production_portfolio_impact':'NONE'}
+          if hist.exists():
+              try:ledger=json.loads(hist.read_text())
+              except:pass
+          snaps=ledger.get('snapshots') if isinstance(ledger.get('snapshots'),list) else []
+          current={'observed_at':now,'mint':mint,'positive_token_accounts':positive_accounts,'supply_raw':str(supply),'supply_tokens':supply/(10**decimals),'decimals':decimals,'threshold_supply_pct':0.1,'whales':whales,'coverage':'SOLANA_RPC_CONFIRMED_ONCHAIN','holder_semantics':'POSITIVE_TOKEN_ACCOUNTS_NOT_UNIQUE_HUMANS'}
+          from datetime import datetime as DT
+          def dt(s):
+              try:return DT.fromisoformat(s.replace('Z','+00:00'))
+              except:return None
+          nowdt=dt(now)
+          def account_delta(hours):
+              target=nowdt.timestamp()-hours*3600; best=None
+              for s in snaps:
+                  t=dt(s.get('observed_at',''))
+                  v=s.get('positive_token_accounts')
+                  if t and t.timestamp()<=target and v is not None:
+                      if best is None or t.timestamp()>best[0]:best=(t.timestamp(),int(v))
+              return positive_accounts-best[1] if best else None
+          current['positive_account_deltas']={'h1':account_delta(1),'h6':account_delta(6),'h24':account_delta(24)}
+          prev_supply=int(snaps[-1].get('supply_raw') or 0) if snaps else 0
+          if prev_supply>0:
+              current['supply_delta_tokens_vs_previous']=round((supply-prev_supply)/(10**decimals),decimals)
+              current['supply_change_pct_vs_previous']=round((supply/prev_supply-1)*100,6)
+              current['burned_tokens_since_previous']=round(max(0,prev_supply-supply)/(10**decimals),decimals)
+          else:
+              current['supply_delta_tokens_vs_previous']=None; current['supply_change_pct_vs_previous']=None; current['burned_tokens_since_previous']=None
+          flows=[]
+          if snaps:
+              old={x['token_account']:int(x['raw_balance']) for x in snaps[-1].get('whales',[])}; new={x['token_account']:int(x['raw_balance']) for x in whales}
+              for acct in set(old)|set(new):
+                  d=new.get(acct,0)-old.get(acct,0)
+                  if d: flows.append({'token_account':acct,'delta_tokens':d/(10**decimals),'delta_supply_pct':round(d/supply*100,6),'direction':'BUY_OR_INFLOW' if d>0 else 'SELL_OR_OUTFLOW'})
+          current['flows_vs_previous_hour']=sorted(flows,key=lambda x:abs(x['delta_supply_pct']),reverse=True)
+          snaps.append(current); snaps=snaps[-168:]
+          ledger.update({'version':1,'mode':'RESEARCH_ONLY_DUSD_ONCHAIN_FORWARD_LEDGER_V1','updated_at':now,'mint':mint,'threshold_supply_pct':0.1,'no_hindsight':True,'production_portfolio_impact':'NONE','snapshots':snaps})
+          Path('data').mkdir(exist_ok=True); hist.write_text(json.dumps(ledger,ensure_ascii=False,indent=2)+'\n')
+          Path('data/dusd-whale-current.json').write_text(json.dumps(current,ensure_ascii=False,indent=2)+'\n')
+          print(f'positive_accounts={positive_accounts} whales>=0.1%={len(whales)} supply={current["supply_tokens"]}')
+          PY
+      - name: Validate DUSD identity and truth contract
+        run: |
+          python - <<'PY'
+          import json
+          c=json.load(open('data/dusd-whale-current.json')); l=json.load(open('data/dusd-whale-ledger.json'))
+          ca='B8RHrVBxSjBGKqAbn1tXo6CWjvt5jFkkqjbCZtuDpump'
+          assert c['mint']==ca and l['mint']==ca
+          assert l['mode']=='RESEARCH_ONLY_DUSD_ONCHAIN_FORWARD_LEDGER_V1'
+          assert l['no_hindsight'] is True and l['production_portfolio_impact']=='NONE'
+          assert c['positive_token_accounts']>0 and float(c['supply_tokens'])>0
+          PY
+      - name: Publish DUSD onchain ledger safely
+        run: |
+          set -euo pipefail
+          D="$(mktemp -d)"; cp data/dusd-whale-ledger.json data/dusd-whale-current.json "$D/"
+          git config user.name wallet500-bot; git config user.email wallet500-bot@users.noreply.github.com
+          for attempt in $(seq 1 12); do
+            git fetch origin main; git reset --hard origin/main
+            cp "$D/dusd-whale-ledger.json" data/; cp "$D/dusd-whale-current.json" data/
+            git add data/dusd-whale-ledger.json data/dusd-whale-current.json
+            git commit -m 'data: refresh DUSD holder whale and supply ledger' || exit 0
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $(( attempt < 5 ? attempt : 5 ))
+          done
+          echo 'Fail closed: could not publish DUSD onchain ledger'; exit 1
