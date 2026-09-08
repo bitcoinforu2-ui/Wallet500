@@ -88,6 +88,8 @@ jobs:
           set -euo pipefail
           # Workflow files are published separately through the authorized GitHub connection.
           git restore --source=HEAD -- .github/workflows
+          # Data files are runtime state and may be touched by tests; never mix them into a policy commit.
+          git restore --source=HEAD -- data
           rm -f scripts/migrate_revival_policy_60d_15k.py scripts/migrate_revival_policy_60d_15k_fixups.py
 
           # Tests/compile create generated files. Some legacy generated files are tracked,
@@ -96,8 +98,8 @@ jobs:
           find . -type f -name '*.pyc' -delete
           git restore --worktree -- ':(glob)**/__pycache__/**' ':(glob)**/*.pyc' src/wallet500.egg-info 2>/dev/null || true
 
-          if ! git diff --quiet -- .github/workflows; then
-            echo '::error::WORKFLOW_CHANGE_LEAK_IN_CONTENT_COMMIT'
+          if ! git diff --quiet -- .github/workflows data; then
+            echo '::error::RUNTIME_OR_WORKFLOW_CHANGE_LEAK_IN_CONTENT_COMMIT'
             exit 1
           fi
           generated_diff="$(git diff --name-only -- ':(glob)**/__pycache__/**' ':(glob)**/*.pyc' src/wallet500.egg-info || true)"
@@ -156,4 +158,4 @@ jobs:
           echo '::error::REVIVAL_POLICY_CONTENT_PUBLISH_RACE_EXHAUSTED'
           exit 1
 
-# Audit trigger: 2026-09-08 canonical 90D / $15K policy reconciliation retry after staging dashboard identity fix
+# Audit trigger: 2026-09-08 canonical 90D / $15K policy reconciliation retry after runtime-state cleanup
