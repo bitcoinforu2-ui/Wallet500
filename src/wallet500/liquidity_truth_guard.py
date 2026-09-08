@@ -11,6 +11,7 @@ DORMANT_ACTIVITY_BLOCKER = "DEX_EXACT_PAIR_DORMANT_NO_ACTIVITY"
 MIN_ACTIVITY_VOLUME_H24_USD = 10_000.0
 MIN_ACTIVITY_VOLUME_H1_USD = 1_000.0
 MIN_ACTIVITY_TURNOVER_H24 = 0.005
+PRODUCTION_MIN_MARKET_AGE_DAYS = 180
 
 
 def _load(path: Path, default):
@@ -248,6 +249,8 @@ def sanitize_real_alerts(path: Path = DATA / "real-alerts.json") -> dict:
     payload["latest_real_alert"] = alerts[0] if alerts else None
     truth = payload.get("truth_contract") if isinstance(payload.get("truth_contract"), dict) else {}
     truth.update({
+        "minimum_market_age_days": PRODUCTION_MIN_MARKET_AGE_DAYS,
+        "production_age_metadata_enforced_by_guard": True,
         "pool_tvl_never_equals_execution_depth": True,
         "concentrated_pool_requires_verified_execution_depth": True,
         "unverified_concentrated_depth_policy": "FAIL_CLOSED_NO_REAL_ALERT",
