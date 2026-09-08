@@ -1,0 +1,88 @@
+name: Wallet500 DEXScreener Paid Order Truth
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/paid_order_truth.py'
+      - 'tests/test_paid_order_truth.py'
+      - '.github/workflows/paid-order-truth.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-paid-order-truth
+  cancel-in-progress: false
+
+jobs:
+  verify-paid-orders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            src/wallet500/paid_order_truth.py
+            tests/test_paid_order_truth.py
+            data/paid-visibility-ledger.json
+            data/paid-fast-redundancy-ledger.json
+            data/paid-order-truth.json
+            .github/workflows/paid-order-truth.yml
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test runner
+        run: python -m pip install -q pytest
+      - name: Unit tests
+        env:
+          PYTHONPATH: src
+        run: python -m pytest -q tests/test_paid_order_truth.py
+      - name: Check official DEXScreener paid orders
+        env:
+          PYTHONPATH: src
+        run: python -m wallet500.paid_order_truth
+      - name: Validate truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/paid-order-truth.json')
+          if not p.exists() or p.stat().st_size == 0: raise SystemExit('PAID_ORDER_TRUTH_OUTPUT_MISSING')
+          d=json.loads(p.read_text())
+          if d.get('mode')!='RESEARCH_ONLY_DEXSCREENER_PAID_ORDER_TRUTH_V1': raise SystemExit('PAID_ORDER_TRUTH_MODE_INVALID')
+          if d.get('contract')!='DEXSCREENER_PAID_ORDER_TRUTH_V1': raise SystemExit('PAID_ORDER_TRUTH_CONTRACT_INVALID')
+          if d.get('network')!='solana' or d.get('production_portfolio_impact')!='NONE': raise SystemExit('PAID_ORDER_TRUTH_SAFETY_INVALID')
+          if d.get('no_hindsight') is not True: raise SystemExit('PAID_ORDER_TRUTH_HINDSIGHT_INVALID')
+          for row in d.get('verified_paid_tokens') or []:
+              if row.get('verified_by_official_orders_api') is not True: raise SystemExit('PAID_ORDER_NOT_OFFICIAL')
+              if row.get('production_portfolio_impact')!='NONE': raise SystemExit('PAID_ORDER_PRODUCTION_IMPACT')
+              if not row.get('active_paid_orders'): raise SystemExit('PAID_ORDER_EMPTY')
+              if row.get('pair_address') and row.get('pair_identity_locked') is not True: raise SystemExit('PAID_ORDER_PAIR_UNLOCKED')
+              for order in row.get('active_paid_orders') or []:
+                  if str(order.get('status') or '').lower() not in {'processing','on-hold','approved'}: raise SystemExit('PAID_ORDER_INACTIVE_STATUS')
+          print('PAID_ORDER_TRUTH_VALID', d.get('counts'))
+          PY
+      - name: Publish paid-order truth snapshot
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-paid-order-bot'
+          git config user.email 'wallet500-paid-order-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          cp data/paid-order-truth.json "$tmp/paid-order-truth.json"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/paid-order-truth.json" data/paid-order-truth.json
+            git add data/paid-order-truth.json
+            if git diff --cached --quiet; then echo 'PAID_ORDER_TRUTH_NO_DATA_CHANGE'; exit 0; fi
+            git commit -m 'data: refresh DEXScreener paid-order truth'
+            if git push origin HEAD:main; then echo 'PAID_ORDER_TRUTH_PUBLISH_OK'; exit 0; fi
+            echo "PAID_ORDER_TRUTH_PUBLISH_RETRY attempt=$attempt"; sleep 3
+          done
+          echo '::error::PAID_ORDER_TRUTH_PUBLISH_RACE_EXHAUSTED'; exit 1
