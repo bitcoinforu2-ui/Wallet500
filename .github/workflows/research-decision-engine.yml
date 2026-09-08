@@ -11,6 +11,7 @@ on:
       - 'data/rejected-outcome-report.json'
       - 'data/case-study-cyberleek.json'
       - 'data/case-study-doge1.json'
+      - 'data/case-study-dusd.json'
       - 'docs/experiments/research-decision-engine-v1.md'
       - '.github/workflows/research-decision-engine.yml'
 permissions:
@@ -46,6 +47,7 @@ jobs:
           assert 'LIQUIDITY_GTE_50K_EXACT_EXECUTION_POOL' in d['hard_rules']
           assert 'EXACT_PAIR_IDENTITY' in d['hard_rules']
           assert 'HOLDER_CLUSTER_FAIL_CLOSED' in d['hard_rules']
+          assert any(p.get('hypothesis_id')=='CASE::DUSD' for p in d.get('proposals',[])), 'DUSD case disconnected from research engine'
           print(d['decision_states'])
           PY
       - name: Publish advisory output
