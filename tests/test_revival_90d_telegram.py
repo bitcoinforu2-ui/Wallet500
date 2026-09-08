@@ -32,6 +32,16 @@ def test_gate_accepts_90d_15k_research_case():
     assert meta["market_age_days"] >= 90
 
 
+def test_gate_accepts_30_txns_and_rejects_29():
+    now = datetime(2026, 9, 7, tzinfo=timezone.utc)
+    ok30, meta30 = mod._eligibility(_row(buys_h1=15, sells_h1=15), now)
+    ok29, meta29 = mod._eligibility(_row(buys_h1=15, sells_h1=14), now)
+    assert ok30 is True
+    assert meta30["txns_h1"] == 30
+    assert ok29 is False
+    assert "TXNS_H1_LT_30" in meta29["blockers"]
+
+
 def test_gate_rejects_under_15k_and_wrong_identity():
     ok, meta = mod._eligibility(
         _row(liquidity_usd=14_999, base_token_address="0xdef"),
@@ -71,9 +81,11 @@ def test_forward_only_baseline_then_three_fire_transition(tmp_path, monkeypatch)
     assert again["delivered_count"] == 0
     assert len(messages) == 1
     assert messages[0].startswith("🔥🔥🔥 REVIVAL 90D / 15K")
+    assert "Activity H1: 70 tx ✅ min 30" in messages[0]
     assert "Production 180d/$50K gate: UNCHANGED" in messages[0]
     assert fired["truth_contract"]["research_only"] is True
     assert fired["truth_contract"]["production_gate_changed"] is False
+    assert fired["truth_contract"]["minimum_txns_h1"] == 30
     assert fired["truth_contract"]["no_historical_backfill"] is True
 
 
