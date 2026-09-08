@@ -66,23 +66,26 @@ jobs:
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
 
-          # Capture every tracked/untracked artifact produced by the repair/rebuild.
-          # The previous publisher staged only a hard-coded subset, leaving generated
-          # files dirty and causing `git pull --rebase` to fail before push.
-          git add -A
-          if git diff --cached --quiet; then
-            echo 'NO_CHANGES'
-            exit 0
-          fi
-          git commit -m 'fix: align Recovery Watch to 90d 15k exact-pair truth'
+          # Stage only canonical Recovery source/test/data outputs. Never stage workflow
+          # files, Python build products, caches, or unrelated large datasets.
+          git add \
+            src/wallet500/reawakening_shadow.py \
+            src/wallet500/reawakening_dashboard.py \
+            tests/test_reawakening_shadow.py \
+            data/reawakening-shadow.json \
+            data/reawakening-shadow-state.json \
+            data/reawakening-forward-state.json \
+            data/reawakening-forward-report.json \
+            data/reawakening-dashboard.json
 
-          # Rebase only from a clean worktree. If a late process touched a file,
-          # capture it into the same truth commit before attempting the rebase.
-          if ! git diff --quiet || ! git diff --cached --quiet; then
-            git add -A
-            git commit --amend --no-edit
+          if ! git diff --cached --quiet; then
+            git commit -m 'fix: align Recovery Watch to 90d 15k exact-pair truth'
           fi
-          git status --porcelain
+
+          # Discard unrelated runtime/build dirt before rebase. This prevents both
+          # dirty-worktree failures and accidental 97MB/egg-info/cache commits.
+          git restore --worktree -- .
+          git clean -fd
           test -z "$(git status --porcelain)"
 
           for attempt in 1 2 3 4; do
