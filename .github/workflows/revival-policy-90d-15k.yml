@@ -5,6 +5,7 @@ on:
     branches: [fix/revival-policy-90d-15k]
     paths:
       - 'scripts/migrate_revival_policy_90d_15k.py'
+      - 'scripts/finalize_revival_policy_90d_15k.py'
       - 'tests/test_revival_policy_90d_15k_consistency.py'
       - '.github/workflows/revival-policy-90d-15k.yml'
   workflow_dispatch:
@@ -35,7 +36,9 @@ jobs:
         run: pip install -e . pytest
 
       - name: Apply 90d / 15K policy migration
-        run: python scripts/migrate_revival_policy_90d_15k.py
+        run: |
+          python scripts/migrate_revival_policy_90d_15k.py
+          python scripts/finalize_revival_policy_90d_15k.py
 
       - name: Validate policy and affected truth contracts
         run: >-
