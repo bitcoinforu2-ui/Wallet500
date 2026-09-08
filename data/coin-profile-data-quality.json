@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated_at": "2026-09-08T10:26:24.966783+00:00",
+  "generated_at": "2026-09-08T10:33:54.761598+00:00",
   "mode": "COIN_PROFILE_DATA_QUALITY_GUARD_V1",
   "automatic_trade": false,
   "production_change": false,
@@ -12,7 +12,7 @@
     "clean_low_coverage_profiles_are_not_similarity_eligible": true
   },
   "counts": {
-    "profiles_checked": 778,
+    "profiles_checked": 784,
     "profiles_quarantined": 4,
     "price_conflicts": 4,
     "research_similarity_eligible": 31
@@ -21,6 +21,7 @@
     {
       "profile_id": "ethereum:0x1f9840a85d5af5bf1d1762f925bdaddc4201f984",
       "flags": [
+        "CROSS_EVENT_PRICE_CONFLICT_GT_1000X_WITHIN_6H",
         "INTRA_EVENT_PRICE_CONFLICT_GT_1000X"
       ],
       "quarantined_metric_families": [
@@ -33,6 +34,17 @@
           "ratio": 732902.658127,
           "min_price": 6.245,
           "max_price": 4576977.1
+        },
+        {
+          "type": "CROSS_EVENT_PRICE_CONFLICT_GT_1000X_WITHIN_6H",
+          "window_hours": 6,
+          "ratio": 968282.847078,
+          "min_price": 6.245,
+          "max_price": 6046926.38,
+          "lanes": [
+            "CEX_REVIVAL",
+            "REVIVAL_SNAPSHOT"
+          ]
         }
       ]
     },
@@ -82,10 +94,17 @@
           "max_price": 814.08
         },
         {
+          "type": "INTRA_EVENT_PRICE_CONFLICT_GT_1000X",
+          "lane": "CEX_REVIVAL",
+          "ratio": 384000000.0,
+          "min_price": 2.12e-06,
+          "max_price": 814.08
+        },
+        {
           "type": "CROSS_EVENT_PRICE_CONFLICT_GT_1000X_WITHIN_6H",
           "window_hours": 6,
-          "ratio": 380411214.953271,
-          "min_price": 2.14e-06,
+          "ratio": 384000000.0,
+          "min_price": 2.12e-06,
           "max_price": 814.08,
           "lanes": [
             "CEX_REVIVAL"
