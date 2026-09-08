@@ -1,27 +1,58 @@
 {
   "version": 1,
   "mode": "INDEPENDENT_OBSERVABILITY_NO_TRADING_POLICY_EFFECT",
-  "updated_at": "2026-09-08T22:38:20.485139+00:00",
-  "overall": "DEGRADED",
-  "incident_count": 4,
-  "critical_count": 0,
-  "high_count": 4,
+  "updated_at": "2026-09-08T23:08:38.625475+00:00",
+  "overall": "CRITICAL",
+  "incident_count": 8,
+  "critical_count": 3,
+  "high_count": 5,
   "new_notifications": [
     {
-      "code": "LIVE_SCAN_LATEST_FAILED",
+      "code": "LIVE_SCAN_LAST_SUCCESS_STALE",
+      "severity": "CRITICAL",
+      "detail": "last successful Live Scan age=missings",
+      "run_id": null
+    },
+    {
+      "code": "PUBLIC_REAL_ALERT_FEED_STALE",
+      "severity": "CRITICAL",
+      "detail": "public REAL ALERT feed age=4049.0s"
+    },
+    {
+      "code": "REAL_ALERT_FEED_STALE",
+      "severity": "CRITICAL",
+      "detail": "real-alerts.json age=4049.0s max=2700s"
+    },
+    {
+      "code": "TELEGRAM_REPORT_STALE",
       "severity": "HIGH",
-      "detail": "latest Live Scan conclusion=failure",
-      "run_id": 34286734715
+      "detail": "telegram-alert-report.json age=4006.3s max=3600s"
     }
   ],
   "recovered_codes": [],
   "real_alert_transitions_entered": [],
   "incidents": [
     {
+      "code": "LIVE_SCAN_LAST_SUCCESS_STALE",
+      "severity": "CRITICAL",
+      "detail": "last successful Live Scan age=missings",
+      "run_id": null
+    },
+    {
+      "code": "PUBLIC_REAL_ALERT_FEED_STALE",
+      "severity": "CRITICAL",
+      "detail": "public REAL ALERT feed age=4049.0s"
+    },
+    {
+      "code": "REAL_ALERT_FEED_STALE",
+      "severity": "CRITICAL",
+      "detail": "real-alerts.json age=4049.0s max=2700s"
+    },
+    {
       "code": "LIVE_SCAN_LATEST_FAILED",
       "severity": "HIGH",
       "detail": "latest Live Scan conclusion=failure",
-      "run_id": 34286734715
+      "run_id": 34289076665
     },
     {
       "code": "PUBLIC_DASHBOARD_UNREACHABLE_OR_WRONG_BUILD",
@@ -31,53 +62,58 @@
     {
       "code": "SCHEDULER_TELEMETRY_STALE",
       "severity": "HIGH",
-      "detail": "scheduler-health.json age=82111.1s max=2700s"
+      "detail": "scheduler-health.json age=83929.2s max=2700s"
     },
     {
       "code": "SYSTEM_HEALTH_STALE",
       "severity": "HIGH",
-      "detail": "system-health.json age=82111.1s max=2700s"
+      "detail": "system-health.json age=83929.3s max=2700s"
+    },
+    {
+      "code": "TELEGRAM_REPORT_STALE",
+      "severity": "HIGH",
+      "detail": "telegram-alert-report.json age=4006.3s max=3600s"
     }
   ],
   "checks": {
     "real-alerts.json": {
       "timestamp": "2026-09-08T22:01:09.653009+00:00",
-      "age_seconds": 2230.8,
+      "age_seconds": 4049.0,
       "max_age_seconds": 2700,
-      "ok": true
+      "ok": false
     },
     "system-health.json": {
       "timestamp": "2026-09-07T23:49:49.373821+00:00",
-      "age_seconds": 82111.1,
+      "age_seconds": 83929.3,
       "max_age_seconds": 2700,
       "ok": false
     },
     "scheduler-health.json": {
       "timestamp": "2026-09-07T23:49:49.417306+00:00",
-      "age_seconds": 82111.1,
+      "age_seconds": 83929.2,
       "max_age_seconds": 2700,
       "ok": false
     },
     "telegram-alert-report.json": {
       "timestamp": "2026-09-08T22:01:52.295158+00:00",
-      "age_seconds": 2188.2,
+      "age_seconds": 4006.3,
       "max_age_seconds": 3600,
-      "ok": true
+      "ok": false
     },
     "real-alert-10usd-summary.json": {
-      "timestamp": "2026-09-08T22:25:24.734626+00:00",
-      "age_seconds": 775.8,
+      "timestamp": "2026-09-08T22:50:54.747518+00:00",
+      "age_seconds": 1063.9,
       "max_age_seconds": 3600,
       "ok": true
     },
     "github_live_scan": {
       "latest_status": "completed",
       "latest_conclusion": "failure",
-      "latest_created_at": "2026-09-08T22:36:07Z",
-      "latest_updated_at": "2026-09-08T22:36:56Z",
-      "latest_run_id": 34286734715,
-      "last_success_at": "2026-09-08T22:08:39Z",
-      "last_success_run_id": 34284137762
+      "latest_created_at": "2026-09-08T23:05:57Z",
+      "latest_updated_at": "2026-09-08T23:06:31Z",
+      "latest_run_id": 34289076665,
+      "last_success_at": null,
+      "last_success_run_id": null
     },
     "public_surface": {
       "dashboard_ok": false,
@@ -95,6 +131,6 @@
   "notification": {
     "attempted": true,
     "sent": true,
-    "message_id": 390
+    "message_id": 392
   }
 }
