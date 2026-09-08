@@ -8,7 +8,7 @@ from typing import Any
 from .telegram_alerts import _fmt_israel_time, _fmt_money, _load, _send, _write
 
 MODE="RESEARCH_ONLY_REVIVAL_90D_15K_TELEGRAM_V1"; SOURCE="revival-radar.json"; STATE="revival-90d-telegram-state.json"; REPORT="revival-90d-telegram-report.json"
-MIN_AGE_DAYS=90.0; MIN_LIQUIDITY_USD=15_000.0; MIN_REVIVAL_SCORE=65.0; MIN_VOLUME_H1_USD=15_000.0; MIN_TXNS_H1=50
+MIN_AGE_DAYS=90.0; MIN_LIQUIDITY_USD=15_000.0; MIN_REVIVAL_SCORE=65.0; MIN_VOLUME_H1_USD=15_000.0; MIN_TXNS_H1=30
 
 def _f(v:Any,d:float=0.0)->float:
     try:return float(v)
@@ -43,7 +43,7 @@ def _eligibility(row:object,now:datetime)->tuple[bool,dict[str,Any]]:
     if liq<MIN_LIQUIDITY_USD:blockers.append('LIQUIDITY_LT_15K')
     if score<MIN_REVIVAL_SCORE:blockers.append('REVIVAL_SCORE_LT_65')
     if vol<MIN_VOLUME_H1_USD:blockers.append('VOLUME_H1_LT_15K')
-    if tx<MIN_TXNS_H1:blockers.append('TXNS_H1_LT_50')
+    if tx<MIN_TXNS_H1:blockers.append('TXNS_H1_LT_30')
     if str(row.get('pump_dump_risk_level') or row.get('risk_level') or '').upper() in {'HIGH','CRITICAL'}:blockers.append('HIGH_OR_CRITICAL_RISK')
     return not blockers,{'chain':chain,'token_address':token,'pair_address':pair,'market_age_days':round(age,2),'liquidity_usd':liq,'revival_score':score,'volume_h1_usd':vol,'txns_h1':tx,'blockers':blockers}
 
@@ -56,7 +56,7 @@ def _event_id(k:str,ts:str)->str:return 'R90-'+hashlib.sha256(f'{k}|{ts}'.encode
 
 def _message(row:dict,m:dict[str,Any],ts:str,eid:str)->str:
     symbol=str(row.get('base_token_symbol') or row.get('symbol') or 'UNKNOWN'); url=str(row.get('url') or row.get('dex_url') or '')
-    lines=['🔥🔥🔥 REVIVAL 90D / 15K — WALLET500','🆕 התעוררות חדשה במסלול המורחב',f'📅 זמן התראה (ישראל): {_fmt_israel_time(ts)}',f'🧾 Alert ID: {eid}','⚠️ RESEARCH ONLY — MANUAL DECISION — NO AUTOMATIC TRADE',f'Token: {symbol}',f"Chain: {str(m['chain']).upper().replace('BSC','BNB')}",f"Contract: {m['token_address']}",f"Pair: {m['pair_address']}",'Exact token identity: VERIFIED ✅','Exact pair: LOCKED ✅',f"Market age: {m['market_age_days']:.1f}d ✅ min 90d",f"Liquidity: {_fmt_money(m['liquidity_usd'])} ✅ min $15K",f"Revival score: {m['revival_score']:.1f}/100 ✅ min 65",f"Volume H1: {_fmt_money(m['volume_h1_usd'])} ✅ min $15K",f"Activity H1: {m['txns_h1']} tx ✅ min 50",'Production 180d/$50K gate: UNCHANGED','Verified Intelligence. The Pure Truth.']
+    lines=['🔥🔥🔥 REVIVAL 90D / 15K — WALLET500','🆕 התעוררות חדשה במסלול המורחב',f'📅 זמן התראה (ישראל): {_fmt_israel_time(ts)}',f'🧾 Alert ID: {eid}','⚠️ RESEARCH ONLY — MANUAL DECISION — NO AUTOMATIC TRADE',f'Token: {symbol}',f"Chain: {str(m['chain']).upper().replace('BSC','BNB')}",f"Contract: {m['token_address']}",f"Pair: {m['pair_address']}",'Exact token identity: VERIFIED ✅','Exact pair: LOCKED ✅',f"Market age: {m['market_age_days']:.1f}d ✅ min 90d",f"Liquidity: {_fmt_money(m['liquidity_usd'])} ✅ min $15K",f"Revival score: {m['revival_score']:.1f}/100 ✅ min 65",f"Volume H1: {_fmt_money(m['volume_h1_usd'])} ✅ min $15K",f"Activity H1: {m['txns_h1']} tx ✅ min 30",'Production 180d/$50K gate: UNCHANGED','Verified Intelligence. The Pure Truth.']
     if url:lines.append(f'🔗 OPEN DEX: {url}')
     return '\n'.join(lines)
 
