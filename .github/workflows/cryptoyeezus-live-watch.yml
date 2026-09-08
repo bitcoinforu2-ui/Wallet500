@@ -25,7 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
           fetch-depth: 1
 
       - uses: actions/setup-python@v5
@@ -38,13 +37,31 @@ jobs:
       - name: Unit tests
         run: python -m pytest -q tests/test_cryptoyeezus_live_watch.py
 
-      - name: Poll CryptoYeezus Telegram near-live and X under budget guard
+      - name: Poll canonical Telegram and X on every run
         env:
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          YEEZUS_X_POLL_EVERY_CYCLES: '6'
+          YEEZUS_X_POLL_EVERY_CYCLES: '1'
         run: python -m wallet500.cryptoyeezus_live_watch
+
+      - name: Validate source-check freshness contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('data/cryptoyeezus-live-latest.json').read_text())
+          src=p.get('providers') or {}
+          x=src.get('x') or {}
+          tg=src.get('telegram') or {}
+          if str(x.get('status') or '') == 'SKIPPED_BUDGET_GUARD':
+              raise SystemExit('YEEZUS_X_WAS_NOT_CHECKED_THIS_RUN')
+          if not str(x.get('status') or ''):
+              raise SystemExit('YEEZUS_X_STATUS_MISSING')
+          if not str(tg.get('status') or ''):
+              raise SystemExit('YEEZUS_TELEGRAM_STATUS_MISSING')
+          print('YEEZUS_SOURCE_CHECK_OK', tg.get('status'), x.get('status'))
+          PY
 
       - name: Persist forward-only state
         if: github.event_name != 'pull_request'
@@ -52,9 +69,6 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          # Editable installs can refresh tracked setuptools metadata. It is build
-          # output, not runtime truth state, and must never block the atomic
-          # forward-state rebase/publish path.
           git restore --worktree -- src/wallet500.egg-info || true
           git add data/cryptoyeezus-live-state.json data/cryptoyeezus-calls.json data/cryptoyeezus-live-latest.json
           if git diff --cached --quiet; then
@@ -62,12 +76,21 @@ jobs:
             exit 0
           fi
           git commit -m 'Update CryptoYeezus forward social state'
+          git reset --hard HEAD
+          git clean -fd
           for attempt in 1 2 3 4 5; do
-            git pull --rebase origin main
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo "CryptoYeezus rebase contention attempt=${attempt}"
+              [ "$attempt" -eq 5 ] && exit 1
+              sleep $((attempt * 2))
+              continue
+            fi
             if git push origin HEAD:main; then
+              echo 'CRYPTOYEEZUS_STATE_PUBLISH_OK'
               exit 0
             fi
-            echo "Publish race on attempt ${attempt}; retrying against fresh main"
             sleep $((attempt * 2))
           done
           echo 'Failed to publish CryptoYeezus state after 5 contention-safe retries' >&2

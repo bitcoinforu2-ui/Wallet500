@@ -25,20 +25,17 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install package
-        run: pip install -e .
+        run: pip install -e . pytest
+      - name: Unit tests
+        run: python -m pytest -q tests/test_cyberleek_wallet_flow_no_batch.py
       - name: Measure real exact-pair wallet flow
         env:
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
         run: |
-          # Fail over only when no private RPC is configured. PublicNode currently
-          # publishes this as its Solana mainnet RPC endpoint; wallet identities
-          # are still derived only from signed token-owner deltas on the locked pair.
           if [ -z "${SOLANA_RPC_URL:-}" ]; then
             export SOLANA_RPC_URL='https://solana-rpc.publicnode.com'
             echo 'Using verified public Solana RPC fallback'
           fi
-          # Public RPC gateways can reject JSON-RPC batch request bodies with HTTP 400.
-          # Use individual getTransaction reads while retaining fail-closed truth behavior.
           python -m wallet500.cyberleek_wallet_flow_no_batch
       - name: Validate truth output
         run: |
@@ -46,8 +43,7 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          p=Path('data/cyberleek-wallet-flow.json')
-          d=json.loads(p.read_text())
+          d=json.loads(Path('data/cyberleek-wallet-flow.json').read_text())
           assert d.get('version') == 'CYBERLEEK_WALLET_FLOW_V1'
           assert d.get('exact_pair') == 'G8kgi7aUpeX8EVR8VMkrth9SKEv5BietWC33UjAiiMGh'
           t=d.get('truth_contract') or {}
@@ -55,15 +51,12 @@ jobs:
           assert t.get('unresolved_transactions_are_not_guessed') is True
           assert t.get('first_seen_buyers_are_since_monitor_t0_not_lifetime_new_holders') is True
           c=d.get('coverage') or {}
-          resolved=int(c.get('last_run_resolved_swaps') or 0)
-          unresolved=int(c.get('last_run_unresolved') or 0)
-          denom=resolved+unresolved
-          pct=(resolved/denom*100.0) if denom else None
-          threshold=float(c.get('minimum_resolution_pct') or 80.0)
-          if pct is not None and pct < threshold:
-              assert c.get('coverage_gap') is True, (pct, c)
-              assert c.get('coverage_quality') == 'PARTIAL', c
-          print('CYBERLEEK_WALLET_FLOW_TRUTH_OK')
+          assert 'rpc_resolution_pct' in c
+          assert 'non_attributable_pair_touches' in c
+          assert c.get('coverage_quality') in {'ACCEPTABLE','PARTIAL'}
+          if c.get('coverage_quality') == 'PARTIAL':
+              assert c.get('coverage_gap') is True
+          print('CYBERLEEK_WALLET_FLOW_TRUTH_OK', c.get('rpc_resolution_pct'), c.get('trade_attribution_pct'))
           PY
       - name: Commit forward wallet-flow state
         shell: bash
@@ -71,6 +64,7 @@ jobs:
           set -euo pipefail
           git config user.name "wallet500-research-bot"
           git config user.email "wallet500-research-bot@users.noreply.github.com"
+          git restore --worktree -- src/wallet500.egg-info || true
           git add data/cyberleek-wallet-flow.json
           if [ -f data/cyberleek-wallet-flow-state.json ]; then git add data/cyberleek-wallet-flow-state.json; fi
           if git diff --cached --quiet; then
@@ -78,14 +72,22 @@ jobs:
             exit 0
           fi
           git commit -m 'data: refresh CYBERLEEK real wallet flow'
-          for attempt in 1 2 3; do
+          git reset --hard HEAD
+          git clean -fd
+          for attempt in 1 2 3 4 5; do
             git fetch origin main
             if ! git rebase origin/main; then
               git rebase --abort || true
-              echo 'Wallet-flow commit stopped fail-closed on rebase conflict'
-              exit 1
+              echo "Wallet-flow rebase contention on attempt ${attempt}"
+              [ "$attempt" -eq 5 ] && exit 1
+              sleep $((attempt * 2))
+              continue
             fi
-            if git push origin HEAD:main; then exit 0; fi
-            [ "$attempt" -eq 3 ] && exit 1
+            if git push origin HEAD:main; then
+              echo 'CYBERLEEK_WALLET_FLOW_PUBLISH_OK'
+              exit 0
+            fi
             sleep $((attempt * 2))
           done
+          echo 'CYBERLEEK_WALLET_FLOW_PUBLISH_RACE_EXHAUSTED' >&2
+          exit 1

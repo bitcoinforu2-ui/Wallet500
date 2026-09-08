@@ -1,0 +1,98 @@
+name: Wallet500 CryptoYeezus Source Wallet Watch
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+  pull_request:
+    paths:
+      - 'src/wallet500/cryptoyeezus_source_wallet_watch.py'
+      - 'tests/test_cryptoyeezus_source_wallet_watch.py'
+      - '.github/workflows/cryptoyeezus-source-wallet-watch.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/cryptoyeezus_source_wallet_watch.py'
+      - 'tests/test_cryptoyeezus_source_wallet_watch.py'
+      - '.github/workflows/cryptoyeezus-source-wallet-watch.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-cryptoyeezus-source-wallet-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Unit tests
+        run: python -m pytest -q tests/test_cryptoyeezus_source_wallet_watch.py
+      - name: Run forward-only verified swap watcher
+        if: github.event_name != 'pull_request'
+        env:
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "${SOLANA_RPC_URL:-}" ]; then
+            export SOLANA_RPC_URL='https://solana-rpc.publicnode.com'
+          fi
+          python -m wallet500.cryptoyeezus_source_wallet_watch
+      - name: Validate source-wallet truth contract
+        if: github.event_name != 'pull_request'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('data/cryptoyeezus-source-wallet-latest.json').read_text())
+          if p.get('wallet')!='JCxTzSXz1f8s3UEtYQzaDdBDWneaD6yo1cX38RBf6Rjd': raise SystemExit('SOURCE_WALLET_IDENTITY_DRIFT')
+          if p.get('simulation_only') is not True: raise SystemExit('SOURCE_WALLET_SIMULATION_GUARD_MISSING')
+          for e in p.get('events') or []:
+              if e.get('verification')!='SIGNED_WALLET_TWO_SIDED_BALANCE_DELTA_PLUS_DEX_SWAP_EVIDENCE': raise SystemExit('UNVERIFIED_SOURCE_WALLET_EVENT')
+              if e.get('real_trade_claimed') is not False: raise SystemExit('REAL_TRADE_FALSE_CLAIM')
+              if not e.get('signature') or not e.get('token_mint'): raise SystemExit('SOURCE_WALLET_IDENTITY_INCOMPLETE')
+          print('SOURCE_WALLET_TRUTH_OK', p.get('status'), p.get('new_verified_swaps'))
+          PY
+      - name: Publish forward-only source-wallet state
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-source-wallet-bot'
+          git config user.email 'wallet500-source-wallet-bot@users.noreply.github.com'
+          git restore --worktree -- src/wallet500.egg-info || true
+          git add data/cryptoyeezus-source-wallet-state.json data/cryptoyeezus-source-wallet-latest.json data/cryptoyeezus-source-wallet-events.json
+          if git diff --cached --quiet; then
+            echo 'SOURCE_WALLET_NO_STATE_CHANGE'
+            exit 0
+          fi
+          git commit -m 'data: update CryptoYeezus source wallet state'
+          git reset --hard HEAD
+          git clean -fd
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              [ "$attempt" -eq 5 ] && exit 1
+              sleep $((attempt * 2))
+              continue
+            fi
+            if git push origin HEAD:main; then
+              echo 'SOURCE_WALLET_PUBLISH_OK'
+              exit 0
+            fi
+            sleep $((attempt * 2))
+          done
+          echo 'SOURCE_WALLET_PUBLISH_RACE_EXHAUSTED' >&2
+          exit 1
