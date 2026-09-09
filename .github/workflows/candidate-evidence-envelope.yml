@@ -152,7 +152,7 @@ jobs:
           if e.get('production_change') is not False or e.get('automatic_buy') is not False: raise SystemExit('ENVELOPE_PRODUCTION_LEAK')
           truth=e.get('truth_contract') or {}
           if truth.get('minimum_market_age_days')!=90: raise SystemExit('ENVELOPE_AGE_SCOPE_INVALID')
-          if float(truth.get('minimum_execution_liquidity_usd') or truth.get('minimum_liquidity_usd') or 15000)!=15000: raise SystemExit('ENVELOPE_LIQUIDITY_SCOPE_INVALID')
+          if float(truth.get('minimum_execution_pool_liquidity_usd') or truth.get('minimum_execution_liquidity_usd') or truth.get('minimum_liquidity_usd') or 0)!=15000: raise SystemExit('ENVELOPE_LIQUIDITY_SCOPE_INVALID')
           if truth.get('exact_pair_required') is not True: raise SystemExit('ENVELOPE_PAIR_GUARD_MISSING')
           if truth.get('missing_evidence_never_positive') is not True: raise SystemExit('ENVELOPE_MISSING_EVIDENCE_GUARD')
           if truth.get('stale_evidence_never_positive') is not True: raise SystemExit('ENVELOPE_STALE_EVIDENCE_GUARD')
