@@ -14,7 +14,7 @@ concurrency:
   group: wallet500-reconcile-revival-policy-90d-15k
   cancel-in-progress: false
 
-# Retried intentionally after near-alert market-data feed repair on 2026-09-09.
+# Retried after correcting the canonical 15K config invariant on 2026-09-09.
 jobs:
   reconcile:
     runs-on: ubuntu-latest
@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 20
 
       - uses: actions/setup-python@v5
         with:
