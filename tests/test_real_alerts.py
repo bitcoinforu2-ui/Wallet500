@@ -57,7 +57,7 @@ def test_exact_old_coin_with_two_lanes_becomes_real_alert(tmp_path):
     assert result["counts"]["real_alerts"] == 1
     row = result["alerts"][0]
     assert row["status"] == "REAL_ALERT"
-    assert row["market_age_days"] >= 180
+    assert row["market_age_days"] >= 90
     assert row["exact_identity_verified"] is True
     assert row["exact_pair_verified"] is True
     assert set(row["source_lanes"]) >= {"CEX_REVIVAL", "REVIVAL_PRECURSOR"}
@@ -79,11 +79,11 @@ def test_unresolved_identity_is_visible_but_not_actionable(tmp_path):
     assert result["identity_pending"][0]["actionable_research_alert"] is False
 
 
-def test_under_180_days_fails_closed(tmp_path):
+def test_under_90_days_fails_closed(tmp_path):
     cex = base_cex()
-    cex["market_age_min_days"] = 179
+    cex["market_age_min_days"] = 89
     p = precursor()
-    p["market_age_min_days"] = 179
+    p["market_age_min_days"] = 89
     seed(tmp_path, [cex], [p])
     result = build(tmp_path)
     assert result["counts"]["real_alerts"] == 0
@@ -97,7 +97,7 @@ def test_late_move_never_becomes_real_alert(tmp_path):
     assert any("LATE_MOVE_DO_NOT_CHASE" in x["blockers"] for x in result["verified_watch"])
 
 
-def test_total_liquidity_over_50k_cannot_rescue_thin_execution_pool(tmp_path):
+def test_total_liquidity_cannot_rescue_execution_pool_below_15k(tmp_path):
     cex = base_cex(liq=8_700)
     cex["execution_pool_liquidity_usd"] = 8_700
     cex["dex_total_liquidity_usd"] = 120_000
@@ -107,10 +107,10 @@ def test_total_liquidity_over_50k_cannot_rescue_thin_execution_pool(tmp_path):
     row = result["verified_watch"][0]
     assert row["execution_pool_liquidity_usd"] == 8_700
     assert row["dex_total_liquidity_usd"] == 120_000
-    assert "EXECUTION_POOL_LIQUIDITY_LT_50K" in row["blockers"]
+    assert "EXECUTION_POOL_LIQUIDITY_LT_15K" in row["blockers"]
 
 
-def test_deep_exact_execution_pool_over_50k_passes_even_if_stale_thin_row_exists(tmp_path):
+def test_deep_exact_execution_pool_over_15k_passes_even_if_stale_thin_row_exists(tmp_path):
     cex = base_cex(liq=1_100_000)
     cex["pair_address"] = "DeepPair11111111111111111111111111111111111"
     cex["execution_pool_liquidity_usd"] = 1_100_000
