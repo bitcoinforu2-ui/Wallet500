@@ -69,7 +69,7 @@ def _verified_survival(candidate: dict, outcomes: dict) -> tuple[bool, list[str]
     if peak_dd is not None and peak_dd <= -25:
         reasons.append("VERIFIED_PEAK_DRAWDOWN_BELOW_MINUS_25PCT")
     if liq < MIN_LIVE_LIQUIDITY_USD:
-        reasons.append("CURRENT_LIQUIDITY_BELOW_50K")
+        reasons.append("CURRENT_LIQUIDITY_BELOW_15K")
     if vol < 15000:
         reasons.append("CURRENT_VOLUME_1H_BELOW_15K")
     if tx < 50:

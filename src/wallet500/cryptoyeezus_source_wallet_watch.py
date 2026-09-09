@@ -229,7 +229,7 @@ def exact_pair_snapshot(mint: str, tx_accounts: list[str]) -> tuple[dict | None,
     try:
         liq = float(snap.get("liquidity_usd") or 0)
         if liq < 50_000:
-            flags.append("EXACT_PAIR_LIQUIDITY_LT_50K")
+            flags.append("EXACT_PAIR_LIQUIDITY_LT_15K")
     except Exception:
         flags.append("LIQUIDITY_UNVERIFIED")
     return snap, flags

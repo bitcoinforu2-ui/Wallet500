@@ -76,7 +76,7 @@ def _hard_failure_reasons(row: dict) -> list[str]:
     if price is not None and price <= 0:
         reasons.append("PAIR_PRICE_ZERO_OR_UNAVAILABLE")
     if liquidity is not None and liquidity < MIN_LIQUIDITY_USD:
-        reasons.append("LIQUIDITY_LT_50K_HARD_BLOCK")
+        reasons.append("LIQUIDITY_LT_15K_HARD_BLOCK")
     if liquidity is not None and liquidity <= 1:
         reasons.append("ZERO_OR_NEAR_ZERO_LIQUIDITY")
     if current_return is not None and current_return <= MAX_VERIFIED_LOSS_PCT:

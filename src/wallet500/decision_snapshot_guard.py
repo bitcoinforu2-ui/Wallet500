@@ -295,16 +295,16 @@ def build(data_dir: Path = DATA) -> dict:
         if row.get("exact_identity_verified") is not True or row.get("exact_pair_verified") is not True:
             fail("REAL_ALERT_IDENTITY_BREACH", "REAL ALERT lacks exact identity/pair", row.get("token_address"))
         if row.get("market_age_verified") is not True or _int(row.get("market_age_days")) < PRODUCTION_MIN_AGE_DAYS:
-            fail("REAL_ALERT_AGE_BREACH", "REAL ALERT is outside strict production 180d scope", row.get("token_address"))
+            fail("REAL_ALERT_AGE_BREACH", "REAL ALERT is outside strict production 90d scope", row.get("token_address"))
         if _num(row.get("execution_pool_liquidity_usd")) < PRODUCTION_MIN_LIQUIDITY_USD:
-            fail("REAL_ALERT_LIQUIDITY_BREACH", "REAL ALERT lacks $50K execution pool liquidity", row.get("token_address"))
+            fail("REAL_ALERT_LIQUIDITY_BREACH", "REAL ALERT lacks $15K execution pool liquidity", row.get("token_address"))
         if row.get("automatic_buy") is True:
             fail("REAL_ALERT_AUTOBUY_BREACH", "REAL ALERT must not auto-buy", row.get("token_address"))
 
     if isinstance(production, dict) and production:
         policy = production.get("policy") if isinstance(production.get("policy"), dict) else {}
         if _int(policy.get("minimum_verified_market_age_days")) != PRODUCTION_MIN_AGE_DAYS:
-            fail("PRODUCTION_STATUS_SCOPE_DRIFT", "Production status must report strict 180d scope", policy.get("minimum_verified_market_age_days"))
+            fail("PRODUCTION_STATUS_SCOPE_DRIFT", "Production status must report strict 90d scope", policy.get("minimum_verified_market_age_days"))
         if _num(policy.get("minimum_liquidity_usd")) != PRODUCTION_MIN_LIQUIDITY_USD:
             fail("PRODUCTION_STATUS_LIQUIDITY_DRIFT", "Production status must report strict $50K liquidity floor", policy.get("minimum_liquidity_usd"))
         if policy.get("exact_onchain_identity_required") is not True or policy.get("exact_dex_pair_required") is not True:

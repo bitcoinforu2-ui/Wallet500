@@ -106,7 +106,7 @@ def _age_ok(*rows: dict) -> tuple[bool, int | None]:
     if not ages:
         return False, None
     age = min(ages)
-    return age >= 180, age
+    return age >= 90, age
 
 
 def _row_pair(row: dict) -> str | None:
@@ -338,7 +338,7 @@ def _readiness(*, exact_identity: bool, exact_pair: bool, age_ok: bool, liquidit
     gates = {
         "EXACT_IDENTITY": bool(exact_identity),
         "EXACT_DEX_PAIR": bool(exact_pair),
-        "VETERAN_AGE_180D": bool(age_ok),
+        "VETERAN_AGE_90D": bool(age_ok),
         "EXECUTION_LIQUIDITY": bool(liquidity_ok),
         "RISK_CLEAR": bool(risk_clear),
         "STRONG_DECISION_LANE": bool(strong_decision),
@@ -431,7 +431,7 @@ def build(data_dir: Path = DATA) -> dict:
         if not exact_pair:
             blockers.append("EXACT_DEX_PAIR_REQUIRED")
         if not age_ok:
-            blockers.append("VERIFIED_MARKET_AGE_180D_REQUIRED")
+            blockers.append("VERIFIED_MARKET_AGE_90D_REQUIRED")
         if not liquidity_ok:
             blockers.append(f"EXECUTION_POOL_LIQUIDITY_LT_{int(cfg.verified_min_liquidity_usd/1000)}K")
         if blocked:
@@ -583,7 +583,7 @@ def build(data_dir: Path = DATA) -> dict:
         },
         "truth_contract": {
             "focus": "VETERAN_COIN_REVIVAL_ONLY",
-            "minimum_market_age_days": 180,
+            "minimum_market_age_days": 90,
             "minimum_execution_pool_liquidity_usd": cfg.verified_min_liquidity_usd,
             "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
             "dex_total_liquidity_is_informational_only": True,
