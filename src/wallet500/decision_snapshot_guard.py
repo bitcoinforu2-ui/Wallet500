@@ -222,7 +222,11 @@ def build(data_dir: Path = DATA) -> dict:
     truth = envelope.get("truth_contract") if isinstance(envelope.get("truth_contract"), dict) else {}
     if _int(truth.get("minimum_market_age_days")) != RESEARCH_MIN_AGE_DAYS:
         fail("ENVELOPE_AGE_SCOPE_DRIFT", "Research evidence envelope must enforce 90d scope", truth.get("minimum_market_age_days"))
-    research_liq = _num(truth.get("minimum_execution_liquidity_usd") or truth.get("minimum_liquidity_usd"))
+    research_liq = _num(
+        truth.get("minimum_execution_pool_liquidity_usd")
+        or truth.get("minimum_execution_liquidity_usd")
+        or truth.get("minimum_liquidity_usd")
+    )
     if research_liq != RESEARCH_MIN_LIQUIDITY_USD:
         fail("ENVELOPE_LIQUIDITY_SCOPE_DRIFT", "Research evidence envelope must enforce $15K scope", research_liq)
     if truth.get("exact_pair_required") is not True:
