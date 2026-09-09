@@ -4,8 +4,14 @@ import json
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 DATA = Path("data")
+EVM_CHAINS = {
+    "ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche",
+    "fantom", "linea", "zksync", "mantle", "scroll", "blast",
+}
 
 
 def _load(path: Path, default):
@@ -31,11 +37,17 @@ def _first_present(*values):
     return None
 
 
+def _norm_addr(chain: object, value: object) -> str:
+    c = str(chain or "").strip().lower()
+    raw = str(value or "").strip()
+    return raw.lower() if c in EVM_CHAINS else raw
+
+
 def _compact_candidate(row: dict) -> dict:
-    """Compact a verified-watch row without throwing away live exact-pair market data.
+    """Compact a verified-watch row without throwing away exact-pair market data.
 
     Research cards need market context, but unverified concentrated-liquidity depth must
-    never be silently promoted to executable liquidity.  When execution depth is not
+    never be silently promoted to executable liquidity. When execution depth is not
     verified we expose the provider-reported exact-pair pool value only as an
     informational display value and preserve the execution value separately.
     """
@@ -120,6 +132,119 @@ def _compact_candidate(row: dict) -> dict:
         "research_only": True,
         "automatic_buy": False,
     }
+
+
+def _fetch_exact_pair_market(row: dict, timeout: float = 7.0) -> dict | None:
+    """Fetch one exact pair from DexScreener and reject any identity mismatch."""
+    chain = str(row.get("chain") or "").strip().lower()
+    token = str(row.get("token_address") or "").strip()
+    pair = str(row.get("pair_address") or "").strip()
+    if not chain or not token or not pair:
+        return None
+    if row.get("exact_identity_verified") is not True or row.get("exact_pair_verified") is not True:
+        return None
+
+    url = f"https://api.dexscreener.com/latest/dex/pairs/{quote(chain)}/{quote(pair)}"
+    request = Request(url, headers={"User-Agent": "Wallet500/1.0 exact-pair research refresh"})
+    with urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    pairs = payload.get("pairs") if isinstance(payload, dict) else []
+    if not isinstance(pairs, list):
+        return None
+
+    wanted_pair = _norm_addr(chain, pair)
+    wanted_token = _norm_addr(chain, token)
+    for item in pairs:
+        if not isinstance(item, dict):
+            continue
+        if _norm_addr(chain, item.get("pairAddress")) != wanted_pair:
+            continue
+        base = item.get("baseToken") if isinstance(item.get("baseToken"), dict) else {}
+        quote_token = item.get("quoteToken") if isinstance(item.get("quoteToken"), dict) else {}
+        returned_tokens = {_norm_addr(chain, base.get("address")), _norm_addr(chain, quote_token.get("address"))}
+        if wanted_token not in returned_tokens:
+            continue
+        return item
+    return None
+
+
+def _apply_exact_pair_market(row: dict, market: dict | None, observed_at: str | None = None) -> None:
+    """Overlay only exact-pair live market facts; never promote pool TVL to execution depth."""
+    if not isinstance(row, dict):
+        return
+    if not isinstance(market, dict):
+        row["live_market_status"] = "EXACT_PAIR_LIVE_DATA_UNAVAILABLE"
+        return
+
+    liquidity = market.get("liquidity") if isinstance(market.get("liquidity"), dict) else {}
+    volume = market.get("volume") if isinstance(market.get("volume"), dict) else {}
+    txns = market.get("txns") if isinstance(market.get("txns"), dict) else {}
+    h1_tx = txns.get("h1") if isinstance(txns.get("h1"), dict) else {}
+    h24_tx = txns.get("h24") if isinstance(txns.get("h24"), dict) else {}
+
+    provider_pool_value = _num(liquidity.get("usd"), 0.0)
+    if provider_pool_value > 0:
+        row["provider_reported_pool_value_usd"] = provider_pool_value
+        if _num(row.get("execution_pool_liquidity_usd"), 0.0) <= 0:
+            row["liquidity_usd"] = provider_pool_value
+            row["liquidity_display_semantics"] = "PROVIDER_REPORTED_EXACT_PAIR_POOL_VALUE_INFORMATIONAL_ONLY"
+
+    h1 = _first_present(volume.get("h1"), row.get("dex_volume_h1"))
+    h24 = _first_present(volume.get("h24"), row.get("dex_volume_h24"))
+    row["dex_volume_h1"] = _num(h1, 0.0) if h1 is not None else None
+    row["dex_volume_h24"] = _num(h24, 0.0) if h24 is not None else None
+    row["buys_h1"] = int(_num(h1_tx.get("buys"), 0)) if h1_tx.get("buys") is not None else None
+    row["sells_h1"] = int(_num(h1_tx.get("sells"), 0)) if h1_tx.get("sells") is not None else None
+    row["buys_h24"] = int(_num(h24_tx.get("buys"), 0)) if h24_tx.get("buys") is not None else None
+    row["sells_h24"] = int(_num(h24_tx.get("sells"), 0)) if h24_tx.get("sells") is not None else None
+
+    display_liq = _num(row.get("liquidity_usd"), 0.0)
+    if row.get("dex_volume_h1") is not None and display_liq > 0:
+        row["turnover_h1"] = _num(row.get("dex_volume_h1")) / display_liq
+
+    row["market_activity_verified"] = True
+    row["live_market_status"] = "EXACT_PAIR_VERIFIED"
+    row["live_market_provider"] = "DEXSCREENER_EXACT_PAIR"
+    row["live_market_observed_at"] = observed_at or datetime.now(timezone.utc).isoformat()
+    if market.get("url"):
+        row["dex_url"] = market.get("url")
+    if market.get("dexId"):
+        row["dex"] = market.get("dexId")
+
+
+def _refresh_live_market(payload: dict, fetcher=_fetch_exact_pair_market) -> dict:
+    """Refresh unique research candidates once per exact identity, fail-soft per pair."""
+    lists = [payload.get("near_alert_leaderboard") or [], payload.get("closest_to_real_alert") or []]
+    cache: dict[tuple[str, str, str], dict | None] = {}
+    observed_at = datetime.now(timezone.utc).isoformat()
+    for rows in lists:
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            key = (
+                str(row.get("chain") or "").strip().lower(),
+                _norm_addr(row.get("chain"), row.get("token_address")),
+                _norm_addr(row.get("chain"), row.get("pair_address")),
+            )
+            if not all(key):
+                row["live_market_status"] = "IDENTITY_INCOMPLETE"
+                continue
+            if key not in cache:
+                try:
+                    cache[key] = fetcher(row)
+                except Exception as exc:
+                    cache[key] = None
+                    row["live_market_error"] = type(exc).__name__
+            _apply_exact_pair_market(row, cache[key], observed_at=observed_at)
+    payload["live_market_refresh"] = {
+        "provider": "DEXSCREENER_EXACT_PAIR",
+        "unique_pairs_requested": len(cache),
+        "exact_pairs_verified": sum(1 for value in cache.values() if isinstance(value, dict)),
+        "observed_at": observed_at,
+        "fail_closed_on_identity_mismatch": True,
+        "execution_gate_changed": False,
+    }
+    return payload
 
 
 def build(data_dir: Path = DATA) -> dict:
@@ -230,7 +355,7 @@ def build(data_dir: Path = DATA) -> dict:
 
 
 def run(data_dir: Path = DATA) -> dict:
-    payload = build(data_dir)
+    payload = _refresh_live_market(build(data_dir))
     (data_dir / "near-alert-observatory.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
