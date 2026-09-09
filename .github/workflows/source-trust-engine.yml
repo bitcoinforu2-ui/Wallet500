@@ -1,0 +1,96 @@
+name: Wallet500 Source Trust Engine
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+  pull_request:
+    paths:
+      - 'src/wallet500/source_trust_engine.py'
+      - 'tests/test_source_trust_engine.py'
+      - '.github/workflows/source-trust-engine.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/source_trust_engine.py'
+      - 'tests/test_source_trust_engine.py'
+      - '.github/workflows/source-trust-engine.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-source-trust-engine
+  cancel-in-progress: false
+
+jobs:
+  trust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install
+        run: pip install -e . pytest
+
+      - name: Unit tests
+        run: python -m pytest -q tests/test_source_trust_engine.py
+
+      - name: Build source performance and trust cards
+        run: python -m wallet500.source_trust_engine
+
+      - name: Validate truth guards
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('data/source-trust-latest.json').read_text())
+          assert p['production_trade_impact'] == 'RESEARCH_WEIGHT_ONLY'
+          assert p['horizon_capture_policy'].startswith('FIRST_OBSERVED_IN_WINDOW_ONLY')
+          for name, card in (p.get('sources') or {}).items():
+              t=float(card['trust_score'])
+              assert 0 <= t <= 100, (name, t)
+              c=float(card['sample_confidence'])
+              assert 0 <= c <= 1, (name, c)
+          for row in p.get('recent_impacts') or []:
+              x=float(row['effective_social_impact'])
+              assert 0 <= x <= 100, x
+          print('SOURCE_TRUST_GUARDS_OK', list((p.get('sources') or {}).keys()))
+          PY
+
+      - name: Persist learning state
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-bot'
+          git config user.email 'wallet500-bot@users.noreply.github.com'
+          git restore --worktree -- src/wallet500.egg-info || true
+          git add data/source-trust-state.json data/source-trust-latest.json
+          if git diff --cached --quiet; then
+            echo 'No trust-state change to commit'
+            exit 0
+          fi
+          git commit -m 'Update source trust learning state'
+          git reset --hard HEAD
+          git clean -fd
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              [ "$attempt" -eq 5 ] && exit 1
+              sleep $((attempt * 2))
+              continue
+            fi
+            if git push origin HEAD:main; then
+              echo 'SOURCE_TRUST_STATE_PUBLISH_OK'
+              exit 0
+            fi
+            sleep $((attempt * 2))
+          done
+          exit 1
