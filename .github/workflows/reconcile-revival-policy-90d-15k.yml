@@ -1,176 +1,21 @@
-name: Wallet500 Reconcile Revival Policy 90D 15K
+name: Wallet500 Reconcile Revival Policy 90D 15K [DEPRECATED]
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/reconcile-revival-policy-90d-15k.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: wallet500-reconcile-revival-policy-90d-15k
-  cancel-in-progress: false
-
-# Triggered 2026-09-09 with clean-worktree rebasing after all policy and full-suite guards pass.
+  group: wallet500-reconcile-revival-policy-90d-15k-deprecated
+  cancel-in-progress: true
 
 jobs:
-  reconcile:
+  deprecated:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 20
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Reconcile active Revival runtime to canonical 90D 15K
+      - name: Fail closed — legacy production rollback is prohibited
         run: |
-          python - <<'PY'
-          from scripts.reconcile_revival_policy_90d_15k import reconcile
-          changed = reconcile()
-          print('RECONCILED_FILES', len(changed))
-          for path in changed:
-              print(path)
-          PY
-
-      - name: Preserve deliberate legacy regression fixtures
-        run: python scripts/preserve_policy_negative_fixtures.py
-
-      - name: Install package and tests
-        run: python -m pip install -e . pytest
-
-      - name: Verify no obsolete real-alert gate remains
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          from wallet500.policy import CANONICAL_MIN_MARKET_AGE_DAYS, CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
-          from wallet500.config import Settings
-          assert CANONICAL_MIN_MARKET_AGE_DAYS == 90
-          assert float(CANONICAL_MIN_EXECUTION_LIQUIDITY_USD) == 15000.0
-          assert Settings().verified_min_liquidity_usd == 15000.0
-          text = Path('src/wallet500/real_alerts.py').read_text(encoding='utf-8')
-          forbidden = ['return age >= 180, age', '"VETERAN_AGE_180D"', '"minimum_market_age_days": 180', 'VERIFIED_MARKET_AGE_180D_REQUIRED']
-          leftovers = [x for x in forbidden if x in text]
-          assert not leftovers, leftovers
-          assert 'return age >= 90, age' in text
-          assert '"minimum_market_age_days": 90' in text
-          print('REAL_ALERT_POLICY_SOURCE_OK')
-          PY
-
-      - name: Compile engine
-        run: python -m compileall -q src/wallet500
-
-      - name: Syntax-check decision dashboards
-        run: |
-          node --check dashboard-live-price.js
-          node --check dashboard-live-price-core.js
-          node --check dashboard-truth-overlap.js
-          node --check data/dashboard-live-price-core.js
-          node --check data/dashboard-truth-overlap.js
-
-      - name: Run policy-critical tests
-        run: |
-          python -m pytest -q \
-            tests/test_policy_contract.py \
-            tests/test_revival_90d_telegram.py \
-            tests/test_real_alerts.py \
-            tests/test_decision_snapshot_guard.py \
-            tests/test_production_status.py \
-            tests/test_multichain_veteran_revival.py \
-            tests/test_catalyst_wire.py \
-            tests/test_near_alert_observatory.py \
-            tests/test_revival_wallet_evidence.py \
-            tests/test_revival_wallet_registry.py \
-            tests/test_revival_prewaking_rotation.py \
-            tests/test_revival_prewaking_wallet_evidence_v2.py \
-            tests/test_revival_prewaking_wallet_retention.py
-
-      - name: Republish real-alert and near-alert truth feeds
-        run: |
-          python -m wallet500.real_alerts
-          python -m wallet500.near_alert_observatory
-
-      - name: Verify regenerated live policy and exact-pair research feed
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          real=json.loads(Path('data/real-alerts.json').read_text())
-          truth=real.get('truth_contract') or {}
-          assert int(truth.get('minimum_market_age_days') or 0) == 90, truth
-          assert float(truth.get('minimum_execution_pool_liquidity_usd') or 0) == 15000.0, truth
-          near=json.loads(Path('data/near-alert-observatory.json').read_text())
-          refresh=near.get('live_market_refresh') or {}
-          assert refresh.get('provider') == 'DEXSCREENER_EXACT_PAIR', refresh
-          assert refresh.get('fail_closed_on_identity_mismatch') is True, refresh
-          assert refresh.get('execution_gate_changed') is False, refresh
-          print('LIVE_POLICY_AND_PAIR_REFRESH_OK', refresh)
-          PY
-
-      - name: Run identity and engine-dashboard audits
-        run: |
-          python tools/check_engine_dashboard_overlap.py --strict --max-skew-minutes 30
-          python tools/check_identity_alignment.py
-
-      - name: Run full unit test suite
-        run: python -m pytest -q
-
-      - name: Commit verified runtime changes without workflow or cache artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'wallet500-policy-bot'
-          git config user.email 'wallet500-policy-bot@users.noreply.github.com'
-
-          # Workflow files are reconciled through the authorized GitHub connection.
-          git restore -- .github/workflows
-
-          # Stage only audited runtime/test/feed surfaces.
-          git add \
-            src/wallet500/cryptoyeezus_source_wallet_watch.py \
-            src/wallet500/decision_snapshot_guard.py \
-            src/wallet500/exact_pair_survival.py \
-            src/wallet500/fresh_solana_gate.py \
-            src/wallet500/liquidity_truth_guard.py \
-            src/wallet500/policy.py \
-            src/wallet500/real_alerts.py \
-            tests/test_decision_snapshot_guard.py \
-            tests/test_fresh_solana_gate.py \
-            tests/test_policy_contract.py \
-            tests/test_production_status.py \
-            tests/test_system_health.py \
-            data/real-alerts.json \
-            data/near-alert-observatory.json
-
-          if git diff --cached --quiet; then
-            echo 'REVIVAL_POLICY_ALREADY_CLEAN'
-            exit 0
-          fi
-
-          git commit -m 'policy: unify active Revival runtime at 90d 15k and republish truth feeds'
-
-          # Tests/compile generate local bytecode and some unstaged derived files.
-          # They must never block a rebase or enter the verified commit.
-          git reset --hard HEAD
-          git clean -fd
-
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            git fetch origin main
-            if git rebase origin/main && git push origin HEAD:main; then
-              echo 'REVIVAL_POLICY_90D_15K_PUBLISH_OK'
-              exit 0
-            fi
-            git rebase --abort 2>/dev/null || true
-            git reset --hard HEAD
-            git clean -fd
-            echo "REVIVAL_POLICY_PUBLISH_RETRY attempt=$attempt"
-            sleep 2
-          done
-          echo '::error::REVIVAL_POLICY_PUBLISH_RACE_EXHAUSTED'
+          echo '::error::DEPRECATED_POLICY_WRITER_BLOCKED: production truth is 180d / $50K with exact identity and exact pair.'
           exit 1
