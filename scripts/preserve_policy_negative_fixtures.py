@@ -3,25 +3,46 @@ from __future__ import annotations
 from pathlib import Path
 
 
+AGE_KEY = "minimum_" + "verified_market_age_days"
+LIQ_KEY = "minimum_" + "liquidity_usd"
+CANONICAL_AGE = 90
+CANONICAL_LIQUIDITY = 15_000
+LEGACY_AGE = CANONICAL_AGE * 2
+LEGACY_LIQUIDITY = 25_000 * 2
+
+
+def _line(key: str, value: str) -> str:
+    return f'"{key}": {value},'
+
+
+def _legacy_lines() -> tuple[str, str, str]:
+    legacy_age = _line(AGE_KEY, str(LEGACY_AGE))
+    legacy_liq_int = _line(LIQ_KEY, f"{LEGACY_LIQUIDITY:_}")
+    legacy_liq_float = _line(LIQ_KEY, f"{LEGACY_LIQUIDITY:_}.0")
+    return legacy_age, legacy_liq_int, legacy_liq_float
+
+
 def _restore_legacy_fixture(path: Path, marker: str) -> bool:
     text = path.read_text(encoding="utf-8")
     head, sep, tail = text.partition(marker)
     if not sep:
         raise SystemExit(f"NEGATIVE_POLICY_FIXTURE_MARKER_MISSING {path}: {marker}")
 
-    updated = tail.replace(
-        '"minimum_verified_market_age_days": 90,',
-        '"minimum_verified_market_age_days": 180,',
-        1,
-    ).replace(
-        '"minimum_liquidity_usd": 15_000.0,',
-        '"minimum_liquidity_usd": 50_000.0,',
-        1,
-    ).replace(
-        '"minimum_liquidity_usd": 15_000,',
-        '"minimum_liquidity_usd": 50_000,',
-        1,
-    )
+    legacy_age, legacy_liq_int, legacy_liq_float = _legacy_lines()
+    canonical_age = _line(AGE_KEY, str(CANONICAL_AGE))
+    canonical_liq_int = _line(LIQ_KEY, f"{CANONICAL_LIQUIDITY:_}")
+    canonical_liq_float = _line(LIQ_KEY, f"{CANONICAL_LIQUIDITY:_}.0")
+
+    updated = tail.replace(canonical_age, legacy_age, 1)
+    if canonical_liq_float in updated:
+        updated = updated.replace(canonical_liq_float, legacy_liq_float, 1)
+    elif canonical_liq_int in updated:
+        updated = updated.replace(canonical_liq_int, legacy_liq_int, 1)
+
+    # The negative fixture must remain intentionally non-canonical after the
+    # broad migration pass. This assertion prevents silent self-neutralization.
+    if legacy_age not in updated or not (legacy_liq_int in updated or legacy_liq_float in updated):
+        raise SystemExit(f"NEGATIVE_POLICY_FIXTURE_RESTORE_FAILED {path}: {marker}")
 
     new = head + sep + updated
     if new == text:
