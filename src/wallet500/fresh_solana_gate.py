@@ -2,7 +2,9 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-MIN_LIVE_LIQUIDITY_USD = 15_000.0
+from .policy import CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
+
+MIN_LIVE_LIQUIDITY_USD = CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
 FRESH_PAIR_WINDOW_MINUTES = 120.0
 MIN_PAIR_AGE_FOR_ACTIVE_MINUTES = 45.0
 MIN_VERIFIED_OBSERVATION_SPAN_MINUTES = 10.0
@@ -67,7 +69,7 @@ def _verified_survival(candidate: dict, outcomes: dict) -> tuple[bool, list[str]
     if peak_dd is not None and peak_dd <= -25:
         reasons.append("VERIFIED_PEAK_DRAWDOWN_BELOW_MINUS_25PCT")
     if liq < MIN_LIVE_LIQUIDITY_USD:
-        reasons.append("CURRENT_LIQUIDITY_BELOW_15K")
+        reasons.append("CURRENT_LIQUIDITY_BELOW_50K")
     if vol < 15000:
         reasons.append("CURRENT_VOLUME_1H_BELOW_15K")
     if tx < 50:
