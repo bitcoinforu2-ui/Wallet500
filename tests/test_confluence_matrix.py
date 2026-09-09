@@ -94,7 +94,8 @@ def test_execution_14999_is_hard_blocked_and_15000_is_not(tmp_path: Path):
     write(tmp_path, "real-alerts.json", real(15_000))
     out2 = build(tmp_path, now=NOW)
     assert "EXECUTION_LIQUIDITY_LT_15K" not in out2["tokens"][0]["hard_blockers"]
-    assert out2["tokens"][0]["copyability_score"] == 70
+    # $15K is the minimum executable boundary, not a high-copyability pool.
+    assert out2["tokens"][0]["copyability_score"] == 35
 
 
 def test_official_catalyst_requires_fresh_exact_identity_guard(tmp_path: Path):
