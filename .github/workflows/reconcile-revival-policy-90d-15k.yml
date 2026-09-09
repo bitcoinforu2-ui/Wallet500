@@ -14,7 +14,7 @@ concurrency:
   group: wallet500-reconcile-revival-policy-90d-15k
   cancel-in-progress: false
 
-# Triggered 2026-09-09 after aligning stale policy tests with the canonical 90D/$15K contract.
+# Triggered 2026-09-09 with regression-fixture preservation for the canonical 90D/$15K migration.
 
 jobs:
   reconcile:
@@ -38,6 +38,9 @@ jobs:
           for path in changed:
               print(path)
           PY
+
+      - name: Preserve deliberate legacy regression fixtures
+        run: python scripts/preserve_policy_negative_fixtures.py
 
       - name: Install package and tests
         run: python -m pip install -e . pytest
