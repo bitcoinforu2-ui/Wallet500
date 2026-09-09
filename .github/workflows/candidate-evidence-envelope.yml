@@ -102,9 +102,9 @@ jobs:
             source_sha="$(git rev-parse HEAD)"
             export SOURCE_SHA="$source_sha"
 
-            # Refresh every policy-bearing source that participates in the decision
-            # snapshot. This prevents stale 60d metadata from being mixed with the
-            # canonical 90d / $15K policy after a partial upstream failure.
+            # Research discovery/evidence remains 90d / $15K. Production status and
+            # REAL ALERT authorization remain independently strict at 180d / $50K.
+            # Recompute both scopes in one snapshot without conflating their gates.
             python -m wallet500.mature_age_gate --cex --revival
             python -m wallet500.production_age_governance
             python -m wallet500.candidate_evidence_envelope
@@ -143,6 +143,7 @@ jobs:
           prod=json.loads(payloads['production_status'].decode('utf-8'))
           g=json.loads(payloads['decision_integrity'].decode('utf-8'))
 
+          # Research envelope scope.
           if (revival.get('age_gate') or {}).get('minimum_market_age_days')!=90: raise SystemExit('REVIVAL_AGE_SCOPE_INVALID')
           if (cex.get('age_gate') or {}).get('minimum_market_age_days')!=90: raise SystemExit('CEX_AGE_SCOPE_INVALID')
           if age.get('minimum_market_age_days')!=90: raise SystemExit('ACTIVE_AGE_SCOPE_INVALID')
@@ -169,16 +170,23 @@ jobs:
           if ((f.get('lanes') or {}).get('solana_veteran_revival') or {}).get('minimum_market_age_days')!=90: raise SystemExit('FUNNEL_AGE_SCOPE_INVALID')
           if x.get('mode')!='RESEARCH_ONLY_CROSS_SIGNAL_FUSION_V2' or x.get('automatic_buy') is not False: raise SystemExit('FUSION_TRUTH_INVALID')
           if (x.get('truth_contract') or {}).get('does_not_modify_real_alert_gate') is not True: raise SystemExit('FUSION_REAL_ALERT_LEAK')
+
+          # Strict production authorization scope. Research thresholds must never
+          # rewrite the production floor.
           policy=prod.get('policy') or {}
-          if policy.get('minimum_verified_market_age_days')!=90: raise SystemExit('PRODUCTION_STATUS_AGE_SCOPE_INVALID')
-          if float(policy.get('minimum_liquidity_usd') or 0)!=15000: raise SystemExit('PRODUCTION_STATUS_LIQUIDITY_SCOPE_INVALID')
+          if policy.get('minimum_verified_market_age_days')!=180: raise SystemExit('PRODUCTION_STATUS_AGE_SCOPE_INVALID')
+          if float(policy.get('minimum_liquidity_usd') or 0)!=50000: raise SystemExit('PRODUCTION_STATUS_LIQUIDITY_SCOPE_INVALID')
           if policy.get('exact_onchain_identity_required') is not True or policy.get('exact_dex_pair_required') is not True: raise SystemExit('PRODUCTION_STATUS_IDENTITY_SCOPE_INVALID')
+          rt=r.get('truth_contract') or {}
+          if rt.get('minimum_market_age_days')!=180: raise SystemExit('REAL_ALERT_PRODUCTION_AGE_SCOPE_INVALID')
+          if float(rt.get('minimum_execution_pool_liquidity_usd') or 0)!=50000: raise SystemExit('REAL_ALERT_PRODUCTION_LIQUIDITY_SCOPE_INVALID')
+          if rt.get('exact_onchain_identity_required') is not True or rt.get('exact_dex_pair_required') is not True: raise SystemExit('REAL_ALERT_PRODUCTION_IDENTITY_SCOPE_INVALID')
 
           run_id=str(os.environ.get('GITHUB_RUN_ID') or '').strip()
           source_sha=str(os.environ.get('SOURCE_SHA') or '').strip()
           if not run_id or len(source_sha)!=40: raise SystemExit('DECISION_PUBLICATION_SOURCE_ID_INVALID')
           proof={
-              'version':2,
+              'version':3,
               'created_at':datetime.now(timezone.utc).isoformat(),
               'status':'VERIFIED_COHERENT_DECISION_SNAPSHOT',
               'producer':'CANDIDATE_EVIDENCE_ENVELOPE',
@@ -188,10 +196,16 @@ jobs:
               'decision_validation':'PASS',
               'minimum_market_age_days':90,
               'minimum_liquidity_usd':15000,
+              'production_minimum_market_age_days':180,
+              'production_minimum_liquidity_usd':50000,
               'exact_pair_required':True,
+              'policy_scopes':{
+                  'research_evidence':{'minimum_market_age_days':90,'minimum_execution_liquidity_usd':15000},
+                  'production_real_alert':{'minimum_market_age_days':180,'minimum_execution_liquidity_usd':50000},
+              },
               'policy_surfaces_bound':['revival_universe','cex_revival','active_age_gate','candidate_evidence','real_alerts','revival_funnel','production_status','decision_integrity'],
               'hashes':{k:hashlib.sha256(v).hexdigest() for k,v in payloads.items()},
-              'proof_rule':'ATOMIC_COMMIT_BINDS_ALL_POLICY_BEARING_DECISION_SURFACES_TO_ONE_90D_15K_SNAPSHOT',
+              'proof_rule':'ATOMIC_COMMIT_BINDS_90D_15K_RESEARCH_EVIDENCE_AND_180D_50K_PRODUCTION_AUTHORIZATION_WITHOUT_THRESHOLD_CONFLATION',
           }
           Path('data/decision-publish-evidence.json').write_text(
               json.dumps(proof,ensure_ascii=False,indent=2,sort_keys=True)+'\n',encoding='utf-8')
@@ -203,7 +217,7 @@ jobs:
             python scripts/atomic_publish.py \
               --base "$source_sha" \
               --fail-on-newer \
-              --message 'data: refresh coherent 90d 15k decision policy snapshot' \
+              --message 'data: refresh coherent research and production decision snapshot' \
               data/revival-1000-latest.json \
               data/cex-revival-radar.json \
               data/active-qualified-candidates.json \
