@@ -1,154 +1,25 @@
-name: Wallet500 Reconcile Revival Policy 90D 15K Fast
+name: Wallet500 Reconcile Revival Policy 90D 15K Fast — DEPRECATED
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/reconcile-revival-policy-90d-15k-fast.yml'
-      - 'scripts/reconcile_revival_policy_90d_15k.py'
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: wallet500-reconcile-revival-policy-90d-15k
+  group: wallet500-reconcile-revival-policy-90d-15k-deprecated
   cancel-in-progress: true
 
 jobs:
-  reconcile:
+  deprecated:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Normalize compact policy forms
+      - name: Fail closed — obsolete production policy migration
         shell: bash
         run: |
           set -euo pipefail
-          sed -i 's/MIN_LIQUIDITY=50000\.0/MIN_LIQUIDITY=15000.0/g' src/wallet500/arbitrum_revival_universe.py
-          sed -i 's/MIN_LIQUIDITY = 50000\.0/MIN_LIQUIDITY = 15000.0/g' src/wallet500/arbitrum_revival_universe.py
-          sed -i "s/market_age_verified_min_days') or 0) < 180/market_age_verified_min_days') or 0) < 90/g" .github/workflows/revival-smart-money-registry.yml
-
-      - name: Reconcile active Revival contracts
-        run: python scripts/reconcile_revival_policy_90d_15k.py
-
-      - name: Normalize 90D 15K test semantics
-        shell: bash
-        run: |
-          set -euo pipefail
-          sed -i 's/assert row\["market_age_days"\] >= 180/assert row["market_age_days"] >= 90/g' tests/test_real_alerts.py
-          sed -i 's/test_under_180_days_fails_closed/test_under_90_days_fails_closed/g' tests/test_real_alerts.py
-          sed -i 's/cex\["market_age_min_days"\] = 90/cex["market_age_min_days"] = 89/g' tests/test_real_alerts.py
-          sed -i 's/p\["market_age_min_days"\] = 90/p["market_age_min_days"] = 89/g' tests/test_real_alerts.py
-          sed -i 's/test_total_liquidity_over_50k_cannot_rescue_thin_execution_pool/test_total_liquidity_over_15k_cannot_rescue_thin_execution_pool/g' tests/test_real_alerts.py
-          sed -i 's/test_deep_exact_execution_pool_over_50k_passes_even_if_stale_thin_row_exists/test_deep_exact_execution_pool_over_15k_passes_even_if_stale_thin_row_exists/g' tests/test_real_alerts.py
-          sed -i 's/research_scope_days"\] == 60/research_scope_days"] == 90/g' tests/test_decision_snapshot_guard.py
-          sed -i 's/production_scope_days"\] == 180/production_scope_days"] == 90/g' tests/test_decision_snapshot_guard.py
-          sed -i 's/production_minimum_execution_pool_liquidity_usd"\] == 50_000/production_minimum_execution_pool_liquidity_usd"] == 15_000/g' tests/test_decision_snapshot_guard.py
-          sed -i 's/test_guard_rejects_production_alert_under_180d_or_50k/test_guard_rejects_production_alert_under_90d_or_15k/g' tests/test_decision_snapshot_guard.py
-          sed -i 's/"market_age_days": 179/"market_age_days": 89/g' tests/test_decision_snapshot_guard.py
-          sed -i 's/"execution_pool_liquidity_usd": 49_999/"execution_pool_liquidity_usd": 14_999/g' tests/test_decision_snapshot_guard.py
-          grep -q 'test_under_90_days_fails_closed' tests/test_real_alerts.py
-          grep -q 'research_scope_days"] == 90' tests/test_decision_snapshot_guard.py
-          grep -q 'test_guard_rejects_production_alert_under_90d_or_15k' tests/test_decision_snapshot_guard.py
-          grep -q 'test_snapshot_production_status_fails_closed_on_subthreshold_contract' tests/test_verified_snapshot_publisher.py
-          echo 'POLICY_TEST_SEMANTICS_90D_15K_OK'
-
-      - name: Install package and tests
-        run: python -m pip install -e . pytest
-
-      - name: Compile engine
-        run: python -m compileall -q src/wallet500
-
-      - name: Run policy-critical tests
-        run: |
-          python -m pytest -q \
-            tests/test_revival_90d_telegram.py \
-            tests/test_real_alerts.py \
-            tests/test_decision_snapshot_guard.py \
-            tests/test_verified_snapshot_publisher.py \
-            tests/test_revival_wallet_evidence.py \
-            tests/test_revival_wallet_registry.py \
-            tests/test_revival_prewaking_rotation.py \
-            tests/test_revival_prewaking_wallet_evidence_v2.py \
-            tests/test_revival_prewaking_wallet_retention.py
-
-      - name: Run full unit test suite
-        run: python -m pytest -q
-
-      - name: Prepare clean policy commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Data files are runtime state and may be touched by tests; never mix them into a policy commit.
-          git restore --source=HEAD -- data
-          rm -f scripts/migrate_revival_policy_60d_15k.py scripts/migrate_revival_policy_60d_15k_fixups.py
-
-          # Tests/compile create generated files. Some legacy generated files are tracked,
-          # so first delete all runtime output and then restore tracked copies from HEAD.
-          find . -type d -name '__pycache__' -prune -exec rm -rf {} +
-          find . -type f -name '*.pyc' -delete
-          git restore --worktree -- ':(glob)**/__pycache__/**' ':(glob)**/*.pyc' src/wallet500.egg-info 2>/dev/null || true
-
-          if ! git diff --quiet -- data; then
-            echo '::error::RUNTIME_DATA_CHANGE_LEAK_IN_POLICY_COMMIT'
-            exit 1
-          fi
-          generated_diff="$(git diff --name-only -- ':(glob)**/__pycache__/**' ':(glob)**/*.pyc' src/wallet500.egg-info || true)"
-          if [ -n "$generated_diff" ]; then
-            printf '%s\n' "$generated_diff"
-            echo '::error::GENERATED_ARTIFACT_RESTORE_FAILED'
-            exit 1
-          fi
-          echo 'CLEAN_POLICY_COMMIT_READY'
-
-      - name: Commit only after every test passes
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'wallet500-policy-bot'
-          git config user.email 'wallet500-policy-bot@users.noreply.github.com'
-          git add -A src tests scripts index.html .github/workflows
-
-          # Double fail-closed: never allow generated build output into the policy commit.
-          git restore --staged --worktree -- ':(glob)**/__pycache__/**' ':(glob)**/*.pyc' src/wallet500.egg-info 2>/dev/null || true
-
-          generated_staged="$(git diff --cached --name-only | grep -E '(__pycache__|\.pyc$|wallet500\.egg-info)' || true)"
-          if [ -n "$generated_staged" ]; then
-            printf '%s\n' "$generated_staged"
-            echo '::error::GENERATED_ARTIFACT_STAGED'
-            exit 1
-          fi
-          if git diff --cached --quiet; then
-            echo 'REVIVAL_POLICY_ALREADY_CLEAN'
-            exit 0
-          fi
-          git commit -m 'policy: unify Revival workflows at 90d 15k'
-
-          remaining="$(git status --porcelain)"
-          if [ -n "$remaining" ]; then
-            printf '%s\n' "$remaining"
-            echo '::error::UNSTAGED_POLICY_CHANGES_BEFORE_REBASE'
-            exit 1
-          fi
-
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            if git rebase origin/main && git push origin HEAD:main; then
-              echo 'REVIVAL_POLICY_WORKFLOWS_90D_15K_PUBLISH_OK'
-              exit 0
-            fi
-            git rebase --abort 2>/dev/null || true
-            echo "REVIVAL_POLICY_WORKFLOW_PUBLISH_RETRY attempt=$attempt"
-            sleep 3
-          done
-          echo '::error::REVIVAL_POLICY_WORKFLOW_PUBLISH_RACE_EXHAUSTED'
+          echo '::error::DEPRECATED_POLICY_MIGRATION_BLOCKED'
+          echo 'This workflow is intentionally disabled because it rewrites canonical production truth from 180d/$50K to legacy 90d/$15K semantics.'
+          echo 'Research lanes may keep explicitly isolated research thresholds, but this workflow must never mutate production policy, tests, dashboard, or publishers.'
           exit 1
-
-# Audit trigger: 2026-09-08 publish canonical 90D / $15K workflow policy after full tests
