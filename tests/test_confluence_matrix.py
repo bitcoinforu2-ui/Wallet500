@@ -61,8 +61,8 @@ def base(root: Path, **kwargs):
 def test_weight_prior_sums_to_100_and_policy_is_exact():
     assert sum(WEIGHTS.values()) == 100
     out = build(Path("/nonexistent-wallet500-test"), now=NOW)
-    assert out["canonical_policy"]["minimum_market_age_days"] == 90
-    assert out["canonical_policy"]["minimum_execution_liquidity_usd"] == 15_000
+    assert out["canonical_policy"]["minimum_market_age_days"] == 180
+    assert out["canonical_policy"]["minimum_execution_liquidity_usd"] == 50_000
     assert out["weight_contract"]["sum"] == 100
     assert out["production_change"] is False
     assert out["automatic_buy"] is False
@@ -85,16 +85,16 @@ def test_hard_blocker_forces_priority_zero(tmp_path: Path):
     assert "HONEYPOT_OR_SELLABILITY_RISK" in row["hard_blockers"]
 
 
-def test_execution_14999_is_hard_blocked_and_15000_is_not(tmp_path: Path):
+def test_execution_49999_is_hard_blocked_and_50000_is_not(tmp_path: Path):
     write(tmp_path, "cross-signal-fusion-v2.json", fusion())
-    write(tmp_path, "real-alerts.json", real(14_999))
+    write(tmp_path, "real-alerts.json", real(49_999))
     out = build(tmp_path, now=NOW)
     assert "EXECUTION_LIQUIDITY_LT_15K" in out["tokens"][0]["hard_blockers"]
 
-    write(tmp_path, "real-alerts.json", real(15_000))
+    write(tmp_path, "real-alerts.json", real(50_000))
     out2 = build(tmp_path, now=NOW)
     assert "EXECUTION_LIQUIDITY_LT_15K" not in out2["tokens"][0]["hard_blockers"]
-    assert out2["tokens"][0]["copyability_score"] == 35
+    assert out2["tokens"][0]["copyability_score"] == 70
 
 
 def test_official_catalyst_requires_fresh_exact_identity_guard(tmp_path: Path):
@@ -191,5 +191,6 @@ def test_primary_fusion_stale_fails_closed_to_empty_ranking(tmp_path: Path):
     write(tmp_path, "cross-signal-fusion-v2.json", payload)
     write(tmp_path, "real-alerts.json", real())
     out = build(tmp_path, now=NOW)
+    row = out["tokens"]
     assert out["system_state"] == "PRIMARY_FUSION_STALE_FAIL_CLOSED"
-    assert out["tokens"] == []
+    assert row == []
