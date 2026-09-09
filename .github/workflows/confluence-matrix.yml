@@ -65,8 +65,8 @@ jobs:
           if p.get('mode')!='RESEARCH_ONLY_CONFLUENCE_MATRIX_V1': raise SystemExit('CONFLUENCE_MODE_INVALID')
           if p.get('production_change') is not False or p.get('automatic_buy') is not False: raise SystemExit('CONFLUENCE_PRODUCTION_LEAK')
           pol=p.get('canonical_policy') or {}
-          if pol.get('minimum_market_age_days') != 90: raise SystemExit('CONFLUENCE_AGE_POLICY_DRIFT')
-          if float(pol.get('minimum_execution_liquidity_usd') or 0) != 15000: raise SystemExit('CONFLUENCE_LIQUIDITY_POLICY_DRIFT')
+          if pol.get('minimum_market_age_days') != 180: raise SystemExit('CONFLUENCE_AGE_POLICY_DRIFT')
+          if float(pol.get('minimum_execution_liquidity_usd') or 0) != 50000: raise SystemExit('CONFLUENCE_LIQUIDITY_POLICY_DRIFT')
           weights=(p.get('weight_contract') or {}).get('weights') or {}
           if abs(sum(float(v) for v in weights.values())-100.0) > 1e-9: raise SystemExit('CONFLUENCE_WEIGHT_SUM_INVALID')
           truth=p.get('truth_contract') or {}
