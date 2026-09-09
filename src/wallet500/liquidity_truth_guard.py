@@ -11,7 +11,7 @@ DORMANT_ACTIVITY_BLOCKER = "DEX_EXACT_PAIR_DORMANT_NO_ACTIVITY"
 MIN_ACTIVITY_VOLUME_H24_USD = 10_000.0
 MIN_ACTIVITY_VOLUME_H1_USD = 1_000.0
 MIN_ACTIVITY_TURNOVER_H24 = 0.005
-PRODUCTION_MIN_MARKET_AGE_DAYS = 90
+PRODUCTION_MIN_MARKET_AGE_DAYS = 180
 
 
 def _load(path: Path, default):
@@ -43,8 +43,6 @@ def _identity_key(row: dict) -> tuple[str, str, str]:
 
 
 def _dex_identity_verified(row: dict) -> bool:
-    # DEX_VERIFIED_DORMANT and future DEX_VERIFIED_* states still carry an exact
-    # verified pair. Liquidity semantics must be sanitized regardless of activity state.
     return str(row.get("identity_status") or "").strip().upper().startswith("DEX_VERIFIED")
 
 
@@ -176,10 +174,6 @@ def _demote_row(row: dict, metadata: dict | None = None) -> dict:
 
     activity_ok, activity = _activity_truth(out, metadata)
     out["dex_activity_truth"] = activity
-    # A concentrated pool with unverified execution depth is already fail-closed.
-    # Its execution liquidity is intentionally nulled by annotate_row, so turnover
-    # cannot be evaluated without reusing unsafe TVL. Do not misclassify that safety
-    # outcome as ordinary market dormancy; keep the stronger liquidity blocker.
     if not activity_ok and not concentrated_unverified:
         blockers.append(DORMANT_ACTIVITY_BLOCKER)
 
