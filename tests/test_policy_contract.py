@@ -13,9 +13,9 @@ from wallet500.production_status import MIN_LIQUIDITY_USD as STATUS_MIN_LIQUIDIT
 from wallet500.production_status import MIN_MARKET_AGE_DAYS as STATUS_MIN_MARKET_AGE_DAYS
 
 
-def test_canonical_policy_is_exactly_180d_50k():
-    assert CANONICAL_MIN_MARKET_AGE_DAYS == 180
-    assert CANONICAL_MIN_EXECUTION_LIQUIDITY_USD == 50_000.0
+def test_canonical_policy_is_exactly_90d_15k():
+    assert CANONICAL_MIN_MARKET_AGE_DAYS == 90
+    assert CANONICAL_MIN_EXECUTION_LIQUIDITY_USD == 15_000.0
     assert policy_matches_exactly(canonical_policy()) is True
 
 
