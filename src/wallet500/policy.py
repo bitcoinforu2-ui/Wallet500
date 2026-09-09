@@ -7,8 +7,8 @@ eligibility. Research lanes may be stricter only when they are explicitly labele
 as separate experiments; they must never redefine the canonical operator contract.
 """
 
-CANONICAL_MIN_MARKET_AGE_DAYS = 180
-CANONICAL_MIN_EXECUTION_LIQUIDITY_USD = 50_000.0
+CANONICAL_MIN_MARKET_AGE_DAYS = 90
+CANONICAL_MIN_EXECUTION_LIQUIDITY_USD = 15_000.0
 CANONICAL_EXACT_ONCHAIN_IDENTITY_REQUIRED = True
 CANONICAL_EXACT_DEX_PAIR_REQUIRED = True
 CANONICAL_SYMBOL_ONLY_NEVER_ACTIONABLE = True
