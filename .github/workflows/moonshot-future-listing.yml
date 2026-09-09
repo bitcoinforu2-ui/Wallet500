@@ -1,0 +1,109 @@
+name: Wallet500 Moonshot Future Listing
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+  pull_request:
+    paths:
+      - 'src/wallet500/moonshot_future_listing_watch.py'
+      - 'src/wallet500/moonshot_verification_watch.py'
+      - 'tests/test_moonshot_future_listing_watch.py'
+      - 'tests/test_moonshot_verification_watch.py'
+      - '.github/workflows/moonshot-future-listing.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/moonshot_future_listing_watch.py'
+      - 'src/wallet500/moonshot_verification_watch.py'
+      - 'scripts/atomic_publish.py'
+      - 'tests/test_moonshot_future_listing_watch.py'
+      - 'tests/test_moonshot_verification_watch.py'
+      - '.github/workflows/moonshot-future-listing.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-catalyst-wire-source-scan
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e . pytest
+      - name: Lock Moonshot future-listing source, persistence and canonical gate semantics
+        run: pytest -q tests/test_moonshot_future_listing_watch.py tests/test_moonshot_verification_watch.py
+
+  watch:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Refresh stateful watcher to newest main truth
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin main
+          git reset --hard origin/main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e .
+      - name: Detect official Moonshot future listings and recheck canonical Wallet500 gate
+        env:
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m wallet500.moonshot_future_listing_watch
+      - name: Validate future-listing truth boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          latest=json.loads(Path('data/moonshot-future-listing-latest.json').read_text())
+          ledger=json.loads(Path('data/moonshot-future-listing-ledger.json').read_text())
+          assert latest['mode']=='MOONSHOT_FUTURE_LISTING_INTELLIGENCE_V1'
+          assert latest['automatic_buy'] is False
+          assert latest['production_trade_impact']=='NONE'
+          p=ledger['policy']
+          assert p['source_owner']=='moonshot'
+          assert p['future_listing_priority']==100
+          assert p['exact_contract_in_same_official_announcement_required'] is True
+          assert p['symbol_only_never_coin_level_actionable'] is True
+          assert p['telegram_gate']=='current canonical REAL_ALERT for exact same Solana mint'
+          assert p['telegram_does_not_duplicate_thresholds'] is True
+          assert p['moonshot_future_listing_never_bypasses_wallet500_gates'] is True
+          for e in (ledger.get('events') or {}).values():
+              assert e.get('event_type')=='MOONSHOT_FUTURE_LISTING'
+              assert e.get('source_owner')=='moonshot'
+              assert e.get('chain')=='solana'
+              assert e.get('token')
+              assert e.get('dashboard_visible') is True
+              assert e.get('automatic_buy') is False
+              if e.get('telegram_eligible'):
+                  assert e.get('phase')=='FUTURE_LISTING_PENDING'
+                  assert (e.get('wallet500_gate') or {}).get('pass') is True
+                  assert e.get('source_url')
+          print('MOONSHOT_FUTURE_LISTING_TRUTH_OK',latest.get('status'),latest.get('counts'))
+          PY
+      - name: Persist Moonshot future-listing ledger and state atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-moonshot-future-bot'
+          git config user.email 'wallet500-moonshot-future-bot@users.noreply.github.com'
+          paths=(data/moonshot-future-listing-ledger.json data/moonshot-future-listing-latest.json data/moonshot-future-listing-state.json)
+          if test -s data/external-alpha-events.json; then paths+=(data/external-alpha-events.json); fi
+          python scripts/atomic_publish.py \
+            --message 'data: refresh Moonshot future-listing watch [skip ci]' \
+            "${paths[@]}"

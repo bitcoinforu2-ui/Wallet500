@@ -7,6 +7,7 @@ on:
       - "Wallet500 Candidate Evidence Envelope"
       - "Wallet500 Social Intelligence V2"
       - "Wallet500 Catalyst Wire"
+      - "Wallet500 Moonshot Future Listing"
     types: [completed]
   schedule:
     - cron: '*/5 * * * *'
@@ -24,6 +25,7 @@ on:
       - 'dashboard-catalyst-wire.html'
       - 'dashboard-live-price.js'
       - 'dashboard-reference-fix.js'
+      - 'dashboard-moonshot-overlay.js'
       - 'wallet500-auth.js'
       - '.github/workflows/pages.yml'
 
@@ -68,6 +70,7 @@ jobs:
           cp dashboard-social.html _site/social/index.html
           cp dashboard-live-price.js _site/dashboard-live-price.js
           cp dashboard-reference-fix.js _site/dashboard-reference-fix.js
+          cp dashboard-moonshot-overlay.js _site/dashboard-moonshot-overlay.js
           cp wallet500-auth.js _site/wallet500-auth.js
           cp -r data _site/data
 
@@ -75,6 +78,7 @@ jobs:
           from pathlib import Path
           import re
           auth_tag='<script src="/Wallet500/wallet500-auth.js"></script>'
+          moonshot_tag='<script src="/Wallet500/dashboard-moonshot-overlay.js"></script>'
           live_nav='''<nav class="nav"><a href="/Wallet500/">🔥 Live</a><a href="/Wallet500/catalyst/">⚡ Catalyst</a><a href="/Wallet500/alerts/">🚨 Alerts</a><a href="/Wallet500/status/">📊 מצב הפרויקט</a><a href="/Wallet500/revival/">♻ Revival</a><a href="/Wallet500/performance/">💵 ביצועים</a><a href="/Wallet500/social/">📡 Social</a><a href="/Wallet500/control/">⚙ Control</a><a href="/Wallet500/terminal/">🖥 Terminal</a></nav>'''
           for page in Path('_site').rglob('*.html'):
               s=page.read_text(encoding='utf-8')
@@ -83,6 +87,9 @@ jobs:
               s=re.sub(r'<nav id="w500-experiment-rubric"[^>]*>.*?</nav>', '', s, flags=re.S|re.I)
               if page.as_posix() in {'_site/index.html', '_site/live/index.html'}:
                   s=re.sub(r'<div class="nav">.*?</div>|<nav class="nav">.*?</nav>', live_nav, s, count=1, flags=re.S|re.I)
+                  if moonshot_tag not in s:
+                      if re.search(r'</body\s*>', s, flags=re.I): s=re.sub(r'</body\s*>', moonshot_tag+'\n</body>', s, count=1, flags=re.I)
+                      else: s=s+'\n'+moonshot_tag
               if auth_tag not in s:
                   if re.search(r'</head\s*>', s, flags=re.I): s=re.sub(r'</head\s*>', auth_tag+'\n</head>', s, count=1, flags=re.I)
                   else: s=auth_tag+'\n'+s
@@ -91,12 +98,15 @@ jobs:
 
           touch _site/.nojekyll
           printf '%s\n' "$GITHUB_SHA" > _site/build.txt
-          for f in _site/index.html _site/live/index.html _site/catalyst/index.html _site/status/index.html _site/alerts/index.html _site/revival/index.html _site/performance/index.html _site/control/index.html _site/terminal/index.html _site/social/index.html _site/wallet500-auth.js _site/data/real-alerts.json _site/data/case-study-doge1.json _site/data/revival-1000-latest.json _site/data/catalyst-wire-live.json; do check_file "$f"; done
+          for f in _site/index.html _site/live/index.html _site/catalyst/index.html _site/status/index.html _site/alerts/index.html _site/revival/index.html _site/performance/index.html _site/control/index.html _site/terminal/index.html _site/social/index.html _site/dashboard-moonshot-overlay.js _site/wallet500-auth.js _site/data/real-alerts.json _site/data/case-study-doge1.json _site/data/revival-1000-latest.json _site/data/catalyst-wire-live.json; do check_file "$f"; done
           check_text _site/index.html 'MARKET STATUS · 90D / $15K / EXACT PAIR'
           check_text _site/index.html '/Wallet500/catalyst/'
           check_text _site/index.html '/Wallet500/status/'
           check_text _site/index.html '/Wallet500/wallet500-auth.js'
+          check_text _site/index.html '/Wallet500/dashboard-moonshot-overlay.js'
           check_text _site/live/index.html 'MARKET STATUS · 90D / $15K / EXACT PAIR'
+          check_text _site/live/index.html '/Wallet500/dashboard-moonshot-overlay.js'
+          check_text _site/dashboard-moonshot-overlay.js 'MOONSHOT FUTURE LISTING'
           check_text _site/catalyst/index.html 'WALLET500 · CATALYST FOCUS'
           check_text _site/status/index.html 'WALLET500 · מסך החלטה'
           check_text _site/status/index.html 'VETERAN REVIVAL ONLY'
@@ -113,6 +123,7 @@ jobs:
           python -m json.tool _site/data/catalyst-wire-live.json >/dev/null
           if test -s _site/data/social-intelligence-v2.json; then python -m json.tool _site/data/social-intelligence-v2.json >/dev/null; fi
           if test -s _site/data/cross-signal-fusion-v2.json; then python -m json.tool _site/data/cross-signal-fusion-v2.json >/dev/null; fi
+          if test -s _site/data/moonshot-future-listing-ledger.json; then python -m json.tool _site/data/moonshot-future-listing-ledger.json >/dev/null; fi
           echo 'BUILD_VERIFY_OK'
 
       - uses: actions/configure-pages@v5
@@ -135,9 +146,10 @@ jobs:
             social="$(curl -fsSL --max-time 20 "${BASE}social/?v=${GITHUB_SHA}" 2>/dev/null || true)"
             catalyst="$(curl -fsSL --max-time 20 "${BASE}catalyst/?v=${GITHUB_SHA}" 2>/dev/null || true)"
             auth="$(curl -fsSL --max-time 20 "${BASE}wallet500-auth.js?v=${GITHUB_SHA}" 2>/dev/null || true)"
+            moonshot="$(curl -fsSL --max-time 20 "${BASE}dashboard-moonshot-overlay.js?v=${GITHUB_SHA}" 2>/dev/null || true)"
             feed="$(curl -fsSL --max-time 20 "${BASE}data/real-alerts.json?v=${GITHUB_SHA}" 2>/dev/null || true)"
             cfeed="$(curl -fsSL --max-time 20 "${BASE}data/catalyst-wire-live.json?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'MARKET STATUS · 90D / $15K / EXACT PAIR' <<<"$root" && grep -Fq '/Wallet500/catalyst/' <<<"$root" && grep -Fq 'WALLET500 · מסך החלטה' <<<"$status" && grep -Fq 'google.accounts.id.initialize' <<<"$auth" && grep -Fq 'SOCIAL INTELLIGENCE V2' <<<"$social" && grep -Fq 'WALLET500 · CATALYST FOCUS' <<<"$catalyst" && python -c 'import json,sys; json.load(sys.stdin)' <<<"$feed" >/dev/null 2>&1 && python -c 'import json,sys; json.load(sys.stdin)' <<<"$cfeed" >/dev/null 2>&1; then ok=1; break; fi
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'MARKET STATUS · 90D / $15K / EXACT PAIR' <<<"$root" && grep -Fq '/Wallet500/catalyst/' <<<"$root" && grep -Fq 'dashboard-moonshot-overlay.js' <<<"$root" && grep -Fq 'MOONSHOT FUTURE LISTING' <<<"$moonshot" && grep -Fq 'WALLET500 · מסך החלטה' <<<"$status" && grep -Fq 'google.accounts.id.initialize' <<<"$auth" && grep -Fq 'SOCIAL INTELLIGENCE V2' <<<"$social" && grep -Fq 'WALLET500 · CATALYST FOCUS' <<<"$catalyst" && python -c 'import json,sys; json.load(sys.stdin)' <<<"$feed" >/dev/null 2>&1 && python -c 'import json,sys; json.load(sys.stdin)' <<<"$cfeed" >/dev/null 2>&1; then ok=1; break; fi
             sleep 10
           done
           [ "$ok" -eq 1 ] || { echo 'Public Wallet500 verification failed'; exit 1; }
