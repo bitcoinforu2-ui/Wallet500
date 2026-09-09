@@ -4,8 +4,9 @@ from pathlib import Path
 
 from .solana_mintability_gate import enforce_active
 from .liquidity_truth_guard import safe_production_liquidity
+from .policy import CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
 
-MIN_TRADABLE_LIQUIDITY_USD = 15_000.0
+MIN_TRADABLE_LIQUIDITY_USD = CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
 MAX_LIQUIDITY_DROP_FROM_PREV = 0.45
 MAX_LIQUIDITY_DROP_FROM_OBSERVED_PEAK = 0.70
 YOUNG_TOKEN_MINUTES = 60.0
@@ -87,7 +88,7 @@ def evaluate(candidate,outcomes):
     _, liquidity_source, liquidity_eligible = safe_production_liquidity(candidate)
     if not liquidity_eligible and liquidity_source=='CONCENTRATED_POOL_DEPTH_UNVERIFIED_FAIL_CLOSED':
         critical.append('CONCENTRATED_POOL_EXECUTION_DEPTH_UNVERIFIED_HARD_BLOCK')
-    if current<MIN_TRADABLE_LIQUIDITY_USD: critical.append('EXECUTION_POOL_LIQUIDITY_BELOW_15K_HARD_BLOCK')
+    if current<MIN_TRADABLE_LIQUIDITY_USD: critical.append('EXECUTION_POOL_LIQUIDITY_BELOW_50K_HARD_BLOCK')
     if previous>=MIN_TRADABLE_LIQUIDITY_USD and current>0:
         rp=current/previous
         if rp<=MAX_LIQUIDITY_DROP_FROM_PREV: critical.append('LIQUIDITY_EVACUATION_GT_55PCT_ONE_OBSERVATION')
@@ -97,7 +98,7 @@ def evaluate(candidate,outcomes):
     if retention_peak is not None:
         if retention_peak<=0.10: critical.append('LIQUIDITY_COLLAPSE_GT_90PCT_FROM_OBSERVED_PEAK')
         elif retention_peak<MAX_LIQUIDITY_DROP_FROM_OBSERVED_PEAK: reasons.append('LIQUIDITY_RETENTION_LT_70PCT_FROM_OBSERVED_PEAK')
-    if peak>=MIN_TRADABLE_LIQUIDITY_USD and current<MIN_TRADABLE_LIQUIDITY_USD: reasons.append('TRADABLE_LIQUIDITY_LOST_AFTER_PREVIOUS_15K_PLUS')
+    if peak>=MIN_TRADABLE_LIQUIDITY_USD and current<MIN_TRADABLE_LIQUIDITY_USD: reasons.append('TRADABLE_LIQUIDITY_LOST_AFTER_PREVIOUS_50K_PLUS')
     sig=_pre_rug_signature(candidate,current,previous); conc=_concentration(candidate)
     if sig['pre_rug_block']: critical.append('PRE_RUG_COMPOSITE_SIGNATURE_HARD_BLOCK')
     elif sig['exit_warning']: reasons.append('PRE_RUG_COMPOSITE_EXIT_WARNING')
@@ -117,6 +118,6 @@ def apply(output_dir='data'):
         if x.get('chain') and (x.get('token') or x.get('mint') or x.get('token_address')): merged[_key(x.get('chain'),x.get('token') or x.get('mint') or x.get('token_address') or '')]=x
     _write(out/'active-qualified-candidates.json',passed); _write(out/'watchlist.json',filtered); _write(out/'production-risk-evaluations.json',evaluations); _write(out/'production-risk-blocked.json',blocked); _write(out/'pump-dump-risk.json',list(merged.values()))
     if isinstance(summary,dict):
-        summary['production_risk_gate']={'min_execution_liquidity_usd':15000,'min_live_liquidity_usd':15000,'liquidity_gate_metric':'VERIFIED_EXECUTION_DEPTH_USD_5PCT_OR_NON_CONCENTRATED_LEGACY_GATE','pool_tvl_never_equals_execution_depth':True,'concentrated_pool_unverified_depth_policy':'FAIL_CLOSED_HARD_BLOCK','dex_total_liquidity_is_informational_only':True,'active_before_gate':len(active),'active_after_gate':len(passed),'blocked_now':len(blocked),'exit_warnings_now':sum(bool(x.get('pre_rug_exit_warning')) for x in evaluations),'hard_rule':'CONCENTRATED_POOL_REQUIRES_VERIFIED_EXECUTION_DEPTH; NON_CONCENTRATED LEGACY EXACT-PAIR RESERVE REMAINS TEMPORARY','solana_mintability_rule':'MINT_AUTHORITY_MUST_BE_REVOKED_NULL; UNKNOWN_FAILS_CLOSED','evacuation_rule':'LOSS_OF_EXECUTABLE_LIQUIDITY_OVERRIDES PRICE VOLUME BUYS AND ANOMALY SCORE','lp_rule':'LP LOCK ONLY PROTECTS AGAINST LP REMOVAL; IT DOES NOT PROTECT QUOTE-SIDE LIQUIDITY FROM INSIDER/HOLDER DUMP DRAIN','drain_rule':'HOLDER/CLUSTER CONCENTRATION IS A SEPARATE REQUIRED DRAIN-RISK CONTROL; >=35% LINKED INSIDER OR >=70% TOP10 IS HARD BLOCK WHEN VERIFIED DATA IS PRESENT.'}; summary['active_qualified']=len(passed); summary['watchlist']=len(filtered); _write(out/'run-summary.json',summary)
+        summary['production_risk_gate']={'min_execution_liquidity_usd':int(MIN_TRADABLE_LIQUIDITY_USD),'min_live_liquidity_usd':int(MIN_TRADABLE_LIQUIDITY_USD),'liquidity_gate_metric':'VERIFIED_EXECUTION_DEPTH_USD_5PCT_OR_NON_CONCENTRATED_LEGACY_GATE','pool_tvl_never_equals_execution_depth':True,'concentrated_pool_unverified_depth_policy':'FAIL_CLOSED_HARD_BLOCK','dex_total_liquidity_is_informational_only':True,'active_before_gate':len(active),'active_after_gate':len(passed),'blocked_now':len(blocked),'exit_warnings_now':sum(bool(x.get('pre_rug_exit_warning')) for x in evaluations),'hard_rule':'CONCENTRATED_POOL_REQUIRES_VERIFIED_EXECUTION_DEPTH; NON_CONCENTRATED LEGACY EXACT-PAIR RESERVE REMAINS TEMPORARY','solana_mintability_rule':'MINT_AUTHORITY_MUST_BE_REVOKED_NULL; UNKNOWN_FAILS_CLOSED','evacuation_rule':'LOSS_OF_EXECUTABLE_LIQUIDITY_OVERRIDES PRICE VOLUME BUYS AND ANOMALY SCORE','lp_rule':'LP LOCK ONLY PROTECTS AGAINST LP REMOVAL; IT DOES NOT PROTECT QUOTE-SIDE LIQUIDITY FROM INSIDER/HOLDER DUMP DRAIN','drain_rule':'HOLDER/CLUSTER CONCENTRATION IS A SEPARATE REQUIRED DRAIN-RISK CONTROL; >=35% LINKED INSIDER OR >=70% TOP10 IS HARD BLOCK WHEN VERIFIED DATA IS PRESENT.'}; summary['active_qualified']=len(passed); summary['watchlist']=len(filtered); _write(out/'run-summary.json',summary)
     result={'active_before_gate':len(active),'active_after_gate':len(passed),'blocked_now':len(blocked),'watchlist':len(filtered)}; print(json.dumps(result,indent=2)); return result
 if __name__=='__main__': apply()
