@@ -22,8 +22,8 @@ def _decision_fixture():
         {
             "version": 3,
             "truth_contract": {
-                "minimum_market_age_days": 90,
-                "minimum_execution_pool_liquidity_usd": 15000.0,
+                "minimum_market_age_days": 180,
+                "minimum_execution_pool_liquidity_usd": 50000.0,
                 "exact_onchain_identity_required": True,
                 "exact_dex_pair_required": True,
                 "symbol_only_never_actionable": True,
@@ -40,8 +40,8 @@ def _decision_fixture():
         "status": "VERIFIED_COHERENT_DECISION_SNAPSHOT",
         "decision_validation": "PASS",
         "exact_pair_required": True,
-        "minimum_market_age_days": 90,
-        "minimum_liquidity_usd": 15000,
+        "minimum_market_age_days": 180,
+        "minimum_liquidity_usd": 50000,
         "generation_id": "candidate-evidence:123:abc",
         "hashes": hashes,
     }
@@ -101,7 +101,7 @@ def _replace_real_alert_contract(proof, bodies, *, age, liquidity):
 
 def test_verified_decision_snapshot_fails_closed_on_subthreshold_real_alert_contract(monkeypatch):
     proof, bodies = _decision_fixture()
-    proof, changed = _replace_real_alert_contract(proof, bodies, age=89, liquidity=14999.0)
+    proof, changed = _replace_real_alert_contract(proof, bodies, age=179, liquidity=49999.0)
 
     def parent_bytes(parent, rel):
         if rel == mod.DECISION_PROOF:
@@ -112,9 +112,9 @@ def test_verified_decision_snapshot_fails_closed_on_subthreshold_real_alert_cont
     assert mod.verified_decision_snapshot("parent") is None
 
 
-def test_verified_decision_snapshot_rejects_stricter_policy_drift(monkeypatch):
+def test_verified_decision_snapshot_rejects_legacy_policy_drift(monkeypatch):
     proof, bodies = _decision_fixture()
-    proof, changed = _replace_real_alert_contract(proof, bodies, age=180, liquidity=50000.0)
+    proof, changed = _replace_real_alert_contract(proof, bodies, age=90, liquidity=15000.0)
 
     def parent_bytes(parent, rel):
         if rel == mod.DECISION_PROOF:
@@ -185,20 +185,20 @@ def _write_status(tmp_path, age, liquidity, key="policy"):
 
 
 def test_snapshot_production_status_accepts_canonical_contract(tmp_path):
-    _write_status(tmp_path, 90, 15000.0)
+    _write_status(tmp_path, 180, 50000.0)
     assert mod._snapshot_production_status_passes_contract(tmp_path) is True
 
 
 def test_snapshot_production_status_accepts_legacy_shape_only_when_values_are_canonical(tmp_path):
-    _write_status(tmp_path, 90, 15000.0, key="cohort_rules")
+    _write_status(tmp_path, 180, 50000.0, key="cohort_rules")
     assert mod._snapshot_production_status_passes_contract(tmp_path) is True
 
 
 def test_snapshot_production_status_fails_closed_on_subthreshold_contract(tmp_path):
-    _write_status(tmp_path, 89, 14999.0)
+    _write_status(tmp_path, 179, 49999.0)
     assert mod._snapshot_production_status_passes_contract(tmp_path) is False
 
 
-def test_snapshot_production_status_rejects_stricter_policy_drift(tmp_path):
-    _write_status(tmp_path, 180, 50000.0)
+def test_snapshot_production_status_rejects_legacy_policy_drift(tmp_path):
+    _write_status(tmp_path, 90, 15000.0)
     assert mod._snapshot_production_status_passes_contract(tmp_path) is False
