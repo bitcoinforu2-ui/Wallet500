@@ -4,13 +4,14 @@ from pathlib import Path
 
 from .market_data import snapshot as market_snapshot
 from .fresh_solana_gate import evaluate as fresh_survival_evaluate
+from .policy import CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
 
 DATA = Path("data")
 ACTIVE = DATA / "active-qualified-candidates.json"
 FAILED = DATA / "live-survival-failed.json"
 PENDING = DATA / "live-survival-pending.json"
 OUTCOMES = DATA / "outcome-tracker.json"
-MIN_LIQUIDITY_USD = 15_000.0
+MIN_LIQUIDITY_USD = CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
 MIN_VOLUME_H1_USD = 15_000.0
 MIN_TXNS_H1 = 30
 MAX_VERIFIED_LOSS_PCT = -25.0
@@ -75,7 +76,7 @@ def _hard_failure_reasons(row: dict) -> list[str]:
     if price is not None and price <= 0:
         reasons.append("PAIR_PRICE_ZERO_OR_UNAVAILABLE")
     if liquidity is not None and liquidity < MIN_LIQUIDITY_USD:
-        reasons.append("LIQUIDITY_LT_15K_HARD_BLOCK")
+        reasons.append("LIQUIDITY_LT_50K_HARD_BLOCK")
     if liquidity is not None and liquidity <= 1:
         reasons.append("ZERO_OR_NEAR_ZERO_LIQUIDITY")
     if current_return is not None and current_return <= MAX_VERIFIED_LOSS_PCT:
@@ -92,7 +93,7 @@ def _live_reasons(row: dict) -> list[str]:
     if volume < MIN_VOLUME_H1_USD:
         reasons.append("VOLUME_H1_LT_15K")
     if txns < MIN_TXNS_H1:
-        reasons.append("TXNS_H1_LT_50")
+        reasons.append("TXNS_H1_LT_30")
     return list(dict.fromkeys(reasons))
 
 
@@ -227,7 +228,7 @@ def run() -> dict:
         "min_liquidity_usd": MIN_LIQUIDITY_USD,
         "min_volume_h1_usd": MIN_VOLUME_H1_USD,
         "min_txns_h1": MIN_TXNS_H1,
-        "rule": "PENDING_ONLY_WHEN_INCONCLUSIVE; VERIFIED_SUB_15K_ZERO_LIQUIDITY_OR_MAJOR_DRAWDOWN_IS_FAILED",
+        "rule": "PENDING_ONLY_WHEN_INCONCLUSIVE; VERIFIED_SUB_50K_ZERO_LIQUIDITY_OR_MAJOR_DRAWDOWN_IS_FAILED",
     }
     _write(DATA / "exact-pair-survival-report.json", report)
     print(json.dumps(report, indent=2))
