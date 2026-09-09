@@ -4,7 +4,9 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-MIN_LIQUIDITY_USD = 15_000.0
+from wallet500.policy import CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
+
+MIN_LIQUIDITY_USD = CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
 
 
 def _load(path: Path, default=None):
@@ -42,9 +44,9 @@ def run(output_dir: str = "data"):
     prod = summary.get("production_risk_gate") or {} if isinstance(summary, dict) else {}
     p_floor = _num(prod.get("min_live_liquidity_usd")) if isinstance(prod, dict) else 0.0
     e_floor = _num(exact.get("min_liquidity_usd")) if isinstance(exact, dict) else 0.0
-    _check(checks, "qualification_liquidity_floor_ge_15k", q_floor >= MIN_LIQUIDITY_USD, q_floor)
-    _check(checks, "production_liquidity_floor_ge_15k", p_floor >= MIN_LIQUIDITY_USD, p_floor)
-    _check(checks, "exact_pair_liquidity_floor_ge_15k", e_floor >= MIN_LIQUIDITY_USD, e_floor)
+    _check(checks, "qualification_liquidity_floor_ge_50k", q_floor >= MIN_LIQUIDITY_USD, q_floor)
+    _check(checks, "production_liquidity_floor_ge_50k", p_floor >= MIN_LIQUIDITY_USD, p_floor)
+    _check(checks, "exact_pair_liquidity_floor_ge_50k", e_floor >= MIN_LIQUIDITY_USD, e_floor)
 
     exact_method = str(exact.get("method") or "") if isinstance(exact, dict) else ""
     _check(checks, "immutable_exact_pair_revalidation", "IMMUTABLE_EXACT_PAIR" in exact_method, exact_method)
@@ -98,7 +100,7 @@ def run(output_dir: str = "data"):
             if not identity_ok:
                 active_failures.append({"index": i, "pair_address": pair, "locked_pair_address": locked, "reason": "PAIR_IDENTITY_NOT_LOCKED"})
             if live_liq < MIN_LIQUIDITY_USD:
-                active_failures.append({"index": i, "liquidity_usd": live_liq, "reason": "ACTIVE_SUB_15K_LIQUIDITY"})
+                active_failures.append({"index": i, "liquidity_usd": live_liq, "reason": "ACTIVE_SUB_50K_LIQUIDITY"})
     _check(checks, "active_exact_pair_and_liquidity_integrity", active_ok and not active_failures, {"active_count": len(active) if isinstance(active, list) else None, "failures": active_failures[:20]})
 
     decision_mode = str(decision.get("mode") or "") if isinstance(decision, dict) else ""
