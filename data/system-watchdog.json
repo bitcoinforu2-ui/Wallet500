@@ -1,34 +1,18 @@
 {
   "version": 1,
   "mode": "INDEPENDENT_OBSERVABILITY_NO_TRADING_POLICY_EFFECT",
-  "updated_at": "2026-09-09T07:40:37.828794+00:00",
-  "overall": "CRITICAL",
-  "incident_count": 5,
-  "critical_count": 2,
+  "updated_at": "2026-09-09T08:11:37.409683+00:00",
+  "overall": "DEGRADED",
+  "incident_count": 3,
+  "critical_count": 0,
   "high_count": 3,
-  "new_notifications": [
-    {
-      "code": "REAL_ALERT_FEED_STALE",
-      "severity": "CRITICAL",
-      "detail": "real-alerts.json age=3548.9s max=2700s"
-    }
-  ],
+  "new_notifications": [],
   "recovered_codes": [
-    "LIVE_SCAN_LATEST_FAILED"
+    "LIVE_SCAN_LAST_SUCCESS_STALE",
+    "REAL_ALERT_FEED_STALE"
   ],
   "real_alert_transitions_entered": [],
   "incidents": [
-    {
-      "code": "LIVE_SCAN_LAST_SUCCESS_STALE",
-      "severity": "CRITICAL",
-      "detail": "last successful Live Scan age=missings",
-      "run_id": null
-    },
-    {
-      "code": "REAL_ALERT_FEED_STALE",
-      "severity": "CRITICAL",
-      "detail": "real-alerts.json age=3548.9s max=2700s"
-    },
     {
       "code": "PUBLIC_DASHBOARD_UNREACHABLE_OR_WRONG_BUILD",
       "severity": "HIGH",
@@ -37,58 +21,58 @@
     {
       "code": "SCHEDULER_TELEMETRY_STALE",
       "severity": "HIGH",
-      "detail": "scheduler-health.json age=34329.4s max=2700s"
+      "detail": "scheduler-health.json age=36188.9s max=2700s"
     },
     {
       "code": "SYSTEM_HEALTH_STALE",
       "severity": "HIGH",
-      "detail": "system-health.json age=34329.4s max=2700s"
+      "detail": "system-health.json age=36189.0s max=2700s"
     }
   ],
   "checks": {
     "real-alerts.json": {
-      "timestamp": "2026-09-09T06:41:28.916205+00:00",
-      "age_seconds": 3548.9,
+      "timestamp": "2026-09-09T07:59:46.889792+00:00",
+      "age_seconds": 710.5,
       "max_age_seconds": 2700,
-      "ok": false
+      "ok": true
     },
     "system-health.json": {
       "timestamp": "2026-09-08T22:08:28.421807+00:00",
-      "age_seconds": 34329.4,
+      "age_seconds": 36189.0,
       "max_age_seconds": 2700,
       "ok": false
     },
     "scheduler-health.json": {
       "timestamp": "2026-09-08T22:08:28.473578+00:00",
-      "age_seconds": 34329.4,
+      "age_seconds": 36188.9,
       "max_age_seconds": 2700,
       "ok": false
     },
     "telegram-alert-report.json": {
-      "timestamp": "2026-09-09T06:42:03.868857+00:00",
-      "age_seconds": 3514.0,
+      "timestamp": "2026-09-09T08:00:28.123880+00:00",
+      "age_seconds": 669.3,
       "max_age_seconds": 3600,
       "ok": true
     },
     "real-alert-10usd-summary.json": {
-      "timestamp": "2026-09-09T07:28:10.910998+00:00",
-      "age_seconds": 746.9,
+      "timestamp": "2026-09-09T08:00:30.171919+00:00",
+      "age_seconds": 667.2,
       "max_age_seconds": 3600,
       "ok": true
     },
     "github_live_scan": {
-      "latest_status": "in_progress",
+      "latest_status": "pending",
       "latest_conclusion": null,
-      "latest_created_at": "2026-09-09T07:40:20Z",
-      "latest_updated_at": "2026-09-09T07:40:25Z",
-      "latest_run_id": 34325043692,
-      "last_success_at": null,
-      "last_success_run_id": null
+      "latest_created_at": "2026-09-09T08:11:10Z",
+      "latest_updated_at": "2026-09-09T08:11:11Z",
+      "latest_run_id": 34327739367,
+      "last_success_at": "2026-09-09T08:10:32Z",
+      "last_success_run_id": 34327390316
     },
     "public_surface": {
       "dashboard_ok": false,
       "real_feed_ok": true,
-      "real_feed_generated_at": "2026-09-09T06:41:28.916205+00:00"
+      "real_feed_generated_at": "2026-09-09T07:59:46.889792+00:00"
     }
   },
   "truth_contract": [
@@ -99,8 +83,8 @@
     "NEW_REAL_ALERT_TELEGRAM_GAPS_ARE_DETECTED_BY_EXACT_PAIR_TRANSITION"
   ],
   "notification": {
-    "attempted": true,
-    "sent": true,
-    "message_id": 403
+    "attempted": false,
+    "sent": false,
+    "reason": "NO_NEW_INCIDENTS"
   }
 }
