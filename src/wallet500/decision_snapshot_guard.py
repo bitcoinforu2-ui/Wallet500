@@ -6,13 +6,14 @@ from pathlib import Path
 from typing import Any
 
 from .solana_mintability_public_guard import sanitize_real_alerts
+from .policy import CANONICAL_MIN_EXECUTION_LIQUIDITY_USD, CANONICAL_MIN_MARKET_AGE_DAYS
 
 DATA = Path("data")
 OUTPUT = DATA / "decision-snapshot-integrity.json"
 RESEARCH_MIN_AGE_DAYS = 90
 RESEARCH_MIN_LIQUIDITY_USD = 15_000.0
-PRODUCTION_MIN_AGE_DAYS = 90
-PRODUCTION_MIN_LIQUIDITY_USD = 15_000.0
+PRODUCTION_MIN_AGE_DAYS = CANONICAL_MIN_MARKET_AGE_DAYS
+PRODUCTION_MIN_LIQUIDITY_USD = CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
 PUBLIC_DECISION_SURFACES = ("alerts", "verified_watch", "evidence_ready", "dormant_no_activity")
 
 
@@ -72,12 +73,6 @@ def _preserve_evidence_ready_visibility(data_dir: Path) -> None:
     The dedicated evidence_ready surface exists solely to preserve canonical rows
     that fall outside the ranked watch-list display window. It must never retain a
     row that is no longer EVIDENCE_READY in the current sanitized Envelope.
-
-    Ranked watch and dormant surfaces may themselves persist across generations.
-    Their rows are retained for research continuity, but any stale Evidence Ready
-    markers are cleared unless the exact chain/token/pair still belongs to the
-    current canonical Envelope. This prevents historical research state from
-    contaminating the current denominator while preserving no-hindsight history.
     """
     envelope_path = data_dir / "candidate-evidence-envelope.json"
     real_path = data_dir / "real-alerts.json"
@@ -162,7 +157,10 @@ def _preserve_evidence_ready_visibility(data_dir: Path) -> None:
             "exact_pair_verified": truth.get("exact_pair_verified") is True,
             "market_age_verified": truth.get("market_age_verified_60d_plus") is True,
             "market_age_days": _int(truth.get("market_age_days")),
-            "execution_pool_liquidity_usd": _num(truth.get("execution_pool_liquidity_usd") or market.get("execution_pool_liquidity_usd")),
+            "execution_pool_liquidity_usd": _num(
+                truth.get("execution_pool_liquidity_usd")
+                or market.get("execution_pool_liquidity_usd")
+            ),
             "mintability_verified": row.get("mintability_verified") is True,
             "mintable": row.get("mintable"),
             "mint_authority": row.get("mint_authority"),
@@ -224,6 +222,9 @@ def build(data_dir: Path = DATA) -> dict:
     truth = envelope.get("truth_contract") if isinstance(envelope.get("truth_contract"), dict) else {}
     if _int(truth.get("minimum_market_age_days")) != RESEARCH_MIN_AGE_DAYS:
         fail("ENVELOPE_AGE_SCOPE_DRIFT", "Research evidence envelope must enforce 90d scope", truth.get("minimum_market_age_days"))
+    research_liq = _num(truth.get("minimum_execution_liquidity_usd") or truth.get("minimum_liquidity_usd"))
+    if research_liq != RESEARCH_MIN_LIQUIDITY_USD:
+        fail("ENVELOPE_LIQUIDITY_SCOPE_DRIFT", "Research evidence envelope must enforce $15K scope", research_liq)
     if truth.get("exact_pair_required") is not True:
         fail("ENVELOPE_EXACT_PAIR_GUARD_MISSING", "Exact pair truth is mandatory")
 
@@ -242,12 +243,14 @@ def build(data_dir: Path = DATA) -> dict:
     if ready_visible != ready_envelope:
         fail("EVIDENCE_READY_VISIBILITY_SKEW", "Every canonical Evidence Ready token must remain visible on exactly one research surface, including dormant_no_activity", evidence_counts)
 
-    if _int(age.get("minimum_market_age_days")) != PRODUCTION_MIN_AGE_DAYS:
-        fail("ACTIVE_AGE_GATE_SCOPE_DRIFT", "Active production age gate must enforce 90d", age.get("minimum_market_age_days"))
+    # This gate feeds the 90d research/evidence universe; it is not REAL ALERT
+    # production authorization and must not be compared to the 180d production floor.
+    if _int(age.get("minimum_market_age_days")) != RESEARCH_MIN_AGE_DAYS:
+        fail("ACTIVE_AGE_GATE_SCOPE_DRIFT", "Research active-candidate age gate must enforce 90d", age.get("minimum_market_age_days"))
     if age.get("status") == "QUARANTINED_FAIL_CLOSED_UNAPPROVED_POLICY":
         fail("STALE_AGE_GOVERNOR", "Legacy unapproved age-policy quarantine must not reappear")
-    if age.get("project_scope_minimum_market_age_days") not in (None, PRODUCTION_MIN_AGE_DAYS):
-        fail("ACTIVE_PROJECT_SCOPE_DRIFT", "Production project scope must remain 90d", age.get("project_scope_minimum_market_age_days"))
+    if age.get("project_scope_minimum_market_age_days") not in (None, RESEARCH_MIN_AGE_DAYS):
+        fail("ACTIVE_PROJECT_SCOPE_DRIFT", "Research candidate scope must remain 90d", age.get("project_scope_minimum_market_age_days"))
 
     for row in envelope.get("candidates") or []:
         if not isinstance(row, dict) or row.get("status") != "EVIDENCE_READY":
@@ -256,7 +259,12 @@ def build(data_dir: Path = DATA) -> dict:
             fail("EVIDENCE_READY_PRODUCTION_LEAK", "Evidence Ready must never authorize production", row.get("key"))
         t = row.get("truth") if isinstance(row.get("truth"), dict) else {}
         c = row.get("coverage") if isinstance(row.get("coverage"), dict) else {}
-        if not (t.get("exact_identity_verified") is True and t.get("exact_pair_verified") is True and t.get("market_age_verified_60d_plus") is True and t.get("execution_liquidity_floor_passed") is True):
+        if not (
+            t.get("exact_identity_verified") is True
+            and t.get("exact_pair_verified") is True
+            and t.get("market_age_verified_60d_plus") is True
+            and t.get("execution_liquidity_floor_passed") is True
+        ):
             fail("EVIDENCE_READY_TRUTH_BREACH", "Evidence Ready row lacks mandatory research base truth", row.get("key"))
         if _int(c.get("positive_independent_count")) < 1:
             fail("EVIDENCE_READY_WITHOUT_INDEPENDENT_EVIDENCE", "Evidence Ready requires an independent positive lane", row.get("key"))
@@ -266,8 +274,16 @@ def build(data_dir: Path = DATA) -> dict:
             if not isinstance(row, dict):
                 continue
             chain = str(row.get("chain") or row.get("network") or "").lower()
-            if chain == "solana" and not (row.get("mintability_verified") is True and row.get("mintable") is False and row.get("mint_authority") is None):
-                fail("SOLANA_MINTABILITY_PUBLIC_BREACH", "Mintable or unverified Solana token reached a public/research decision surface", {"surface": surface, "token": row.get("token_address")})
+            if chain == "solana" and not (
+                row.get("mintability_verified") is True
+                and row.get("mintable") is False
+                and row.get("mint_authority") is None
+            ):
+                fail(
+                    "SOLANA_MINTABILITY_PUBLIC_BREACH",
+                    "Mintable or unverified Solana token reached a public/research decision surface",
+                    {"surface": surface, "token": row.get("token_address")},
+                )
 
     for row in real.get("alerts") or []:
         if not isinstance(row, dict):
@@ -275,21 +291,25 @@ def build(data_dir: Path = DATA) -> dict:
         if row.get("exact_identity_verified") is not True or row.get("exact_pair_verified") is not True:
             fail("REAL_ALERT_IDENTITY_BREACH", "REAL ALERT lacks exact identity/pair", row.get("token_address"))
         if row.get("market_age_verified") is not True or _int(row.get("market_age_days")) < PRODUCTION_MIN_AGE_DAYS:
-            fail("REAL_ALERT_AGE_BREACH", "REAL ALERT is outside production 90d scope", row.get("token_address"))
+            fail("REAL_ALERT_AGE_BREACH", "REAL ALERT is outside strict production 180d scope", row.get("token_address"))
         if _num(row.get("execution_pool_liquidity_usd")) < PRODUCTION_MIN_LIQUIDITY_USD:
-            fail("REAL_ALERT_LIQUIDITY_BREACH", "REAL ALERT lacks $15K execution pool liquidity", row.get("token_address"))
+            fail("REAL_ALERT_LIQUIDITY_BREACH", "REAL ALERT lacks $50K execution pool liquidity", row.get("token_address"))
         if row.get("automatic_buy") is True:
             fail("REAL_ALERT_AUTOBUY_BREACH", "REAL ALERT must not auto-buy", row.get("token_address"))
 
     if isinstance(production, dict) and production:
         policy = production.get("policy") if isinstance(production.get("policy"), dict) else {}
-        if _int(policy.get("minimum_verified_market_age_days")) not in (0, PRODUCTION_MIN_AGE_DAYS):
-            fail("PRODUCTION_STATUS_SCOPE_DRIFT", "Production status must report 90d scope", policy.get("minimum_verified_market_age_days"))
+        if _int(policy.get("minimum_verified_market_age_days")) != PRODUCTION_MIN_AGE_DAYS:
+            fail("PRODUCTION_STATUS_SCOPE_DRIFT", "Production status must report strict 180d scope", policy.get("minimum_verified_market_age_days"))
+        if _num(policy.get("minimum_liquidity_usd")) != PRODUCTION_MIN_LIQUIDITY_USD:
+            fail("PRODUCTION_STATUS_LIQUIDITY_DRIFT", "Production status must report strict $50K liquidity floor", policy.get("minimum_liquidity_usd"))
+        if policy.get("exact_onchain_identity_required") is not True or policy.get("exact_dex_pair_required") is not True:
+            fail("PRODUCTION_STATUS_IDENTITY_DRIFT", "Production status must require exact identity and exact pair")
 
     return {
-        "version": 5,
+        "version": 6,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "mode": "FAIL_CLOSED_DECISION_SNAPSHOT_COHERENCE_GUARD_V5_RESEARCH_PRODUCTION_SCOPE_SEPARATED",
+        "mode": "FAIL_CLOSED_DECISION_SNAPSHOT_COHERENCE_GUARD_V6_DUAL_SCOPE",
         "passed": not failures,
         "failure_count": len(failures),
         "failures": failures,
@@ -308,6 +328,8 @@ def build(data_dir: Path = DATA) -> dict:
             "research_minimum_execution_pool_liquidity_usd": RESEARCH_MIN_LIQUIDITY_USD,
             "production_scope_days": PRODUCTION_MIN_AGE_DAYS,
             "production_minimum_execution_pool_liquidity_usd": PRODUCTION_MIN_LIQUIDITY_USD,
+            "research_scope_never_authorizes_real_alert": True,
+            "production_scope_is_independently_stricter": True,
             "exact_pair_required": True,
             "solana_mint_authority_must_be_revoked_null": True,
             "solana_mintable_tokens_allowed": False,
@@ -328,14 +350,21 @@ def run(data_dir: Path = DATA, fail_on_error: bool = True) -> dict:
     payload = build(data_dir)
     (data_dir / OUTPUT.name).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if fail_on_error and not payload["passed"]:
-        details = ";".join(f"{x['code']}={json.dumps(x.get('actual'), ensure_ascii=False, sort_keys=True)}" for x in payload["failures"])
+        details = ";".join(
+            f"{x['code']}={json.dumps(x.get('actual'), ensure_ascii=False, sort_keys=True)}"
+            for x in payload["failures"]
+        )
         raise SystemExit("DECISION_SNAPSHOT_COHERENCE_FAILED:" + details)
     return payload
 
 
 def main() -> None:
     payload = run()
-    print(json.dumps({"passed": payload["passed"], "counts": payload["counts"], "evidence_ready_coherence": payload.get("evidence_ready_coherence")}, ensure_ascii=False))
+    print(json.dumps({
+        "passed": payload["passed"],
+        "counts": payload["counts"],
+        "evidence_ready_coherence": payload.get("evidence_ready_coherence"),
+    }, ensure_ascii=False))
 
 
 if __name__ == "__main__":
