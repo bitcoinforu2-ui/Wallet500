@@ -8,8 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
-EXPECTED_MIN_AGE_DAYS = 90
-EXPECTED_MIN_EXECUTION_LIQUIDITY_USD = 15_000.0
+EXPECTED_MIN_AGE_DAYS = 180
+EXPECTED_MIN_EXECUTION_LIQUIDITY_USD = 50_000.0
 
 
 def load(name: str, default):
@@ -60,9 +60,9 @@ def main() -> int:
     real = load("real-alerts.json", {})
     contract = real.get("truth_contract") if isinstance(real, dict) else {}
     if int(contract.get("minimum_market_age_days") or 0) != EXPECTED_MIN_AGE_DAYS:
-        add("POLICY_AGE_SPLIT", "Canonical real-alert feed is not on the 90-day policy", observed=contract.get("minimum_market_age_days"), expected=EXPECTED_MIN_AGE_DAYS)
+        add("POLICY_AGE_SPLIT", "Canonical real-alert feed is not on the 180-day production policy", observed=contract.get("minimum_market_age_days"), expected=EXPECTED_MIN_AGE_DAYS)
     if float(contract.get("minimum_execution_pool_liquidity_usd") or 0) != EXPECTED_MIN_EXECUTION_LIQUIDITY_USD:
-        add("POLICY_LIQUIDITY_SPLIT", "Canonical real-alert feed is not on the $15K execution-liquidity policy", observed=contract.get("minimum_execution_pool_liquidity_usd"), expected=EXPECTED_MIN_EXECUTION_LIQUIDITY_USD)
+        add("POLICY_LIQUIDITY_SPLIT", "Canonical real-alert feed is not on the $50K production execution-liquidity policy", observed=contract.get("minimum_execution_pool_liquidity_usd"), expected=EXPECTED_MIN_EXECUTION_LIQUIDITY_USD)
 
     market_sources = {
         "real_alerts": rows(real, "alerts"),
