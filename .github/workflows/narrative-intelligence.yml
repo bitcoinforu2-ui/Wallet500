@@ -70,6 +70,10 @@ jobs:
           git add data/narrative-decision.json
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'data: refresh 30m narrative intelligence'
+          # Editable installs can update tracked egg-info/SOURCES.txt. Clean only
+          # uncommitted build metadata after the intended snapshot is committed,
+          # so rebase sees a pristine tree without losing the generated snapshot.
+          git reset --hard HEAD
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             if ! git rebase origin/main; then
