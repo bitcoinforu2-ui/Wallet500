@@ -82,7 +82,8 @@ def test_forward_only_baseline_then_three_fire_transition(tmp_path, monkeypatch)
     assert len(messages) == 1
     assert messages[0].startswith("🔥🔥🔥 REVIVAL 90D / 15K")
     assert "Activity H1: 70 tx ✅ min 30" in messages[0]
-    assert "Production 180d/$50K gate: UNCHANGED" in messages[0]
+    assert "Canonical Revival gate: 90d / $15K ✅" in messages[0]
+    assert "180d/$50K" not in messages[0]
     assert fired["truth_contract"]["research_only"] is True
     assert fired["truth_contract"]["production_gate_changed"] is False
     assert fired["truth_contract"]["minimum_txns_h1"] == 30
