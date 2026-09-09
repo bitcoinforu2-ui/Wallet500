@@ -66,7 +66,7 @@ jobs:
           if any(x.get('positive') is not False or x.get('promotion_eligible') is not False for x in p.get('tokens') or []): raise SystemExit('PROBE_ROW_ALPHA_LEAK')
           if g.get('passed') is not True: raise SystemExit('DECISION_SNAPSHOT_GUARD_FAILED')
           rt=r.get('truth_contract') or {}
-          if rt.get('minimum_market_age_days')!=90 or rt.get('exact_dex_pair_required') is not True: raise SystemExit('REAL_ALERT_TRUTH_DRIFT')
+          if rt.get('minimum_market_age_days')!=180 or rt.get('exact_dex_pair_required') is not True: raise SystemExit('REAL_ALERT_TRUTH_DRIFT')
           if rt.get('evidence_ready_is_visible_but_does_not_auto_promote_to_real_alert') is not True: raise SystemExit('REAL_ALERT_PROMOTION_DRIFT')
           print('PENDING_CONFIRMATION_REFRESH_TRUTH_OK', e.get('counts'), p.get('coverage_verified'))
           PY
@@ -99,7 +99,7 @@ jobs:
           if truth.get('broad_wallet_probe_is_non_promoting_coverage_only') is not True: raise SystemExit('PENDING_WALLET_TRUTH_MISSING')
           if truth.get('normalizer_changes_real_alert_gate') is not False: raise SystemExit('PENDING_WALLET_REAL_ALERT_LEAK')
           run_id=str(os.environ.get('GITHUB_RUN_ID') or '').strip(); source_sha=str(os.environ.get('SOURCE_SHA') or '').strip()
-          proof={'version':1,'created_at':datetime.now(timezone.utc).isoformat(),'status':'VERIFIED_COHERENT_DECISION_SNAPSHOT','producer':'PENDING_CONFIRMATION_REFRESH','workflow_run_id':run_id,'source_sha':source_sha,'generation_id':f'pending-confirmation:{run_id}:{source_sha}','decision_validation':'PASS','minimum_market_age_days':90,'exact_pair_required':True,'hashes':{k:hashlib.sha256(v).hexdigest() for k,v in payloads.items()},'proof_rule':'ATOMIC_COMMIT_BINDS_REAL_ALERTS_TO_COHERENT_DECISION_SNAPSHOT'}
+          proof={'version':1,'created_at':datetime.now(timezone.utc).isoformat(),'status':'VERIFIED_COHERENT_DECISION_SNAPSHOT','producer':'PENDING_CONFIRMATION_REFRESH','workflow_run_id':run_id,'source_sha':source_sha,'generation_id':f'pending-confirmation:{run_id}:{source_sha}','decision_validation':'PASS','minimum_market_age_days':180,'exact_pair_required':True,'hashes':{k:hashlib.sha256(v).hexdigest() for k,v in payloads.items()},'proof_rule':'ATOMIC_COMMIT_BINDS_REAL_ALERTS_TO_COHERENT_DECISION_SNAPSHOT'}
           Path('data/decision-publish-evidence.json').write_text(json.dumps(proof,ensure_ascii=False,indent=2,sort_keys=True)+'\n')
           print('PENDING_DECISION_PUBLICATION_PROOF_READY', proof['generation_id'])
           PY
