@@ -5,10 +5,12 @@ Rules:
 - validate manifest identity, hashes, and strict validation before publishing;
 - never overwrite a path that changed on main after the source scan;
 - bind publication proof to the effective canonical real-alerts.json digest;
-- preserve a newer, independently verified coherent decision snapshot as one unit;
-- only preserve a newer decision snapshot when every proof-bound file matches;
-- reject immutable source snapshots whose policy metadata differs from the
-  canonical 90d / $15K veteran-revival contract, including stricter drift;
+- preserve a newer, independently verified coherent decision snapshot only for
+  paths actually bound by that proof;
+- keep research discovery/evidence policy (90d / $15K) separate from strict
+  production REAL ALERT authorization (180d / $50K);
+- reject immutable source snapshots whose production metadata differs from the
+  canonical production contract;
 - if real-alerts changed without a valid coherent decision proof, treat the scan as
   superseded instead of weakening verification;
 - use commit-tree compare-and-swap retries, never force-push.
@@ -43,10 +45,24 @@ DECISION_HASH_PATHS = {
     "production_status": "data/production-status.json",
     "decision_integrity": "data/decision-snapshot-integrity.json",
 }
-# These policy-bearing decision paths can also be present in the Live Scan artifact.
-# A fresher verified generation must be preserved as one unit rather than mixed.
+# A pending-confirmation proof intentionally binds only the decision surfaces it
+# recomputes. Candidate Evidence may bind the larger set. Never assume unlisted
+# paths are part of a proof generation.
+REQUIRED_DECISION_HASH_KEYS = {
+    "candidate_evidence",
+    "real_alerts",
+    "revival_funnel",
+    "cross_signal_fusion",
+    "decision_integrity",
+}
+DECISION_PRODUCER_PREFIX = {
+    "CANDIDATE_EVIDENCE_ENVELOPE": "candidate-evidence",
+    "PENDING_CONFIRMATION_REFRESH": "pending-confirmation",
+}
 DECISION_OWNED_LIVE_PATHS = set(DECISION_HASH_PATHS.values())
 
+RESEARCH_MIN_MARKET_AGE_DAYS = 90
+RESEARCH_MIN_EXECUTION_LIQUIDITY_USD = 15_000.0
 PRODUCTION_MIN_MARKET_AGE_DAYS = CANONICAL_MIN_MARKET_AGE_DAYS
 PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD = CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
 
@@ -127,7 +143,7 @@ def validate_manifest(root: Path, source_run: int, source_sha: str) -> tuple[dic
         raise RuntimeError("Verified snapshot missing immutable real-alerts.json digest")
     if not _snapshot_production_status_passes_contract(root):
         raise RuntimeError(
-            "Verified snapshot production-status policy differs from canonical 90d / $15K contract"
+            "Verified snapshot production-status policy differs from canonical 180d / $50K contract"
         )
     return manifest, manifest_bytes
 
@@ -155,7 +171,7 @@ def _parent_bytes(parent: str, rel: str) -> bytes | None:
 
 
 def _bound_real_alerts_passes_production_contract(raw: bytes) -> bool:
-    """Fail closed unless the bound REAL ALERT feed declares the exact contract."""
+    """Fail closed unless the bound REAL ALERT feed declares the strict contract."""
     try:
         feed = json.loads(raw.decode("utf-8"))
         truth = feed.get("truth_contract")
@@ -175,13 +191,9 @@ def _bound_real_alerts_passes_production_contract(raw: bytes) -> bool:
     )
 
 
-def _snapshot_production_status_passes_contract(root: Path) -> bool:
-    """Reject any immutable artifact whose operator policy drifted from 90d/$15K."""
-    path = root / "files" / "data" / "production-status.json"
-    if not path.is_file():
-        return False
+def _production_status_bytes_passes_contract(raw: bytes) -> bool:
     try:
-        status = json.loads(path.read_text(encoding="utf-8"))
+        status = json.loads(raw.decode("utf-8"))
         rules = status.get("policy")
         if not isinstance(rules, dict):
             # Compatibility only for old test/artifact shapes; still exact-match.
@@ -195,13 +207,43 @@ def _snapshot_production_status_passes_contract(root: Path) -> bool:
     return age == PRODUCTION_MIN_MARKET_AGE_DAYS and liquidity == PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD
 
 
-def verified_decision_snapshot(parent: str) -> dict | None:
-    """Return proof only when every bound decision file on parent matches its hash.
+def _snapshot_production_status_passes_contract(root: Path) -> bool:
+    path = root / "files" / "data" / "production-status.json"
+    return path.is_file() and _production_status_bytes_passes_contract(path.read_bytes())
 
-    This is deliberately fail-closed. A malformed/missing proof, missing file,
-    single digest mismatch, or bound REAL ALERT feed that does not independently
-    satisfy the exact production truth contract means the verified publisher must
-    not preserve the newer decision generation as trusted canonical state.
+
+def _candidate_envelope_passes_research_contract(raw: bytes) -> bool:
+    """Validate the 90d/$15K research envelope without granting production authority."""
+    try:
+        envelope = json.loads(raw.decode("utf-8"))
+        truth = envelope.get("truth_contract")
+        if not isinstance(truth, dict):
+            return False
+        age = int(truth.get("minimum_market_age_days"))
+        liquidity = float(
+            truth.get("minimum_execution_liquidity_usd")
+            or truth.get("minimum_liquidity_usd")
+        )
+    except (TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return (
+        envelope.get("mode") == "RESEARCH_ONLY_CANDIDATE_EVIDENCE_ENVELOPE_V1"
+        and envelope.get("production_change") is False
+        and envelope.get("automatic_buy") is False
+        and age == RESEARCH_MIN_MARKET_AGE_DAYS
+        and liquidity == RESEARCH_MIN_EXECUTION_LIQUIDITY_USD
+        and truth.get("exact_pair_required") is True
+    )
+
+
+def verified_decision_snapshot(parent: str) -> dict | None:
+    """Return a newer coherent decision proof only after validating both scopes.
+
+    The decision publisher is a research/evidence publisher (90d/$15K). Its
+    REAL ALERT payload and the operator production status must independently
+    satisfy the strict production contract (180d/$50K). A pending-confirmation
+    proof may bind only five recomputed decision files; Candidate Evidence may
+    bind more. Only declared, hash-verified paths are preserved as one generation.
     """
     raw = _parent_bytes(parent, DECISION_PROOF)
     if raw is None:
@@ -216,25 +258,80 @@ def verified_decision_snapshot(parent: str) -> dict | None:
         return None
     if proof.get("exact_pair_required") is not True:
         return None
-    if int(proof.get("minimum_market_age_days") or 0) != PRODUCTION_MIN_MARKET_AGE_DAYS:
+
+    producer = str(proof.get("producer") or "").strip()
+    prefix = DECISION_PRODUCER_PREFIX.get(producer)
+    if not prefix:
         return None
-    if float(proof.get("minimum_liquidity_usd") or 0) != PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD:
+    run_id = str(proof.get("workflow_run_id") or "").strip()
+    source_sha = str(proof.get("source_sha") or "").strip()
+    generation_id = str(proof.get("generation_id") or "").strip()
+    if not run_id or len(source_sha) != 40 or generation_id != f"{prefix}:{run_id}:{source_sha}":
         return None
+
+    try:
+        research_age = int(proof.get("minimum_market_age_days"))
+        proof_liq_raw = proof.get("minimum_liquidity_usd")
+        proof_liq = None if proof_liq_raw is None else float(proof_liq_raw)
+    except (TypeError, ValueError):
+        return None
+    if research_age != RESEARCH_MIN_MARKET_AGE_DAYS:
+        return None
+    if proof_liq is not None and proof_liq != RESEARCH_MIN_EXECUTION_LIQUIDITY_USD:
+        return None
+
+    scopes = proof.get("policy_scopes")
+    if isinstance(scopes, dict):
+        research = scopes.get("research_evidence") or {}
+        production = scopes.get("production_real_alert") or {}
+        try:
+            if int(research.get("minimum_market_age_days")) != RESEARCH_MIN_MARKET_AGE_DAYS:
+                return None
+            if float(research.get("minimum_execution_liquidity_usd")) != RESEARCH_MIN_EXECUTION_LIQUIDITY_USD:
+                return None
+            if int(production.get("minimum_market_age_days")) != PRODUCTION_MIN_MARKET_AGE_DAYS:
+                return None
+            if float(production.get("minimum_execution_liquidity_usd")) != PRODUCTION_MIN_EXECUTION_LIQUIDITY_USD:
+                return None
+        except (TypeError, ValueError):
+            return None
+
     hashes = proof.get("hashes")
-    if not isinstance(hashes, dict):
+    if not isinstance(hashes, dict) or not REQUIRED_DECISION_HASH_KEYS.issubset(hashes):
         return None
+    if any(key not in DECISION_HASH_PATHS for key in hashes):
+        return None
+
     bodies: dict[str, bytes] = {}
-    for key, rel in DECISION_HASH_PATHS.items():
-        expected = str(hashes.get(key) or "")
+    verified_paths: list[str] = []
+    for key, expected_raw in hashes.items():
+        rel = DECISION_HASH_PATHS[key]
+        expected = str(expected_raw or "")
         body = _parent_bytes(parent, rel)
         if not expected or body is None:
             return None
         if hashlib.sha256(body).hexdigest() != expected:
             return None
         bodies[key] = body
+        verified_paths.append(rel)
+
+    if not _candidate_envelope_passes_research_contract(bodies["candidate_evidence"]):
+        return None
     if not _bound_real_alerts_passes_production_contract(bodies["real_alerts"]):
         return None
-    return proof
+
+    # Production status is an independent authorization guard. Pending-confirmation
+    # does not rewrite it, so it need not be part of that proof, but it must still
+    # be strict on current main before we preserve a newer REAL ALERT generation.
+    production_body = bodies.get("production_status") or _parent_bytes(
+        parent, DECISION_HASH_PATHS["production_status"]
+    )
+    if production_body is None or not _production_status_bytes_passes_contract(production_body):
+        return None
+
+    out = dict(proof)
+    out["_verified_paths"] = sorted(set(verified_paths))
+    return out
 
 
 def _proof_blob(
@@ -322,6 +419,7 @@ def main() -> int:
             if any(item.get("path") == rel for item in items)
         )
         preserve_decision = decision if decision_changed and decision is not None else None
+        preserved_paths = set((preserve_decision or {}).get("_verified_paths") or [])
 
         index_path = Path(tempfile.gettempdir()) / f"wallet500-verified-{os.getpid()}-{attempt}.index"
         skipped: list[str] = []
@@ -335,7 +433,7 @@ def main() -> int:
                 rel = item["path"]
                 if rel == watermark:
                     continue
-                if preserve_decision is not None and rel in DECISION_OWNED_LIVE_PATHS:
+                if preserve_decision is not None and rel in preserved_paths:
                     skipped.append(rel)
                     continue
                 if changed_since(source_sha, parent, rel):
