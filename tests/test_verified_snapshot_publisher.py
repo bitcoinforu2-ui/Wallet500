@@ -13,85 +13,129 @@ assert spec and spec.loader
 spec.loader.exec_module(mod)
 
 
-def _decision_fixture():
+def _research_envelope(age=90, liquidity=15000.0):
+    return {
+        "mode": "RESEARCH_ONLY_CANDIDATE_EVIDENCE_ENVELOPE_V1",
+        "production_change": False,
+        "automatic_buy": False,
+        "truth_contract": {
+            "minimum_market_age_days": age,
+            "minimum_execution_liquidity_usd": liquidity,
+            "exact_pair_required": True,
+        },
+    }
+
+
+def _strict_real_alert(age=180, liquidity=50000.0):
+    return {
+        "version": 3,
+        "truth_contract": {
+            "minimum_market_age_days": age,
+            "minimum_execution_pool_liquidity_usd": liquidity,
+            "exact_onchain_identity_required": True,
+            "exact_dex_pair_required": True,
+            "symbol_only_never_actionable": True,
+            "cex_only_never_real_alert": True,
+        },
+    }
+
+
+def _strict_production_status(age=180, liquidity=50000.0):
+    return {
+        "policy": {
+            "minimum_verified_market_age_days": age,
+            "minimum_liquidity_usd": liquidity,
+        }
+    }
+
+
+def _decision_fixture(*, producer="CANDIDATE_EVIDENCE_ENVELOPE", partial=False):
     bodies = {
         rel: json.dumps({"path": rel, "v": 1}, sort_keys=True).encode()
         for rel in mod.DECISION_HASH_PATHS.values()
     }
-    bodies[mod.DECISION_HASH_PATHS["real_alerts"]] = json.dumps(
-        {
-            "version": 3,
-            "truth_contract": {
-                "minimum_market_age_days": 180,
-                "minimum_execution_pool_liquidity_usd": 50000.0,
-                "exact_onchain_identity_required": True,
-                "exact_dex_pair_required": True,
-                "symbol_only_never_actionable": True,
-                "cex_only_never_real_alert": True,
-            },
-        },
-        sort_keys=True,
+    bodies[mod.DECISION_HASH_PATHS["candidate_evidence"]] = json.dumps(
+        _research_envelope(), sort_keys=True
     ).encode()
+    bodies[mod.DECISION_HASH_PATHS["real_alerts"]] = json.dumps(
+        _strict_real_alert(), sort_keys=True
+    ).encode()
+    bodies[mod.DECISION_HASH_PATHS["production_status"]] = json.dumps(
+        _strict_production_status(), sort_keys=True
+    ).encode()
+
+    keys = set(mod.REQUIRED_DECISION_HASH_KEYS) if partial else set(mod.DECISION_HASH_PATHS)
     hashes = {
-        key: hashlib.sha256(bodies[rel]).hexdigest()
-        for key, rel in mod.DECISION_HASH_PATHS.items()
+        key: hashlib.sha256(bodies[mod.DECISION_HASH_PATHS[key]]).hexdigest()
+        for key in keys
     }
+    prefix = mod.DECISION_PRODUCER_PREFIX[producer]
+    source_sha = "a" * 40
     proof = {
         "status": "VERIFIED_COHERENT_DECISION_SNAPSHOT",
         "decision_validation": "PASS",
+        "producer": producer,
+        "workflow_run_id": "123",
+        "source_sha": source_sha,
+        "generation_id": f"{prefix}:123:{source_sha}",
         "exact_pair_required": True,
-        "minimum_market_age_days": 180,
-        "minimum_liquidity_usd": 50000,
-        "generation_id": "candidate-evidence:123:abc",
+        "minimum_market_age_days": 90,
         "hashes": hashes,
     }
+    if producer == "CANDIDATE_EVIDENCE_ENVELOPE":
+        proof["minimum_liquidity_usd"] = 15000
+        proof["policy_scopes"] = {
+            "research_evidence": {
+                "minimum_market_age_days": 90,
+                "minimum_execution_liquidity_usd": 15000,
+            },
+            "production_real_alert": {
+                "minimum_market_age_days": 180,
+                "minimum_execution_liquidity_usd": 50000,
+            },
+        }
     return proof, bodies
 
 
-def test_verified_decision_snapshot_accepts_only_fully_bound_generation(monkeypatch):
-    proof, bodies = _decision_fixture()
-
+def _parent_reader(proof, bodies):
     def parent_bytes(parent, rel):
         if rel == mod.DECISION_PROOF:
             return json.dumps(proof).encode()
         return bodies.get(rel)
+    return parent_bytes
 
-    monkeypatch.setattr(mod, "_parent_bytes", parent_bytes)
+
+def test_verified_decision_snapshot_accepts_fully_bound_dual_scope_generation(monkeypatch):
+    proof, bodies = _decision_fixture()
+    monkeypatch.setattr(mod, "_parent_bytes", _parent_reader(proof, bodies))
     out = mod.verified_decision_snapshot("parent")
     assert out is not None
     assert out["generation_id"] == proof["generation_id"]
+    assert mod.DECISION_HASH_PATHS["real_alerts"] in out["_verified_paths"]
+
+
+def test_verified_decision_snapshot_accepts_pending_confirmation_partial_proof(monkeypatch):
+    proof, bodies = _decision_fixture(producer="PENDING_CONFIRMATION_REFRESH", partial=True)
+    assert "minimum_liquidity_usd" not in proof
+    monkeypatch.setattr(mod, "_parent_bytes", _parent_reader(proof, bodies))
+    out = mod.verified_decision_snapshot("parent")
+    assert out is not None
+    assert set(out["_verified_paths"]) == {
+        mod.DECISION_HASH_PATHS[key] for key in mod.REQUIRED_DECISION_HASH_KEYS
+    }
 
 
 def test_verified_decision_snapshot_fails_closed_on_one_digest_mismatch(monkeypatch):
     proof, bodies = _decision_fixture()
     broken = dict(bodies)
     broken[mod.DECISION_HASH_PATHS["real_alerts"]] = b"tampered"
-
-    def parent_bytes(parent, rel):
-        if rel == mod.DECISION_PROOF:
-            return json.dumps(proof).encode()
-        return broken.get(rel)
-
-    monkeypatch.setattr(mod, "_parent_bytes", parent_bytes)
+    monkeypatch.setattr(mod, "_parent_bytes", _parent_reader(proof, broken))
     assert mod.verified_decision_snapshot("parent") is None
 
 
 def _replace_real_alert_contract(proof, bodies, *, age, liquidity):
     changed = dict(bodies)
-    body = json.dumps(
-        {
-            "version": 3,
-            "truth_contract": {
-                "minimum_market_age_days": age,
-                "minimum_execution_pool_liquidity_usd": liquidity,
-                "exact_onchain_identity_required": True,
-                "exact_dex_pair_required": True,
-                "symbol_only_never_actionable": True,
-                "cex_only_never_real_alert": True,
-            },
-        },
-        sort_keys=True,
-    ).encode()
+    body = json.dumps(_strict_real_alert(age, liquidity), sort_keys=True).encode()
     changed[mod.DECISION_HASH_PATHS["real_alerts"]] = body
     proof = dict(proof)
     proof["hashes"] = dict(proof["hashes"])
@@ -102,26 +146,14 @@ def _replace_real_alert_contract(proof, bodies, *, age, liquidity):
 def test_verified_decision_snapshot_fails_closed_on_subthreshold_real_alert_contract(monkeypatch):
     proof, bodies = _decision_fixture()
     proof, changed = _replace_real_alert_contract(proof, bodies, age=179, liquidity=49999.0)
-
-    def parent_bytes(parent, rel):
-        if rel == mod.DECISION_PROOF:
-            return json.dumps(proof).encode()
-        return changed.get(rel)
-
-    monkeypatch.setattr(mod, "_parent_bytes", parent_bytes)
+    monkeypatch.setattr(mod, "_parent_bytes", _parent_reader(proof, changed))
     assert mod.verified_decision_snapshot("parent") is None
 
 
-def test_verified_decision_snapshot_rejects_legacy_policy_drift(monkeypatch):
+def test_verified_decision_snapshot_rejects_research_thresholds_as_real_alert_policy(monkeypatch):
     proof, bodies = _decision_fixture()
     proof, changed = _replace_real_alert_contract(proof, bodies, age=90, liquidity=15000.0)
-
-    def parent_bytes(parent, rel):
-        if rel == mod.DECISION_PROOF:
-            return json.dumps(proof).encode()
-        return changed.get(rel)
-
-    monkeypatch.setattr(mod, "_parent_bytes", parent_bytes)
+    monkeypatch.setattr(mod, "_parent_bytes", _parent_reader(proof, changed))
     assert mod.verified_decision_snapshot("parent") is None
 
 
@@ -135,13 +167,37 @@ def test_verified_decision_snapshot_fails_closed_when_exact_identity_contract_mi
     proof = dict(proof)
     proof["hashes"] = dict(proof["hashes"])
     proof["hashes"]["real_alerts"] = hashlib.sha256(bad_body).hexdigest()
+    monkeypatch.setattr(mod, "_parent_bytes", _parent_reader(proof, bad))
+    assert mod.verified_decision_snapshot("parent") is None
 
-    def parent_bytes(parent, rel):
-        if rel == mod.DECISION_PROOF:
-            return json.dumps(proof).encode()
-        return bad.get(rel)
 
-    monkeypatch.setattr(mod, "_parent_bytes", parent_bytes)
+def test_verified_decision_snapshot_rejects_wrong_research_age(monkeypatch):
+    proof, bodies = _decision_fixture()
+    proof = dict(proof)
+    proof["minimum_market_age_days"] = 89
+    monkeypatch.setattr(mod, "_parent_bytes", _parent_reader(proof, bodies))
+    assert mod.verified_decision_snapshot("parent") is None
+
+
+def test_verified_decision_snapshot_rejects_research_envelope_liquidity_drift(monkeypatch):
+    proof, bodies = _decision_fixture()
+    changed = dict(bodies)
+    body = json.dumps(_research_envelope(90, 14999.0), sort_keys=True).encode()
+    changed[mod.DECISION_HASH_PATHS["candidate_evidence"]] = body
+    proof = dict(proof)
+    proof["hashes"] = dict(proof["hashes"])
+    proof["hashes"]["candidate_evidence"] = hashlib.sha256(body).hexdigest()
+    monkeypatch.setattr(mod, "_parent_bytes", _parent_reader(proof, changed))
+    assert mod.verified_decision_snapshot("parent") is None
+
+
+def test_pending_proof_still_requires_current_strict_production_status(monkeypatch):
+    proof, bodies = _decision_fixture(producer="PENDING_CONFIRMATION_REFRESH", partial=True)
+    changed = dict(bodies)
+    changed[mod.DECISION_HASH_PATHS["production_status"]] = json.dumps(
+        _strict_production_status(90, 15000), sort_keys=True
+    ).encode()
+    monkeypatch.setattr(mod, "_parent_bytes", _parent_reader(proof, changed))
     assert mod.verified_decision_snapshot("parent") is None
 
 
@@ -199,6 +255,6 @@ def test_snapshot_production_status_fails_closed_on_subthreshold_contract(tmp_pa
     assert mod._snapshot_production_status_passes_contract(tmp_path) is False
 
 
-def test_snapshot_production_status_rejects_legacy_policy_drift(tmp_path):
+def test_snapshot_production_status_rejects_research_policy_as_production(tmp_path):
     _write_status(tmp_path, 90, 15000.0)
     assert mod._snapshot_production_status_passes_contract(tmp_path) is False
