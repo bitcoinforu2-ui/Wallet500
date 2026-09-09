@@ -102,7 +102,7 @@ jobs:
             source_sha="$(git rev-parse HEAD)"
             export SOURCE_SHA="$source_sha"
 
-            # All active Revival decision surfaces use the same canonical 90d / $15K policy.
+            # Research Revival surfaces remain 90d / $15K; Production authorization remains 180d / $50K.
             # Recompute the complete snapshot and fail closed on any policy or identity drift.
             python -m wallet500.mature_age_gate --cex --revival
             python -m wallet500.production_age_governance
@@ -170,12 +170,12 @@ jobs:
           if (x.get('truth_contract') or {}).get('does_not_modify_real_alert_gate') is not True: raise SystemExit('FUSION_REAL_ALERT_LEAK')
 
           policy=prod.get('policy') or {}
-          if policy.get('minimum_verified_market_age_days')!=90: raise SystemExit('PRODUCTION_STATUS_AGE_SCOPE_INVALID')
-          if float(policy.get('minimum_liquidity_usd') or 0)!=15000: raise SystemExit('PRODUCTION_STATUS_LIQUIDITY_SCOPE_INVALID')
+          if policy.get('minimum_verified_market_age_days')!=180: raise SystemExit('PRODUCTION_STATUS_AGE_SCOPE_INVALID')
+          if float(policy.get('minimum_liquidity_usd') or 0)!=50000: raise SystemExit('PRODUCTION_STATUS_LIQUIDITY_SCOPE_INVALID')
           if policy.get('exact_onchain_identity_required') is not True or policy.get('exact_dex_pair_required') is not True: raise SystemExit('PRODUCTION_STATUS_IDENTITY_SCOPE_INVALID')
           rt=r.get('truth_contract') or {}
-          if rt.get('minimum_market_age_days')!=90: raise SystemExit('REAL_ALERT_PRODUCTION_AGE_SCOPE_INVALID')
-          if float(rt.get('minimum_execution_pool_liquidity_usd') or 0)!=15000: raise SystemExit('REAL_ALERT_PRODUCTION_LIQUIDITY_SCOPE_INVALID')
+          if rt.get('minimum_market_age_days')!=180: raise SystemExit('REAL_ALERT_PRODUCTION_AGE_SCOPE_INVALID')
+          if float(rt.get('minimum_execution_pool_liquidity_usd') or 0)!=50000: raise SystemExit('REAL_ALERT_PRODUCTION_LIQUIDITY_SCOPE_INVALID')
           if rt.get('exact_onchain_identity_required') is not True or rt.get('exact_dex_pair_required') is not True: raise SystemExit('REAL_ALERT_PRODUCTION_IDENTITY_SCOPE_INVALID')
 
           run_id=str(os.environ.get('GITHUB_RUN_ID') or '').strip()
@@ -192,16 +192,16 @@ jobs:
               'decision_validation':'PASS',
               'minimum_market_age_days':90,
               'minimum_liquidity_usd':15000,
-              'production_minimum_market_age_days':90,
-              'production_minimum_liquidity_usd':15000,
+              'production_minimum_market_age_days':180,
+              'production_minimum_liquidity_usd':50000,
               'exact_pair_required':True,
               'policy_scopes':{
                   'research_evidence':{'minimum_market_age_days':90,'minimum_execution_liquidity_usd':15000},
-                  'production_real_alert':{'minimum_market_age_days':90,'minimum_execution_liquidity_usd':15000},
+                  'production_real_alert':{'minimum_market_age_days':180,'minimum_execution_liquidity_usd':50000},
               },
               'policy_surfaces_bound':['revival_universe','cex_revival','active_age_gate','candidate_evidence','real_alerts','revival_funnel','production_status','decision_integrity'],
               'hashes':{k:hashlib.sha256(v).hexdigest() for k,v in payloads.items()},
-              'proof_rule':'ATOMIC_COMMIT_BINDS_CANONICAL_90D_15K_POLICY_ACROSS_RESEARCH_AND_REAL_ALERT_AUTHORIZATION',
+              'proof_rule':'ATOMIC_COMMIT_BINDS_RESEARCH_90D_15K_AND_PRODUCTION_180D_50K_WITH_EXACT_PAIR_IDENTITY',
           }
           Path('data/decision-publish-evidence.json').write_text(
               json.dumps(proof,ensure_ascii=False,indent=2,sort_keys=True)+'\n',encoding='utf-8')
