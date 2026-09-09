@@ -19,6 +19,11 @@ def test_near_alert_observatory_is_research_only_and_ranks_closest(tmp_path: Pat
                 "blockers": ["NO_STRONG_DECISION_LANE", "INDEPENDENT_CONFIRMATION_LT_2"],
                 "signal_score": 90, "exact_identity_verified": True, "exact_pair_verified": True,
                 "market_age_verified": True,
+                "execution_pool_liquidity_usd": 0,
+                "provider_reported_pool_value_usd": 100_000,
+                "dex_volume_h1": 5_000,
+                "dex_volume_h24": 80_000,
+                "dex_activity_truth": {"volume_h1_usd": 5_000, "volume_h24_usd": 80_000, "verified": True},
             },
             {
                 "symbol": "SIX", "chain": "solana", "token_address": "B", "pair_address": "PB",
@@ -26,6 +31,10 @@ def test_near_alert_observatory_is_research_only_and_ranks_closest(tmp_path: Pat
                 "readiness_pct": 85.7, "missing_gates": ["STRONG_DECISION_LANE"],
                 "blockers": ["NO_STRONG_DECISION_LANE"], "signal_score": 70,
                 "exact_identity_verified": True, "exact_pair_verified": True, "market_age_verified": True,
+                "execution_pool_liquidity_usd": 250_000,
+                "dex_volume_h1": 25_000,
+                "buys_h1": 40,
+                "sells_h1": 20,
             },
         ],
     })
@@ -49,6 +58,14 @@ def test_near_alert_observatory_is_research_only_and_ranks_closest(tmp_path: Pat
     assert out["closest_to_real_alert"][0]["symbol"] == "SIX"
     assert out["near_alert_leaderboard"][0]["readiness_passed"] == 6
     assert out["near_alert_leaderboard"][0]["automatic_buy"] is False
+    assert out["near_alert_leaderboard"][0]["liquidity_usd"] == 250_000
+    assert out["near_alert_leaderboard"][0]["dex_volume_h1"] == 25_000
+    assert out["near_alert_leaderboard"][0]["turnover_h1"] == 0.1
+    assert out["near_alert_leaderboard"][0]["buys_h1"] == 40
+    assert out["closest_to_real_alert"][1]["liquidity_usd"] == 100_000
+    assert out["closest_to_real_alert"][1]["execution_pool_liquidity_usd"] == 0
+    assert out["closest_to_real_alert"][1]["liquidity_display_semantics"] == "PROVIDER_REPORTED_EXACT_PAIR_POOL_VALUE_INFORMATIONAL_ONLY"
+    assert out["closest_to_real_alert"][1]["market_activity_verified"] is True
     assert out["summary"]["liquidity_only_false_negative_population"] == 388
     assert out["canonical_hard_blockers"][0]["count"] == 29
     assert out["pending_confirmations"][0]["count"] == 96
