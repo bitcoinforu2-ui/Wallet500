@@ -24,13 +24,68 @@ def _num(value, default=0.0) -> float:
         return float(default)
 
 
+def _first_present(*values):
+    for value in values:
+        if value not in (None, ""):
+            return value
+    return None
+
+
 def _compact_candidate(row: dict) -> dict:
+    """Compact a verified-watch row without throwing away live exact-pair market data.
+
+    Research cards need market context, but unverified concentrated-liquidity depth must
+    never be silently promoted to executable liquidity.  When execution depth is not
+    verified we expose the provider-reported exact-pair pool value only as an
+    informational display value and preserve the execution value separately.
+    """
+    activity = row.get("dex_activity_truth") if isinstance(row.get("dex_activity_truth"), dict) else {}
+
+    execution_liq = _num(row.get("execution_pool_liquidity_usd"), 0.0)
+    provider_pool_value = _num(
+        _first_present(
+            row.get("provider_reported_pool_value_usd"),
+            row.get("dex_pair_liquidity_usd"),
+            row.get("dex_liquidity_usd"),
+            row.get("current_liquidity_usd"),
+        ),
+        0.0,
+    )
+    if execution_liq > 0:
+        display_liq = execution_liq
+        liquidity_semantics = "VERIFIED_EXECUTION_LIQUIDITY"
+    elif provider_pool_value > 0:
+        display_liq = provider_pool_value
+        liquidity_semantics = "PROVIDER_REPORTED_EXACT_PAIR_POOL_VALUE_INFORMATIONAL_ONLY"
+    else:
+        display_liq = None
+        liquidity_semantics = "UNAVAILABLE"
+
+    volume_h1 = _first_present(row.get("dex_volume_h1"), row.get("volume_h1_usd"), activity.get("volume_h1_usd"))
+    volume_h24 = _first_present(row.get("dex_volume_h24"), row.get("volume_h24_usd"), activity.get("volume_h24_usd"))
+    buys_h1 = _first_present(row.get("buys_h1"), activity.get("buys_h1"))
+    sells_h1 = _first_present(row.get("sells_h1"), activity.get("sells_h1"))
+    buys_h24 = _first_present(row.get("buys_h24"), activity.get("buys_h24"))
+    sells_h24 = _first_present(row.get("sells_h24"), activity.get("sells_h24"))
+
+    turnover_h1 = row.get("turnover_h1")
+    if turnover_h1 is None and display_liq and _num(volume_h1, -1) >= 0:
+        turnover_h1 = _num(volume_h1) / display_liq
+
+    market_activity_verified = bool(
+        row.get("market_activity_verified") is True
+        or row.get("dex_activity_verified") is True
+        or activity.get("market_activity_verified") is True
+        or activity.get("verified") is True
+    )
+
     return {
         "symbol": row.get("symbol"),
         "chain": row.get("chain"),
         "token_address": row.get("token_address"),
         "pair_address": row.get("pair_address"),
         "dex_url": row.get("dex_url"),
+        "dex": row.get("dex"),
         "radar_tier": row.get("radar_tier"),
         "status": row.get("status"),
         "readiness_passed": int(row.get("readiness_passed") or 0),
@@ -47,7 +102,18 @@ def _compact_candidate(row: dict) -> dict:
         "watch_is_new_24h": row.get("watch_is_new_24h") is True,
         "watch_added_at": row.get("watch_added_at"),
         "watch_entered_label": row.get("watch_entered_label"),
-        "execution_pool_liquidity_usd": _num(row.get("execution_pool_liquidity_usd")),
+        "execution_pool_liquidity_usd": execution_liq,
+        "provider_reported_pool_value_usd": provider_pool_value or None,
+        "liquidity_usd": display_liq,
+        "liquidity_display_semantics": liquidity_semantics,
+        "dex_volume_h1": _num(volume_h1, 0.0) if volume_h1 is not None else None,
+        "dex_volume_h24": _num(volume_h24, 0.0) if volume_h24 is not None else None,
+        "turnover_h1": _num(turnover_h1, 0.0) if turnover_h1 is not None else None,
+        "buys_h1": int(_num(buys_h1, 0)) if buys_h1 is not None else None,
+        "sells_h1": int(_num(sells_h1, 0)) if sells_h1 is not None else None,
+        "buys_h24": int(_num(buys_h24, 0)) if buys_h24 is not None else None,
+        "sells_h24": int(_num(sells_h24, 0)) if sells_h24 is not None else None,
+        "market_activity_verified": market_activity_verified,
         "exact_identity_verified": row.get("exact_identity_verified") is True,
         "exact_pair_verified": row.get("exact_pair_verified") is True,
         "market_age_verified": row.get("market_age_verified") is True,
