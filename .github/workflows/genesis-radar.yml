@@ -57,6 +57,10 @@ jobs:
             echo "No Genesis data changes"
           else
             git commit -m 'data: refresh live Genesis Radar and 5-dollar paper ledger'
+            # genesis_live may update shared tracked discovery/cache files that are intentionally
+            # outside the isolated Genesis publish set. Drop those runner-local changes after the
+            # Genesis commit so they cannot block a safe rebase or leak into Revival truth.
+            git reset --hard HEAD
             pushed=0
             for attempt in 1 2 3 4 5; do
               git fetch origin main
@@ -89,6 +93,7 @@ jobs:
             exit 0
           fi
           git commit -m "data: persist Genesis Telegram dedupe state"
+          git reset --hard HEAD
           pushed=0
           for attempt in 1 2 3 4 5; do
             git fetch origin main
