@@ -1,0 +1,95 @@
+name: Wallet500 Agent OBS Intelligence Watch
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/agentobs_intel_watch.py'
+      - 'tests/test_agentobs_intel_watch.py'
+      - '.github/workflows/agentobs-intel-watch.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-agentobs-intel-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install
+        run: pip install -e . pytest
+
+      - name: Unit tests
+        run: python -m pytest -q tests/test_agentobs_intel_watch.py
+
+      - name: Poll canonical Agent OBS X account
+        env:
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m wallet500.agentobs_intel_watch
+
+      - name: Validate source freshness and author lock
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('data/agentobs-intel-latest.json').read_text())
+          src=p.get('provider') or {}
+          status=str(src.get('status') or '')
+          if not status:
+              raise SystemExit('AGENTOBS_X_STATUS_MISSING')
+          if status == 'NO_QUERY_IDENTITY':
+              raise SystemExit('AGENTOBS_X_QUERY_NOT_LOCKED')
+          if p.get('production_trade_impact') != 'NONE':
+              raise SystemExit('AGENTOBS_MUST_REMAIN_RESEARCH_ONLY')
+          print('AGENTOBS_SOURCE_CHECK', status, src.get('count_after_author_lock'))
+          PY
+
+      - name: Persist forward-only intelligence state
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-bot'
+          git config user.email 'wallet500-bot@users.noreply.github.com'
+          git restore --worktree -- src/wallet500.egg-info || true
+          git add data/agentobs-intel-state.json data/agentobs-intel-events.json data/agentobs-intel-latest.json
+          if git diff --cached --quiet; then
+            echo 'No Agent OBS state change to commit'
+            exit 0
+          fi
+          git commit -m 'Update Agent OBS intelligence state'
+          git reset --hard HEAD
+          git clean -fd
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo "Agent OBS rebase contention attempt=${attempt}"
+              [ "$attempt" -eq 5 ] && exit 1
+              sleep $((attempt * 2))
+              continue
+            fi
+            if git push origin HEAD:main; then
+              echo 'AGENTOBS_STATE_PUBLISH_OK'
+              exit 0
+            fi
+            sleep $((attempt * 2))
+          done
+          echo 'Failed to publish Agent OBS state after retries' >&2
+          exit 1
