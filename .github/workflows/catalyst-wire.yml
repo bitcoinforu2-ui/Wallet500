@@ -12,6 +12,7 @@ on:
       - 'src/wallet500/binance_event_intelligence.py'
       - 'src/wallet500/global_listing_intelligence.py'
       - 'src/wallet500/cross_source_correlation.py'
+      - 'src/wallet500/moonshot_verification_watch.py'
       - 'tests/test_catalyst_wire.py'
       - 'tests/test_catalyst_identity_guard.py'
       - 'tests/test_binance_event_intelligence.py'
@@ -19,6 +20,7 @@ on:
       - 'tests/test_catalyst_focus_binance.py'
       - 'tests/test_global_listing_evm_core.py'
       - 'tests/test_cross_source_correlation.py'
+      - 'tests/test_moonshot_verification_watch.py'
       - '.github/workflows/catalyst-wire.yml'
   schedule:
     - cron: '*/5 * * * *'
@@ -38,6 +40,7 @@ on:
       - 'src/wallet500/binance_event_intelligence.py'
       - 'src/wallet500/global_listing_intelligence.py'
       - 'src/wallet500/cross_source_correlation.py'
+      - 'src/wallet500/moonshot_verification_watch.py'
       - 'scripts/atomic_publish.py'
       - 'tests/test_catalyst_wire.py'
       - 'tests/test_catalyst_identity_guard.py'
@@ -46,6 +49,7 @@ on:
       - 'tests/test_catalyst_focus_binance.py'
       - 'tests/test_global_listing_evm_core.py'
       - 'tests/test_cross_source_correlation.py'
+      - 'tests/test_moonshot_verification_watch.py'
       - '.github/workflows/catalyst-wire.yml'
 
 permissions:
@@ -66,8 +70,8 @@ jobs:
           python-version: '3.12'
       - name: Install Wallet500 and test dependency
         run: pip install -e . pytest
-      - name: Lock Catalyst discovery, symbol identity, Binance context, Focus selection, EVM listing and cross-source truth policy
-        run: pytest -q tests/test_catalyst_wire.py tests/test_catalyst_identity_guard.py tests/test_binance_event_intelligence.py tests/test_catalyst_focus.py tests/test_catalyst_focus_binance.py tests/test_global_listing_evm_core.py tests/test_cross_source_correlation.py
+      - name: Lock Catalyst, Moonshot verification, identity, Binance, Focus, EVM and cross-source truth policy
+        run: pytest -q tests/test_catalyst_wire.py tests/test_catalyst_identity_guard.py tests/test_binance_event_intelligence.py tests/test_catalyst_focus.py tests/test_catalyst_focus_binance.py tests/test_global_listing_evm_core.py tests/test_cross_source_correlation.py tests/test_moonshot_verification_watch.py
 
   wire:
     needs: test
@@ -88,6 +92,12 @@ jobs:
           python-version: '3.12'
       - name: Install Wallet500
         run: pip install -e .
+      - name: Run Moonshot verification high-priority research lane
+        env:
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m wallet500.moonshot_verification_watch
       - name: Run raw official Catalyst discovery with Binance historical context silently
         run: python -m wallet500.catalyst_wire_binance
       - name: Fail closed on CEX symbol-to-contract identity collisions before Focus
@@ -129,6 +139,33 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m wallet500.catalyst_focus_binance
+      - name: Validate Moonshot verification truth boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          latest=json.loads(Path('data/moonshot-verification-latest.json').read_text())
+          ledger=json.loads(Path('data/moonshot-verification-ledger.json').read_text())
+          alpha=json.loads(Path('data/external-alpha-events.json').read_text())
+          assert latest['mode']=='MOONSHOT_VERIFICATION_INTELLIGENCE_V1'
+          assert latest['automatic_buy'] is False
+          assert latest['production_trade_impact']=='NONE'
+          p=ledger['policy']
+          assert p['official_x_exact_contract_priority']==98
+          assert p['double_mirror_consensus_priority']==94
+          assert p['single_mirror_can_alert'] is False
+          assert p['single_mirror_can_enter_external_alpha'] is False
+          assert p['core_veteran_age_days']==90.0
+          assert p['moonshot_verification_never_bypasses_wallet500_gates'] is True
+          for e in (alpha.get('events') or []):
+              if isinstance(e,dict) and e.get('event_type')=='MOONSHOT_VERIFIED':
+                  assert e.get('source_owner')=='moonshot'
+                  assert e.get('research_only_until_wallet500_gates_pass') is True
+                  assert e.get('automatic_buy') is False
+                  assert e.get('pair_address')
+                  assert float(e.get('liquidity_usd') or 0)>=15000.0
+          print('MOONSHOT_VERIFICATION_TRUTH_OK',latest.get('status'),latest.get('counts'))
+          PY
       - name: Validate raw event feed boundaries
         run: |
           python - <<'PY'
@@ -210,15 +247,18 @@ jobs:
                   assert gate.get('reason') in {'MULTI_EXCHANGE_LISTING','EXCEPTIONAL_SETUP'}
           print('CATALYST_FOCUS_V3_POLICY_OK', d.get('counts'))
           PY
-      - name: Persist raw evidence and Focus state atomically
+      - name: Persist raw evidence, Moonshot verification and Focus state atomically
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'wallet500-catalyst-bot'
           git config user.email 'wallet500-catalyst-bot@users.noreply.github.com'
           paths=(data/catalyst-wire-live.json data/catalyst-wire-ledger.json data/catalyst-wire-state.json)
+          for p in data/moonshot-verification-ledger.json data/moonshot-verification-latest.json data/external-alpha-events.json; do
+            if test -s "$p"; then paths+=("$p"); fi
+          done
           if test -s data/catalyst-focus-live.json; then paths+=(data/catalyst-focus-live.json); fi
           if test -s data/catalyst-focus-state.json; then paths+=(data/catalyst-focus-state.json); fi
           python scripts/atomic_publish.py \
-            --message 'data: refresh Catalyst Wire and selective Focus [skip ci]' \
+            --message 'data: refresh Catalyst Wire, Moonshot verification and selective Focus [skip ci]' \
             "${paths[@]}"
