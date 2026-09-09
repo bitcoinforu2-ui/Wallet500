@@ -13,9 +13,9 @@ from wallet500.production_status import MIN_LIQUIDITY_USD as STATUS_MIN_LIQUIDIT
 from wallet500.production_status import MIN_MARKET_AGE_DAYS as STATUS_MIN_MARKET_AGE_DAYS
 
 
-def test_canonical_policy_is_exactly_90d_15k():
-    assert CANONICAL_MIN_MARKET_AGE_DAYS == 90
-    assert CANONICAL_MIN_EXECUTION_LIQUIDITY_USD == 15_000.0
+def test_canonical_policy_is_exactly_180d_50k():
+    assert CANONICAL_MIN_MARKET_AGE_DAYS == 180
+    assert CANONICAL_MIN_EXECUTION_LIQUIDITY_USD == 50_000.0
     assert policy_matches_exactly(canonical_policy()) is True
 
 
@@ -28,10 +28,10 @@ def test_core_operator_surfaces_share_canonical_policy(monkeypatch):
     assert EMAIL_MIN_LIQUIDITY_USD == CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
 
 
-def test_noncanonical_policy_is_drift():
+def test_legacy_90d_15k_policy_is_drift():
     assert policy_matches_exactly({
-        "minimum_verified_market_age_days": 180,
-        "minimum_liquidity_usd": 50_000.0,
+        "minimum_verified_market_age_days": 90,
+        "minimum_liquidity_usd": 15_000.0,
         "exact_onchain_identity_required": True,
         "exact_dex_pair_required": True,
         "symbol_only_never_actionable": True,
