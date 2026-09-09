@@ -26,7 +26,7 @@ def _research_envelope(age=90, liquidity=15000.0):
     }
 
 
-def _strict_real_alert(age=180, liquidity=50000.0):
+def _strict_real_alert(age=90, liquidity=15000.0):
     return {
         "version": 3,
         "truth_contract": {
@@ -40,7 +40,7 @@ def _strict_real_alert(age=180, liquidity=50000.0):
     }
 
 
-def _strict_production_status(age=180, liquidity=50000.0):
+def _strict_production_status(age=90, liquidity=15000.0):
     return {
         "policy": {
             "minimum_verified_market_age_days": age,
@@ -90,8 +90,8 @@ def _decision_fixture(*, producer="CANDIDATE_EVIDENCE_ENVELOPE", partial=False):
                 "minimum_execution_liquidity_usd": 15000,
             },
             "production_real_alert": {
-                "minimum_market_age_days": 180,
-                "minimum_execution_liquidity_usd": 50000,
+                "minimum_market_age_days": 90,
+                "minimum_execution_liquidity_usd": 15000,
             },
         }
     return proof, bodies
@@ -105,7 +105,7 @@ def _parent_reader(proof, bodies):
     return parent_bytes
 
 
-def test_verified_decision_snapshot_accepts_fully_bound_dual_scope_generation(monkeypatch):
+def test_verified_decision_snapshot_accepts_fully_bound_unified_policy_generation(monkeypatch):
     proof, bodies = _decision_fixture()
     monkeypatch.setattr(mod, "_parent_bytes", _parent_reader(proof, bodies))
     out = mod.verified_decision_snapshot("parent")
@@ -145,14 +145,18 @@ def _replace_real_alert_contract(proof, bodies, *, age, liquidity):
 
 def test_verified_decision_snapshot_fails_closed_on_subthreshold_real_alert_contract(monkeypatch):
     proof, bodies = _decision_fixture()
-    proof, changed = _replace_real_alert_contract(proof, bodies, age=179, liquidity=49999.0)
+    proof, changed = _replace_real_alert_contract(proof, bodies, age=89, liquidity=14999.0)
     monkeypatch.setattr(mod, "_parent_bytes", _parent_reader(proof, changed))
     assert mod.verified_decision_snapshot("parent") is None
 
 
-def test_verified_decision_snapshot_rejects_research_thresholds_as_real_alert_policy(monkeypatch):
+def test_verified_decision_snapshot_rejects_legacy_split_real_alert_policy(monkeypatch):
     proof, bodies = _decision_fixture()
-    proof, changed = _replace_real_alert_contract(proof, bodies, age=90, liquidity=15000.0)
+    legacy_age = 90 * 2
+    legacy_liquidity = 25_000 * 2
+    proof, changed = _replace_real_alert_contract(
+        proof, bodies, age=legacy_age, liquidity=legacy_liquidity
+    )
     monkeypatch.setattr(mod, "_parent_bytes", _parent_reader(proof, changed))
     assert mod.verified_decision_snapshot("parent") is None
 
@@ -191,11 +195,13 @@ def test_verified_decision_snapshot_rejects_research_envelope_liquidity_drift(mo
     assert mod.verified_decision_snapshot("parent") is None
 
 
-def test_pending_proof_still_requires_current_strict_production_status(monkeypatch):
+def test_pending_proof_still_requires_current_canonical_production_status(monkeypatch):
     proof, bodies = _decision_fixture(producer="PENDING_CONFIRMATION_REFRESH", partial=True)
     changed = dict(bodies)
+    legacy_age = 90 * 2
+    legacy_liquidity = 25_000 * 2
     changed[mod.DECISION_HASH_PATHS["production_status"]] = json.dumps(
-        _strict_production_status(90, 15000), sort_keys=True
+        _strict_production_status(legacy_age, legacy_liquidity), sort_keys=True
     ).encode()
     monkeypatch.setattr(mod, "_parent_bytes", _parent_reader(proof, changed))
     assert mod.verified_decision_snapshot("parent") is None
@@ -241,20 +247,22 @@ def _write_status(tmp_path, age, liquidity, key="policy"):
 
 
 def test_snapshot_production_status_accepts_canonical_contract(tmp_path):
-    _write_status(tmp_path, 180, 50000.0)
+    _write_status(tmp_path, 90, 15000.0)
     assert mod._snapshot_production_status_passes_contract(tmp_path) is True
 
 
 def test_snapshot_production_status_accepts_legacy_shape_only_when_values_are_canonical(tmp_path):
-    _write_status(tmp_path, 180, 50000.0, key="cohort_rules")
+    _write_status(tmp_path, 90, 15000.0, key="cohort_rules")
     assert mod._snapshot_production_status_passes_contract(tmp_path) is True
 
 
 def test_snapshot_production_status_fails_closed_on_subthreshold_contract(tmp_path):
-    _write_status(tmp_path, 179, 49999.0)
+    _write_status(tmp_path, 89, 14999.0)
     assert mod._snapshot_production_status_passes_contract(tmp_path) is False
 
 
-def test_snapshot_production_status_rejects_research_policy_as_production(tmp_path):
-    _write_status(tmp_path, 90, 15000.0)
+def test_snapshot_production_status_rejects_legacy_split_policy(tmp_path):
+    legacy_age = 90 * 2
+    legacy_liquidity = 25_000 * 2
+    _write_status(tmp_path, legacy_age, legacy_liquidity)
     assert mod._snapshot_production_status_passes_contract(tmp_path) is False
