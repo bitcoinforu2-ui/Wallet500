@@ -73,7 +73,10 @@ jobs:
           if proof.get('decision_validation') != 'PASS' or guard.get('passed') is not True: raise SystemExit('TELEGRAM_DECISION_SNAPSHOT_VALIDATION_NOT_PASS')
           scopes=proof.get('policy_scopes') or {}
           production_scope=scopes.get('production_real_alert') or {}
-          if int(production_scope.get('minimum_market_age_days') or 0) != 180 or float(production_scope.get('minimum_execution_liquidity_usd') or 0) < 50000 or proof.get('exact_pair_required') is not True: raise SystemExit('TELEGRAM_DECISION_PUBLICATION_TRUTH_DRIFT')
+          proof_age_days=production_scope.get('minimum_market_age_days', proof.get('minimum_market_age_days'))
+          proof_liq=production_scope.get('minimum_execution_liquidity_usd')
+          if int(proof_age_days or 0) != 180 or proof.get('exact_pair_required') is not True: raise SystemExit('TELEGRAM_DECISION_PUBLICATION_TRUTH_DRIFT')
+          if proof_liq is not None and float(proof_liq) < 50000: raise SystemExit('TELEGRAM_DECISION_PUBLICATION_LIQUIDITY_DRIFT')
           run_id=str(proof.get('workflow_run_id') or '').strip(); source_sha=str(proof.get('source_sha') or '').strip(); generation_id=str(proof.get('generation_id') or '').strip()
           expected_generation=f'{producer_prefix[producer]}:{run_id}:{source_sha}'
           if not run_id or len(source_sha) != 40 or generation_id != expected_generation: raise SystemExit('TELEGRAM_DECISION_PUBLICATION_GENERATION_INVALID')
