@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from wallet500.near_alert_observatory import build, run
+from wallet500.near_alert_observatory import _apply_exact_pair_market, _refresh_live_market, build, run
 
 
 def _write(path: Path, value) -> None:
@@ -71,6 +71,66 @@ def test_near_alert_observatory_is_research_only_and_ranks_closest(tmp_path: Pat
     assert out["pending_confirmations"][0]["count"] == 96
 
 
+def test_exact_pair_live_market_populates_research_metrics_without_promoting_execution_depth():
+    row = {
+        "chain": "solana",
+        "token_address": "TOKEN",
+        "pair_address": "PAIR",
+        "exact_identity_verified": True,
+        "exact_pair_verified": True,
+        "execution_pool_liquidity_usd": 0.0,
+        "liquidity_usd": 100_000.0,
+        "liquidity_display_semantics": "PROVIDER_REPORTED_EXACT_PAIR_POOL_VALUE_INFORMATIONAL_ONLY",
+    }
+    market = {
+        "pairAddress": "PAIR",
+        "baseToken": {"address": "TOKEN"},
+        "quoteToken": {"address": "SOL"},
+        "dexId": "meteora",
+        "url": "https://dexscreener.com/solana/pair",
+        "liquidity": {"usd": 125_000},
+        "volume": {"h1": 25_000, "h24": 300_000},
+        "txns": {"h1": {"buys": 42, "sells": 21}, "h24": {"buys": 500, "sells": 400}},
+    }
+    _apply_exact_pair_market(row, market, observed_at="2026-09-09T06:30:00+00:00")
+    assert row["execution_pool_liquidity_usd"] == 0.0
+    assert row["provider_reported_pool_value_usd"] == 125_000
+    assert row["liquidity_usd"] == 125_000
+    assert row["liquidity_display_semantics"] == "PROVIDER_REPORTED_EXACT_PAIR_POOL_VALUE_INFORMATIONAL_ONLY"
+    assert row["dex_volume_h1"] == 25_000
+    assert row["dex_volume_h24"] == 300_000
+    assert row["turnover_h1"] == 0.2
+    assert row["buys_h1"] == 42
+    assert row["sells_h1"] == 21
+    assert row["market_activity_verified"] is True
+    assert row["live_market_status"] == "EXACT_PAIR_VERIFIED"
+
+
+def test_live_refresh_deduplicates_same_exact_pair_across_lists():
+    base = {
+        "chain": "solana", "token_address": "TOKEN", "pair_address": "PAIR",
+        "exact_identity_verified": True, "exact_pair_verified": True,
+        "execution_pool_liquidity_usd": 0.0,
+    }
+    payload = {"near_alert_leaderboard": [dict(base)], "closest_to_real_alert": [dict(base)]}
+    calls = []
+
+    def fake_fetch(row):
+        calls.append((row["chain"], row["token_address"], row["pair_address"]))
+        return {
+            "pairAddress": "PAIR", "baseToken": {"address": "TOKEN"}, "quoteToken": {"address": "SOL"},
+            "liquidity": {"usd": 50_000}, "volume": {"h1": 5_000}, "txns": {"h1": {"buys": 4, "sells": 2}},
+        }
+
+    out = _refresh_live_market(payload, fetcher=fake_fetch)
+    assert len(calls) == 1
+    assert out["live_market_refresh"]["unique_pairs_requested"] == 1
+    assert out["live_market_refresh"]["exact_pairs_verified"] == 1
+    assert out["near_alert_leaderboard"][0]["dex_volume_h1"] == 5_000
+    assert out["closest_to_real_alert"][0]["turnover_h1"] == 0.1
+    assert out["live_market_refresh"]["execution_gate_changed"] is False
+
+
 def test_run_writes_observatory_file(tmp_path: Path):
     _write(tmp_path / "real-alerts.json", {"counts": {}, "verified_watch": []})
     _write(tmp_path / "revival-funnel-diagnostics.json", {})
@@ -80,3 +140,4 @@ def test_run_writes_observatory_file(tmp_path: Path):
     saved = json.loads((tmp_path / "near-alert-observatory.json").read_text(encoding="utf-8"))
     assert saved["mode"] == out["mode"]
     assert saved["truth_contract"]["signal_score_is_probability"] is False
+    assert saved["live_market_refresh"]["unique_pairs_requested"] == 0
