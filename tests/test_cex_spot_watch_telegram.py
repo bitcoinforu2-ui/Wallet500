@@ -22,102 +22,65 @@ def candidate(symbol="KCTUSDT"):
         "token_address": "0x63230728bc219d991d2995ce92e96c16fcf8beb6",
         "pair_address": "0xpair",
         "spot_revival_score": 31,
-        "change_24h_max_pct": 45.04,
         "leaderboard_best_rank": 3,
-        "leaderboard_exchanges": ["gate"],
-        "confirmations": 1,
-        "exchanges": ["gate"],
-        "price_acceleration_max_pct": 0.3,
-        "volume_acceleration_max_pct": 1.0,
-        "dex_liquidity_usd": 12345,
-        "dex_volume_h1": 100,
-        "markets": [{"exchange": "gate", "volume_24h": 546200, "change_24h_pct": 45.04}],
-        "milestones": {"first_watch": {"observed_at": "2026-09-07T06:00:00+00:00"}},
     }
 
 
 def source(rows):
-    return {"generated_at": "2026-09-07T07:20:00+00:00", "candidates": rows}
+    return {"generated_at": "2026-09-10T18:20:00+00:00", "candidates": rows}
 
 
-def test_first_configured_run_baselines_existing_candidates_without_sending(tmp_path: Path, monkeypatch):
+def test_research_candidate_never_sends_even_with_telegram_secrets(tmp_path: Path, monkeypatch):
     _write(tmp_path / "cex-spot-identity-radar.json", source([candidate()]))
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
     calls = []
-    monkeypatch.setattr(mod, "_send", lambda *args, **kwargs: calls.append(args) or (1, 1))
+    monkeypatch.setattr(mod, "_send", lambda *args, **kwargs: calls.append(args))
 
-    report = mod.run(tmp_path, datetime(2026, 9, 7, 7, 30, tzinfo=timezone.utc))
+    report = mod.run(tmp_path, datetime(2026, 9, 10, 19, 0, tzinfo=timezone.utc))
 
-    assert report["first_run_baseline"] is True
-    assert report["baseline_count"] == 1
+    assert report["status"] == "RESEARCH_ONLY_NOTIFICATION_DISABLED"
+    assert report["telegram_delivery_enabled"] is False
+    assert report["eligible_count"] == 1
     assert report["delivered_count"] == 0
+    assert report["suppressed_count"] == 1
+    assert report["truth_contract"]["research_only_telegram_delivery_disabled"] is True
+    assert calls == []
+    assert not (tmp_path / "cex-spot-telegram-state.json").exists()
+
+
+def test_repeat_runs_never_rearm_or_send_research_alerts(tmp_path: Path, monkeypatch):
+    _write(tmp_path / "cex-spot-identity-radar.json", source([candidate()]))
+    calls = []
+    monkeypatch.setattr(mod, "_send", lambda *args, **kwargs: calls.append(args))
+
+    first = mod.run(tmp_path, datetime(2026, 9, 10, 19, 0, tzinfo=timezone.utc))
+    second = mod.run(tmp_path, datetime(2026, 9, 10, 20, 0, tzinfo=timezone.utc))
+
+    assert first["delivered_count"] == second["delivered_count"] == 0
+    assert first["suppressed_count"] == second["suppressed_count"] == 1
     assert calls == []
 
 
-def test_new_candidate_after_initialization_sends_once_and_dedupes(tmp_path: Path, monkeypatch):
-    _write(tmp_path / "cex-spot-identity-radar.json", source([]))
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot")
-    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
-    calls = []
-    monkeypatch.setattr(mod, "_send", lambda token, chat, text: calls.append(text) or (77, 1))
-
-    mod.run(tmp_path, datetime(2026, 9, 7, 7, 0, tzinfo=timezone.utc))
-    _write(tmp_path / "cex-spot-identity-radar.json", source([candidate()]))
-    first = mod.run(tmp_path, datetime(2026, 9, 7, 7, 15, tzinfo=timezone.utc))
-    second = mod.run(tmp_path, datetime(2026, 9, 7, 7, 30, tzinfo=timezone.utc))
-
-    assert first["delivered_count"] == 1
-    assert second["delivered_count"] == 0
-    assert len(calls) == 1
-    assert "CEX EARLY WATCH" in calls[0]
-    assert "NOT REAL ALERT / NOT BUY SIGNAL" in calls[0]
-    assert "DEX execution-pool liquidity" in calls[0]
-
-
-def test_reentry_after_six_hours_can_alert_again(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot")
-    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
-    calls = []
-    monkeypatch.setattr(mod, "_send", lambda token, chat, text: calls.append(text) or (88, 1))
-
-    _write(tmp_path / "cex-spot-identity-radar.json", source([]))
-    mod.run(tmp_path, datetime(2026, 9, 7, 0, 0, tzinfo=timezone.utc))
-
-    _write(tmp_path / "cex-spot-identity-radar.json", source([candidate()]))
-    mod.run(tmp_path, datetime(2026, 9, 7, 0, 15, tzinfo=timezone.utc))
-
-    _write(tmp_path / "cex-spot-identity-radar.json", source([]))
-    mod.run(tmp_path, datetime(2026, 9, 7, 1, 0, tzinfo=timezone.utc))
-
-    _write(tmp_path / "cex-spot-identity-radar.json", source([candidate()]))
-    report = mod.run(tmp_path, datetime(2026, 9, 7, 7, 0, tzinfo=timezone.utc))
-
-    assert report["delivered_count"] == 1
-    assert len(calls) == 2
-
-
-def test_unverified_or_young_identity_never_sends(tmp_path: Path, monkeypatch):
+def test_unverified_or_young_identity_is_not_even_research_eligible(tmp_path: Path):
     bad = candidate()
     bad["market_age_min_days"] = 59
     _write(tmp_path / "cex-spot-identity-radar.json", source([bad]))
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot")
-    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
-    calls = []
-    monkeypatch.setattr(mod, "_send", lambda *args, **kwargs: calls.append(args) or (1, 1))
 
-    report = mod.run(tmp_path, datetime(2026, 9, 7, 7, 30, tzinfo=timezone.utc))
+    report = mod.run(tmp_path, datetime(2026, 9, 10, 19, 0, tzinfo=timezone.utc))
 
     assert report["eligible_count"] == 0
-    assert calls == []
+    assert report["delivered_count"] == 0
+    assert report["suppressed_count"] == 0
 
 
-def test_missing_secrets_never_mutates_state(tmp_path: Path, monkeypatch):
+def test_report_is_written_without_telegram_configuration(tmp_path: Path, monkeypatch):
     _write(tmp_path / "cex-spot-identity-radar.json", source([candidate()]))
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
 
-    report = mod.run(tmp_path, datetime(2026, 9, 7, 7, 30, tzinfo=timezone.utc))
+    report = mod.run(tmp_path, datetime(2026, 9, 10, 19, 0, tzinfo=timezone.utc))
+    persisted = json.loads((tmp_path / "cex-spot-telegram-report.json").read_text(encoding="utf-8"))
 
-    assert report["status"] == "SKIPPED_UNCONFIGURED_NO_STATE_WRITE"
-    assert not (tmp_path / "cex-spot-telegram-state.json").exists()
+    assert report == persisted
+    assert report["delivered_count"] == 0
