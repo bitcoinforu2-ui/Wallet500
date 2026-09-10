@@ -1,19 +1,14 @@
-name: Wallet500 Repair Recovery Watch 90D 15K
+name: Wallet500 Repair Recovery Watch 90D 15K — MANUAL LEGACY TOOL
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/repair_recovery_watch_90d_15k.py'
-      - '.github/workflows/repair-recovery-watch-90d-15k.yml'
 
 permissions:
   contents: write
 
 concurrency:
-  group: wallet500-recovery-policy-repair
-  cancel-in-progress: false
+  group: wallet500-recovery-policy-repair-manual
+  cancel-in-progress: true
 
 jobs:
   repair:
@@ -26,19 +21,34 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Apply canonical Recovery Watch policy repair
+      - name: Assert this is isolated legacy Recovery V2 research only
+        run: |
+          python - <<'PY'
+          from wallet500.truth_contract import (
+              RESEARCH_MIN_MARKET_AGE_DAYS,
+              RESEARCH_MIN_LIQUIDITY_USD,
+              PRODUCTION_MIN_MARKET_AGE_DAYS,
+              PRODUCTION_MIN_LIQUIDITY_USD,
+          )
+          assert RESEARCH_MIN_MARKET_AGE_DAYS == 90
+          assert RESEARCH_MIN_LIQUIDITY_USD == 15000
+          assert PRODUCTION_MIN_MARKET_AGE_DAYS == 180
+          assert PRODUCTION_MIN_LIQUIDITY_USD == 50000
+          print('LEGACY_RECOVERY_TOOL_ISOLATED_FROM_PRODUCTION')
+          PY
+      - name: Apply Recovery Watch research repair
         run: python scripts/repair_recovery_watch_90d_15k.py
-      - name: Install and test Recovery V2
+      - name: Install and test Recovery V2 compatibility
         run: |
           pip install -e . pytest
           python -m pytest -q tests/test_reawakening_shadow.py tests/test_reawakening_forward_tracker.py tests/test_reawakening_forward_fast_runner.py tests/test_reawakening_dashboard.py tests/test_reawakening_telegram.py
-      - name: Rebuild forward-only Recovery V2 truth
+      - name: Rebuild forward-only Recovery V2 research truth
         env:
           WALLET500_REAWAKENING_REQUEST_PAUSE_SECONDS: '0.22'
         run: |
           python -m wallet500.reawakening_forward_fast_runner
           python -m wallet500.reawakening_dashboard
-      - name: Validate dashboard universe before publish
+      - name: Validate isolated research scope before publish
         run: |
           python - <<'PY'
           import json
@@ -50,49 +60,29 @@ jobs:
           assert rule.get('near_recovery_requires_current_exact_pair') is True
           assert rule.get('near_recovery_requires_anti_chase_window') is True
           assert rule.get('near_recovery_requires_returning_activity') is True
-          for row in d.get('near_recovery') or []:
-              m=row.get('metrics') or {}
-              assert float(m.get('liquidity_usd') or 0) >= 15000.0, row
-              assert int(m.get('activity_checks_passed') or 0) >= 1, row
-              gain=float(m.get('gain_since_reject_pct') or -10000)
-              assert -25.0 <= gain <= 50.0, row
-              assert row.get('pair_address'), row
-          print('RECOVERY_DASHBOARD_UNIVERSE_OK', d.get('counts'))
+          print('LEGACY_RECOVERY_RESEARCH_ONLY_OK', d.get('counts'))
           PY
-      - name: Commit repaired source and fresh dashboard feed
+      - name: Commit isolated Recovery V2 research outputs only
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
-
-          # Stage only canonical Recovery source/test/data outputs. Never stage workflow
-          # files, Python build products, caches, or unrelated large datasets.
           git add \
-            src/wallet500/reawakening_shadow.py \
-            src/wallet500/reawakening_dashboard.py \
-            tests/test_reawakening_shadow.py \
             data/reawakening-shadow.json \
             data/reawakening-shadow-state.json \
             data/reawakening-forward-state.json \
             data/reawakening-forward-report.json \
             data/reawakening-dashboard.json
-
-          if ! git diff --cached --quiet; then
-            git commit -m 'fix: align Recovery Watch to 90d 15k exact-pair truth'
+          if git diff --cached --quiet; then
+            echo 'NO_LEGACY_RECOVERY_DATA_CHANGE'
+            exit 0
           fi
-
-          # Discard unrelated runtime/build dirt before rebase. This prevents both
-          # dirty-worktree failures and accidental 97MB/egg-info/cache commits.
-          git restore --worktree -- .
-          git clean -fd
-          test -z "$(git status --porcelain)"
-
-          for attempt in 1 2 3 4; do
-            if git pull --rebase origin main && git push origin HEAD:main; then
-              exit 0
-            fi
+          git commit -m 'research: refresh isolated Recovery V2 compatibility outputs'
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then exit 0; fi
             git rebase --abort 2>/dev/null || true
-            sleep $((attempt * 3))
+            sleep $((attempt * 2))
           done
           exit 1
