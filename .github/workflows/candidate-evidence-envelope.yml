@@ -28,6 +28,7 @@ on:
       - 'src/wallet500/revival_prewaking_wallet_evidence_v2.py'
       - 'src/wallet500/truth_contract.py'
       - 'src/wallet500/safe_json.py'
+      - 'src/wallet500/truth_input_preflight.py'
       - 'src/wallet500/normalize_age_aliases.py'
       - 'src/wallet500/decision_generation.py'
       - 'scripts/atomic_publish.py'
@@ -47,8 +48,6 @@ on:
 permissions:
   contents: write
 
-# One serialized truth-publishing lane shared with the primary live scan.
-# Collectors may run concurrently, but canonical decision publication may not.
 concurrency:
   group: wallet500-live-scan-publisher
   cancel-in-progress: false
@@ -73,6 +72,7 @@ jobs:
           python -m pytest -q \
             tests/test_truth_contract.py \
             tests/test_safe_json.py \
+            tests/test_truth_input_preflight.py \
             tests/test_mature_age_gate.py \
             tests/test_candidate_evidence_envelope.py \
             tests/test_pending_confirmation_truth_normalizer.py \
@@ -105,6 +105,7 @@ jobs:
             source_sha="$(git rev-parse HEAD)"
             export SOURCE_SHA="$source_sha"
 
+            python -m wallet500.truth_input_preflight
             python -m wallet500.mature_age_gate --cex --revival
             python -m wallet500.production_age_governance
             python -m wallet500.candidate_evidence_envelope
@@ -116,9 +117,6 @@ jobs:
             python -m wallet500.strict_validation
             python -m wallet500.production_status
             python -m wallet500.decision_snapshot_guard
-
-            # Forward-clean derived output: legacy 60d labels are normalized only
-            # after all legacy readers have completed. Numeric age remains proof.
             python -m wallet500.normalize_age_aliases
             python -m wallet500.decision_generation
 
@@ -161,6 +159,7 @@ jobs:
               data/production-status.json \
               data/decision-snapshot-integrity.json \
               data/decision-generation.json \
+              data/truth-input-health.json \
               data/pipeline-integrity-audit.json
             rc=$?
             set -e
