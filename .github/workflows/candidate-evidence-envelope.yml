@@ -134,6 +134,8 @@ jobs:
               'real_alerts':'data/real-alerts.json',
               'revival_funnel':'data/revival-funnel-diagnostics.json',
               'cross_signal_fusion':'data/cross-signal-fusion-v2.json',
+              'system_health':'data/system-health.json',
+              'strict_validation':'data/strict-validation.json',
               'production_status':'data/production-status.json',
               'decision_integrity':'data/decision-snapshot-integrity.json',
           }
@@ -205,7 +207,7 @@ jobs:
                   'research_evidence':{'minimum_market_age_days':90,'minimum_execution_liquidity_usd':15000},
                   'production_real_alert':{'minimum_market_age_days':180,'minimum_execution_liquidity_usd':50000},
               },
-              'policy_surfaces_bound':['revival_universe','cex_revival','active_age_gate','candidate_evidence','real_alerts','revival_funnel','production_status','decision_integrity'],
+              'policy_surfaces_bound':['revival_universe','cex_revival','active_age_gate','candidate_evidence','real_alerts','revival_funnel','cross_signal_fusion','system_health','strict_validation','production_status','decision_integrity'],
               'hashes':{k:hashlib.sha256(v).hexdigest() for k,v in payloads.items()},
               'proof_rule':'ATOMIC_COMMIT_BINDS_RESEARCH_90D_15K_AND_PRODUCTION_180D_50K_WITH_EXACT_PAIR_IDENTITY',
           }
@@ -228,6 +230,8 @@ jobs:
               data/real-alerts.json \
               data/revival-funnel-diagnostics.json \
               data/cross-signal-fusion-v2.json \
+              data/system-health.json \
+              data/strict-validation.json \
               data/production-status.json \
               data/decision-snapshot-integrity.json \
               data/decision-publish-evidence.json
