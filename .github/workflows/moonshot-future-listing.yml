@@ -8,17 +8,21 @@ on:
     paths:
       - 'src/wallet500/moonshot_future_listing_watch.py'
       - 'src/wallet500/moonshot_verification_watch.py'
+      - 'src/wallet500/moonshot_instant_alert.py'
       - 'tests/test_moonshot_future_listing_watch.py'
       - 'tests/test_moonshot_verification_watch.py'
+      - 'tests/test_moonshot_instant_alert.py'
       - '.github/workflows/moonshot-future-listing.yml'
   push:
     branches: [main]
     paths:
       - 'src/wallet500/moonshot_future_listing_watch.py'
       - 'src/wallet500/moonshot_verification_watch.py'
+      - 'src/wallet500/moonshot_instant_alert.py'
       - 'scripts/atomic_publish.py'
       - 'tests/test_moonshot_future_listing_watch.py'
       - 'tests/test_moonshot_verification_watch.py'
+      - 'tests/test_moonshot_instant_alert.py'
       - '.github/workflows/moonshot-future-listing.yml'
 
 permissions:
@@ -38,8 +42,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -e . pytest
-      - name: Lock Moonshot future-listing source, persistence and canonical gate semantics
-        run: pytest -q tests/test_moonshot_future_listing_watch.py tests/test_moonshot_verification_watch.py
+      - name: Lock Moonshot source, instant contract Telegram, persistence and gate semantics
+        run: pytest -q tests/test_moonshot_future_listing_watch.py tests/test_moonshot_verification_watch.py tests/test_moonshot_instant_alert.py
 
   watch:
     needs: test
@@ -65,6 +69,11 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m wallet500.moonshot_future_listing_watch
+      - name: Send Moonshot exact-contract Telegram immediately after source detection
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m wallet500.moonshot_instant_alert
       - name: Validate future-listing truth boundary
         run: |
           python - <<'PY'
@@ -72,6 +81,7 @@ jobs:
           from pathlib import Path
           latest=json.loads(Path('data/moonshot-future-listing-latest.json').read_text())
           ledger=json.loads(Path('data/moonshot-future-listing-ledger.json').read_text())
+          state=json.loads(Path('data/moonshot-future-listing-state.json').read_text())
           assert latest['mode']=='MOONSHOT_FUTURE_LISTING_INTELLIGENCE_V1'
           assert latest['automatic_buy'] is False
           assert latest['production_trade_impact']=='NONE'
@@ -83,6 +93,7 @@ jobs:
           assert p['telegram_gate']=='current canonical REAL_ALERT for exact same Solana mint'
           assert p['telegram_does_not_duplicate_thresholds'] is True
           assert p['moonshot_future_listing_never_bypasses_wallet500_gates'] is True
+          assert isinstance(state.get('alerted'), dict)
           for e in (ledger.get('events') or {}).values():
               assert e.get('event_type')=='MOONSHOT_FUTURE_LISTING'
               assert e.get('source_owner')=='moonshot'
@@ -94,6 +105,11 @@ jobs:
                   assert e.get('phase')=='FUTURE_LISTING_PENDING'
                   assert (e.get('wallet500_gate') or {}).get('pass') is True
                   assert e.get('source_url')
+          for a in state.get('alerted', {}).values():
+              if a.get('alert_type')=='MOONSHOT_OFFICIAL_ANNOUNCEMENT_EXACT_CONTRACT':
+                  assert a.get('token')
+                  assert a.get('wallet500_gate_required') is False
+                  assert a.get('automatic_buy') is False
           print('MOONSHOT_FUTURE_LISTING_TRUTH_OK',latest.get('status'),latest.get('counts'))
           PY
       - name: Persist Moonshot future-listing ledger and state atomically
