@@ -10,11 +10,13 @@ ROOT = Path(__file__).resolve().parents[1]
 WF = ROOT / ".github" / "workflows"
 SRC = ROOT / "src" / "wallet500"
 
+# Only production-authoritative / dashboard-decision files belong to the single
+# canonical generation boundary. Research/advisory fusion may refresh separately
+# but can never authorize production.
 CANONICAL_DECISION_FILES = {
     "data/candidate-evidence-envelope.json",
     "data/real-alerts.json",
     "data/revival-funnel-diagnostics.json",
-    "data/cross-signal-fusion-v2.json",
     "data/system-health.json",
     "data/strict-validation.json",
     "data/production-status.json",
@@ -30,18 +32,11 @@ PATH_RE = re.compile(r"data/[A-Za-z0-9_.\-/]+\.json")
 
 
 def _workflow_direct_writes(text: str) -> set[str]:
-    """Return only JSON paths actually passed to a publishing command.
-
-    Merely listing a canonical file as an input/trigger must not classify the
-    workflow as a writer. Multiline atomic_publish commands are followed only
-    while shell continuation backslashes remain active.
-    """
     out: set[str] = set()
     lines = text.splitlines()
     i = 0
     while i < len(lines):
-        line = lines[i]
-        stripped = line.strip()
+        stripped = lines[i].strip()
         if "git add " in stripped:
             out.update(PATH_RE.findall(stripped))
         if "atomic_publish.py" in stripped or "publish_verified_snapshot.py" in stripped:
@@ -97,7 +92,7 @@ def audit() -> dict:
         if re.search(r"except Exception:\s*\n\s*return (default|\{\}|\[\])", text):
             silent_truth_loaders.append(str(p.relative_to(ROOT)))
     if silent_truth_loaders:
-        findings.append({"severity": "WARN", "code": "SILENT_TRUTH_JSON_DEFAULT_REMAINS", "files": silent_truth_loaders})
+        findings.append({"severity": "WARN", "code": "SILENT_TRUTH_JSON_DEFAULT_REMAINS_FENCED_BY_PREFLIGHT", "files": silent_truth_loaders})
 
     policy = {
         "research_min_age_days": 90,
@@ -108,12 +103,13 @@ def audit() -> dict:
     }
     critical = [x for x in findings if x["severity"] == "CRITICAL"]
     return {
-        "version": 3,
+        "version": 4,
         "status": "FAIL" if critical else "PASS_WITH_WARNINGS" if findings else "PASS",
         "workflow_count": workflow_count,
         "canonical_writer_map": {k: sorted(set(v)) for k, v in sorted(writers.items()) if k in CANONICAL_DECISION_FILES},
         "canonical_writer_concurrency": {x: concurrency.get(x) for x in sorted(ALLOWED_CANONICAL_PUBLISHERS)},
         "policy_expected": policy,
+        "advisory_excluded_from_canonical_generation": ["data/cross-signal-fusion-v2.json"],
         "findings": findings,
         "critical_count": len(critical),
         "warning_count": sum(1 for x in findings if x["severity"] == "WARN"),
