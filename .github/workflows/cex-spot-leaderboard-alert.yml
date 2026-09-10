@@ -40,7 +40,7 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e . pytest
-      - name: Test leaderboard, identity, divergence and Telegram contracts
+      - name: Test leaderboard, identity, divergence and research notification boundary
         run: >-
           python -m pytest -q
           tests/test_cex_spot_revival.py
@@ -106,12 +106,9 @@ jobs:
                   raise SystemExit('CEX_RESEARCH_ACTIONABLE_LEAK')
           print('CEX_LEADERBOARD_FAIL_CLOSED_VALID')
           PY
-      - name: Send selective forward-only Telegram alerts for newly exact veteran discoveries
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - name: Record CEX research telemetry without user-facing Telegram delivery
         run: python -m wallet500.cex_spot_watch_telegram
-      - name: Publish fresh research and Telegram state with bounded retries
+      - name: Publish fresh research state with bounded retries
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -121,7 +118,6 @@ jobs:
             data/cex-spot-revival-radar.json
             data/cex-spot-identity-radar.json
             data/cex-spot-leaderboard.json
-            data/cex-spot-telegram-state.json
             data/cex-spot-telegram-report.json
             data/cex-spot-state.json
             data/cex-spot-state.json.gz
