@@ -1,12 +1,18 @@
 name: Wallet500 Research Decision Engine
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - "Wallet500 Near Alert Observatory"
+    types: [completed]
   schedule:
     - cron: '17 * * * *'
   push:
     branches: [main]
     paths:
       - 'src/wallet500/research_decision_engine.py'
+      - 'data/near-alert-observatory.json'
+      - 'data/cex-revival-radar.json'
       - 'data/filter-tuning-advisor.json'
       - 'data/rejected-outcome-report.json'
       - 'data/case-study-cyberleek.json'
@@ -21,12 +27,13 @@ concurrency:
   cancel-in-progress: false
 jobs:
   advise:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -50,15 +57,28 @@ jobs:
           assert any(p.get('hypothesis_id')=='CASE::DUSD' for p in d.get('proposals',[])), 'DUSD case disconnected from research engine'
           print(d['decision_states'])
           PY
-      - name: Publish advisory output
+      - name: Publish newest advisory output with bounded retries
         run: |
-          if [ -z "$(git status --porcelain -- data/research-decision-engine.json)" ]; then
-            echo 'No advisory change'
-            exit 0
-          fi
+          set -euo pipefail
           git config user.name 'wallet500-research-bot'
           git config user.email 'wallet500-research-bot@users.noreply.github.com'
-          git add data/research-decision-engine.json
-          git commit -m 'research: refresh decision engine advisory'
-          git pull --rebase origin main
-          git push origin HEAD:main
+          for attempt in $(seq 1 12); do
+            echo "Research decision publish attempt $attempt/12"
+            git fetch origin main
+            git reset --hard origin/main
+            python -m wallet500.research_decision_engine
+            if [ -z "$(git status --porcelain -- data/research-decision-engine.json)" ]; then
+              echo 'No advisory change'
+              exit 0
+            fi
+            git add data/research-decision-engine.json
+            git commit -m 'research: refresh decision engine advisory'
+            if git push origin HEAD:main; then
+              echo 'Fresh research decision output published'
+              exit 0
+            fi
+            echo 'Main moved during publish; retrying from newest main'
+            sleep 1
+          done
+          echo 'Research decision publisher failed after bounded retries'
+          exit 1
