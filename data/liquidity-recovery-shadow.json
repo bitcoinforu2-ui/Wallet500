@@ -1,0 +1,59 @@
+{
+  "version": 3,
+  "mode": "RESEARCH_ONLY_LIQUIDITY_RECOVERY_SHADOW_V3",
+  "contract": "LIQUIDITY_RECOVERY_FORWARD_ONLY_V3",
+  "generated_at": "2026-09-10T09:09:20.620514+00:00",
+  "v3_started_at": "2026-09-10T09:09:20.620514+00:00",
+  "production_gate_changed": false,
+  "production_liquidity_gate_usd": 50000.0,
+  "research_floor_usd": 15000.0,
+  "automatic_buy": false,
+  "no_hindsight": true,
+  "selection_rule": {
+    "source": "LIVE_SURVIVAL_FAILED",
+    "market_age_days_gte": 90.0,
+    "reject_liquidity_range_usd": [
+      15000.0,
+      50000.0
+    ],
+    "required_quality_reason": "PASSED_SCORE_LIQUIDITY_VOLUME_ACTIVITY_MANIPULATION",
+    "liquidity_reasons": [
+      "CURRENT_LIQUIDITY_BELOW_15K",
+      "CURRENT_LIQUIDITY_BELOW_50K"
+    ],
+    "hard_excluded_reasons": [
+      "PARABOLIC_MOVE_ALREADY_REVERSING",
+      "PUMP_THEN_FAST_REVERSAL",
+      "RUG_PULL_CONFIRMED",
+      "VERIFIED_PEAK_DRAWDOWN_BELOW_MINUS_25PCT",
+      "VERIFIED_RETURN_BELOW_MINUS_25PCT"
+    ]
+  },
+  "recovery_rule": {
+    "liquidity_growth_from_reject_gte_pct": 15.0,
+    "liquidity_retention_gte": 0.9,
+    "confirmation_observations": 2,
+    "confirmation_span_minutes_gte": 15.0,
+    "gain_since_reject_pct_range": [
+      -20.0,
+      35.0
+    ],
+    "exact_pair_locked": true,
+    "forward_only": true
+  },
+  "activity_separator": {
+    "volume_h1_gte_usd": 43000.0,
+    "turnover_h1_gte": 0.2,
+    "txns_h1_gte": 350,
+    "buy_sell_ratio_h1_gte": 1.18,
+    "minimum_checks_available": 3,
+    "minimum_checks_passed": 3
+  },
+  "counts": {
+    "rejected_ledger_records": 926,
+    "eligible_below_50k_rejects": 0,
+    "exact_pair_tracker_matches": 0,
+    "shadow_triggers": 0
+  },
+  "targets": []
+}
