@@ -1,6 +1,8 @@
 import json
 
 from wallet500.telegram_alerts import (
+    MIN_LIQUIDITY_USD,
+    MIN_MARKET_AGE_DAYS,
     _fmt_israel_time,
     _is_actionable_real_alert,
     _merge_display_context,
@@ -8,6 +10,10 @@ from wallet500.telegram_alerts import (
     _pair_key,
     _tier,
     run,
+)
+from wallet500.policy import (
+    CANONICAL_MIN_EXECUTION_LIQUIDITY_USD,
+    CANONICAL_MIN_MARKET_AGE_DAYS,
 )
 
 
@@ -64,6 +70,11 @@ def _real_alert():
     }
 
 
+def test_telegram_production_thresholds_are_canonical():
+    assert MIN_MARKET_AGE_DAYS == CANONICAL_MIN_MARKET_AGE_DAYS == 180
+    assert MIN_LIQUIDITY_USD == CANONICAL_MIN_EXECUTION_LIQUIDITY_USD == 50_000.0
+
+
 def test_exact_pair_is_required_for_alert():
     row = _row()
     assert _tier(row) == "HIGH_CONVICTION"
@@ -73,14 +84,24 @@ def test_exact_pair_is_required_for_alert():
 
 def test_verified_180_day_market_age_is_required_for_alert():
     row = _row()
-    row["market_age_min_days"] = 59
+    row["market_age_min_days"] = 179
     assert _tier(row) is None
+    row["market_age_min_days"] = 180
+    assert _tier(row) == "HIGH_CONVICTION"
     row = _row()
     row["market_age_verified"] = False
     assert _tier(row) is None
     row = _row()
     row.pop("market_age_min_days")
     assert _tier(row) is None
+
+
+def test_verified_50k_execution_liquidity_boundary_is_required():
+    row = _row()
+    row["live_liquidity_usd"] = 49_999
+    assert _tier(row) is None
+    row["live_liquidity_usd"] = 50_000
+    assert _tier(row) == "HIGH_CONVICTION"
 
 
 def test_real_alert_must_be_explicitly_actionable():
@@ -99,12 +120,7 @@ def test_dedupe_key_contains_pair_and_message_exposes_manual_promotion_dex_and_t
     row = _row()
     assert _pair_key(row) == "bsc:0xabc:0xpair"
     display = _merge_display_context(row, _real_alert())
-    msg = _message(
-        display,
-        "HIGH_CONVICTION",
-        sent_at="2026-09-05T14:30:00+00:00",
-        alert_event_id="abc123",
-    )
+    msg = _message(display, "HIGH_CONVICTION", sent_at="2026-09-05T14:30:00+00:00", alert_event_id="abc123")
     assert "HIGH-CONVICTION BUY REVIEW" in msg
     assert "🆕 NEW REAL ALERT" in msg
     assert "תאריך ושעת שליחת ההתראה (ישראל): 05/09/2026 17:30:00" in msg
@@ -118,37 +134,23 @@ def test_dedupe_key_contains_pair_and_message_exposes_manual_promotion_dex_and_t
     assert "DEX: pancakeswap" in msg
     assert "Pair identity: EXACT LOCK" in msg
     assert "Market age: ≥420d" in msg
+    assert "min $50K" in msg
     assert "Positive evidence: VERIFIED_SOCIAL" in msg
     assert "Verified evidence: SMART_MONEY, VERIFIED_SOCIAL" in msg
     assert "OPEN DEX: https://dexscreener.com/bsc/0xpair" in msg
 
 
 def test_unconfigured_scan_lane_cannot_overwrite_production_telegram_truth(tmp_path, monkeypatch):
-    existing_report = {
-        "version": 10,
-        "configured": True,
-        "delivered_count": 1,
-        "delivered": [{"alert_event_id": "keep-me"}],
-    }
-    existing_state = {
-        "sent": {
-            "bsc:0xabc:0xpair": {
-                "actionable": True,
-                "alert_event_id": "keep-me",
-            }
-        }
-    }
+    existing_report = {"version": 10, "configured": True, "delivered_count": 1, "delivered": [{"alert_event_id": "keep-me"}]}
+    existing_state = {"sent": {"bsc:0xabc:0xpair": {"actionable": True, "alert_event_id": "keep-me"}}}
     (tmp_path / "telegram-alert-report.json").write_text(json.dumps(existing_report), encoding="utf-8")
     (tmp_path / "telegram-alert-state.json").write_text(json.dumps(existing_state), encoding="utf-8")
     (tmp_path / "active-qualified-candidates.json").write_text("[]", encoding="utf-8")
     (tmp_path / "real-alerts.json").write_text('{"alerts": []}', encoding="utf-8")
-
     monkeypatch.setenv("WALLET500_OUTPUT_DIR", str(tmp_path))
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
-
     result = run()
-
     assert result == existing_report
     assert json.loads((tmp_path / "telegram-alert-report.json").read_text()) == existing_report
     assert json.loads((tmp_path / "telegram-alert-state.json").read_text()) == existing_state
