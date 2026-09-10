@@ -81,14 +81,20 @@ jobs:
           import re
           auth_tag='<script src="/Wallet500/wallet500-auth.js"></script>'
           moonshot_tag='<script src="/Wallet500/dashboard-moonshot-overlay.js"></script>'
-          live_nav='''<nav class="nav"><a href="/Wallet500/">🔥 Live</a><a href="/Wallet500/catalyst/">⚡ Catalyst</a><a href="/Wallet500/alerts/">🚨 Alerts</a><a href="/Wallet500/status/">📊 מצב הפרויקט</a><a href="/Wallet500/revival/">♻ Revival</a><a href="/Wallet500/research/">🧠 Learning</a><a href="/Wallet500/performance/">💵 ביצועים</a><a href="/Wallet500/social/">📡 Social</a><a href="/Wallet500/control/">⚙ Control</a><a href="/Wallet500/terminal/">🖥 Terminal</a></nav>'''
+          live_nav='''<nav class="tabs" aria-label="Wallet500 sections"><a class="tab" href="/Wallet500/">🔥 Live</a><a class="tab" href="/Wallet500/catalyst/">⚡ Catalyst</a><a class="tab" href="/Wallet500/alerts/">🚨 Alerts</a><a class="tab" href="/Wallet500/status/">📊 מצב הפרויקט</a><a class="tab" href="/Wallet500/revival/">♻ Revival</a><a class="tab" href="/Wallet500/research/">🧠 Learning</a><a class="tab" href="/Wallet500/performance/">💵 ביצועים</a><a class="tab" href="/Wallet500/social/">📡 Social</a><a class="tab" href="/Wallet500/control/">⚙ Control</a><a class="tab" href="/Wallet500/terminal/">🖥 Terminal</a></nav>'''
           for page in Path('_site').rglob('*.html'):
               s=page.read_text(encoding='utf-8')
               s=re.sub(r'<style id="w500-sticky-rubric-source">.*?</style>', '', s, flags=re.S|re.I)
               s=re.sub(r'<style id="w500-rubric-style">.*?</style>', '', s, flags=re.S|re.I)
               s=re.sub(r'<nav id="w500-experiment-rubric"[^>]*>.*?</nav>', '', s, flags=re.S|re.I)
               if page.as_posix() in {'_site/index.html', '_site/live/index.html'}:
-                  s=re.sub(r'<div class="nav">.*?</div>|<nav class="nav">.*?</nav>', live_nav, s, count=1, flags=re.S|re.I)
+                  nav_pattern=r'<div class="nav">.*?</div>|<nav class="nav">.*?</nav>'
+                  if re.search(nav_pattern, s, flags=re.S|re.I):
+                      s=re.sub(nav_pattern, live_nav, s, count=1, flags=re.S|re.I)
+                  elif re.search(r'</header\s*>', s, flags=re.I):
+                      s=re.sub(r'</header\s*>', live_nav+'\n</header>', s, count=1, flags=re.I)
+                  else:
+                      s=live_nav+'\n'+s
                   if moonshot_tag not in s:
                       if re.search(r'</body\s*>', s, flags=re.I): s=re.sub(r'</body\s*>', moonshot_tag+'\n</body>', s, count=1, flags=re.I)
                       else: s=s+'\n'+moonshot_tag
