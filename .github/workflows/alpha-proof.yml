@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - 'src/wallet500/alpha_proof.py'
+      - 'src/wallet500/alpha_sample_progress.py'
       - 'src/wallet500/alpha_forward_controls.py'
       - 'src/wallet500/alpha_checkpoint_recovery.py'
       - 'tests/test_alpha_proof.py'
@@ -20,6 +21,7 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/alpha_proof.py'
+      - 'src/wallet500/alpha_sample_progress.py'
       - 'src/wallet500/alpha_forward_controls.py'
       - 'src/wallet500/alpha_checkpoint_recovery.py'
       - 'scripts/atomic_publish.py'
@@ -56,7 +58,9 @@ jobs:
       - name: Enroll forward-only verified-watch controls
         run: python -m wallet500.alpha_forward_controls
       - name: Update forward-only alpha proof
-        run: python -m wallet500.alpha_proof
+        run: |
+          python -m wallet500.alpha_proof
+          python -m wallet500.alpha_sample_progress
       - name: Validate no-hindsight proof output
         run: |
           python - <<'PY'
@@ -75,12 +79,16 @@ jobs:
           if audit.get('production_impact')!='NONE' or audit.get('no_hindsight') is not True or audit.get('exact_pair_only') is not True: raise SystemExit('FORWARD_CONTROL_CONTRACT_INVALID')
           if report.get('activation_at')!=ledger.get('activation_at'): raise SystemExit('ALPHA_ACTIVATION_MISMATCH')
           if report.get('formal_proof_rule')!='ONLY EVENTS WHOSE IMMUTABLE EVENT TIME IS AT/AFTER ACTIVATION ARE COUNTED': raise SystemExit('ALPHA_NO_HINDSIGHT_CONTRACT_INVALID')
+          maturity=report.get('sample_maturity') or {}
+          if maturity.get('status') not in {'INSUFFICIENT_SAMPLE','SUFFICIENT_EARLY_SAMPLE'}: raise SystemExit('ALPHA_SAMPLE_MATURITY_MISSING')
+          if maturity.get('calibrated_probability_allowed') is not False: raise SystemExit('ALPHA_PROBABILITY_MUST_REMAIN_DISABLED')
+          if (maturity.get('early_target') or {}) != {'signal':20,'control':20}: raise SystemExit('ALPHA_EARLY_TARGET_CHANGED')
           for cohort in ('signals','controls'):
               for rec in (ledger.get(cohort) or {}).values():
                   for label,cp in (rec.get('checkpoints') or {}).items():
                       if not isinstance(cp,dict): raise SystemExit(f'ALPHA_CHECKPOINT_INVALID:{cohort}:{label}')
                       if cp.get('recovery_provenance') and cp.get('recovery_provenance')!='IMMUTABLE_EXACT_PAIR_OUTCOME_HISTORY_V1': raise SystemExit('ALPHA_CHECKPOINT_RECOVERY_PROVENANCE_INVALID')
-          print('FORWARD_ALPHA_PROOF_V1_OK', report.get('primary_proof_status'), report.get('formal_signal_count'), report.get('formal_control_count'))
+          print('FORWARD_ALPHA_PROOF_V1_OK', report.get('primary_proof_status'), report.get('formal_signal_count'), report.get('formal_control_count'), maturity.get('early_progress_pct'))
           PY
       - name: Recompute latest truth and publish alpha proof atomically
         if: github.event_name != 'pull_request'
@@ -96,6 +104,7 @@ jobs:
             python -m wallet500.alpha_checkpoint_recovery
             python -m wallet500.alpha_forward_controls
             python -m wallet500.alpha_proof
+            python -m wallet500.alpha_sample_progress
             set +e
             python scripts/atomic_publish.py \
               --base "$source_sha" \
