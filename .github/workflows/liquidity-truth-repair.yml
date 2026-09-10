@@ -12,13 +12,13 @@ on:
       - 'src/wallet500/cex_fast_lane.py'
       - 'scripts/atomic_publish.py'
       - 'data/cex-revival-radar.json'
-      - 'data/real-alerts.json'
       - 'tests/test_liquidity_truth_guard.py'
       - 'tests/test_system_integrity_audit.py'
       - '.github/workflows/liquidity-truth-repair.yml'
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: wallet500-liquidity-truth-repair
@@ -43,7 +43,7 @@ jobs:
       - name: Full regression on code or manual repair changes
         if: github.event_name != 'schedule'
         run: python -m pytest -q
-      - name: Sanitize latest main and publish atomically
+      - name: Sanitize CEX source truth and publish source-only data
         shell: bash
         run: |
           set -euo pipefail
@@ -56,34 +56,35 @@ jobs:
             source_sha="$(git rev-parse HEAD)"
 
             python - <<'PY'
-          from wallet500.liquidity_truth_guard import sanitize_cex_radar, sanitize_real_alerts
+          from wallet500.liquidity_truth_guard import sanitize_cex_radar
           print('CEX_LIQUIDITY_TRUTH', sanitize_cex_radar())
-          print('REAL_ALERT_LIQUIDITY_TRUTH', sanitize_real_alerts())
           PY
-
             python -m pytest -q tests/test_system_integrity_audit.py
 
             set +e
             python scripts/atomic_publish.py \
               --base "$source_sha" \
               --fail-on-newer \
-              --message 'data: enforce liquidity truth on latest main' \
-              data/cex-revival-radar.json \
-              data/real-alerts.json
+              --message 'data: enforce CEX liquidity source truth on latest main' \
+              data/cex-revival-radar.json
             rc=$?
             set -e
-
             if [ "$rc" -eq 0 ]; then
-              echo 'LIQUIDITY_TRUTH_REPAIR_PUBLISHED'
-              exit 0
+              echo 'LIQUIDITY_SOURCE_TRUTH_PUBLISHED'
+              break
             fi
             if [ "$rc" -eq 75 ]; then
-              echo "LIQUIDITY_TRUTH_RECOMPUTE_REQUIRED attempt=$attempt"
+              echo "LIQUIDITY_SOURCE_RECOMPUTE_REQUIRED attempt=$attempt"
               sleep 1
               continue
             fi
             exit "$rc"
           done
 
-          echo '::error::LIQUIDITY_TRUTH_REPAIR_RECOMPUTE_EXHAUSTED'
-          exit 1
+      - name: Delegate REAL ALERT recompute to canonical publisher
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run candidate-evidence-envelope.yml --repo "$GITHUB_REPOSITORY" --ref main
+          echo 'LIQUIDITY_TRUTH_DELEGATED_TO_CANONICAL_PUBLISHER'
