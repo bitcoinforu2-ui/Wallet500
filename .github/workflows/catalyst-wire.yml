@@ -76,4 +76,19 @@ jobs:
           git config user.name wallet500-catalyst-bot
           git config user.email wallet500-catalyst-bot@users.noreply.github.com
           git add data/catalyst-wire-live.json data/catalyst-wire-ledger.json data/catalyst-wire-state.json data/listing-opportunity-live.json data/listing-opportunity-telegram-state.json data/catalyst-focus-live.json data/catalyst-focus-state.json 2>/dev/null || true
-          if ! git diff --cached --quiet; then git commit -m 'data: refresh listing opportunity intelligence [skip ci]' && git push; fi
+          if ! git diff --cached --quiet; then
+            git commit -m 'data: refresh listing opportunity intelligence [skip ci]'
+            # Many Wallet500 data workflows commit to main concurrently. Rebase this
+            # already-computed truth snapshot onto the newest main before push so an
+            # unrelated writer cannot discard the run with a non-fast-forward error.
+            # A real same-file conflict remains fail-closed and will still fail.
+            for attempt in 1 2 3; do
+              if git pull --rebase origin main && git push; then
+                exit 0
+              fi
+              git rebase --abort 2>/dev/null || true
+              sleep $((attempt * 2))
+            done
+            echo 'ERROR: Catalyst persistence could not safely rebase/push after 3 attempts' >&2
+            exit 1
+          fi
