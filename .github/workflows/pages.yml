@@ -101,13 +101,13 @@ jobs:
           touch _site/.nojekyll
           printf '%s\n' "$GITHUB_SHA" > _site/build.txt
           for f in _site/index.html _site/live/index.html _site/catalyst/index.html _site/status/index.html _site/alerts/index.html _site/revival/index.html _site/research/index.html _site/performance/index.html _site/control/index.html _site/terminal/index.html _site/social/index.html _site/dashboard-moonshot-overlay.js _site/wallet500-auth.js _site/data/real-alerts.json _site/data/case-study-doge1.json _site/data/revival-1000-latest.json _site/data/catalyst-wire-live.json; do check_file "$f"; done
-          check_text _site/index.html 'WALLET500 · REVIVAL RADAR'
+          check_text _site/index.html 'WALLET500 · INTELLIGENCE COMMAND CENTER'
           check_text _site/index.html '/Wallet500/catalyst/'
           check_text _site/index.html '/Wallet500/status/'
           check_text _site/index.html '/Wallet500/research/'
           check_text _site/index.html '/Wallet500/wallet500-auth.js'
           check_text _site/index.html '/Wallet500/dashboard-moonshot-overlay.js'
-          check_text _site/live/index.html 'WALLET500 · REVIVAL RADAR'
+          check_text _site/live/index.html 'WALLET500 · INTELLIGENCE COMMAND CENTER'
           check_text _site/live/index.html '/Wallet500/dashboard-moonshot-overlay.js'
           check_text _site/research/index.html 'WALLET500 — LEARNING LAB'
           check_text _site/research/index.html 'FORWARD ALPHA LEARNING'
@@ -154,7 +154,7 @@ jobs:
             moonshot="$(curl -fsSL --max-time 20 "${BASE}dashboard-moonshot-overlay.js?v=${GITHUB_SHA}" 2>/dev/null || true)"
             feed="$(curl -fsSL --max-time 20 "${BASE}data/real-alerts.json?v=${GITHUB_SHA}" 2>/dev/null || true)"
             cfeed="$(curl -fsSL --max-time 20 "${BASE}data/catalyst-wire-live.json?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'WALLET500 · REVIVAL RADAR' <<<"$root" && grep -Fq '/Wallet500/catalyst/' <<<"$root" && grep -Fq '/Wallet500/research/' <<<"$root" && grep -Fq 'dashboard-moonshot-overlay.js' <<<"$root" && grep -Fq 'MOONSHOT FUTURE LISTING' <<<"$moonshot" && grep -Fq 'WALLET500 · DECISION RADAR' <<<"$status" && grep -Fq 'google.accounts.id.initialize' <<<"$auth" && grep -Fq 'SOCIAL INTELLIGENCE V2' <<<"$social" && grep -Fq 'WALLET500 · CATALYST FOCUS' <<<"$catalyst" && grep -Fq 'WALLET500 — LEARNING LAB' <<<"$research" && python -c 'import json,sys; json.load(sys.stdin)' <<<"$feed" >/dev/null 2>&1 && python -c 'import json,sys; json.load(sys.stdin)' <<<"$cfeed" >/dev/null 2>&1; then ok=1; break; fi
+            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'WALLET500 · INTELLIGENCE COMMAND CENTER' <<<"$root" && grep -Fq '/Wallet500/catalyst/' <<<"$root" && grep -Fq '/Wallet500/research/' <<<"$root" && grep -Fq 'dashboard-moonshot-overlay.js' <<<"$root" && grep -Fq 'MOONSHOT FUTURE LISTING' <<<"$moonshot" && grep -Fq 'WALLET500 · DECISION RADAR' <<<"$status" && grep -Fq 'google.accounts.id.initialize' <<<"$auth" && grep -Fq 'SOCIAL INTELLIGENCE V2' <<<"$social" && grep -Fq 'WALLET500 · CATALYST FOCUS' <<<"$catalyst" && grep -Fq 'WALLET500 — LEARNING LAB' <<<"$research" && python -c 'import json,sys; json.load(sys.stdin)' <<<"$feed" >/dev/null 2>&1 && python -c 'import json,sys; json.load(sys.stdin)' <<<"$cfeed" >/dev/null 2>&1; then ok=1; break; fi
             sleep 10
           done
           [ "$ok" -eq 1 ] || { echo 'Public Wallet500 verification failed'; exit 1; }
