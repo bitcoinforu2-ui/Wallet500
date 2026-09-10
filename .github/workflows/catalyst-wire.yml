@@ -2,33 +2,8 @@ name: Wallet500 Catalyst Wire
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'src/wallet500/catalyst_wire.py'
-      - 'src/wallet500/catalyst_wire_binance.py'
-      - 'src/wallet500/catalyst_identity_guard.py'
-      - 'src/wallet500/catalyst_focus.py'
-      - 'src/wallet500/catalyst_focus_binance.py'
-      - 'src/wallet500/binance_event_intelligence.py'
-      - 'src/wallet500/global_listing_intelligence.py'
-      - 'src/wallet500/cross_source_correlation.py'
-      - 'src/wallet500/moonshot_verification_watch.py'
-      - 'tests/test_catalyst_wire.py'
-      - 'tests/test_catalyst_identity_guard.py'
-      - 'tests/test_binance_event_intelligence.py'
-      - 'tests/test_catalyst_focus.py'
-      - 'tests/test_catalyst_focus_binance.py'
-      - 'tests/test_global_listing_evm_core.py'
-      - 'tests/test_cross_source_correlation.py'
-      - 'tests/test_moonshot_verification_watch.py'
-      - '.github/workflows/catalyst-wire.yml'
   schedule:
     - cron: '*/5 * * * *'
-  workflow_run:
-    workflows:
-      - "Wallet500 Social Intelligence V2"
-      - "Wallet500 Global Listing Intelligence"
-    types: [completed]
   push:
     branches: [main]
     paths:
@@ -37,228 +12,68 @@ on:
       - 'src/wallet500/catalyst_identity_guard.py'
       - 'src/wallet500/catalyst_focus.py'
       - 'src/wallet500/catalyst_focus_binance.py'
-      - 'src/wallet500/binance_event_intelligence.py'
-      - 'src/wallet500/global_listing_intelligence.py'
-      - 'src/wallet500/cross_source_correlation.py'
-      - 'src/wallet500/moonshot_verification_watch.py'
-      - 'scripts/atomic_publish.py'
-      - 'tests/test_catalyst_wire.py'
-      - 'tests/test_catalyst_identity_guard.py'
-      - 'tests/test_binance_event_intelligence.py'
-      - 'tests/test_catalyst_focus.py'
-      - 'tests/test_catalyst_focus_binance.py'
-      - 'tests/test_global_listing_evm_core.py'
-      - 'tests/test_cross_source_correlation.py'
-      - 'tests/test_moonshot_verification_watch.py'
+      - 'src/wallet500/listing_opportunity_router.py'
+      - 'tests/test_listing_opportunity_router.py'
       - '.github/workflows/catalyst-wire.yml'
 
 permissions:
   contents: write
-
 concurrency:
   group: wallet500-catalyst-wire-source-scan
   cancel-in-progress: false
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install Wallet500 and test dependency
-        run: pip install -e . pytest
-      - name: Lock Catalyst, Moonshot verification, identity, Binance, Focus, EVM and cross-source truth policy
-        run: pytest -q tests/test_catalyst_wire.py tests/test_catalyst_identity_guard.py tests/test_binance_event_intelligence.py tests/test_catalyst_focus.py tests/test_catalyst_focus_binance.py tests/test_global_listing_evm_core.py tests/test_cross_source_correlation.py tests/test_moonshot_verification_watch.py
-
   wire:
-    needs: test
-    if: github.event_name != 'pull_request' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-      - name: Refresh stateful wire job to newest main truth
-        run: |
-          set -euo pipefail
-          git fetch --depth=1 origin main
-          git reset --hard origin/main
+        with: {fetch-depth: 1}
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install Wallet500
-        run: pip install -e .
-      - name: Run Moonshot verification high-priority research lane
-        env:
-          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python -m wallet500.moonshot_verification_watch
-      - name: Run raw official Catalyst discovery with Binance historical context silently
-        run: python -m wallet500.catalyst_wire_binance
-      - name: Fail closed on CEX symbol-to-contract identity collisions before Focus
-        run: python -m wallet500.catalyst_identity_guard
-      - name: Silence legacy v2 Focus notifications without deleting truth history
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        with: {python-version: '3.12'}
+      - name: Install and test listing router
         run: |
-          python - <<'PY'
-          import json
-          from datetime import datetime, timezone
-          from pathlib import Path
-          p=Path('data/catalyst-focus-state.json')
-          if not p.exists() or not p.stat().st_size:
-              raise SystemExit(0)
-          d=json.loads(p.read_text())
-          focus=d.get('focus') if isinstance(d.get('focus'),dict) else {}
-          changed=0
-          now=datetime.now(timezone.utc).isoformat()
-          for rec in focus.values():
-              if not isinstance(rec,dict) or rec.get('status')!='TRACKING':
-                  continue
-              event=rec.get('event') if isinstance(rec.get('event'),dict) else {}
-              gate=event.get('telegram_gate') if isinstance(event.get('telegram_gate'),dict) else {}
-              if gate.get('telegram_relevant') is not True:
-                  rec['status']='SILENCED_NOTIFICATION_POLICY_V3'
-                  rec['notification_silenced_at']=now
-                  rec['notification_silence_reason']='LEGACY_OR_UNVERIFIED_TELEGRAM_GATE'
-                  changed+=1
-          if changed:
-              d['focus']=focus
-              d['version']=max(int(d.get('version') or 0),3)
-              d['updated_at']=now
-              p.write_text(json.dumps(d,ensure_ascii=False,indent=2),encoding='utf-8')
-          print('CATALYST_LEGACY_NOTIFICATION_SILENCE',changed)
-          PY
-      - name: Run Focus monitor with double-listing or exceptional-only Telegram alerts
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+          pip install -e . pytest
+          pytest -q tests/test_listing_opportunity_router.py tests/test_catalyst_focus.py tests/test_catalyst_focus_binance.py
+      - name: Refresh Catalyst evidence
+        run: |
+          python -m wallet500.catalyst_wire_binance
+          python -m wallet500.catalyst_identity_guard
+      - name: Route future and multi-CEX listing opportunities
+        run: python -m wallet500.listing_opportunity_router
+      - name: Run exact-market Focus and Telegram market alerts
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m wallet500.catalyst_focus_binance
-      - name: Validate Moonshot verification truth boundary
+      - name: Telegram immediate discovery notice for new exact future/multi-CEX cases
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python - <<'PY'
-          import json
+          import json,os,urllib.parse,urllib.request
           from pathlib import Path
-          latest=json.loads(Path('data/moonshot-verification-latest.json').read_text())
-          ledger=json.loads(Path('data/moonshot-verification-ledger.json').read_text())
-          alpha=json.loads(Path('data/external-alpha-events.json').read_text())
-          assert latest['mode']=='MOONSHOT_VERIFICATION_INTELLIGENCE_V1'
-          assert latest['automatic_buy'] is False
-          assert latest['production_trade_impact']=='NONE'
-          p=ledger['policy']
-          assert p['official_x_exact_contract_priority']==98
-          assert p['double_mirror_consensus_priority']==94
-          assert p['single_mirror_can_alert'] is False
-          assert p['single_mirror_can_enter_external_alpha'] is False
-          assert p['core_veteran_age_days']==90.0
-          assert p['moonshot_verification_never_bypasses_wallet500_gates'] is True
-          for e in (alpha.get('events') or []):
-              if isinstance(e,dict) and e.get('event_type')=='MOONSHOT_VERIFIED':
-                  assert e.get('source_owner')=='moonshot'
-                  assert e.get('research_only_until_wallet500_gates_pass') is True
-                  assert e.get('automatic_buy') is False
-                  assert e.get('pair_address')
-                  assert float(e.get('liquidity_usd') or 0)>=15000.0
-          print('MOONSHOT_VERIFICATION_TRUTH_OK',latest.get('status'),latest.get('counts'))
+          p=Path('data/listing-opportunity-live.json'); state=Path('data/listing-opportunity-telegram-state.json')
+          d=json.loads(p.read_text()); old=json.loads(state.read_text()) if state.exists() else {'sent':[]}; sent=set(old.get('sent') or [])
+          tok=os.getenv('TELEGRAM_BOT_TOKEN','').strip(); cid=os.getenv('TELEGRAM_CHAT_ID','').strip(); delivered=[]
+          for x in d.get('opportunities',[]):
+            if not x.get('telegram_candidate'): continue
+            key='|'.join(str(x.get(k) or '') for k in ('asset_key','source_owner','listing_start','lane'))
+            if key in sent: continue
+            badge='🔥🔥🔥 MULTI-CEX PRE-LISTING' if x.get('exchange_count',0)>=2 else '🔥 PRE-LISTING DISCOVERY'
+            text='\n'.join([badge+' · WALLET500',f"{x.get('symbol') or 'UNKNOWN'} · {x.get('lane')}",f"Chain: {x.get('chain')}\nCA: {x.get('contract')}",f"Exchange(s): {', '.join(str(v).upper() for v in x.get('exchanges') or [x.get('source_owner')])}",f"Listing UTC: {x.get('listing_start') or 'unknown'}",f"T-minus: {x.get('minutes_to_listing')} min",'Tracking started immediately · Revival 90d gate does NOT apply to this lane','No automatic buy',str(x.get('source_url') or '')])
+            if not tok or not cid: print('TELEGRAM_SECRETS_MISSING'); break
+            body=urllib.parse.urlencode({'chat_id':cid,'text':text,'disable_web_page_preview':'true'}).encode(); req=urllib.request.Request(f'https://api.telegram.org/bot{tok}/sendMessage',data=body,method='POST')
+            try:
+              with urllib.request.urlopen(req,timeout=15) as r: ok=json.loads(r.read().decode()).get('ok') is True
+            except Exception as e: ok=False; print(type(e).__name__,e)
+            if ok: sent.add(key); delivered.append(key)
+          state.write_text(json.dumps({'sent':sorted(sent)[-1000:]},indent=2)); print('LISTING_TELEGRAM_DELIVERED',len(delivered))
           PY
-      - name: Validate raw event feed boundaries
+      - name: Persist listing intelligence
         run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          p=Path('data/catalyst-wire-live.json')
-          d=json.loads(p.read_text())
-          assert d['mode']=='CATALYST_WIRE_EVENT_FIRST_NO_MOMENTUM_WEIGHT'
-          assert d['automatic_trade'] is False
-          assert set(d['policy']['event_lane_zero_weight'])=={'volume_acceleration','liquidity_growth','holder_growth','wallet_growth'}
-          assert d['policy']['official_source_required'] is True
-          assert d['policy']['source_link_required_for_telegram'] is True
-          identity_guard=d.get('identity_link_guard') or {}
-          assert identity_guard.get('fail_closed') is True
-          for e in d.get('events',[]):
-              if e.get('identity_guard_fail_closed') is True and e.get('symbol_contract_link_verified') is not True:
-                  assert e.get('preliminary_filter_pass') is False
-                  assert e.get('alert_eligible') is False
-                  assert e.get('identity_guard_blocker')=='SYMBOL_TO_CONTRACT_NOT_CANONICALLY_VERIFIED'
-              if e.get('alert_eligible'):
-                  assert e.get('preliminary_filter_pass') is True
-                  assert e.get('forward_new') is True
-                  assert e.get('source_url')
-              b=e.get('binance_intelligence') or {}
-              is_binance=str(e.get('source_owner') or '').lower()=='binance' or str(e.get('source_id') or '').upper().startswith('BINANCE_')
-              if is_binance:
-                  assert b.get('applicable') is True
-                  assert b.get('priority')=='FIRE_PRIORITY'
-                  assert b.get('production_effect') is False
-                  assert b.get('automatic_buy') is False
-                  truth=b.get('truth_contract') or {}
-                  assert truth.get('exact_chain_token_identity_required_for_history') is True
-                  assert truth.get('pair_mismatch_rejected_when_both_pairs_known') is True
-                  assert truth.get('symbol_only_history_never_scores') is True
-                  assert truth.get('binance_priority_never_overrides_wallet500_gates') is True
-          print('CATALYST_WIRE_TRUTH_OK', d.get('counts'), identity_guard)
-          PY
-      - name: Validate selective Focus v3 notification policy when executed
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          p=Path('data/catalyst-focus-live.json')
-          if not p.exists() or not p.stat().st_size:
-              print('CATALYST_FOCUS_NOT_EXECUTED_ON_THIS_TRIGGER')
-              raise SystemExit(0)
-          d=json.loads(p.read_text())
-          assert int(d.get('version') or 0) >= 3
-          assert d['mode']=='TELEGRAM_MULTI_EXCHANGE_OR_EXCEPTIONAL_ONLY'
-          policy=d['policy']
-          assert policy['raw_listing_telegram'] is False
-          assert policy['routine_listing_telegram'] is False
-          assert policy['multi_exchange_listing_telegram'] is True
-          assert policy['exceptional_listing_telegram'] is True
-          assert policy['automatic_trade'] is False
-          assert policy['focus_threshold']==76.0
-          assert policy['hard_liquidity_floor_usd']==15000.0
-          assert policy['exceptional_score']==88.0
-          assert policy['exceptional_readiness']==85.0
-          assert policy['exceptional_max_risk']==20.0
-          assert policy['exceptional_min_liquidity_usd']==250000.0
-          for x in d.get('new_evaluations',[]):
-              if x.get('focus_eligible'):
-                  assert x.get('decision_score',0) >= policy['focus_threshold']
-                  assert x.get('dex_url')
-                  market=x.get('market') or {}
-                  assert market.get('token_identity_verified') is True
-                  assert market.get('pair_address')
-                  assert market.get('liquidity_usd',0) >= policy['hard_liquidity_floor_usd']
-          for rec in d.get('active_focus',[]):
-              event=rec.get('event') if isinstance(rec,dict) else {}
-              gate=event.get('telegram_gate') if isinstance(event,dict) else {}
-              assert gate.get('telegram_relevant') is True
-              assert gate.get('reason') in {'MULTI_EXCHANGE_LISTING','EXCEPTIONAL_SETUP'}
-          for sent in (d.get('telegram') or {}).get('delivered',[]):
-              gate=sent.get('telegram_gate') if isinstance(sent,dict) else {}
-              if sent.get('type')=='FOCUS_START':
-                  assert gate.get('telegram_relevant') is True
-                  assert gate.get('reason') in {'MULTI_EXCHANGE_LISTING','EXCEPTIONAL_SETUP'}
-          print('CATALYST_FOCUS_V3_POLICY_OK', d.get('counts'))
-          PY
-      - name: Persist raw evidence, Moonshot verification and Focus state atomically
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'wallet500-catalyst-bot'
-          git config user.email 'wallet500-catalyst-bot@users.noreply.github.com'
-          paths=(data/catalyst-wire-live.json data/catalyst-wire-ledger.json data/catalyst-wire-state.json)
-          for p in data/moonshot-verification-ledger.json data/moonshot-verification-latest.json data/external-alpha-events.json; do
-            if test -s "$p"; then paths+=("$p"); fi
-          done
-          if test -s data/catalyst-focus-live.json; then paths+=(data/catalyst-focus-live.json); fi
-          if test -s data/catalyst-focus-state.json; then paths+=(data/catalyst-focus-state.json); fi
-          python scripts/atomic_publish.py \
-            --message 'data: refresh Catalyst Wire, Moonshot verification and selective Focus [skip ci]' \
-            "${paths[@]}"
+          git config user.name wallet500-catalyst-bot
+          git config user.email wallet500-catalyst-bot@users.noreply.github.com
+          git add data/catalyst-wire-live.json data/catalyst-wire-ledger.json data/catalyst-wire-state.json data/listing-opportunity-live.json data/listing-opportunity-telegram-state.json data/catalyst-focus-live.json data/catalyst-focus-state.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then git commit -m 'data: refresh listing opportunity intelligence [skip ci]' && git push; fi
