@@ -1,0 +1,66 @@
+name: Wallet500 Social Neural Graph
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '28,58 * * * *'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/wallet500/social_neural_graph.py'
+      - 'tests/test_social_neural_graph.py'
+      - '.github/workflows/social-neural-graph.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/social_neural_graph.py'
+      - 'tests/test_social_neural_graph.py'
+      - '.github/workflows/social-neural-graph.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wallet500-social-neural-graph-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  graph:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'main' }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Unit tests
+        run: python -m pytest -q tests/test_social_neural_graph.py tests/test_social_intelligence_v2.py tests/test_social_organic_acceleration.py
+      - name: Build graph
+        run: python -m wallet500.social_neural_graph
+      - name: Validate research truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('data/social-neural-graph.json').read_text())
+          if p.get('mode')!='RESEARCH_ONLY_SOCIAL_NEURAL_GRAPH_V1': raise SystemExit('GRAPH_MODE_INVALID')
+          if p.get('production_effect') is not False or p.get('automatic_buy') is not False: raise SystemExit('GRAPH_PRODUCTION_LEAK')
+          t=p.get('truth_contract') or {}
+          required=(
+            'social_mentions_are_not_organic_acceleration',
+            'same_cluster_mentions_are_not_independent_confirmations',
+            'collaboration_edge_does_not_imply_secret_coordination',
+            'only_exact_contract_or_exact_pair_events_receive_graph_credit',
+            'followers_do_not_equal_quality',
+            'forward_outcomes_required_for_skill',
+            'graph_never_overrides_identity_liquidity_security_or_pair_survival',
+            'research_only_no_automatic_buy',
+          )
+          for key in required:
+              if t.get(key) is not True: raise SystemExit('GRAPH_TRUTH_MISSING:'+key)
+          print('SOCIAL_NEURAL_GRAPH_TRUTH_OK')
+          PY
