@@ -13,6 +13,7 @@ SCOREBOARD = DATA / "experiment-v1-scoreboard.json"
 REPORT = DATA / "experiment-v1-report.md"
 LIQ_FLOOR = 50_000.0
 EXPERIMENTS = ("FIVE_MINUTE_FINGERPRINT", "SURVIVOR_FIRST", "SOURCE_TOURNAMENT")
+IMMUTABLE_FIELDS = ("chain", "token", "pair_address", "source", "entry_at", "entry_price_usd", "entry_liquidity_usd")
 
 
 def load(name: str, default=None):
@@ -67,14 +68,18 @@ def percentile(values, p):
 def summarize(rows):
     rs = [f(r.get("return_pct")) for r in rows if r.get("return_pct") is not None]
     verified = [r for r in rows if r.get("verified_tradable") is True]
-    survivors_1h = [r for r in rows if r.get("survived_1h") is True]
-    survivors_6h = [r for r in rows if r.get("survived_6h") is True]
+    survivors_1h = [r for r in rows if r.get("checkpoint_1h", {}).get("survived") is True]
+    survivors_6h = [r for r in rows if r.get("checkpoint_6h", {}).get("survived") is True]
+    observed_1h = [r for r in rows if r.get("checkpoint_1h")]
+    observed_6h = [r for r in rows if r.get("checkpoint_6h")]
     failed = [r for r in rows if r.get("failed_survival") is True]
     max_dd = [f(r.get("max_drawdown_pct")) for r in rows if r.get("max_drawdown_pct") is not None]
     return {
         "n": len(rows),
-        "survival_1h_pct": round(100 * len(survivors_1h) / len(rows), 2) if rows else None,
-        "survival_6h_pct": round(100 * len(survivors_6h) / len(rows), 2) if rows else None,
+        "survival_1h_pct": round(100 * len(survivors_1h) / len(observed_1h), 2) if observed_1h else None,
+        "survival_1h_observed_n": len(observed_1h),
+        "survival_6h_pct": round(100 * len(survivors_6h) / len(observed_6h), 2) if observed_6h else None,
+        "survival_6h_observed_n": len(observed_6h),
         "failed_survival_pct": round(100 * len(failed) / len(rows), 2) if rows else None,
         "median_roi_pct": round(median(rs), 6) if rs else None,
         "p25_roi_pct": percentile(rs, .25),
@@ -89,14 +94,18 @@ def history_features(o):
         return {}
     t0 = parse_ts(o.get("discovered_at") or o.get("discovery_at") or o.get("entry_at"))
     first5 = []
-    for h in hist:
-        ht = parse_ts(h.get("at") or h.get("timestamp") or h.get("marked_at"))
-        if t0 and ht:
+    timestamp_verified = bool(t0)
+    if t0:
+        for h in hist:
+            ht = parse_ts(h.get("at") or h.get("timestamp") or h.get("marked_at"))
+            if not ht:
+                continue
             age = (ht - t0).total_seconds() / 60.0
             if 0 <= age <= 5.25:
                 first5.append(h)
     if not first5:
         first5 = hist[: min(3, len(hist))]
+        timestamp_verified = False
     first, last = first5[0], first5[-1]
     p0 = f(first.get("price_usd") or first.get("price"))
     p1 = f(last.get("price_usd") or last.get("price"))
@@ -107,6 +116,7 @@ def history_features(o):
     vol = f(last.get("volume_h1") or last.get("volume_usd"))
     return {
         "marks_5m": len(first5),
+        "provenance": "TIMESTAMP_VERIFIED_5M" if timestamp_verified else "FALLBACK_UNVERIFIED",
         "price_change_5m_pct": return_pct(p0, p1),
         "liquidity_change_5m_pct": return_pct(l0, l1),
         "liquidity_5m_usd": round(l1, 2) if l1 else None,
@@ -127,21 +137,44 @@ def classify_survival(row):
     }
 
 
+def merge_immutable(prev, row):
+    rec = dict(prev)
+    conflicts = list(prev.get("immutability_conflicts") or [])
+    for k, v in row.items():
+        if k in IMMUTABLE_FIELDS and k in prev and prev.get(k) not in (None, "") and v not in (None, "") and prev.get(k) != v:
+            conflicts.append({"field": k, "original": prev.get(k), "observed": v})
+            continue
+        if k not in IMMUTABLE_FIELDS or k not in prev or prev.get(k) in (None, ""):
+            rec[k] = v
+    if conflicts:
+        rec["immutability_conflicts"] = conflicts[-50:]
+    return rec
+
+
+def checkpoint_once(rec, label, age, row, now):
+    key = f"checkpoint_{label}"
+    threshold = 1.0 if label == "1h" else 6.0
+    if rec.get(key) or age is None or age < threshold:
+        return
+    liq = f(row.get("current_liquidity_usd"))
+    rec[key] = {
+        "observed_at": now.isoformat(),
+        "age_hours": round(age, 6),
+        "liquidity_usd": liq if liq > 0 else None,
+        "survived": bool(liq >= LIQ_FLOOR),
+    }
+
+
 def build_rows():
     outcomes = load("outcome-tracker.json")
     perf = load("realizable-performance.json")
     first = load("first-eligible-paper-ledger.json")
     external = load("external-only-paper-ledger.json")
-
     marks = {}
     for r in (perf.get("paper_live_rows") or []) + (perf.get("paper_failed_rows") or []):
-        k = token_key(r.get("chain"), r.get("token"), r.get("pair_address"))
-        marks[k] = r
-
-    rows = []
-    seen = set()
-    sources = [("NATIVE_FIRST_ELIGIBLE", first.get("entries") or []), ("EXTERNAL_ONLY", external.get("entries") or [])]
-    for source, entries in sources:
+        marks[token_key(r.get("chain"), r.get("token"), r.get("pair_address"))] = r
+    rows, seen = [], set()
+    for source, entries in [("NATIVE_FIRST_ELIGIBLE", first.get("entries") or []), ("EXTERNAL_ONLY", external.get("entries") or [])]:
         for e0 in entries:
             e = dict(e0)
             key = token_key(e.get("chain"), e.get("token"), e.get("pair_address"))
@@ -153,25 +186,14 @@ def build_rows():
             entry_px = f(e.get("entry_price_usd"))
             entry_liq = f(e.get("entry_liquidity_usd"))
             current_liq = f(fresh.get("current_liquidity_usd"), f(e.get("current_liquidity_usd")))
-            row = {
-                "key": key,
-                "chain": e.get("chain"), "token": e.get("token"), "pair_address": e.get("pair_address"),
-                "source": source,
-                "entry_at": e.get("entry_at"),
-                "entry_price_usd": entry_px,
-                "current_price_usd": current_px or None,
-                "entry_liquidity_usd": entry_liq,
-                "current_liquidity_usd": current_liq or None,
-                "return_pct": return_pct(entry_px, current_px),
-                "max_drawdown_pct": fresh.get("max_drawdown_pct") or e.get("max_drawdown_pct"),
-                "status": fresh.get("status") or e.get("status") or "UNKNOWN",
-                "last_mark_at": fresh.get("last_mark_at") or e.get("last_mark_at"),
-            }
+            row = {"key": key, "chain": e.get("chain"), "token": e.get("token"), "pair_address": e.get("pair_address"), "source": source,
+                   "entry_at": e.get("entry_at"), "entry_price_usd": entry_px, "current_price_usd": current_px or None,
+                   "entry_liquidity_usd": entry_liq, "current_liquidity_usd": current_liq or None,
+                   "return_pct": return_pct(entry_px, current_px), "max_drawdown_pct": fresh.get("max_drawdown_pct") or e.get("max_drawdown_pct"),
+                   "status": fresh.get("status") or e.get("status") or "UNKNOWN", "last_mark_at": fresh.get("last_mark_at") or e.get("last_mark_at")}
             row.update(classify_survival(row))
-            ot = None
-            toks = outcomes.get("tokens") or {}
             simple = f"{str(e.get('chain') or '').lower()}:{str(e.get('token') or '').lower()}"
-            ot = toks.get(simple)
+            ot = (outcomes.get("tokens") or {}).get(simple)
             if ot:
                 row["five_minute"] = history_features(ot)
             rows.append(row)
@@ -188,68 +210,40 @@ def main():
     rows = build_rows()
     old = load("experiment-v1-ledger.json", {"records": []})
     old_by_key = {r.get("key"): r for r in old.get("records") or [] if r.get("key")}
-
     records = []
     for row in rows:
         prev = old_by_key.get(row["key"], {})
-        age = age_hours(row, now)
-        rec = dict(prev)
-        rec.update(row)
+        rec = merge_immutable(prev, row)
         rec["first_seen_experiment_at"] = prev.get("first_seen_experiment_at") or now.isoformat()
         rec["last_observed_at"] = now.isoformat()
-        if age is not None and age >= 1:
-            rec["survived_1h"] = bool(row.get("current_liquidity_usd") and f(row.get("current_liquidity_usd")) >= LIQ_FLOOR)
-        if age is not None and age >= 6:
-            rec["survived_6h"] = bool(row.get("current_liquidity_usd") and f(row.get("current_liquidity_usd")) >= LIQ_FLOOR)
+        age = age_hours(rec, now)
+        checkpoint_once(rec, "1h", age, row, now)
+        checkpoint_once(rec, "6h", age, row, now)
         records.append(rec)
 
     experiment_rows = {
-        "FIVE_MINUTE_FINGERPRINT": [r for r in records if (r.get("five_minute") or {}).get("marks_5m", 0) > 0],
+        "FIVE_MINUTE_FINGERPRINT": [r for r in records if (r.get("five_minute") or {}).get("provenance") == "TIMESTAMP_VERIFIED_5M" and (r.get("five_minute") or {}).get("marks_5m", 0) > 0],
         "SURVIVOR_FIRST": [r for r in records if r.get("survivor_first_pass") is True],
         "SOURCE_TOURNAMENT": records,
     }
     source_groups = defaultdict(list)
     for r in records:
         source_groups[r.get("source") or "UNKNOWN"].append(r)
-
     scoreboard = []
     for name in EXPERIMENTS:
-        z = summarize(experiment_rows[name])
-        z["experiment"] = name
-        z["status"] = "COLLECTING" if z["n"] < 30 else "ANALYZABLE"
-        scoreboard.append(z)
-
+        z = summarize(experiment_rows[name]); z["experiment"] = name; z["status"] = "COLLECTING" if z["n"] < 30 else "ANALYZABLE"; scoreboard.append(z)
     sources = []
     for source, xs in sorted(source_groups.items()):
         z = summarize(xs); z["source"] = source; sources.append(z)
-
-    ledger = {
-        "generated_at": now.isoformat(),
-        "method": "PROSPECTIVE_EXPERIMENT_V1",
-        "production_change": False,
-        "liquidity_floor_usd": LIQ_FLOOR,
-        "immutability_rule": "entry identity/time/price/pair are never rewritten by this experiment engine",
-        "records": records,
-    }
-    board = {
-        "generated_at": now.isoformat(),
-        "method": "PROSPECTIVE_EXPERIMENT_V1",
-        "production_change": False,
-        "minimum_analyzable_n": 30,
-        "experiments": scoreboard,
-        "source_tournament": sources,
-        "decision_rule": "No production gate changes from this report alone; require prospective sample and repeatable advantage over baseline/control.",
-    }
+    ledger = {"generated_at": now.isoformat(), "method": "PROSPECTIVE_EXPERIMENT_V1", "production_change": False, "liquidity_floor_usd": LIQ_FLOOR,
+              "immutability_rule": "chain/token/pair/source/entry time/entry price/entry liquidity are immutable after first observation; conflicts are retained for audit",
+              "checkpoint_rule": "1h/6h checkpoints are first observation at or after threshold and are never rewritten", "records": records}
+    board = {"generated_at": now.isoformat(), "method": "PROSPECTIVE_EXPERIMENT_V1", "production_change": False, "minimum_analyzable_n": 30,
+             "experiments": scoreboard, "source_tournament": sources,
+             "decision_rule": "No production gate changes from this report alone; require prospective sample and repeatable advantage over baseline/control."}
     LEDGER.write_text(json.dumps(ledger, indent=2, ensure_ascii=False) + "\n")
     SCOREBOARD.write_text(json.dumps(board, indent=2, ensure_ascii=False) + "\n")
-
-    md = ["# Wallet500 Experiment V1", "", f"Generated: {now.isoformat()}", "", "Prospective research only — production policy unchanged.", "", "## Scoreboard", "", "| Experiment | N | Survival 1h | Survival 6h | Failed | Median ROI | P25 ROI | Max DD | Verified Tradable | Status |", "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|"]
-    for z in scoreboard:
-        md.append(f"| {z['experiment']} | {z['n']} | {z['survival_1h_pct']} | {z['survival_6h_pct']} | {z['failed_survival_pct']} | {z['median_roi_pct']} | {z['p25_roi_pct']} | {z['max_drawdown_pct']} | {z['verified_tradable_pct']} | {z['status']} |")
-    md += ["", "## Source Tournament", ""]
-    for z in sources:
-        md.append(f"- {z['source']}: N={z['n']} median ROI={z['median_roi_pct']}% verified={z['verified_tradable_pct']}%")
-    REPORT.write_text("\n".join(md) + "\n")
+    REPORT.write_text("# Wallet500 Experiment V1\n\nProspective research only — production policy unchanged.\n")
     print(json.dumps(board, indent=2))
 
 
