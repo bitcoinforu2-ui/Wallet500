@@ -1,75 +1,25 @@
-name: Policy threshold migration fast
+name: Policy threshold migration fast — DEPRECATED
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/policy-threshold-migration-fast.yml'
-      - 'scripts/migrate_revival_policy_60d_15k.py'
-      - 'scripts/migrate_revival_policy_60d_15k_fixups.py'
-      - 'scripts/migrate_paid_attention_15k.py'
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: wallet500-deprecated-policy-migration
+  cancel-in-progress: true
 
 jobs:
-  migrate-and-test:
+  deprecated:
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          sparse-checkout: |
-            src
-            tests
-            docs
-            scripts
-            .github
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Apply migration
-        run: |
-          python scripts/migrate_revival_policy_60d_15k.py
-          python scripts/migrate_revival_policy_60d_15k_fixups.py
-          python scripts/migrate_paid_attention_15k.py
-
-      - name: Install package and tests
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e . pytest
-
-      - name: Compile engine
-        run: python -m compileall -q src/wallet500
-
-      - name: Unit test suite
-        run: python -m pytest -q -k 'not repository_live_data_has_no_critical_integrity_findings'
-
-      - name: Commit migration after tests pass
+      - name: Fail closed — obsolete 60d production migration is prohibited
         shell: bash
         run: |
-          find src tests -type d -name '__pycache__' -prune -exec rm -rf {} + || true
-          rm -rf src/wallet500.egg-info
-          if git diff --quiet -- src tests docs scripts; then
-            echo 'No source migration changes detected.'
-            exit 0
-          fi
-          git config user.name 'wallet500-policy-bot'
-          git config user.email 'wallet500-policy-bot@users.noreply.github.com'
-          git add -A src tests docs scripts
-          git commit -m 'policy: set Revival scope to 60d age and 15k liquidity'
-          git reset --hard HEAD
-          git clean -fd
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git rebase origin/main
-            if git push origin HEAD:main; then
-              exit 0
-            fi
-            echo "Push race on attempt ${attempt}; retrying after rebase..."
-            sleep 2
-          done
-          echo 'Could not publish migration after 5 rebased attempts.'
+          set -euo pipefail
+          echo '::error::DEPRECATED_60D_POLICY_MIGRATION_BLOCKED'
+          echo 'Canonical truth is research 90d/$15K and production 180d/$50K with exact identity, exact pair, holder/cluster fail-closed and no automatic buy.'
+          echo 'This historical migration must never rewrite source, tests, dashboard, publishers, or production policy.'
           exit 1
