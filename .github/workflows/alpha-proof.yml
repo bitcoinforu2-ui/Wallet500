@@ -13,9 +13,11 @@ on:
       - 'src/wallet500/alpha_sample_progress.py'
       - 'src/wallet500/alpha_forward_controls.py'
       - 'src/wallet500/alpha_checkpoint_recovery.py'
+      - 'src/wallet500/proof_of_edge.py'
       - 'tests/test_alpha_proof.py'
       - 'tests/test_alpha_forward_controls.py'
       - 'tests/test_alpha_checkpoint_recovery.py'
+      - 'tests/test_proof_of_edge.py'
       - '.github/workflows/alpha-proof.yml'
   push:
     branches: [main]
@@ -24,10 +26,12 @@ on:
       - 'src/wallet500/alpha_sample_progress.py'
       - 'src/wallet500/alpha_forward_controls.py'
       - 'src/wallet500/alpha_checkpoint_recovery.py'
+      - 'src/wallet500/proof_of_edge.py'
       - 'scripts/atomic_publish.py'
       - 'tests/test_alpha_proof.py'
       - 'tests/test_alpha_forward_controls.py'
       - 'tests/test_alpha_checkpoint_recovery.py'
+      - 'tests/test_proof_of_edge.py'
       - '.github/workflows/alpha-proof.yml'
 
 permissions:
@@ -52,7 +56,7 @@ jobs:
       - name: Install and test forward proof contract
         run: |
           pip install -e . pytest
-          python -m pytest -q tests/test_alpha_proof.py tests/test_alpha_forward_controls.py tests/test_alpha_checkpoint_recovery.py
+          python -m pytest -q tests/test_alpha_proof.py tests/test_alpha_forward_controls.py tests/test_alpha_checkpoint_recovery.py tests/test_proof_of_edge.py
       - name: Recover immutable exact-pair checkpoint gaps
         run: python -m wallet500.alpha_checkpoint_recovery
       - name: Enroll forward-only verified-watch controls
@@ -61,6 +65,7 @@ jobs:
         run: |
           python -m wallet500.alpha_proof
           python -m wallet500.alpha_sample_progress
+          python -m wallet500.proof_of_edge
       - name: Validate no-hindsight proof output
         run: |
           python - <<'PY'
@@ -69,10 +74,14 @@ jobs:
           p=Path('data/alpha-proof-report.json')
           l=Path('data/alpha-proof-ledger.json')
           a=Path('data/alpha-forward-control-audit.json')
-          if not p.exists() or not l.exists() or not a.exists(): raise SystemExit('ALPHA_PROOF_OUTPUT_MISSING')
+          e=Path('data/proof-of-edge-report.json')
+          el=Path('data/proof-of-edge-ledger.json')
+          if not p.exists() or not l.exists() or not a.exists() or not e.exists() or not el.exists(): raise SystemExit('ALPHA_PROOF_OUTPUT_MISSING')
           report=json.loads(p.read_text())
           ledger=json.loads(l.read_text())
           audit=json.loads(a.read_text())
+          edge=json.loads(e.read_text())
+          edge_ledger=json.loads(el.read_text())
           if report.get('mode')!='FORWARD_ONLY_ALPHA_PROOF_V1': raise SystemExit('ALPHA_PROOF_MODE_INVALID')
           if ledger.get('mode')!='FORWARD_ONLY_ALPHA_PROOF_V1': raise SystemExit('ALPHA_LEDGER_MODE_INVALID')
           if audit.get('mode')!='FORWARD_VERIFIED_WATCH_CONTROL_ENROLLMENT_V1': raise SystemExit('FORWARD_CONTROL_MODE_INVALID')
@@ -88,7 +97,14 @@ jobs:
                   for label,cp in (rec.get('checkpoints') or {}).items():
                       if not isinstance(cp,dict): raise SystemExit(f'ALPHA_CHECKPOINT_INVALID:{cohort}:{label}')
                       if cp.get('recovery_provenance') and cp.get('recovery_provenance')!='IMMUTABLE_EXACT_PAIR_OUTCOME_HISTORY_V1': raise SystemExit('ALPHA_CHECKPOINT_RECOVERY_PROVENANCE_INVALID')
+          if edge.get('mode')!='FORWARD_PROOF_OF_EDGE_V1' or edge_ledger.get('mode')!='FORWARD_PROOF_OF_EDGE_V1': raise SystemExit('PROOF_OF_EDGE_MODE_INVALID')
+          if (edge.get('integrity') or {}).get('status')!='PASS': raise SystemExit('PROOF_OF_EDGE_INTEGRITY_FAILED')
+          guard=edge.get('guardrails') or {}
+          if guard.get('production_scoring_changed') is not False or guard.get('production_gates_changed') is not False or guard.get('telegram_alerts_changed') is not False: raise SystemExit('PROOF_OF_EDGE_PRODUCTION_MUTATION_FORBIDDEN')
+          if guard.get('automatic_weight_mutation') is not False or guard.get('research_only') is not True: raise SystemExit('PROOF_OF_EDGE_GUARDRAIL_INVALID')
+          if edge.get('primary_horizon')!='24h': raise SystemExit('PROOF_OF_EDGE_PRIMARY_HORIZON_CHANGED')
           print('FORWARD_ALPHA_PROOF_V1_OK', report.get('primary_proof_status'), report.get('formal_signal_count'), report.get('formal_control_count'), maturity.get('early_progress_pct'))
+          print('PROOF_OF_EDGE_V1_OK', edge.get('record_count'), (edge.get('decision_matrix') or {}).get('24h'), len(edge.get('learning_review_queue') or []))
           PY
       - name: Recompute latest truth and publish alpha proof atomically
         if: github.event_name != 'pull_request'
@@ -105,6 +121,7 @@ jobs:
             python -m wallet500.alpha_forward_controls
             python -m wallet500.alpha_proof
             python -m wallet500.alpha_sample_progress
+            python -m wallet500.proof_of_edge
             set +e
             python scripts/atomic_publish.py \
               --base "$source_sha" \
@@ -112,7 +129,9 @@ jobs:
               --message 'alpha: refresh forward proof evidence' \
               data/alpha-proof-ledger.json \
               data/alpha-proof-report.json \
-              data/alpha-forward-control-audit.json
+              data/alpha-forward-control-audit.json \
+              data/proof-of-edge-ledger.json \
+              data/proof-of-edge-report.json
             rc=$?
             set -e
             if [ "$rc" -eq 0 ]; then exit 0; fi
