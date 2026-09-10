@@ -16,6 +16,10 @@ STATIC_SOURCES={
     'HOLDER_CLUSTER_BLOCK': DATA/'holder-cluster-production-blocked.json',
     'HOLDER_CLUSTER_REVIEW': DATA/'holder-cluster-quarantine.json',
 }
+SURVIVAL_SOURCES={
+    'LIVE_SURVIVAL_FAILED': DATA/'live-survival-failed.json',
+    'LIVE_SURVIVAL_PENDING': DATA/'live-survival-pending.json',
+}
 
 
 def _load(path:Path,default:Any)->Any:
@@ -54,20 +58,27 @@ def _snapshot(row:dict[str,Any],source:str,now:str)->dict[str,Any]:
   'production_risk_reasons':row.get('production_risk_reasons') or [],
   'holder_cluster_status':row.get('holder_cluster_production_status') or row.get('holder_cluster_status'),
   'holder_cluster_reasons':row.get('holder_cluster_reasons') or [],
-  # Preserve age/identity truth present at decision time. Existing immutable first
-  # reject snapshots are never rewritten; this only improves future records/observations.
   'market_age_verified':row.get('market_age_verified') is True,
   'market_age_min_days':row.get('market_age_min_days'),
   'market_age_evidence_at':row.get('market_age_evidence_at'),
   'market_age_evidence_source':row.get('market_age_evidence_source'),
   'exact_identity_verified':row.get('exact_identity_verified') is True or row.get('token_identity_verified') is True,
-  'exact_pair_verified':row.get('exact_pair_verified') is True or row.get('pair_identity_verified') is True,
+  'exact_pair_verified':row.get('exact_pair_verified') is True or row.get('pair_identity_verified') is True or row.get('pair_identity_locked') is True,
  }
 
 def _decision_rows()->list[tuple[str,dict[str,Any]]]:
  out=[]
  for source,path in STATIC_SOURCES.items():
   out.extend((source,row) for row in _rows(_load(path,[])))
+ # Canonical multichain survival outputs. These include BSC/Ethereum/Solana and
+ # preserve the exact execution pair that actually failed or went pending.
+ for source,path in SURVIVAL_SOURCES.items():
+  expected='FAILED' if source=='LIVE_SURVIVAL_FAILED' else 'PENDING'
+  for row in _rows(_load(path,[])):
+   if str(row.get('live_survival_gate') or '').upper()==expected:
+    out.append((source,row))
+ # Legacy/fresh-Solana stream remains as a compatibility fallback. Exact key and
+ # observation fingerprint de-duplication below prevent double-counting.
  for row in _rows(_load(DATA/'fresh-solana-survival.json',[])):
   gate=str(row.get('live_survival_gate') or row.get('fresh_solana_gate') or '').upper()
   if gate in {'FAILED','BLOCKED'}:out.append(('LIVE_SURVIVAL_FAILED',row))
