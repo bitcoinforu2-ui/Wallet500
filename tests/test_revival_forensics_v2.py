@@ -10,6 +10,11 @@ from wallet500.revival_forensics_v2 import (
     sha256,
     update_event,
 )
+from wallet500.revival_forensics_runner import (
+    AGE_POLICY_INVALIDATION_REASON,
+    T0_SOURCE_CONTRACT,
+    _migrate_state,
+)
 
 
 def test_pct():
@@ -69,3 +74,42 @@ def test_runner_compatibility_helpers_preserve_t0_exact_pair_and_no_hindsight_in
     assert event["peak_return_pct"] == 0.0
     assert event["horizons"]["5m"]["available"] is False
     assert event["horizons"]["15m"]["available"] is False
+
+
+def test_current_contract_quarantines_legacy_under_90d_without_rewriting_t0():
+    young_t0 = {
+        "market_age_verified": True,
+        "market_age_min_days": 75,
+        "pair_address": "pair-young",
+        "waking_t0": "2026-09-01T00:00:00+00:00",
+        "evidence_sha256": "a" * 64,
+    }
+    valid_t0 = {
+        "market_age_verified": True,
+        "market_age_min_days": 90,
+        "pair_address": "pair-valid",
+        "waking_t0": "2026-09-01T00:00:00+00:00",
+        "evidence_sha256": "b" * 64,
+    }
+    raw = {
+        "t0_source_contract": T0_SOURCE_CONTRACT,
+        "events": {
+            "young": {"event_id": "young", "t0": dict(young_t0)},
+            "valid": {"event_id": "valid", "t0": dict(valid_t0)},
+        },
+        "active_by_token": {"mint-young": "young", "mint-valid": "valid"},
+        "invalidated_events": [],
+    }
+
+    migrated = _migrate_state(raw)
+    assert set(migrated["events"]) == {"valid"}
+    assert migrated["active_by_token"] == {"mint-valid": "valid"}
+    assert len(migrated["invalidated_events"]) == 1
+    audit = migrated["invalidated_events"][0]
+    assert audit["event_id"] == "young"
+    assert audit["t0"] == young_t0
+    assert audit["invalidated_reason"] == AGE_POLICY_INVALIDATION_REASON
+    assert audit["eligible_for_learning"] is False
+
+    migrated_again = _migrate_state(migrated)
+    assert len(migrated_again["invalidated_events"]) == 1
