@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .cex_identity import run as resolve_exact_identity
 from .cex_identity_preflight import run as verify_age_and_coin_identity
+from .cex_spot_identity_fallback import resolve as resolve_dex_fallback
 
 DATA = Path("data")
 MAX_WATCH_CANDIDATES = 60
@@ -37,15 +38,13 @@ def _status(row: dict) -> str:
 
 
 def _persist_verified_registry(data_dir: Path, rows: list[dict], now: str) -> dict:
-    """Self-expand the veteran identity registry only from fully exact, conflict-free evidence."""
+    """Self-expand the veteran identity registry only from fully exact, conflict-free CoinGecko-backed evidence."""
     path = data_dir / "cex-identity-registry.json"
     registry = _load(path, {})
     if not isinstance(registry, dict):
         registry = {}
     symbols = registry.get("symbols") if isinstance(registry.get("symbols"), dict) else {}
-    added = []
-    confirmed = []
-    conflicts = []
+    added, confirmed, conflicts = [], [], []
 
     for row in rows:
         if row.get("identity_status") != "DEX_VERIFIED" or row.get("identity_verified") is not True:
@@ -86,7 +85,7 @@ def _persist_verified_registry(data_dir: Path, rows: list[dict], now: str) -> di
             "market_age_evidence_at": age_at,
             "evidence_source": "AUTO_STRICT_CEX_SPOT_CGID_AGE_PLUS_EXACT_DEX_PAIR",
             "evidence_note": (
-                "Automatically learned only after strict CEX symbol identity, >=180d age evidence, "
+                "Automatically learned only after strict CEX symbol identity, >=90d age evidence, "
                 "exact on-chain chain+contract resolution and an exact-address DEX pair. This is an "
                 "identity seed only; all liquidity, holder, survival and REAL ALERT gates still apply."
             ),
@@ -108,17 +107,28 @@ def _persist_verified_registry(data_dir: Path, rows: list[dict], now: str) -> di
         "conflicts": conflicts,
         "added_count": len(added),
         "conflict_count": len(conflicts),
-        "rule": "ONLY_DEX_VERIFIED_PLUS_180D_EXACT_IDENTITY_CAN_SELF_REGISTER; EXISTING_CONFLICT_NEVER_OVERWRITTEN",
+        "rule": "ONLY_CGID_BACKED_DEX_VERIFIED_EXACT_IDENTITY_SELF_REGISTERS; STRICT_DEX_FALLBACK_STAYS_RUN_SCOPED",
+    }
+
+
+def _research_wrap(row: dict, source_lane: str) -> dict:
+    return {
+        **row,
+        "status": _status(row),
+        "research_only": True,
+        "actionable": False,
+        "automatic_buy": False,
+        "source_lane": source_lane,
     }
 
 
 def run(data_dir: Path = DATA) -> dict:
-    """Resolve veteran CEX Spot watches to exact on-chain identity without relaxing action gates.
+    """Resolve CEX Spot watches to exact on-chain identity without relaxing production gates.
 
-    Symbol-only momentum is useful for discovery but is never actionable. This lane first
-    resolves one CoinGecko identity with price/exchange coherence and >=180d age evidence,
-    then resolves an exact chain+contract and exact DEX pair. Unresolved rows remain research
-    only and can never promote a REAL ALERT or an automatic buy.
+    Primary path uses CoinGecko identity + age evidence then exact chain/contract/pair.
+    If CoinGecko has no symbol entry, a strict DexScreener fallback may resolve identity only
+    when exact base symbol, CEX-price coherence, exact token+pair, and >=90d pair age all agree.
+    Ambiguous matches fail closed. Symbol-only evidence never becomes actionable.
     """
     data_dir.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc).isoformat()
@@ -128,10 +138,10 @@ def run(data_dir: Path = DATA) -> dict:
     watch = [x for x in (spot.get("watchlist") or []) if isinstance(x, dict)][:MAX_WATCH_CANDIDATES]
 
     base = {
-        "version": 1,
+        "version": 2,
         "generated_at": now,
         "source_generated_at": spot.get("generated_at"),
-        "mode": "RESEARCH_ONLY_DYNAMIC_CEX_SPOT_EXACT_IDENTITY_V1",
+        "mode": "RESEARCH_ONLY_DYNAMIC_CEX_SPOT_EXACT_IDENTITY_V2",
         "production_portfolio_impact": "NONE",
         "automatic_buy": False,
         "symbol_only_actionable": False,
@@ -144,6 +154,8 @@ def run(data_dir: Path = DATA) -> dict:
             "cex_only_never_real_alert": True,
             "hard_liquidity_and_survival_gates_unchanged": True,
             "existing_registry_conflict_never_overwritten": True,
+            "dex_fallback_only_for_coingecko_not_found": True,
+            "dex_fallback_requires_price_pair_age_coherence": True,
         },
         "source_watch_count": len(watch),
     }
@@ -151,7 +163,7 @@ def run(data_dir: Path = DATA) -> dict:
         payload = {
             **base,
             "status": "HEALTHY_EMPTY",
-            "counts": {"age_identity_verified": 0, "dex_verified": 0, "pair_pending": 0, "identity_pending": 0},
+            "counts": {"age_identity_verified": 0, "dex_verified": 0, "pair_pending": 0, "identity_pending": 0, "dex_fallback_verified": 0},
             "auto_registry": {"added": [], "confirmed_existing": [], "conflicts": [], "added_count": 0, "conflict_count": 0},
             "candidates": [],
             "rejections": [],
@@ -160,34 +172,45 @@ def run(data_dir: Path = DATA) -> dict:
         return payload
 
     temp = data_dir / ".cex-spot-identity-work.json"
-    _write(temp, {
-        "version": 1,
-        "generated_at": spot.get("generated_at") or now,
-        "alerts": watch,
-        "alerts_count": len(watch),
-    })
+    _write(temp, {"version": 1, "generated_at": spot.get("generated_at") or now, "alerts": watch, "alerts_count": len(watch)})
     try:
         age_report = verify_age_and_coin_identity(temp)
         resolve_exact_identity(temp)
         resolved = _load(temp, {})
-        rows = []
-        for row in resolved.get("alerts") or []:
-            if not isinstance(row, dict):
+        rows = [_research_wrap(row, "CEX_SPOT_DYNAMIC_EXACT_IDENTITY") for row in (resolved.get("alerts") or []) if isinstance(row, dict)]
+
+        rejected = list((age_report or {}).get("rejections") or [])
+        not_found = {_base_symbol(x.get("symbol")) for x in rejected if isinstance(x, dict) and x.get("reason") == "AGE_IDENTITY_NOT_FOUND"}
+        fallback_rows = []
+        for original in watch:
+            if _base_symbol(original.get("symbol")) not in not_found:
                 continue
-            rows.append({
-                **row,
-                "status": _status(row),
-                "research_only": True,
-                "actionable": False,
-                "automatic_buy": False,
-                "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY",
-            })
+            fallback = resolve_dex_fallback(original)
+            if fallback:
+                fallback_rows.append(_research_wrap(fallback, "CEX_SPOT_STRICT_DEX_IDENTITY_FALLBACK"))
+        rows.extend(fallback_rows)
+
+        # Prevent duplicate exact token/pair identities if both providers converge.
+        unique = {}
+        for row in rows:
+            key = (
+                str(row.get("chain") or "").lower(),
+                str(row.get("token_address") or "").lower(),
+                str(row.get("pair_address") or "").lower(),
+            )
+            if all(key):
+                unique[key] = row
+            else:
+                unique[(str(row.get("symbol")), str(len(unique)), "pending")] = row
+        rows = list(unique.values())
+
         registry_report = _persist_verified_registry(data_dir, rows, now)
         counts = {
             "age_identity_verified": len(rows),
             "dex_verified": sum(1 for x in rows if x.get("identity_status") == "DEX_VERIFIED"),
             "pair_pending": sum(1 for x in rows if x.get("identity_status") == "IDENTITY_RESOLVED_PAIR_PENDING"),
             "identity_pending": sum(1 for x in rows if x.get("identity_status") == "IDENTITY_PENDING"),
+            "dex_fallback_verified": len(fallback_rows),
         }
         payload = {
             **base,
@@ -198,14 +221,14 @@ def run(data_dir: Path = DATA) -> dict:
             "platform_catalog": resolved.get("platform_catalog"),
             "identity_contract": resolved.get("identity_contract"),
             "candidates": rows,
-            "rejections": list((age_report or {}).get("rejections") or []),
+            "rejections": rejected,
         }
     except Exception as exc:
         payload = {
             **base,
             "status": "DEGRADED_FAIL_CLOSED",
             "error": f"{type(exc).__name__}: {exc}"[:500],
-            "counts": {"age_identity_verified": 0, "dex_verified": 0, "pair_pending": 0, "identity_pending": len(watch)},
+            "counts": {"age_identity_verified": 0, "dex_verified": 0, "pair_pending": 0, "identity_pending": len(watch), "dex_fallback_verified": 0},
             "auto_registry": {"added": [], "confirmed_existing": [], "conflicts": [], "added_count": 0, "conflict_count": 0},
             "candidates": [],
             "rejections": [],
