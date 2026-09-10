@@ -11,10 +11,12 @@ on:
       - 'src/wallet500/cex_spot_revival.py'
       - 'src/wallet500/cex_spot_leaderboard_bridge.py'
       - 'src/wallet500/cex_spot_identity.py'
+      - 'src/wallet500/cex_spot_identity_fallback.py'
       - 'src/wallet500/cex_spot_watch_telegram.py'
       - 'tests/test_cex_spot_revival.py'
       - 'tests/test_cex_spot_leaderboard_bridge.py'
       - 'tests/test_cex_spot_watch_telegram.py'
+      - 'tests/test_cex_spot_identity_fallback.py'
 
 permissions:
   contents: write
@@ -36,12 +38,13 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e . pytest
-      - name: Test leaderboard discovery and forward-only Telegram contracts
+      - name: Test leaderboard discovery, strict identity fallback and Telegram contracts
         run: >-
           python -m pytest -q
           tests/test_cex_spot_revival.py
           tests/test_cex_spot_leaderboard_bridge.py
           tests/test_cex_spot_watch_telegram.py
+          tests/test_cex_spot_identity_fallback.py
           tests/test_cex_spot_identity.py
           tests/test_cex_spot_dynamic_identity_bridge.py
           tests/test_cex_identity_preflight.py
@@ -86,16 +89,18 @@ jobs:
           if ident.get('automatic_buy') is not False: raise SystemExit('IDENTITY_AUTO_BUY_LEAK')
           if truth.get('symbol_only_never_actionable') is not True: raise SystemExit('SYMBOL_ONLY_GUARD_MISSING')
           if truth.get('cex_only_never_real_alert') is not True: raise SystemExit('CEX_ONLY_REAL_ALERT_GUARD_MISSING')
+          if truth.get('dex_fallback_requires_price_pair_age_coherence') is not True: raise SystemExit('DEX_FALLBACK_GUARD_MISSING')
           for row in ident.get('candidates') or []:
               if row.get('research_only') is not True or row.get('actionable') is not False:
                   raise SystemExit('CEX_RESEARCH_ACTIONABLE_LEAK')
           print('CEX_LEADERBOARD_FAIL_CLOSED_VALID')
           PY
-      - name: Enforce silent routine CEX research policy
-        run: |
-          echo 'Routine CEX EARLY WATCH Telegram delivery is disabled by user notification policy.'
-          echo 'CEX research data continues to refresh; selective double-listing / exceptional alerts remain handled by Catalyst Focus v3.'
-      - name: Publish fresh research state with bounded retries
+      - name: Send selective forward-only Telegram alerts for newly exact veteran discoveries
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m wallet500.cex_spot_watch_telegram
+      - name: Publish fresh research and Telegram state with bounded retries
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -105,6 +110,8 @@ jobs:
             data/cex-spot-revival-radar.json
             data/cex-spot-identity-radar.json
             data/cex-spot-leaderboard.json
+            data/cex-spot-telegram-state.json
+            data/cex-spot-telegram-report.json
             data/cex-spot-state.json
             data/cex-spot-state.json.gz
             data/cex-identity-registry.json
