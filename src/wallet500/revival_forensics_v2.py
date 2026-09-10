@@ -354,6 +354,73 @@ def update_event(event: dict, history: list[dict], holder_ev: dict, now: datetim
     return event
 
 
+def feature_analysis(events: list[dict]) -> dict:
+    """Compare only immutable T0 fields from completed research events.
+
+    Holder evidence is intentionally excluded because its baseline may be
+    observed after WAKING T0. This helper exists for the full-lifecycle runner
+    and does not affect production selection or portfolio logic.
+    """
+    completed = [e for e in events if e.get("completed")]
+    winners = [
+        e
+        for e in completed
+        if e.get("outcome_class") in {"REVIVAL_X2", "REVIVAL_X4", "REVIVAL_X10"}
+    ]
+    failures = [
+        e
+        for e in completed
+        if e.get("outcome_class") in {"NO_REVIVAL_24H", "FAILED_LIQUIDITY_SURVIVAL"}
+    ]
+    fields = (
+        "revival_score_verified",
+        "drawdown_from_ath_pct",
+        "change_24h_pct",
+        "change_7d_pct",
+        "change_30d_pct",
+        "liquidity_usd",
+        "market_cap_usd",
+        "volume_24h_usd",
+        "pair_volume_24h_usd",
+    )
+    comparison: dict[str, dict[str, Any]] = {}
+    for field in fields:
+        winner_values = [n((e.get("t0") or {}).get(field)) for e in winners]
+        winner_values = [x for x in winner_values if x is not None]
+        failure_values = [n((e.get("t0") or {}).get(field)) for e in failures]
+        failure_values = [x for x in failure_values if x is not None]
+        comparison[field] = {
+            "winner_n": len(winner_values),
+            "failure_n": len(failure_values),
+            "winner_median": median(winner_values) if winner_values else None,
+            "failure_median": median(failure_values) if failure_values else None,
+            "sufficient_for_preliminary_comparison": (
+                len(winner_values) >= 5 and len(failure_values) >= 5
+            ),
+        }
+    return {
+        "version": 2,
+        "mode": MODE,
+        "generated_at": now_iso(),
+        "no_hindsight": True,
+        "t0_only_features": True,
+        "holders_excluded_from_t0_comparison": (
+            "holder baseline can be observed after WAKING T0; retained as confirmation evidence only"
+        ),
+        "counts": {
+            "completed": len(completed),
+            "winners_x2_plus": len(winners),
+            "failures": len(failures),
+        },
+        "claim_status": (
+            "ENOUGH_FOR_PRELIMINARY_COMPARISON"
+            if len(winners) >= 5 and len(failures) >= 5
+            else "INSUFFICIENT_SAMPLE_FOR_STATISTICAL_CLAIM"
+        ),
+        "feature_comparison": comparison,
+    }
+
+
 def run() -> dict:
     revival = load(REVIVAL, {})
     waking = load(WAKING, {})
