@@ -136,21 +136,25 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
-          tmp="$(mktemp -d)"
-          for f in revival-pre-t0-evidence-ledger.json revival-pre-t0-evidence.json waking-pre-t0-confirmation.json; do
-            cp "data/$f" "$tmp/$f"
-          done
-          for attempt in 1 2 3 4 5; do
+
+          git add data/revival-pre-t0-evidence-ledger.json data/revival-pre-t0-evidence.json data/waking-pre-t0-confirmation.json
+          if git diff --cached --quiet; then echo 'PRE_T0_EVIDENCE_NO_DATA_CHANGE'; exit 0; fi
+          git commit -m 'data: capture immutable Revival PRE-T0 evidence'
+
+          # Preserve the exact validated truth commit and replay it on top of the
+          # moving main branch.  Unlike reset+copy, a real same-file conflict
+          # fails closed instead of silently replacing newer truth state.
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
             git fetch origin main
-            git reset --hard origin/main
-            for f in revival-pre-t0-evidence-ledger.json revival-pre-t0-evidence.json waking-pre-t0-confirmation.json; do
-              cp "$tmp/$f" "data/$f"
-            done
-            git add data/revival-pre-t0-evidence-ledger.json data/revival-pre-t0-evidence.json data/waking-pre-t0-confirmation.json
-            if git diff --cached --quiet; then echo 'PRE_T0_EVIDENCE_NO_DATA_CHANGE'; exit 0; fi
-            git commit -m 'data: capture immutable Revival PRE-T0 evidence'
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo '::error::PRE_T0_EVIDENCE_REBASE_CONFLICT_FAIL_CLOSED'
+              exit 1
+            fi
             if git push origin HEAD:main; then echo 'PRE_T0_EVIDENCE_PUBLISH_OK'; exit 0; fi
-            echo "PRE_T0_EVIDENCE_PUBLISH_RETRY attempt=$attempt"; sleep 3
+            delay=$((2 + RANDOM % 5))
+            echo "PRE_T0_EVIDENCE_PUBLISH_RETRY attempt=$attempt delay=${delay}s"
+            sleep "$delay"
           done
           echo '::error::PRE_T0_EVIDENCE_PUBLISH_RACE_EXHAUSTED'
           exit 1
