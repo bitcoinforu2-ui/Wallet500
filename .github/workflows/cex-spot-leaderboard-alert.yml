@@ -12,11 +12,13 @@ on:
       - 'src/wallet500/cex_spot_leaderboard_bridge.py'
       - 'src/wallet500/cex_spot_identity.py'
       - 'src/wallet500/cex_spot_identity_fallback.py'
+      - 'src/wallet500/cex_spot_divergence.py'
       - 'src/wallet500/cex_spot_watch_telegram.py'
       - 'tests/test_cex_spot_revival.py'
       - 'tests/test_cex_spot_leaderboard_bridge.py'
       - 'tests/test_cex_spot_watch_telegram.py'
       - 'tests/test_cex_spot_identity_fallback.py'
+      - 'tests/test_cex_spot_divergence.py'
 
 permissions:
   contents: write
@@ -38,18 +40,19 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e . pytest
-      - name: Test leaderboard discovery, strict identity fallback and Telegram contracts
+      - name: Test leaderboard, identity, divergence and Telegram contracts
         run: >-
           python -m pytest -q
           tests/test_cex_spot_revival.py
           tests/test_cex_spot_leaderboard_bridge.py
           tests/test_cex_spot_watch_telegram.py
           tests/test_cex_spot_identity_fallback.py
+          tests/test_cex_spot_divergence.py
           tests/test_cex_spot_identity.py
           tests/test_cex_spot_dynamic_identity_bridge.py
           tests/test_cex_identity_preflight.py
           tests/test_cex_identity.py
-      - name: Collect Spot markets, add top-gainer discovery evidence, resolve exact veteran identity
+      - name: Collect Spot markets, leaderboard evidence, exact identity and exact-pair divergence
         env:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: |
@@ -59,11 +62,13 @@ jobs:
           from wallet500.cex_spot_revival import run_cex_spot_revival
           from wallet500.cex_spot_leaderboard_bridge import run as bridge_leaderboard
           from wallet500.cex_spot_identity import run as resolve_identity
+          from wallet500.cex_spot_divergence import run as enrich_divergence
 
           now=datetime.now(timezone.utc).isoformat()
           spot=run_cex_spot_revival(Path('data'), now)
           board=bridge_leaderboard(Path('data'), now)
           ident=resolve_identity(Path('data'))
+          div=enrich_divergence(Path('data'))
           print('CEX_LEADERBOARD_RESEARCH_SCAN', {
               'generated_at': now,
               'healthy_sources': spot.get('healthy_sources'),
@@ -74,6 +79,8 @@ jobs:
               'annotated': board.get('annotated_count'),
               'identity_status': ident.get('status'),
               'identity_counts': ident.get('counts'),
+              'divergence_enriched': div.get('enriched_count'),
+              'divergence_errors': div.get('error_count'),
           })
           PY
       - name: Validate fail-closed research boundary
@@ -90,6 +97,10 @@ jobs:
           if truth.get('symbol_only_never_actionable') is not True: raise SystemExit('SYMBOL_ONLY_GUARD_MISSING')
           if truth.get('cex_only_never_real_alert') is not True: raise SystemExit('CEX_ONLY_REAL_ALERT_GUARD_MISSING')
           if truth.get('dex_fallback_requires_price_pair_age_coherence') is not True: raise SystemExit('DEX_FALLBACK_GUARD_MISSING')
+          div=ident.get('cex_dex_divergence_enrichment') or {}
+          dtruth=div.get('truth_contract') or {}
+          if dtruth.get('exact_pair_only') is not True: raise SystemExit('DIVERGENCE_EXACT_PAIR_GUARD_MISSING')
+          if dtruth.get('production_gates_unchanged') is not True: raise SystemExit('DIVERGENCE_PRODUCTION_BOUNDARY_LEAK')
           for row in ident.get('candidates') or []:
               if row.get('research_only') is not True or row.get('actionable') is not False:
                   raise SystemExit('CEX_RESEARCH_ACTIONABLE_LEAK')
@@ -123,7 +134,6 @@ jobs:
               cp -a "$f" "$snap/$f"
             fi
           done
-
           for attempt in $(seq 1 20); do
             git fetch origin main
             latest="$(git rev-parse origin/main)"
@@ -134,10 +144,7 @@ jobs:
                 conflict=1
               fi
             done
-            if [ "$conflict" -ne 0 ]; then
-              exit 0
-            fi
-
+            if [ "$conflict" -ne 0 ]; then exit 0; fi
             git reset --hard "$latest"
             for f in "${targets[@]}"; do
               if [ -f "$snap/$f" ]; then
@@ -148,19 +155,11 @@ jobs:
               fi
             done
             for f in "${targets[@]}"; do
-              if [ -e "$f" ] || git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
-                git add -A -- "$f"
-              fi
+              if [ -e "$f" ] || git ls-files --error-unmatch "$f" >/dev/null 2>&1; then git add -A -- "$f"; fi
             done
-            if git diff --cached --quiet; then
-              echo "No CEX leaderboard state changes"
-              exit 0
-            fi
+            if git diff --cached --quiet; then echo "No CEX leaderboard state changes"; exit 0; fi
             git commit -m "data: refresh CEX leaderboard research state"
-            if git push origin HEAD:main; then
-              echo "CEX leaderboard research state published"
-              exit 0
-            fi
+            if git push origin HEAD:main; then echo "CEX leaderboard research state published"; exit 0; fi
             sleep 1
           done
           echo "CEX leaderboard publisher failed after bounded retries"
