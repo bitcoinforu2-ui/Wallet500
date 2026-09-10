@@ -10,9 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 WF = ROOT / ".github" / "workflows"
 SRC = ROOT / "src" / "wallet500"
 
-# Only production-authoritative / dashboard-decision files belong to the single
-# canonical generation boundary. Research/advisory fusion may refresh separately
-# but can never authorize production.
+# Production-authoritative / dashboard-decision files belong to one publication
+# boundary. Research/advisory surfaces may refresh separately but never authorize
+# production.
 CANONICAL_DECISION_FILES = {
     "data/candidate-evidence-envelope.json",
     "data/real-alerts.json",
@@ -23,11 +23,7 @@ CANONICAL_DECISION_FILES = {
     "data/decision-snapshot-integrity.json",
     "data/decision-generation.json",
 }
-ALLOWED_CANONICAL_PUBLISHERS = {
-    "candidate-evidence-envelope.yml",
-    "live-scan.yml",
-}
-CANONICAL_CONCURRENCY_GROUP = "wallet500-live-scan-publisher"
+SOLE_CANONICAL_PUBLISHER = "verified-publisher.yml"
 PATH_RE = re.compile(r"data/[A-Za-z0-9_.\-/]+\.json")
 
 
@@ -39,7 +35,7 @@ def _workflow_direct_writes(text: str) -> set[str]:
         stripped = lines[i].strip()
         if "git add " in stripped:
             out.update(PATH_RE.findall(stripped))
-        if "atomic_publish.py" in stripped or "publish_verified_snapshot.py" in stripped:
+        if "atomic_publish.py" in stripped:
             block = [stripped]
             while block[-1].rstrip().endswith("\\") and i + 1 < len(lines):
                 i += 1
@@ -51,25 +47,32 @@ def _workflow_direct_writes(text: str) -> set[str]:
 
 def audit() -> dict:
     findings: list[dict] = []
-    writers: dict[str, list[str]] = {}
+    direct_writers: dict[str, list[str]] = {}
     workflow_count = 0
-    concurrency: dict[str, str | None] = {}
     for p in sorted(WF.glob("*.yml")):
         workflow_count += 1
         text = p.read_text(encoding="utf-8")
         for f in _workflow_direct_writes(text):
-            writers.setdefault(f, []).append(p.name)
-        m = re.search(r"(?ms)^concurrency:\s*\n(?:\s+.*\n)*?\s+group:\s*([^\n#]+)", text)
-        concurrency[p.name] = m.group(1).strip().strip("'\"") if m else None
+            direct_writers.setdefault(f, []).append(p.name)
 
+    # verified-publisher applies the immutable Live Scan artifact via
+    # publish_verified_snapshot.py, so it owns every canonical decision surface
+    # even though those paths are enumerated in the artifact manifest rather than
+    # literally in the workflow YAML.
+    writer_map: dict[str, list[str]] = {}
     for f in sorted(CANONICAL_DECISION_FILES):
-        owners = sorted(set(writers.get(f, [])))
-        illegal = [x for x in owners if x not in ALLOWED_CANONICAL_PUBLISHERS]
+        owners = sorted(set(direct_writers.get(f, [])) | {SOLE_CANONICAL_PUBLISHER})
+        writer_map[f] = owners
+        illegal = [x for x in owners if x != SOLE_CANONICAL_PUBLISHER]
         if illegal:
-            findings.append({"severity": "CRITICAL", "code": "CANONICAL_MULTI_WRITER", "file": f, "writers": owners, "illegal": illegal})
-        serialized = [x for x in owners if concurrency.get(x) == CANONICAL_CONCURRENCY_GROUP]
-        if len(owners) > 1 and len(serialized) != len(owners):
-            findings.append({"severity": "CRITICAL", "code": "CANONICAL_WRITERS_NOT_SERIALIZED", "file": f, "writers": owners, "serialized": serialized})
+            findings.append({
+                "severity": "CRITICAL",
+                "code": "CANONICAL_MULTI_WRITER",
+                "file": f,
+                "writers": owners,
+                "illegal": illegal,
+                "required_owner": SOLE_CANONICAL_PUBLISHER,
+            })
 
     legacy_hits = []
     for p in sorted(SRC.glob("*.py")):
@@ -100,16 +103,22 @@ def audit() -> dict:
         "production_min_age_days": 180,
         "production_min_liquidity_usd": 50000,
         "new_token_attention_pct": 0,
+        "exact_pair_required": True,
+        "automatic_buy": False,
     }
     critical = [x for x in findings if x["severity"] == "CRITICAL"]
     return {
-        "version": 4,
+        "version": 5,
         "status": "FAIL" if critical else "PASS_WITH_WARNINGS" if findings else "PASS",
         "workflow_count": workflow_count,
-        "canonical_writer_map": {k: sorted(set(v)) for k, v in sorted(writers.items()) if k in CANONICAL_DECISION_FILES},
-        "canonical_writer_concurrency": {x: concurrency.get(x) for x in sorted(ALLOWED_CANONICAL_PUBLISHERS)},
+        "sole_canonical_publisher": SOLE_CANONICAL_PUBLISHER,
+        "canonical_writer_map": writer_map,
         "policy_expected": policy,
-        "advisory_excluded_from_canonical_generation": ["data/cross-signal-fusion-v2.json"],
+        "advisory_excluded_from_canonical_generation": [
+            "data/cross-signal-fusion-v2.json",
+            "data/research-decision-engine.json",
+            "data/liquidity-recovery-shadow.json",
+        ],
         "findings": findings,
         "critical_count": len(critical),
         "warning_count": sum(1 for x in findings if x["severity"] == "WARN"),
