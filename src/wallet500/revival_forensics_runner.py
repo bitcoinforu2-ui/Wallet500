@@ -22,6 +22,7 @@ T0_SOURCE_CONTRACT = "REVIVAL_GENERATED_AT_EXACT_PUBLICATION_V1"
 T0_INVALIDATION_REASON = (
     "LEGACY_FORENSICS_T0_USED_CONFIRMATION_TIMESTAMP_OLDER_THAN_REVIVAL_PRICE_SOURCE"
 )
+AGE_POLICY_INVALIDATION_REASON = "LEGACY_FORENSICS_EVENT_BELOW_CURRENT_90D_AGE_POLICY"
 
 
 def _validate_authoritative_revival(revival: dict) -> datetime:
@@ -71,20 +72,62 @@ def _current_waking_from_revival(
     return out
 
 
+def _event_meets_current_age_policy(event: dict) -> bool:
+    t0 = event.get("t0") or {}
+    age = core.n(t0.get("market_age_min_days"))
+    return (
+        t0.get("market_age_verified") is True
+        and age is not None
+        and age >= core.MIN_AGE_DAYS
+    )
+
+
+def _append_audit_once(invalidated: list[dict], event: dict, reason: str) -> None:
+    event_id = str(event.get("event_id") or "")
+    for row in invalidated:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("event_id") or "") == event_id and row.get("invalidated_reason") == reason:
+            return
+    audit = dict(event)
+    audit["invalidated_at"] = core.now_iso()
+    audit["invalidated_reason"] = reason
+    audit["eligible_for_learning"] = False
+    invalidated.append(audit)
+
+
 def _migrate_state(raw: dict) -> dict:
+    invalidated = list(raw.get("invalidated_events") or [])
+
     if raw.get("t0_source_contract") == T0_SOURCE_CONTRACT:
-        raw.setdefault("invalidated_events", [])
+        events = dict(raw.get("events") or {})
+        active = dict(raw.get("active_by_token") or {})
+        dropped: set[str] = set()
+        for event_id, event in list(events.items()):
+            if not isinstance(event, dict):
+                raise SystemExit("REVIVAL_FORENSICS_STATE_EVENT_INVALID")
+            if _event_meets_current_age_policy(event):
+                continue
+            _append_audit_once(invalidated, event, AGE_POLICY_INVALIDATION_REASON)
+            dropped.add(str(event_id))
+            events.pop(event_id, None)
+        for mint, event_id in list(active.items()):
+            if str(event_id) in dropped or event_id not in events:
+                active.pop(mint, None)
+        raw["events"] = events
+        raw["active_by_token"] = active
+        raw["invalidated_events"] = invalidated
+        raw["age_policy_migration"] = {
+            "minimum_market_age_days": core.MIN_AGE_DAYS,
+            "invalidated_reason": AGE_POLICY_INVALIDATION_REASON,
+            "immutable_t0_preserved": True,
+        }
         return raw
 
-    invalidated = list(raw.get("invalidated_events") or [])
     for event in (raw.get("events") or {}).values():
         if not isinstance(event, dict):
-            continue
-        audit = dict(event)
-        audit["invalidated_at"] = core.now_iso()
-        audit["invalidated_reason"] = T0_INVALIDATION_REASON
-        audit["eligible_for_learning"] = False
-        invalidated.append(audit)
+            raise SystemExit("REVIVAL_FORENSICS_STATE_EVENT_INVALID")
+        _append_audit_once(invalidated, event, T0_INVALIDATION_REASON)
 
     return {
         "version": 2,
@@ -98,6 +141,11 @@ def _migrate_state(raw: dict) -> dict:
         "migration_note": (
             "Invalid legacy v2 events are retained for audit but excluded from all learning."
         ),
+        "age_policy_migration": {
+            "minimum_market_age_days": core.MIN_AGE_DAYS,
+            "invalidated_reason": AGE_POLICY_INVALIDATION_REASON,
+            "immutable_t0_preserved": True,
+        },
     }
 
 
