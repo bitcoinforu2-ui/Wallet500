@@ -281,7 +281,7 @@ def _write_outputs(
             "T0_EQUALS_REVIVAL_PUBLICATION_TIME_AND_ONLY_FORWARD_EXACT_PAIR_OBSERVATIONS"
         ),
         "pair_identity_rule": "LOCK_REVIVAL_DEX_PAIR_AT_WAKING_T0_AND_NEVER_SWITCH",
-        "age_rule": "MARKET_AGE_VERIFIED_GTE_60_DAYS_FAIL_CLOSED",
+        "age_rule": "MARKET_AGE_VERIFIED_GTE_90_DAYS_FAIL_CLOSED",
         "full_lifecycle_rule": (
             "CONTINUE_EXACT_PAIR_FOLLOWUP_TO_24H_EVEN_AFTER_WAKING_EXIT"
         ),
