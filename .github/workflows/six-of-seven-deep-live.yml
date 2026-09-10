@@ -1,0 +1,119 @@
+name: Wallet500 6-of-7 Deep Live Intelligence
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Wallet500 Multi-Chain Live Scan"]
+    types: [completed]
+  schedule:
+    - cron: '*/5 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-live-scan-publisher
+  cancel-in-progress: false
+
+jobs:
+  deep-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+
+      - name: Validate 6-of-7 deep-live trigger contract
+        run: python -m pytest -q tests/test_six_of_seven_live_intelligence.py tests/test_research_decision_engine.py
+
+      - name: Detect current verified 6-of-7 veteran candidates
+        id: detect
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          from wallet500.six_of_seven_live_intelligence import select_six_of_seven
+          p=Path('data/real-alerts.json')
+          real=json.loads(p.read_text()) if p.exists() else {}
+          rows=select_six_of_seven(real)
+          print(f"count={len(rows)}")
+          print("symbols=" + ",".join(str(x.get('symbol') or '?') for x in rows))
+          PY
+
+      - name: Deep-search live social, news and public-index intelligence
+        if: steps.detect.outputs.count != '0'
+        env:
+          SOCIAL_SCAN_BUDGET: '8'
+          MESH_PUBLIC_INDEX_SLOTS: '8'
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+          NEYNAR_API_KEY: ${{ secrets.NEYNAR_API_KEY }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_GUILD_IDS: ${{ secrets.DISCORD_GUILD_IDS }}
+          DISCORD_CHANNEL_IDS: ${{ secrets.DISCORD_CHANNEL_IDS }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          BSKY_IDENTIFIER: ${{ secrets.BSKY_IDENTIFIER }}
+          BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
+        run: python -m wallet500.six_of_seven_live_intelligence
+
+      - name: Recompute organic acceleration and social intelligence
+        if: steps.detect.outputs.count != '0'
+        run: |
+          python -m wallet500.social_organic_acceleration
+          python -m wallet500.social_intelligence_v2
+
+      - name: Rebuild evidence and alert decision after deep live intelligence
+        if: steps.detect.outputs.count != '0'
+        run: |
+          python -m wallet500.candidate_evidence_envelope
+          python -m wallet500.signal_intelligence
+          python -m wallet500.real_alerts
+          python -m wallet500.signal_alert_guard
+          python -m wallet500.revival_funnel_diagnostics
+          python -m wallet500.near_alert_observatory
+          python -m wallet500.research_decision_engine
+
+      - name: Assert deep search cannot bypass hard truth gates
+        if: steps.detect.outputs.count != '0'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          deep=json.loads(Path('data/six-of-seven-live-intelligence.json').read_text())
+          real=json.loads(Path('data/real-alerts.json').read_text())
+          assert deep.get('production_effect') is False
+          assert deep.get('automatic_buy') is False
+          truth=deep.get('truth_contract') or {}
+          assert truth.get('exact_token_and_pair_required') is True
+          assert truth.get('symbol_or_name_only_context_never_promotes_gate') is True
+          rt=real.get('truth_contract') or {}
+          assert rt.get('exact_onchain_identity_required') is True
+          assert rt.get('exact_dex_pair_required') is True
+          print('DEEP_LIVE_FAIL_CLOSED_OK', {'candidates':deep.get('candidate_count'),'real_alerts':(real.get('counts') or {}).get('real_alerts')})
+          PY
+
+      - name: Publish only changed deep-live derived data
+        if: steps.detect.outputs.count != '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/six-of-seven-live-intelligence.json data/social-source-scan.json data/social-catalyst-ledger.json data/social-identity-cache.json data/social-organic-acceleration.json data/social-intelligence-v2.json data/candidate-evidence-envelope.json data/signal-intelligence.json data/real-alerts.json data/revival-funnel-diagnostics.json data/near-alert-observatory.json data/research-decision-engine.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No meaningful deep-live data changes"
+            exit 0
+          fi
+          git commit -m "data: refresh 6-of-7 deep live intelligence"
+          git pull --rebase origin main
+          git push origin HEAD:main
