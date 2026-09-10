@@ -104,6 +104,7 @@ jobs:
           contract=d.get('veteran_truth_contract') or {}
           if contract.get('focus')!='VETERAN_COIN_REVIVAL_ONLY': raise SystemExit('VETERAN_FOCUS_INVALID')
           if float(contract.get('minimum_market_age_days') or 0) < 90: raise SystemExit('VETERAN_AGE_FLOOR_INVALID')
+          if contract.get('identity_scope')!='EXACT_TOKEN_PLUS_EXACT_PAIR_NO_POOL_MIXING': raise SystemExit('VETERAN_PAIR_SCOPE_INVALID')
           if contract.get('unknown_age_policy')!='FAIL_CLOSED_NO_ALERT': raise SystemExit('VETERAN_FAIL_CLOSED_INVALID')
           eligible={}
           for x in d.get('tokens') or []:
@@ -115,7 +116,8 @@ jobs:
               if (x.get('wallet_transaction_intelligence_v5') or {}).get('production_effect') is not False: raise SystemExit('WALLET_TX_PRODUCTION_EFFECT_LEAK')
               if (x.get('pre_wave_fusion_v6') or {}).get('production_effect') is not False: raise SystemExit('FUSION_PRODUCTION_EFFECT_LEAK')
               token=str(x.get('token') or '').lower(); eligible[token]=bool(x.get('veteran_alert_eligible'))
-              if x.get('veteran_alert_eligible') and x.get('veteran_age_status')!='VERIFIED_60D_PLUS': raise SystemExit('ACTIONABLE_WITHOUT_VERIFIED_VETERAN_AGE')
+              if x.get('veteran_alert_eligible') and x.get('veteran_age_status')!='VERIFIED_90D_PLUS': raise SystemExit('ACTIONABLE_WITHOUT_VERIFIED_VETERAN_AGE')
+              if x.get('veteran_alert_eligible') and x.get('veteran_pair_identity_match') is not True: raise SystemExit('ACTIONABLE_WITHOUT_EXACT_PAIR_AGE_MATCH')
           for event in d.get('telegram_events') or []:
               if not eligible.get(str(event.get('token') or '').lower(), False): raise SystemExit('NON_VETERAN_TELEGRAM_EVENT_LEAK')
           for qn in ('data/survivor-signal-intelligence-v3.json','data/survivor-model-governor-v4.json','data/survivor-wallet-transaction-intelligence-v5.json','data/survivor-pre-wave-fusion-v6.json','data/survivor-exact-pair-crosscheck.json'):
@@ -123,7 +125,7 @@ jobs:
               if not q.exists(): raise SystemExit('SHADOW_OUTPUT_MISSING:'+qn)
               qd=json.loads(q.read_text())
               if qd.get('research_only') is not True or qd.get('production_gates_changed') is not False: raise SystemExit('SHADOW_OUTPUT_CONTRACT_INVALID:'+qn)
-          print('SURVIVOR_WAVE_WATCH_OK', d.get('survivor_n'), d.get('actionable_veteran_signal_n'), d.get('suppressed_non_veteran_or_unverified_signal_n'), feed_data.get('provider_status'), tx5.get('verified_flow_token_n'), (cross_data.get('summary') or {}).get('verified_n'))
+          print('SURVIVOR_WAVE_WATCH_OK', d.get('survivor_n'), d.get('veteran_age_verified_exact_pair_n'), d.get('actionable_veteran_signal_n'), d.get('suppressed_non_veteran_or_unverified_signal_n'), feed_data.get('provider_status'), tx5.get('verified_flow_token_n'), (cross_data.get('summary') or {}).get('verified_n'))
           PY
       - name: Publish hourly survivor state
         shell: bash
