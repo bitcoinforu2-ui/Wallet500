@@ -16,3 +16,26 @@ def test_snapshot_preserves_reject_source_and_market_state():
     assert s['price_usd']==1.2
     assert s['liquidity_usd']==45000
     assert s['production_risk_reasons']==['LIVE_LIQUIDITY_BELOW_15K_HARD_BLOCK']
+
+
+def test_snapshot_preserves_age_and_identity_provenance_when_available():
+    row={
+        'chain':'solana','mint':'Mint1','pair_address':'Pair1',
+        'market_age_verified':True,'market_age_min_days':217,
+        'market_age_evidence_at':'2026-02-05T00:00:00+00:00',
+        'market_age_evidence_source':'COINGECKO_EXACT_ID',
+        'exact_identity_verified':True,'exact_pair_verified':True,
+    }
+    s=r._snapshot(row,'LIVE_SURVIVAL_FAILED','2026-09-10T00:00:00+00:00')
+    assert s['market_age_verified'] is True
+    assert s['market_age_min_days']==217
+    assert s['market_age_evidence_at']=='2026-02-05T00:00:00+00:00'
+    assert s['market_age_evidence_source']=='COINGECKO_EXACT_ID'
+    assert s['exact_identity_verified'] is True
+    assert s['exact_pair_verified'] is True
+
+
+def test_snapshot_never_invents_age_truth():
+    s=r._snapshot({'chain':'bsc','token':'0xabc','pair_address':'0xdef'},'LIVE_SURVIVAL_FAILED','2026-09-10T00:00:00+00:00')
+    assert s['market_age_verified'] is False
+    assert s['market_age_min_days'] is None
