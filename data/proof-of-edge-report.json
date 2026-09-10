@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "mode": "FORWARD_PROOF_OF_EDGE_V1",
+  "updated_at": "2026-09-10T22:22:13.818601+00:00",
+  "decision_snapshot_activation_at": "2026-09-10T22:22:02.454915+00:00",
+  "alpha_activation_at": "2026-09-03T11:11:47.468493+00:00",
+  "alpha_primary_proof_status": "COLLECTING_FORWARD_SAMPLE",
+  "primary_horizon": "24h",
+  "record_count": 6,
+  "accepted_record_count": 1,
+  "control_record_count": 5,
+  "integrity": {
+    "checked_records": 6,
+    "hash_mismatch_count": 0,
+    "hash_mismatch_keys": [],
+    "status": "PASS"
+  },
+  "decision_matrix": {
+    "1h": {
+      "mature_accepts": 1,
+      "mature_controls": 3,
+      "class_counts": {
+        "ACCEPTED_NEUTRAL": 1,
+        "CORRECT_REJECT_LOSS_AVOIDED": 1,
+        "REJECTED_NEUTRAL": 2,
+        "IMMATURE": 2
+      },
+      "accepted_winner_rate_pct": 0.0,
+      "accepted_loser_rate_pct": 0.0,
+      "missed_winner_rate_pct": 0.0,
+      "avoided_loser_rate_pct": 33.3333,
+      "total_records": 6,
+      "total_accept_records": 1,
+      "total_control_records": 5
+    },
+    "6h": {
+      "mature_accepts": 1,
+      "mature_controls": 1,
+      "class_counts": {
+        "ACCEPTED_NEUTRAL": 1,
+        "CORRECT_REJECT_LOSS_AVOIDED": 1,
+        "IMMATURE": 4
+      },
+      "accepted_winner_rate_pct": 0.0,
+      "accepted_loser_rate_pct": 0.0,
+      "missed_winner_rate_pct": 0.0,
+      "avoided_loser_rate_pct": 100.0,
+      "total_records": 6,
+      "total_accept_records": 1,
+      "total_control_records": 5
+    },
+    "24h": {
+      "mature_accepts": 1,
+      "mature_controls": 0,
+      "class_counts": {
+        "ACCEPTED_NEUTRAL": 1,
+        "IMMATURE": 5
+      },
+      "accepted_winner_rate_pct": 0.0,
+      "accepted_loser_rate_pct": 0.0,
+      "missed_winner_rate_pct": null,
+      "avoided_loser_rate_pct": null,
+      "total_records": 6,
+      "total_accept_records": 1,
+      "total_control_records": 5
+    },
+    "7d": {
+      "mature_accepts": 0,
+      "mature_controls": 0,
+      "class_counts": {
+        "IMMATURE": 6
+      },
+      "accepted_winner_rate_pct": null,
+      "accepted_loser_rate_pct": null,
+      "missed_winner_rate_pct": null,
+      "avoided_loser_rate_pct": null,
+      "total_records": 6,
+      "total_accept_records": 1,
+      "total_control_records": 5
+    }
+  },
+  "blocker_attribution_24h": [],
+  "exceptions_24h": {
+    "missed_winners": [],
+    "false_positives": []
+  },
+  "learning_review_queue": [],
+  "guardrails": {
+    "production_scoring_changed": false,
+    "production_gates_changed": false,
+    "telegram_alerts_changed": false,
+    "research_only": true,
+    "automatic_weight_mutation": false,
+    "minimum_blocker_sample_for_review": 5,
+    "minimum_blocker_miss_rate_for_review_pct": 20.0
+  },
+  "truth_notes": [
+    "Decision context is frozen the first time Proof of Edge observes an alpha record and is SHA-256 protected.",
+    "Existing immutable discovery evidence and first-reject snapshots are reused when available; otherwise only alpha entry facts are frozen.",
+    "Outcome truth comes only from Alpha Proof immutable exact-pair checkpoints; no current-price hindsight is used for mature classifications.",
+    "Missed winners and false positives are diagnostics only and cannot change production weights or gates automatically.",
+    "All winner/loser labels use friction-adjusted returns at the stated horizon."
+  ]
+}
