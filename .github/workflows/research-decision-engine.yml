@@ -4,6 +4,7 @@ on:
   workflow_run:
     workflows:
       - "Wallet500 Near Alert Observatory"
+      - "Wallet500 Liquidity Recovery Shadow V3"
     types: [completed]
   schedule:
     - cron: '17 * * * *'
@@ -13,6 +14,7 @@ on:
       - 'src/wallet500/research_decision_engine.py'
       - 'data/near-alert-observatory.json'
       - 'data/cex-revival-radar.json'
+      - 'data/liquidity-recovery-shadow.json'
       - 'data/filter-tuning-advisor.json'
       - 'data/rejected-outcome-report.json'
       - 'data/case-study-cyberleek.json'
@@ -55,6 +57,7 @@ jobs:
           assert 'EXACT_PAIR_IDENTITY' in d['hard_rules']
           assert 'HOLDER_CLUSTER_FAIL_CLOSED' in d['hard_rules']
           assert any(p.get('hypothesis_id')=='CASE::DUSD' for p in d.get('proposals',[])), 'DUSD case disconnected from research engine'
+          assert d.get('source_health',{}).get('liquidity_recovery_loaded') is True, 'Liquidity Recovery V3 disconnected from research engine'
           print(d['decision_states'])
           PY
       - name: Publish newest advisory output with bounded retries
