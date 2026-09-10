@@ -16,20 +16,36 @@ def test_measured_recommendation_thresholds():
     assert _recommend(350,-1,35,True)=="REJECT"
 
 
-def _ray_like(pair="PAIR_CURRENT"):
-    near={"closest_to_real_alert":[{"symbol":"RAY","chain":"solana","token_address":"RAY_MINT","pair_address":"PAIR_CURRENT","readiness_passed":6,"readiness_total":7,"missing_gates":["STRONG_DECISION_LANE"],"blockers":["NO_STRONG_DECISION_LANE"],"evidence_positive_lanes":["HOLDER_GROWTH","VERIFIED_SOCIAL"],"exact_pair_verified":True,"exact_identity_verified":True,"market_age_verified":True,"execution_pool_liquidity_usd":5_000_000}]}
-    cex={"alerts":[{"symbol":"RAYUSDT","chain":"solana","token_address":"RAY_MINT","pair_address":pair,"identity_verified":True,"cex_revival_score":45,"coherent_confirmations":7}]}
+def _ray_like(pair="PAIR_CURRENT", price=1.0):
+    near={"closest_to_real_alert":[{"symbol":"RAY","chain":"solana","token_address":"RAY_MINT","pair_address":"PAIR_CURRENT","price_usd":price,"readiness_passed":6,"readiness_total":7,"missing_gates":["STRONG_DECISION_LANE"],"blockers":["NO_STRONG_DECISION_LANE"],"evidence_positive_lanes":["HOLDER_GROWTH","VERIFIED_SOCIAL"],"exact_pair_verified":True,"exact_identity_verified":True,"market_age_verified":True,"execution_pool_liquidity_usd":5_000_000}]}
+    cex={"alerts":[{"symbol":"RAYUSDT","chain":"solana","token_address":"RAY_MINT","pair_address":pair,"identity_verified":True,"cex_revival_score":45,"coherent_confirmations":7,"dex_price_usd":price}]}
     return near,cex
 
 
 def test_composite_strong_decision_enters_shadow_only():
-    near,cex=_ray_like(); out=build({}, {}, [], near, cex)
+    near,cex=_ray_like(); out=build({}, {}, [], near, cex, observed_at="2026-09-10T20:00:00+00:00")
     assert out["decision_states"]["SHADOW_TEST"]==1
     p=out["next_human_decision"][0]
     assert p["feature_or_rule"]=="COMPOSITE_STRONG_DECISION_SHADOW"
     assert p["recommendation"]=="SHADOW_TEST" and p["pair_reconciled"] is True
     assert p["production_effect"] is False and p["hard_rule_change_allowed"] is False
+    assert p["root_cause"]=="STRONG_DECISION_LANE_MONOCULTURE_PRECURSOR_OR_ACTIVE_ONLY"
+    assert p["forward_observation_count"]==1 and p["baseline_price_usd"]==1.0
     assert out["production_change_allowed"] is False and out["production_thresholds_modified"] is False
+
+
+def test_composite_shadow_preserves_baseline_and_measures_forward_move():
+    near,cex=_ray_like(price=1.0)
+    first=build({}, {}, [], near, cex, observed_at="2026-09-10T20:00:00+00:00")
+    near2,cex2=_ray_like(price=1.25)
+    second=build({}, {}, [], near2, cex2, previous=first, observed_at="2026-09-10T21:00:00+00:00")
+    p=[x for x in second["proposals"] if x.get("feature_or_rule")=="COMPOSITE_STRONG_DECISION_SHADOW"][0]
+    assert p["first_shadow_at"]=="2026-09-10T20:00:00+00:00"
+    assert p["forward_observation_count"]==2
+    assert p["baseline_price_usd"]==1.0
+    assert p["current_price_usd"]==1.25
+    assert p["current_gain_pct"]==25.0 and p["peak_gain_pct"]==25.0
+    assert p["promotion_policy"]["automatic_promotion"] is False
 
 
 def test_alternate_pair_cex_evidence_cannot_earn_shadow_credit():
