@@ -35,12 +35,18 @@ def test_ignores_symbol_only_and_unrelated_posts():
     assert rt.parse_stream_payload({"data": {"id": "2", "text": f"hello Contract Address: {MINT}"}}) == []
 
 
+def test_jupiter_link_targets_exact_contract():
+    url = rt._jupiter_url(MINT)
+    assert f"buy={MINT}" in url
+    assert "sell=So11111111111111111111111111111111111111112" in url
+
+
 def test_send_is_per_contract_idempotent(tmp_path, monkeypatch):
     state_path = tmp_path / "state.json"
     monkeypatch.setattr(rt, "STATE_DIR", tmp_path)
     monkeypatch.setattr(rt, "STATE_PATH", state_path)
     sent = []
-    monkeypatch.setattr(rt.fw, "_telegram_send", lambda text: (sent.append(text) or True, "SENT"))
+    monkeypatch.setattr(rt, "_telegram_send_live", lambda event: (sent.append(dict(event)) or True, "SENT"))
     event = {
         "post_id": "123",
         "event_type": "MOONSHOT_VERIFIED",
@@ -53,6 +59,7 @@ def test_send_is_per_contract_idempotent(tmp_path, monkeypatch):
     assert rt._send_event(event, state) is True
     assert rt._send_event(event, state) is False
     assert len(sent) == 1
-    assert MINT in sent[0]
+    assert sent[0]["token"] == MINT
+    assert MINT in rt._message(sent[0])
     persisted = json.loads(Path(state_path).read_text())
     assert f"123:{MINT}" in persisted["sent_event_keys"]
