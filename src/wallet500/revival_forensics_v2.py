@@ -163,6 +163,197 @@ def _status_from_outcomes(obs: list[dict]) -> str:
     return "CONTROL_NO_BREAKOUT"
 
 
+# Compatibility helpers used by revival_forensics_runner. These preserve the
+# original no-hindsight/exact-pair contract while the lightweight core run()
+# below keeps its newer payload shape.
+def horizon_tolerance(minutes: int) -> int:
+    if minutes <= 15:
+        return 8
+    if minutes <= 60:
+        return 12
+    if minutes <= 240:
+        return 25
+    if minutes <= 720:
+        return 45
+    return 90
+
+
+def select_exact_pair_observation(
+    history: list[dict], pair_address: str, target: datetime, tolerance_minutes: int
+) -> dict | None:
+    best: tuple[float, dict] | None = None
+    for row in history:
+        if str(row.get("pair_address") or "") != pair_address:
+            continue
+        at = parse_dt(row.get("at") or row.get("observed_at"))
+        if not at or at < target:
+            continue
+        lag = (at - target).total_seconds() / 60.0
+        if lag > tolerance_minutes:
+            continue
+        if best is None or lag < best[0]:
+            best = (lag, row)
+    return best[1] if best else None
+
+
+def observations_since(history: list[dict], pair_address: str, t0: datetime) -> list[dict]:
+    out = []
+    for row in history:
+        if str(row.get("pair_address") or "") != pair_address:
+            continue
+        at = parse_dt(row.get("at") or row.get("observed_at"))
+        if at and at >= t0:
+            out.append(row)
+    out.sort(key=lambda x: parse_dt(x.get("at") or x.get("observed_at")) or t0)
+    return out
+
+
+def build_t0(coin: dict, target: dict, source_generated_at: str, created_at: str) -> dict:
+    age = n(coin.get("market_age_min_days"))
+    pair = exact_pair(coin)
+    price = n(coin.get("price_usd") or coin.get("dex_pair_price_usd"))
+    liquidity = n(coin.get("dex_pair_liquidity_usd"))
+    market_cap = n(coin.get("market_cap_usd"))
+    blockers = []
+    if coin.get("market_age_verified") is not True or age is None or age < MIN_AGE_DAYS:
+        blockers.append(f"AGE_NOT_VERIFIED_{MIN_AGE_DAYS}D_PLUS")
+    if not pair:
+        blockers.append("PAIR_ID_MISSING")
+    if price is None or price <= 0:
+        blockers.append("ENTRY_PRICE_MISSING")
+    if liquidity is None or liquidity < 0:
+        blockers.append("ENTRY_LIQUIDITY_MISSING")
+    t0 = {
+        "token_address": token_key(coin),
+        "symbol": coin.get("symbol"),
+        "name": coin.get("name"),
+        "waking_t0": source_generated_at,
+        "locked_at": created_at,
+        "t0_source": "PUBLISHED_REVIVAL_SOURCE_GENERATED_AT",
+        "price_usd": price,
+        "liquidity_usd": liquidity,
+        "market_cap_usd": market_cap,
+        "pair_address": pair,
+        "dex_link": coin.get("dex_link"),
+        "market_age_verified": coin.get("market_age_verified") is True,
+        "market_age_min_days": int(age) if age is not None else None,
+        "market_age_evidence_at": coin.get("market_age_evidence_at"),
+        "market_age_evidence_source": coin.get("market_age_evidence_source"),
+        "revival_score_verified": n(coin.get("revival_score_verified")),
+        "drawdown_from_ath_pct": n(coin.get("drawdown_from_ath_pct")),
+        "change_24h_pct": n(coin.get("change_24h_pct")),
+        "change_7d_pct": n(coin.get("change_7d_pct")),
+        "change_30d_pct": n(coin.get("change_30d_pct")),
+        "volume_24h_usd": n(coin.get("volume_24h_usd")),
+        "pair_volume_24h_usd": n(coin.get("dex_pair_volume_24h_usd")),
+        "confirmation_status_at_lock": target.get("confirmation_status"),
+        "confirmation_score_at_lock": n(target.get("confirmation_score")),
+        "blockers": blockers,
+    }
+    t0["evidence_sha256"] = sha256({k: v for k, v in t0.items() if k != "evidence_sha256"})
+    return t0
+
+
+def holder_evidence(holder_by_token: dict[str, dict], target: dict, mint: str) -> dict:
+    holder = holder_by_token.get(mint) or {}
+    ch = ((target.get("channels") or {}).get("holders") or {})
+    cm = ch.get("metrics") or {}
+    wallet = ((target.get("channels") or {}).get("wallets") or {})
+    distribution = target.get("distribution_evidence") or {}
+    dm = distribution.get("metrics") or {}
+    return {
+        "holder_baseline_count": holder.get("first_holder_count"),
+        "holder_baseline_observed_at": holder.get("first_holder_observed_at"),
+        "holder_count_latest": holder.get("holder_count") if holder else cm.get("holder_count"),
+        "holder_growth_from_baseline_pct": holder.get("holder_growth_pct"),
+        "holder_latest_scan_change_pct": holder.get("latest_scan_change_pct") if holder else cm.get("holder_change_pct"),
+        "holder_source": holder.get("source") if holder else ch.get("source"),
+        "holder_is_true_price_t0": False,
+        "wallet_activity_available": wallet.get("available") is True,
+        "wallet_activity_verified": wallet.get("verified") is True,
+        "wallet_activity_source": wallet.get("source"),
+        "wallet_activity_metrics": wallet.get("metrics") or {},
+        "wallet500_smart_money_connected": False,
+        "wallet500_smart_money_status": "NOT_CONNECTED_TO_WAKING_PIPELINE",
+        "top1_token_account_pct": holder.get("top1_pct") if holder else dm.get("top1_pct"),
+        "top10_token_accounts_pct": holder.get("top10_pct") if holder else dm.get("top10_pct"),
+        "concentration_risk_score": holder.get("concentration_risk_score") if holder else distribution.get("risk_score"),
+    }
+
+
+def update_event(event: dict, history: list[dict], holder_ev: dict, now: datetime) -> dict:
+    t0 = parse_dt((event.get("t0") or {}).get("waking_t0"))
+    if not t0:
+        event.setdefault("blockers", []).append("T0_TIMESTAMP_INVALID")
+        return event
+    pair = str((event.get("t0") or {}).get("pair_address") or "")
+    entry_price = n((event.get("t0") or {}).get("price_usd"))
+    entry_liq = n((event.get("t0") or {}).get("liquidity_usd"))
+    exact = observations_since(history, pair, t0)
+    horizons = event.setdefault("horizons", {})
+    for mins in HORIZONS_MIN:
+        key = f"{mins}m"
+        if key in horizons:
+            continue
+        target = t0 + timedelta(minutes=mins)
+        if now < target:
+            continue
+        row = select_exact_pair_observation(history, pair, target, horizon_tolerance(mins))
+        if row is None:
+            horizons[key] = {
+                "target_at": target.isoformat(),
+                "available": False,
+                "reason": "NO_EXACT_PAIR_OBSERVATION_WITHIN_TOLERANCE",
+            }
+            continue
+        observed = parse_dt(row.get("at") or row.get("observed_at"))
+        price, liq = n(row.get("price_usd")), n(row.get("liquidity_usd"))
+        horizons[key] = {
+            "target_at": target.isoformat(),
+            "observed_at": observed.isoformat() if observed else None,
+            "lag_minutes": round((observed-target).total_seconds()/60.0, 3) if observed else None,
+            "pair_address": pair,
+            "pair_identity": "STRICT_MATCH",
+            "price_usd": price,
+            "return_pct": pct(entry_price, price),
+            "liquidity_usd": liq,
+            "liquidity_return_pct": pct(entry_liq, liq),
+            "available": price is not None and price > 0,
+        }
+    prices = [n(x.get("price_usd")) for x in exact]
+    prices = [x for x in prices if x is not None and x > 0]
+    liqs = [n(x.get("liquidity_usd")) for x in exact]
+    liqs = [x for x in liqs if x is not None and x >= 0]
+    peak_price = max(prices) if prices else entry_price
+    low_price = min(prices) if prices else entry_price
+    min_liq = min(liqs) if liqs else entry_liq
+    event["peak_return_pct"] = pct(entry_price, peak_price)
+    event["max_drawdown_from_t0_pct"] = pct(entry_price, low_price)
+    event["minimum_liquidity_return_pct"] = pct(entry_liq, min_liq)
+    event["holder_confirmation"] = holder_ev
+    event["last_updated_at"] = now.isoformat()
+    age_min = (now - t0).total_seconds() / 60.0
+    peak = n(event.get("peak_return_pct"), -10000.0) or -10000.0
+    liq_floor = n(event.get("minimum_liquidity_return_pct"), 0.0)
+    if liq_floor is not None and liq_floor <= -80:
+        outcome = "FAILED_LIQUIDITY_SURVIVAL"
+    elif peak >= 900:
+        outcome = "REVIVAL_X10"
+    elif peak >= 300:
+        outcome = "REVIVAL_X4"
+    elif peak >= 100:
+        outcome = "REVIVAL_X2"
+    elif age_min >= 1440:
+        outcome = "NO_REVIVAL_24H"
+    else:
+        outcome = "PENDING_24H"
+    event["outcome_class"] = outcome
+    event["completed"] = age_min >= 1440
+    if event["completed"] and not event.get("completed_at"):
+        event["completed_at"] = now.isoformat()
+    return event
+
+
 def run() -> dict:
     revival = load(REVIVAL, {})
     waking = load(WAKING, {})
@@ -250,7 +441,6 @@ def run() -> dict:
     write(LATEST, payload)
     write(DASHBOARD, payload)
 
-    # Conservative feature summary: only completed events with timestamp-safe T0 features.
     completed = [e for e in event_list if e.get("classification") not in {None, "OPEN", "INSUFFICIENT_COVERAGE"}]
     winners = [e for e in completed if str(e.get("classification") or "").startswith("WINNER_")]
     controls = [e for e in completed if e.get("classification") == "CONTROL_NO_BREAKOUT"]
