@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   workflow_run:
     workflows:
-      - "Wallet500 Multi-Chain Live Scan"
+      - "Wallet500 Verified Snapshot Publisher"
     types: [completed]
   push:
     branches: [main]
@@ -17,57 +17,62 @@ on:
       - 'src/wallet500/production_status.py'
       - 'src/wallet500/system_health.py'
       - 'src/wallet500/strict_validation.py'
-      - 'src/wallet500/solana_mintability_gate.py'
-      - 'src/wallet500/solana_mintability_public_guard.py'
       - 'src/wallet500/real_alerts.py'
       - 'src/wallet500/revival_funnel_diagnostics.py'
-      - 'src/wallet500/cross_signal_fusion_v2.py'
-      - 'src/wallet500/cex_fast_lane.py'
-      - 'src/wallet500/holder_truth_provider.py'
-      - 'src/wallet500/revival_holder_tracker_v3.py'
-      - 'src/wallet500/revival_prewaking_wallet_evidence_v2.py'
       - 'src/wallet500/truth_contract.py'
       - 'src/wallet500/safe_json.py'
       - 'src/wallet500/truth_input_preflight.py'
       - 'src/wallet500/normalize_age_aliases.py'
       - 'src/wallet500/decision_generation.py'
-      - 'scripts/atomic_publish.py'
       - 'scripts/pipeline_integrity_audit.py'
       - 'tests/**'
       - '.github/workflows/candidate-evidence-envelope.yml'
-      - 'data/revival-1000-latest.json'
-      - 'data/revival-holder-latest.json'
-      - 'data/revival-prewaking-wallet-evidence.json'
-      - 'data/revival-wallet-registry.json'
-      - 'data/revival-precursor-latest.json'
-      - 'data/waking-confirmation-latest.json'
-      - 'data/cex-revival-radar.json'
-      - 'data/revival-pre-t0-evidence.json'
-      - 'data/active-qualified-age-gate.json'
 
 permissions:
-  contents: write
+  contents: read
+  actions: write
 
+# QA is intentionally separate from the single verified publisher. It never
+# writes canonical data, so it cannot race production publication.
 concurrency:
-  group: wallet500-live-scan-publisher
-  cancel-in-progress: false
+  group: wallet500-candidate-evidence-qa
+  cancel-in-progress: true
 
 jobs:
-  build:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+  request-primary:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
+    steps:
+      - name: Delegate recompute to complete primary scan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/live-scan.yml/runs?per_page=20")"
+          active="$(printf '%s' "$runs" | jq '[.workflow_runs[] | select(.status=="queued" or .status=="in_progress" or .status=="pending" or .status=="waiting" or .status=="requested")] | length')"
+          if [ "$active" -gt 0 ]; then
+            echo "PRIMARY_ALREADY_ACTIVE count=$active"
+            exit 0
+          fi
+          gh workflow run live-scan.yml --repo "$GITHUB_REPOSITORY" --ref main
+          echo 'CANDIDATE_EVIDENCE_DELEGATED_TO_FULL_PRIMARY'
+
+  verify-published:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install
         run: pip install -e . pytest
-
-      - name: Full truth and compatibility regression
+      - name: Regression
         run: |
           python -m pytest -q \
             tests/test_truth_contract.py \
@@ -79,103 +84,28 @@ jobs:
             tests/test_decision_snapshot_guard.py \
             tests/test_production_status.py \
             tests/test_system_health.py \
-            tests/test_solana_mintability_gate.py \
-            tests/test_solana_mintability_public_guard.py \
             tests/test_real_alerts.py \
             tests/test_real_alerts_revival_bridge.py \
-            tests/test_revival_funnel_diagnostics.py \
-            tests/test_cross_signal_fusion_v2.py \
-            tests/test_cex_fast_lane_collection.py
-
-      - name: Static pipeline ownership audit
+            tests/test_revival_funnel_diagnostics.py
+      - name: Fail closed on missing or corrupt canonical inputs
+        run: python -m wallet500.truth_input_preflight
+      - name: Verify publisher ownership and policy integrity
         run: python scripts/pipeline_integrity_audit.py
-
-      - name: Recompute and atomically publish one coherent decision generation
-        shell: bash
-        env:
-          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+      - name: Verify coherent generation manifest is published
         run: |
-          set -euo pipefail
-          git config user.name 'wallet500-evidence-bot'
-          git config user.email 'wallet500-evidence-bot@users.noreply.github.com'
-
-          for attempt in 1 2 3 4 5 6 7 8; do
-            git fetch origin main
-            git reset --hard origin/main
-            source_sha="$(git rev-parse HEAD)"
-            export SOURCE_SHA="$source_sha"
-
-            python -m wallet500.truth_input_preflight
-            python -m wallet500.mature_age_gate --cex --revival
-            python -m wallet500.production_age_governance
-            python -m wallet500.candidate_evidence_envelope
-            python -m wallet500.pending_confirmation_truth_normalizer
-            python -m wallet500.real_alerts
-            python -m wallet500.revival_funnel_diagnostics
-            python -m wallet500.cross_signal_fusion_v2
-            python -m wallet500.system_health
-            python -m wallet500.strict_validation
-            python -m wallet500.production_status
-            python -m wallet500.decision_snapshot_guard
-            python -m wallet500.normalize_age_aliases
-            python -m wallet500.decision_generation
-
-            python - <<'PY'
+          python - <<'PY'
           import json
           from pathlib import Path
-          from wallet500.truth_contract import (
-              RESEARCH_MIN_MARKET_AGE_DAYS,
-              RESEARCH_MIN_LIQUIDITY_USD,
-              PRODUCTION_MIN_MARKET_AGE_DAYS,
-              PRODUCTION_MIN_LIQUIDITY_USD,
-          )
-          g=json.loads(Path('data/decision-generation.json').read_text())
-          if g.get('status')!='COHERENT_READY': raise SystemExit('GENERATION_NOT_COHERENT')
-          p=g.get('policy') or {}
-          if (p.get('research') or {}).get('minimum_market_age_days')!=RESEARCH_MIN_MARKET_AGE_DAYS: raise SystemExit('RESEARCH_AGE_POLICY_DRIFT')
-          if float((p.get('research') or {}).get('minimum_execution_liquidity_usd') or 0)!=RESEARCH_MIN_LIQUIDITY_USD: raise SystemExit('RESEARCH_LIQUIDITY_POLICY_DRIFT')
-          if (p.get('production') or {}).get('minimum_market_age_days')!=PRODUCTION_MIN_MARKET_AGE_DAYS: raise SystemExit('PRODUCTION_AGE_POLICY_DRIFT')
-          if float((p.get('production') or {}).get('minimum_execution_liquidity_usd') or 0)!=PRODUCTION_MIN_LIQUIDITY_USD: raise SystemExit('PRODUCTION_LIQUIDITY_POLICY_DRIFT')
-          if (p.get('production') or {}).get('exact_pair_required') is not True: raise SystemExit('EXACT_PAIR_POLICY_DRIFT')
-          if (p.get('production') or {}).get('automatic_buy') is not False: raise SystemExit('AUTO_BUY_POLICY_DRIFT')
-          print('CANONICAL_GENERATION_OK',g['generation_id'])
+          p=Path('data/decision-generation.json')
+          if not p.exists(): raise SystemExit('DECISION_GENERATION_MISSING')
+          g=json.loads(p.read_text())
+          if g.get('status')!='COHERENT_READY': raise SystemExit('DECISION_GENERATION_NOT_COHERENT')
+          policy=g.get('policy') or {}
+          if (policy.get('research') or {}).get('minimum_market_age_days')!=90: raise SystemExit('RESEARCH_AGE_DRIFT')
+          if float((policy.get('research') or {}).get('minimum_execution_liquidity_usd') or 0)!=15000: raise SystemExit('RESEARCH_LIQ_DRIFT')
+          if (policy.get('production') or {}).get('minimum_market_age_days')!=180: raise SystemExit('PRODUCTION_AGE_DRIFT')
+          if float((policy.get('production') or {}).get('minimum_execution_liquidity_usd') or 0)!=50000: raise SystemExit('PRODUCTION_LIQ_DRIFT')
+          if (policy.get('production') or {}).get('exact_pair_required') is not True: raise SystemExit('EXACT_PAIR_DRIFT')
+          if (policy.get('production') or {}).get('automatic_buy') is not False: raise SystemExit('AUTO_BUY_DRIFT')
+          print('PUBLISHED_GENERATION_VERIFIED',g.get('generation_id'))
           PY
-
-            set +e
-            python scripts/atomic_publish.py \
-              --base "$source_sha" \
-              --fail-on-newer \
-              --message 'data: publish coherent Wallet500 decision generation' \
-              data/revival-1000-latest.json \
-              data/cex-revival-radar.json \
-              data/active-qualified-candidates.json \
-              data/active-qualified-age-gate.json \
-              data/candidate-evidence-envelope.json \
-              data/real-alerts.json \
-              data/revival-funnel-diagnostics.json \
-              data/cross-signal-fusion-v2.json \
-              data/system-health.json \
-              data/strict-validation.json \
-              data/production-status.json \
-              data/decision-snapshot-integrity.json \
-              data/decision-generation.json \
-              data/truth-input-health.json \
-              data/pipeline-integrity-audit.json
-            rc=$?
-            set -e
-
-            if [ "$rc" -eq 0 ]; then
-              echo 'CANONICAL_DECISION_GENERATION_PUBLISH_OK'
-              exit 0
-            fi
-            if [ "$rc" -eq 75 ]; then
-              echo "CANONICAL_GENERATION_RECOMPUTE_REQUIRED attempt=$attempt"
-              sleep $((attempt < 4 ? attempt : 4))
-              continue
-            fi
-            echo "::error::CANONICAL_GENERATION_PUBLISH_FAILED rc=$rc"
-            exit "$rc"
-          done
-
-          echo '::error::CANONICAL_GENERATION_RECOMPUTE_EXHAUSTED'
-          exit 1
