@@ -10,17 +10,21 @@ on:
   pull_request:
     paths:
       - 'src/wallet500/alpha_proof.py'
+      - 'src/wallet500/alpha_forward_controls.py'
       - 'src/wallet500/alpha_checkpoint_recovery.py'
       - 'tests/test_alpha_proof.py'
+      - 'tests/test_alpha_forward_controls.py'
       - 'tests/test_alpha_checkpoint_recovery.py'
       - '.github/workflows/alpha-proof.yml'
   push:
     branches: [main]
     paths:
       - 'src/wallet500/alpha_proof.py'
+      - 'src/wallet500/alpha_forward_controls.py'
       - 'src/wallet500/alpha_checkpoint_recovery.py'
       - 'scripts/atomic_publish.py'
       - 'tests/test_alpha_proof.py'
+      - 'tests/test_alpha_forward_controls.py'
       - 'tests/test_alpha_checkpoint_recovery.py'
       - '.github/workflows/alpha-proof.yml'
 
@@ -46,9 +50,11 @@ jobs:
       - name: Install and test forward proof contract
         run: |
           pip install -e . pytest
-          python -m pytest -q tests/test_alpha_proof.py tests/test_alpha_checkpoint_recovery.py
+          python -m pytest -q tests/test_alpha_proof.py tests/test_alpha_forward_controls.py tests/test_alpha_checkpoint_recovery.py
       - name: Recover immutable exact-pair checkpoint gaps
         run: python -m wallet500.alpha_checkpoint_recovery
+      - name: Enroll forward-only verified-watch controls
+        run: python -m wallet500.alpha_forward_controls
       - name: Update forward-only alpha proof
         run: python -m wallet500.alpha_proof
       - name: Validate no-hindsight proof output
@@ -58,11 +64,15 @@ jobs:
           from pathlib import Path
           p=Path('data/alpha-proof-report.json')
           l=Path('data/alpha-proof-ledger.json')
-          if not p.exists() or not l.exists(): raise SystemExit('ALPHA_PROOF_OUTPUT_MISSING')
+          a=Path('data/alpha-forward-control-audit.json')
+          if not p.exists() or not l.exists() or not a.exists(): raise SystemExit('ALPHA_PROOF_OUTPUT_MISSING')
           report=json.loads(p.read_text())
           ledger=json.loads(l.read_text())
+          audit=json.loads(a.read_text())
           if report.get('mode')!='FORWARD_ONLY_ALPHA_PROOF_V1': raise SystemExit('ALPHA_PROOF_MODE_INVALID')
           if ledger.get('mode')!='FORWARD_ONLY_ALPHA_PROOF_V1': raise SystemExit('ALPHA_LEDGER_MODE_INVALID')
+          if audit.get('mode')!='FORWARD_VERIFIED_WATCH_CONTROL_ENROLLMENT_V1': raise SystemExit('FORWARD_CONTROL_MODE_INVALID')
+          if audit.get('production_impact')!='NONE' or audit.get('no_hindsight') is not True or audit.get('exact_pair_only') is not True: raise SystemExit('FORWARD_CONTROL_CONTRACT_INVALID')
           if report.get('activation_at')!=ledger.get('activation_at'): raise SystemExit('ALPHA_ACTIVATION_MISMATCH')
           if report.get('formal_proof_rule')!='ONLY EVENTS WHOSE IMMUTABLE EVENT TIME IS AT/AFTER ACTIVATION ARE COUNTED': raise SystemExit('ALPHA_NO_HINDSIGHT_CONTRACT_INVALID')
           for cohort in ('signals','controls'):
@@ -84,6 +94,7 @@ jobs:
             git reset --hard origin/main
             source_sha="$(git rev-parse HEAD)"
             python -m wallet500.alpha_checkpoint_recovery
+            python -m wallet500.alpha_forward_controls
             python -m wallet500.alpha_proof
             set +e
             python scripts/atomic_publish.py \
@@ -91,7 +102,8 @@ jobs:
               --fail-on-newer \
               --message 'alpha: refresh forward proof evidence' \
               data/alpha-proof-ledger.json \
-              data/alpha-proof-report.json
+              data/alpha-proof-report.json \
+              data/alpha-forward-control-audit.json
             rc=$?
             set -e
             if [ "$rc" -eq 0 ]; then exit 0; fi
