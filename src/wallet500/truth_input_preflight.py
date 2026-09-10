@@ -40,6 +40,7 @@ def check(paths=CRITICAL_INPUTS) -> dict:
         "rule": "MISSING_OR_CORRUPT_TRUTH_INPUT_IS_NEVER_EQUIVALENT_TO_ZERO_CANDIDATES",
         "automatic_buy": False,
     }
+    OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     if bad:
         raise RuntimeError("TRUTH_INPUT_PREFLIGHT_FAIL_CLOSED:" + ",".join(x["path"] for x in bad))
