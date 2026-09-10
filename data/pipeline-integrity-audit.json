@@ -1,0 +1,71 @@
+{
+  "version": 5,
+  "status": "PASS_WITH_WARNINGS",
+  "workflow_count": 90,
+  "sole_canonical_publisher": "verified-publisher.yml",
+  "canonical_writer_map": {
+    "data/candidate-evidence-envelope.json": [
+      "verified-publisher.yml"
+    ],
+    "data/decision-generation.json": [
+      "verified-publisher.yml"
+    ],
+    "data/decision-snapshot-integrity.json": [
+      "verified-publisher.yml"
+    ],
+    "data/production-status.json": [
+      "verified-publisher.yml"
+    ],
+    "data/real-alerts.json": [
+      "verified-publisher.yml"
+    ],
+    "data/revival-funnel-diagnostics.json": [
+      "verified-publisher.yml"
+    ],
+    "data/strict-validation.json": [
+      "verified-publisher.yml"
+    ],
+    "data/system-health.json": [
+      "verified-publisher.yml"
+    ]
+  },
+  "policy_expected": {
+    "research_min_age_days": 90,
+    "research_min_liquidity_usd": 15000,
+    "production_min_age_days": 180,
+    "production_min_liquidity_usd": 50000,
+    "new_token_attention_pct": 0,
+    "exact_pair_required": true,
+    "automatic_buy": false
+  },
+  "advisory_excluded_from_canonical_generation": [
+    "data/cross-signal-fusion-v2.json",
+    "data/research-decision-engine.json",
+    "data/liquidity-recovery-shadow.json"
+  ],
+  "findings": [
+    {
+      "severity": "WARN",
+      "code": "LEGACY_60D_ALIAS_REMAINS_READ_COMPAT",
+      "files": [
+        "src/wallet500/candidate_evidence_envelope.py",
+        "src/wallet500/decision_snapshot_guard.py",
+        "src/wallet500/real_alerts.py"
+      ]
+    },
+    {
+      "severity": "WARN",
+      "code": "SILENT_TRUTH_JSON_DEFAULT_REMAINS_FENCED_BY_PREFLIGHT",
+      "files": [
+        "src/wallet500/decision_snapshot_guard.py",
+        "src/wallet500/candidate_evidence_envelope.py",
+        "src/wallet500/production_status.py",
+        "src/wallet500/real_alerts.py",
+        "src/wallet500/strict_validation.py",
+        "src/wallet500/system_health.py"
+      ]
+    }
+  ],
+  "critical_count": 0,
+  "warning_count": 2
+}
