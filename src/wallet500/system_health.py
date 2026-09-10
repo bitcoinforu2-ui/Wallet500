@@ -57,7 +57,10 @@ def _diagnose(name, check, now):
             failure_code="PREVIOUS_PUBLISH_EVIDENCE_STALE_OR_MISSING",
             severity="MEDIUM",
             blocks_production=False,
-            expected={"max_age_seconds": check.get("max_age_seconds"), "status": "READY_TO_PUBLISH"},
+            expected={
+                "max_age_seconds": check.get("max_age_seconds"),
+                "status": ["READY_TO_PUBLISH", "VERIFIED_PUBLISHED_SNAPSHOT"],
+            },
             actual={
                 "age_seconds": check.get("age_seconds"),
                 "status": check.get("evidence_status"),
@@ -207,7 +210,7 @@ def build_health(output_dir="data", now=None):
     prior_publish_ok = (
         publish_age is not None
         and publish_age <= publish_max_age
-        and publish.get("status") == "READY_TO_PUBLISH"
+        and publish.get("status") in {"READY_TO_PUBLISH", "VERIFIED_PUBLISHED_SNAPSHOT"}
         and publish.get("strict_validation") == "PASS"
     )
     raw_new_lane = lane.get("new_token_lab") or "DEGRADED"
