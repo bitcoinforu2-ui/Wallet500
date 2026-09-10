@@ -12,7 +12,7 @@ ONCHAIN = DATA / 'onchain-historical-reconstruction-state.json'
 PERFORMANCE = DATA / 'cash-verified-performance.json'
 OUT = DATA / 'historical-truth-backtest.json'
 WINDOWS = (7, 30, 90)
-MIN_LIQUIDITY_USD = 15_000.0
+MIN_LIQUIDITY_USD = 50_000.0
 
 
 def _load(path: Path, default: Any) -> Any:
