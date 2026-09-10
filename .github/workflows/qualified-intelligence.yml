@@ -1,0 +1,106 @@
+name: Wallet500 Qualified Intelligence
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'data/qualified-candidates.json'
+      - 'data/revival-qualified.json'
+      - 'src/wallet500/qualified_intelligence.py'
+      - '.github/workflows/qualified-intelligence.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-qualified-intelligence
+  cancel-in-progress: false
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+
+      - name: Verify post-qualification truth rules
+        run: python -m pytest -q tests/test_qualified_intelligence.py
+
+      - name: Refresh public listing evidence locally
+        run: python -m wallet500.global_listing_intelligence
+
+      - name: Run post-qualification intelligence
+        env:
+          BIRDEYE_API_KEY: ${{ secrets.BIRDEYE_API_KEY }}
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+        run: python -m wallet500.qualified_intelligence
+
+      - name: Validate research-only contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/qualified-intelligence-dossiers.json')
+          s=Path('data/qualified-intelligence-state.json')
+          l=Path('data/qualified-intelligence-ledger.json')
+          for f in (p,s,l):
+              if not f.exists() or not f.stat().st_size:
+                  raise SystemExit('QUALIFIED_INTELLIGENCE_OUTPUT_MISSING:'+str(f))
+          d=json.loads(p.read_text())
+          if d.get('mode')!='RESEARCH_ONLY_POST_QUALIFICATION_INTELLIGENCE_V1':
+              raise SystemExit('QUALIFIED_INTELLIGENCE_MODE_INVALID')
+          if d.get('production_impact')!='NONE' or d.get('research_only') is not True:
+              raise SystemExit('QUALIFIED_INTELLIGENCE_PRODUCTION_LEAK')
+          for row in d.get('dossiers') or []:
+              if row.get('production_impact')!='NONE' or row.get('no_hindsight') is not True:
+                  raise SystemExit('QUALIFIED_INTELLIGENCE_ROW_INVALID')
+              for change in ((row.get('whales_gte_0_1pct') or {}).get('balance_changes') or []):
+                  if change.get('buy_sell_label') is not None and change.get('swap_verified') is not True:
+                      raise SystemExit('UNVERIFIED_WHALE_BUY_SELL_LABEL')
+          print('QUALIFIED_INTELLIGENCE_V1_OK', d.get('candidate_count'))
+          PY
+
+      - name: Publish intelligence artifacts only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-research-bot'
+          git config user.email 'wallet500-research-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          for f in qualified-intelligence-dossiers.json qualified-intelligence-state.json qualified-intelligence-ledger.json; do
+            cp "data/$f" "$tmp/$f"
+          done
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            for f in qualified-intelligence-dossiers.json qualified-intelligence-state.json qualified-intelligence-ledger.json; do
+              cp "$tmp/$f" "data/$f"
+            done
+            git add data/qualified-intelligence-dossiers.json data/qualified-intelligence-state.json data/qualified-intelligence-ledger.json
+            if git diff --cached --quiet; then
+              echo 'QUALIFIED_INTELLIGENCE_NO_DATA_CHANGE'
+              exit 0
+            fi
+            git commit -m 'data: refresh post-qualification intelligence'
+            if git push origin HEAD:main; then
+              echo 'QUALIFIED_INTELLIGENCE_PUBLISH_OK'
+              exit 0
+            fi
+            echo "QUALIFIED_INTELLIGENCE_PUBLISH_RETRY attempt=$attempt"
+            sleep 3
+          done
+          exit 1
