@@ -39,7 +39,30 @@ def _key(row:dict[str,Any])->str:
 
 def _snapshot(row:dict[str,Any],source:str,now:str)->dict[str,Any]:
  chain,token,pair=_identity(row)
- return {'observed_at':row.get('observed_at') or row.get('updated_at') or now,'chain':chain,'token':token,'pair_address':pair,'source':source,'decision_class':'HOLD' if 'PENDING' in source or 'REVIEW' in source else 'REJECT','price_usd':row.get('price_usd'),'liquidity_usd':row.get('live_liquidity_usd') or row.get('liquidity_usd'),'market_cap_usd':row.get('market_cap_usd') or row.get('market_cap'),'fdv_usd':row.get('fdv_usd') or row.get('fdv'),'volume_h1':row.get('live_volume_h1') or row.get('volume_h1'),'buys_h1':row.get('buys_h1'),'sells_h1':row.get('sells_h1'),'anomaly_score':row.get('anomaly_score'),'qualification':row.get('qualification'),'qualification_reasons':row.get('qualification_reasons') or [],'live_survival_gate':row.get('live_survival_gate'),'live_survival_reasons':row.get('live_survival_reasons') or row.get('fresh_solana_reasons') or [],'production_risk_reasons':row.get('production_risk_reasons') or [],'holder_cluster_status':row.get('holder_cluster_production_status') or row.get('holder_cluster_status'),'holder_cluster_reasons':row.get('holder_cluster_reasons') or []}
+ return {
+  'observed_at':row.get('observed_at') or row.get('updated_at') or now,
+  'chain':chain,'token':token,'pair_address':pair,'source':source,
+  'decision_class':'HOLD' if 'PENDING' in source or 'REVIEW' in source else 'REJECT',
+  'price_usd':row.get('price_usd'),
+  'liquidity_usd':row.get('live_liquidity_usd') or row.get('liquidity_usd'),
+  'market_cap_usd':row.get('market_cap_usd') or row.get('market_cap'),
+  'fdv_usd':row.get('fdv_usd') or row.get('fdv'),
+  'volume_h1':row.get('live_volume_h1') or row.get('volume_h1'),
+  'buys_h1':row.get('buys_h1'),'sells_h1':row.get('sells_h1'),'anomaly_score':row.get('anomaly_score'),
+  'qualification':row.get('qualification'),'qualification_reasons':row.get('qualification_reasons') or [],
+  'live_survival_gate':row.get('live_survival_gate'),'live_survival_reasons':row.get('live_survival_reasons') or row.get('fresh_solana_reasons') or [],
+  'production_risk_reasons':row.get('production_risk_reasons') or [],
+  'holder_cluster_status':row.get('holder_cluster_production_status') or row.get('holder_cluster_status'),
+  'holder_cluster_reasons':row.get('holder_cluster_reasons') or [],
+  # Preserve age/identity truth present at decision time. Existing immutable first
+  # reject snapshots are never rewritten; this only improves future records/observations.
+  'market_age_verified':row.get('market_age_verified') is True,
+  'market_age_min_days':row.get('market_age_min_days'),
+  'market_age_evidence_at':row.get('market_age_evidence_at'),
+  'market_age_evidence_source':row.get('market_age_evidence_source'),
+  'exact_identity_verified':row.get('exact_identity_verified') is True or row.get('token_identity_verified') is True,
+  'exact_pair_verified':row.get('exact_pair_verified') is True or row.get('pair_identity_verified') is True,
+ }
 
 def _decision_rows()->list[tuple[str,dict[str,Any]]]:
  out=[]
