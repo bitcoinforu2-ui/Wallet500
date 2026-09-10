@@ -15,6 +15,7 @@ import re
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -29,6 +30,7 @@ STREAM_URL = "https://api.x.com/2/tweets/search/stream?tweet.fields=created_at,a
 RULES_URL = "https://api.x.com/2/tweets/search/stream/rules"
 RULE_VALUE = "from:moonshot -is:retweet"
 RULE_TAG = "wallet500-moonshot-official"
+SOL_MINT = "So11111111111111111111111111111111111111112"
 STATE_DIR = Path(os.getenv("WALLET500_STATE_DIR", "/tmp/wallet500"))
 STATE_PATH = STATE_DIR / "moonshot-realtime-stream-state.json"
 STATUS: dict[str, Any] = {
@@ -123,6 +125,44 @@ def _message(event: dict[str, Any]) -> str:
     ])
 
 
+def _jupiter_url(token: str) -> str:
+    return "https://jup.ag/?" + urllib.parse.urlencode({"buy": token, "sell": SOL_MINT})
+
+
+def _telegram_send_live(event: dict[str, Any]) -> tuple[bool, str]:
+    bot = str(os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat = str(os.getenv("TELEGRAM_CHAT_ID") or "").strip()
+    token = str(event.get("token") or "").strip()
+    if not bot or not chat:
+        return False, "TELEGRAM_SECRETS_MISSING"
+    if not token:
+        return False, "TOKEN_MISSING"
+    payload = {
+        "chat_id": chat,
+        "text": _message(event),
+        "disable_web_page_preview": True,
+        "reply_markup": {
+            "inline_keyboard": [[
+                {"text": "📋 Copy CA", "copy_text": {"text": token}},
+                {"text": "🪐 Open Jupiter", "url": _jupiter_url(token)},
+            ]]
+        },
+    }
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{bot}/sendMessage",
+        data=json.dumps(payload).encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/json", "User-Agent": "Wallet500-MoonshotRealtime/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+        body = json.loads(raw) if raw.strip() else {}
+        return bool(body.get("ok")), "SENT" if body.get("ok") else "API_OK_FALSE"
+    except Exception as exc:
+        return False, fw._safe_error(exc)
+
+
 def _event_key(event: dict[str, Any]) -> str:
     return f"{event.get('post_id') or ''}:{event.get('token') or ''}"
 
@@ -132,7 +172,7 @@ def _send_event(event: dict[str, Any], state: dict[str, Any]) -> bool:
     sent = set(str(x) for x in (state.get("sent_event_keys") or []))
     if key == ":" or key in sent:
         return False
-    ok, status = fw._telegram_send(_message(event))
+    ok, status = _telegram_send_live(event)
     if not ok:
         raise RuntimeError(f"TELEGRAM_{status}")
     state.setdefault("sent_event_keys", []).append(key)
