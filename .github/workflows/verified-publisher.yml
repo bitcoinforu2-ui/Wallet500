@@ -12,17 +12,19 @@ on:
     paths:
       - '.github/workflows/verified-publisher.yml'
       - 'scripts/publish_verified_snapshot.py'
+      - 'src/wallet500/decision_generation.py'
+      - 'src/wallet500/truth_input_preflight.py'
+      - 'src/wallet500/truth_contract.py'
+      - 'src/wallet500/safe_json.py'
+      - 'scripts/pipeline_integrity_audit.py'
 
 permissions:
   actions: read
   contents: write
 
-# Freshness-first serialized publishing lane. Immutable scan data can never
-# overwrite paths changed on main after the scan source SHA.
-# Do not cancel an in-flight publisher: frequent workflow_run/schedule triggers
-# previously starved publication by repeatedly killing the only run able to
-# advance data/publish-evidence.json. Serialization plus source-run watermarking
-# already makes queued runs safe and stale runs exit cleanly.
+# This is the sole production-authoritative main writer for a complete Live Scan
+# snapshot and its generation manifest. Other lanes may publish source/advisory
+# data, but must not publish canonical decision surfaces.
 concurrency:
   group: wallet500-verified-snapshot-publisher
   cancel-in-progress: false
@@ -31,7 +33,7 @@ jobs:
   publish:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Resolve immutable successful Live Scan source
         id: source
@@ -106,3 +108,44 @@ jobs:
             --snapshot-dir "${{ runner.temp }}/wallet500-verified-snapshot" \
             --source-run-id "${{ steps.source.outputs.run_id }}" \
             --source-sha "${{ steps.source.outputs.source_sha }}"
+
+      - name: Publish coherent generation and input-health manifest
+        env:
+          LIVE_SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+          LIVE_SOURCE_RUN: ${{ steps.source.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            base="$(git rev-parse HEAD)"
+            export SOURCE_SHA="$LIVE_SOURCE_SHA"
+            export GITHUB_RUN_ID="$LIVE_SOURCE_RUN"
+            python -m wallet500.truth_input_preflight
+            python scripts/pipeline_integrity_audit.py
+            python -m wallet500.decision_generation
+            set +e
+            python scripts/atomic_publish.py \
+              --base "$base" \
+              --fail-on-newer \
+              --message 'data: bind coherent Wallet500 decision generation' \
+              data/truth-input-health.json \
+              data/pipeline-integrity-audit.json \
+              data/decision-generation.json
+            rc=$?
+            set -e
+            if [ "$rc" -eq 0 ]; then
+              echo 'VERIFIED_CANONICAL_GENERATION_BOUND'
+              exit 0
+            fi
+            if [ "$rc" -eq 75 ]; then
+              echo "GENERATION_BIND_RETRY attempt=$attempt"
+              sleep $attempt
+              continue
+            fi
+            exit "$rc"
+          done
+          echo '::error::GENERATION_BIND_RETRIES_EXHAUSTED'
+          exit 1
