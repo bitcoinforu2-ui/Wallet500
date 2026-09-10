@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with: {fetch-depth: 1}
+        with: {fetch-depth: 0}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - name: Install and test listing router
@@ -41,6 +41,22 @@ jobs:
           python -m wallet500.catalyst_identity_guard
       - name: Route future and multi-CEX listing opportunities
         run: python -m wallet500.listing_opportunity_router
+      - name: Validate local prospective listing feed
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('data/listing-opportunity-live.json')
+          if not p.exists(): raise SystemExit('ERROR: listing-opportunity-live.json was not produced')
+          d=json.loads(p.read_text())
+          if not isinstance(d,dict): raise SystemExit('ERROR: listing feed is not a JSON object')
+          if not isinstance(d.get('opportunities',[]),list): raise SystemExit('ERROR: opportunities must be a list')
+          if d.get('prospective_only') is not True: raise SystemExit('ERROR: prospective_only truth contract missing')
+          for x in d.get('opportunities',[]):
+              if not isinstance(x,dict): raise SystemExit('ERROR: malformed opportunity')
+              if not x.get('chain') or not x.get('contract'): raise SystemExit('ERROR: opportunity missing exact chain/contract identity')
+          print('LISTING_FEED_LOCAL_OK',len(d.get('opportunities',[])))
+          PY
       - name: Run exact-market Focus and Telegram market alerts
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -62,7 +78,7 @@ jobs:
             key='|'.join(str(x.get(k) or '') for k in ('asset_key','source_owner','listing_start','lane'))
             if key in sent: continue
             badge='🔥🔥🔥 MULTI-CEX PRE-LISTING' if x.get('exchange_count',0)>=2 else '🔥 PRE-LISTING DISCOVERY'
-            text='\n'.join([badge+' · WALLET500',f"{x.get('symbol') or 'UNKNOWN'} · {x.get('lane')}",f"Chain: {x.get('chain')}\nCA: {x.get('contract')}",f"Exchange(s): {', '.join(str(v).upper() for v in x.get('exchanges') or [x.get('source_owner')])}",f"Listing UTC: {x.get('listing_start') or 'unknown'}",f"T-minus: {x.get('minutes_to_listing')} min",'Tracking started immediately · Revival 90d gate does NOT apply to this lane','No automatic buy',str(x.get('source_url') or '')])
+            text='\n'.join([badge+' · WALLET500',f"{x.get('symbol') or 'UNKNOWN'} · {x.get('lane')}",f"Chain: {x.get('chain')}\nCA: {x.get('contract')}",f"Exchange(s): {', '.join(str(v).upper() for v in x.get('exchanges') or [x.get('source_owner')])}",f"Listing UTC: {x.get('listing_start') or 'unknown'}",f"T-minus: {x.get('minutes_to_listing')} min",'Tracking started immediately · separate from veteran Revival production gates','No automatic buy',str(x.get('source_url') or '')])
             if not tok or not cid: print('TELEGRAM_SECRETS_MISSING'); break
             body=urllib.parse.urlencode({'chat_id':cid,'text':text,'disable_web_page_preview':'true'}).encode(); req=urllib.request.Request(f'https://api.telegram.org/bot{tok}/sendMessage',data=body,method='POST')
             try:
@@ -75,20 +91,34 @@ jobs:
         run: |
           git config user.name wallet500-catalyst-bot
           git config user.email wallet500-catalyst-bot@users.noreply.github.com
-          git add data/catalyst-wire-live.json data/catalyst-wire-ledger.json data/catalyst-wire-state.json data/listing-opportunity-live.json data/listing-opportunity-telegram-state.json data/catalyst-focus-live.json data/catalyst-focus-state.json 2>/dev/null || true
+          git add data/catalyst-wire-live.json data/catalyst-wire-ledger.json data/catalyst-wire-state.json data/listing-opportunity-live.json data/listing-opportunity-telegram-state.json data/catalyst-focus-live.json data/catalyst-focus-state.json
           if ! git diff --cached --quiet; then
             git commit -m 'data: refresh listing opportunity intelligence [skip ci]'
-            # Many Wallet500 data workflows commit to main concurrently. Rebase this
-            # already-computed truth snapshot onto the newest main before push so an
-            # unrelated writer cannot discard the run with a non-fast-forward error.
-            # A real same-file conflict remains fail-closed and will still fail.
+            pushed=0
             for attempt in 1 2 3; do
-              if git pull --rebase origin main && git push; then
-                exit 0
-              fi
+              if git pull --rebase origin main && git push; then pushed=1; break; fi
               git rebase --abort 2>/dev/null || true
               sleep $((attempt * 2))
             done
-            echo 'ERROR: Catalyst persistence could not safely rebase/push after 3 attempts' >&2
-            exit 1
+            if [ "$pushed" -ne 1 ]; then
+              echo 'ERROR: Catalyst persistence could not safely rebase/push after 3 attempts' >&2
+              exit 1
+            fi
           fi
+      - name: Verify pre-listing feed persisted on origin/main
+        run: |
+          git fetch origin main --quiet
+          git show origin/main:data/listing-opportunity-live.json > /tmp/listing-opportunity-live.json || {
+            echo 'ERROR: listing-opportunity-live.json missing from origin/main after persistence' >&2
+            exit 1
+          }
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('/tmp/listing-opportunity-live.json').read_text())
+          if not isinstance(d,dict) or not isinstance(d.get('opportunities',[]),list):
+              raise SystemExit('ERROR: persisted listing feed is malformed')
+          if d.get('prospective_only') is not True:
+              raise SystemExit('ERROR: persisted listing feed lost prospective_only truth contract')
+          print('LISTING_FEED_ORIGIN_MAIN_OK',len(d.get('opportunities',[])))
+          PY
