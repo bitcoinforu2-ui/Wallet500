@@ -35,6 +35,7 @@ jobs:
           python -m pytest -q
           tests/test_six_of_seven_live_intelligence.py
           tests/test_deep_intelligence_edge.py
+          tests/test_pre_catalyst_fingerprint.py
           tests/test_research_decision_engine.py
           tests/test_moonshot_future_listing_watch.py
           tests/test_moonshot_verification_watch.py
@@ -93,6 +94,10 @@ jobs:
         if: steps.detect.outputs.count != '0'
         run: python -m wallet500.deep_intelligence_edge
 
+      - name: Build forward-only pre-catalyst fingerprints
+        if: steps.detect.outputs.count != '0'
+        run: python -m wallet500.pre_catalyst_fingerprint
+
       - name: Rebuild evidence and alert decision after deep live intelligence
         if: steps.detect.outputs.count != '0'
         run: |
@@ -112,6 +117,7 @@ jobs:
           from pathlib import Path
           deep=json.loads(Path('data/six-of-seven-live-intelligence.json').read_text())
           edge=json.loads(Path('data/deep-intelligence-edge.json').read_text())
+          pre=json.loads(Path('data/pre-catalyst-fingerprints.json').read_text())
           real=json.loads(Path('data/real-alerts.json').read_text())
           assert deep.get('production_effect') is False
           assert deep.get('automatic_buy') is False
@@ -123,6 +129,10 @@ jobs:
           assert et.get('edge_score_never_bypasses_hard_gates') is True
           assert et.get('symbol_name_only_never_counts_as_exact_evidence') is True
           assert et.get('production_effect') is False
+          pt=pre.get('truth_contract') or {}
+          assert pt.get('forward_only') is True
+          assert pt.get('no_hindsight') is True
+          assert pt.get('production_effect') is False
           rt=real.get('truth_contract') or {}
           assert rt.get('exact_onchain_identity_required') is True
           assert rt.get('exact_dex_pair_required') is True
@@ -131,6 +141,7 @@ jobs:
               'high_edge':edge.get('high_priority_count'),
               'extreme_edge':edge.get('extreme_edge_count'),
               'new_micro_events':edge.get('new_micro_events'),
+              'fingerprints':pre.get('candidate_count'),
               'real_alerts':(real.get('counts') or {}).get('real_alerts')})
           PY
 
@@ -143,6 +154,8 @@ jobs:
             data/six-of-seven-live-intelligence.json \
             data/deep-intelligence-edge.json \
             data/deep-intelligence-event-ledger.json \
+            data/pre-catalyst-fingerprints.json \
+            data/pre-catalyst-fingerprint-registry.json \
             data/social-source-scan.json \
             data/social-catalyst-ledger.json \
             data/social-identity-cache.json \
