@@ -108,7 +108,6 @@ def _eligible(row: object) -> bool:
         return False
     if not str(row.get("pair_address") or "").strip():
         return False
-
     score = int(row.get("spot_revival_score") or 0)
     rank = int(row.get("leaderboard_best_rank") or 9999)
     return score >= MIN_RESEARCH_SCORE or rank <= MAX_LEADERBOARD_RANK
@@ -117,7 +116,8 @@ def _eligible(row: object) -> bool:
 def _first_watch_at(row: dict) -> object:
     milestones = row.get("milestones") if isinstance(row.get("milestones"), dict) else {}
     watch = milestones.get("first_watch") if isinstance(milestones.get("first_watch"), dict) else {}
-    return watch.get("observed_at") or (milestones.get("first_alert") or {}).get("observed_at") if isinstance(milestones.get("first_alert"), dict) else watch.get("observed_at")
+    alert = milestones.get("first_alert") if isinstance(milestones.get("first_alert"), dict) else {}
+    return watch.get("observed_at") or alert.get("observed_at")
 
 
 def _message(row: dict, now: str) -> str:
@@ -140,6 +140,9 @@ def _message(row: dict, now: str) -> str:
     dex_h1 = row.get("dex_volume_h1")
     first_watch = _first_watch_at(row)
     dex_url = str(row.get("dex_url") or "").strip()
+    div = row.get("cex_dex_divergence") if isinstance(row.get("cex_dex_divergence"), dict) else {}
+    div_status = str(div.get("status") or "INSUFFICIENT_COVERAGE")
+    dex_move = div.get("dex_move_24h_pct")
 
     lines = [
         "⚡ CEX EARLY WATCH — WALLET500",
@@ -153,23 +156,28 @@ def _message(row: dict, now: str) -> str:
         "Identity: EXACT CHAIN + CONTRACT + DEX PAIR ✅",
         f"Market age: ≥{int(row.get('market_age_min_days') or 0)}d ✅",
         f"CEX research score: {score}/100",
-        f"24h move: {move:+.2f}%",
+        f"CEX 24h move: {move:+.2f}%",
     ]
+    if dex_move is not None:
+        lines.append(f"DEX exact-pair 24h move: {float(dex_move):+.2f}%")
+        lines.append(f"CEX↔DEX: {div_status}")
+        if "DIVERGENCE" in div_status:
+            lines.append("⚠️ CEX/DEX disagreement — do not interpret CEX momentum alone as confirmation.")
+    else:
+        lines.append("CEX↔DEX: INSUFFICIENT_COVERAGE")
     if rank <= MAX_LEADERBOARD_RANK:
         lines.append(f"Leaderboard: TOP-{MAX_LEADERBOARD_RANK} / best rank #{rank} ({', '.join(exchanges) or 'CEX'})")
-    lines.extend(
-        [
-            f"CEX confirmations: {int(row.get('confirmations') or 0)} ({', '.join(all_exchanges) or 'n/a'})",
-            f"CEX turnover 24h (max venue): {_fmt_money(turnover)}",
-            f"Price acceleration / scan: {price_acc:+.2f}%",
-            f"Volume acceleration / scan: {volume_acc:+.2f}%",
-            f"DEX execution-pool liquidity: {_fmt_money(dex_liq)}",
-            f"DEX volume 1H: {_fmt_money(dex_h1)}",
-            "⚠️ Low/absent DEX liquidity can block REAL ALERT even when CEX momentum is strong.",
-            "Strict REAL ALERT / liquidity / holder / survival gates: UNCHANGED.",
-            "Verified Intelligence. The Pure Truth.",
-        ]
-    )
+    lines.extend([
+        f"CEX confirmations: {int(row.get('confirmations') or 0)} ({', '.join(all_exchanges) or 'n/a'})",
+        f"CEX turnover 24h (max venue): {_fmt_money(turnover)}",
+        f"Price acceleration / scan: {price_acc:+.2f}%",
+        f"Volume acceleration / scan: {volume_acc:+.2f}%",
+        f"DEX execution-pool liquidity: {_fmt_money(dex_liq)}",
+        f"DEX volume 1H: {_fmt_money(dex_h1)}",
+        "⚠️ Low/absent DEX liquidity can block REAL ALERT even when CEX momentum is strong.",
+        "Strict REAL ALERT / liquidity / holder / survival gates: UNCHANGED.",
+        "Verified Intelligence. The Pure Truth.",
+    ])
     if dex_url:
         lines.append(f"🔗 DEX: {dex_url}")
     return "\n".join(lines)
@@ -209,45 +217,31 @@ def run(data_dir: Path = DATA, now: datetime | None = None) -> dict:
     report_path = data_dir / "cex-spot-telegram-report.json"
     source = _load(source_path, {})
     candidates = [x for x in (source.get("candidates") or []) if _eligible(x)] if isinstance(source, dict) else []
-
     bot_token = str(os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
     chat_id = str(os.getenv("TELEGRAM_CHAT_ID") or "").strip()
     if not bot_token or not chat_id:
         existing = _load(report_path, {})
-        report = {
-            "status": "SKIPPED_UNCONFIGURED_NO_STATE_WRITE",
-            "reason": "TELEGRAM_SECRETS_MISSING",
-            "eligible_count": len(candidates),
-            "preserved_existing_report": isinstance(existing, dict) and bool(existing),
-        }
+        report = {"status": "SKIPPED_UNCONFIGURED_NO_STATE_WRITE", "reason": "TELEGRAM_SECRETS_MISSING", "eligible_count": len(candidates), "preserved_existing_report": isinstance(existing, dict) and bool(existing)}
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return existing if isinstance(existing, dict) and existing else report
-
-    now = now or datetime.now(timezone.utc)
-    now = now.astimezone(timezone.utc)
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     now_s = now.isoformat()
     state = _load(state_path, {})
     initialized = bool(state.get("initialized")) if isinstance(state, dict) else False
     records = state.get("records") if isinstance(state, dict) and isinstance(state.get("records"), dict) else {}
     current_keys = {_key(x) for x in candidates}
-
     for key, rec in list(records.items()):
         if isinstance(rec, dict) and rec.get("active") is True and key not in current_keys:
             rec["active"] = False
             rec["last_exit_at"] = now_s
             records[key] = rec
-
-    delivered = []
-    baseline = []
-    suppressed = []
-    errors = []
+    delivered, baseline, suppressed, errors = [], [], [], []
     for row in candidates:
         key = _key(row)
         previous = records.get(key) if isinstance(records.get(key), dict) else {}
         was_active = previous.get("active") is True
         last_sent = _parse_time(previous.get("last_sent_at"))
         can_realert = last_sent is None or now - last_sent >= timedelta(hours=REENTRY_COOLDOWN_HOURS)
-
         if not initialized:
             baseline.append({"key": key, "symbol": row.get("symbol"), "reason": "INITIAL_FORWARD_BASELINE_NO_SEND"})
         elif was_active:
@@ -263,57 +257,10 @@ def run(data_dir: Path = DATA, now: datetime | None = None) -> dict:
                 delivered.append({"key": key, "symbol": row.get("symbol"), "telegram_message_id": mid, "attempts": attempts})
             except Exception as exc:
                 errors.append({"key": key, "symbol": row.get("symbol"), "error": f"{type(exc).__name__}: {exc}"[:500]})
-
-        previous.update(
-            {
-                "active": True,
-                "symbol": row.get("symbol"),
-                "chain": row.get("chain"),
-                "token_address": row.get("token_address") or row.get("token"),
-                "pair_address": row.get("pair_address"),
-                "last_seen_at": now_s,
-                "score": int(row.get("spot_revival_score") or 0),
-                "leaderboard_best_rank": int(row.get("leaderboard_best_rank") or 9999),
-            }
-        )
+        previous.update({"active": True, "symbol": row.get("symbol"), "chain": row.get("chain"), "token_address": row.get("token_address") or row.get("token"), "pair_address": row.get("pair_address"), "last_seen_at": now_s, "score": int(row.get("spot_revival_score") or 0), "leaderboard_best_rank": int(row.get("leaderboard_best_rank") or 9999)})
         records[key] = previous
-
-    new_state = {
-        "version": 1,
-        "initialized": True,
-        "updated_at": now_s,
-        "policy": "FORWARD_ONLY_EXACT_VETERAN_CEX_RESEARCH_WATCH; FIRST_RUN_BASELINES; REENTRY_AFTER_6H_CAN_REALERT",
-        "records": records,
-    }
-    _write(state_path, new_state)
-
-    report = {
-        "version": 1,
-        "generated_at": now_s,
-        "status": "OK" if not errors else "DEGRADED_DELIVERY_ERRORS",
-        "research_only": True,
-        "automatic_buy": False,
-        "strict_real_alert_gates_changed": False,
-        "source_generated_at": source.get("generated_at") if isinstance(source, dict) else None,
-        "eligible_count": len(candidates),
-        "first_run_baseline": not initialized,
-        "baseline_count": len(baseline),
-        "delivered_count": len(delivered),
-        "suppressed_count": len(suppressed),
-        "error_count": len(errors),
-        "baseline": baseline,
-        "delivered": delivered,
-        "suppressed": suppressed,
-        "errors": errors,
-        "truth_contract": {
-            "exact_identity_required": True,
-            "minimum_market_age_days": MIN_MARKET_AGE_DAYS,
-            "cex_early_watch_is_not_real_alert": True,
-            "cex_early_watch_is_not_buy_signal": True,
-            "dex_liquidity_is_displayed_not_waived_for_real_alert": True,
-            "holder_liquidity_survival_real_alert_gates_unchanged": True,
-        },
-    }
+    _write(state_path, {"version": 1, "initialized": True, "updated_at": now_s, "policy": "FORWARD_ONLY_EXACT_VETERAN_CEX_RESEARCH_WATCH; FIRST_RUN_BASELINES; REENTRY_AFTER_6H_CAN_REALERT", "records": records})
+    report = {"version": 2, "generated_at": now_s, "status": "OK" if not errors else "DEGRADED_DELIVERY_ERRORS", "research_only": True, "automatic_buy": False, "strict_real_alert_gates_changed": False, "source_generated_at": source.get("generated_at") if isinstance(source, dict) else None, "eligible_count": len(candidates), "first_run_baseline": not initialized, "baseline_count": len(baseline), "delivered_count": len(delivered), "suppressed_count": len(suppressed), "error_count": len(errors), "baseline": baseline, "delivered": delivered, "suppressed": suppressed, "errors": errors, "truth_contract": {"exact_identity_required": True, "minimum_market_age_days": MIN_MARKET_AGE_DAYS, "cex_early_watch_is_not_real_alert": True, "cex_early_watch_is_not_buy_signal": True, "cex_dex_divergence_is_explicit": True, "dex_liquidity_is_displayed_not_waived_for_real_alert": True, "holder_liquidity_survival_real_alert_gates_unchanged": True}}
     _write(report_path, report)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return report
