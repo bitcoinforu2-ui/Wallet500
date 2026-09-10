@@ -43,21 +43,19 @@ def _f(value: object) -> float:
         return 0.0
 
 
-def _milestone(cur: dict, old: dict, name: str) -> dict:
+def _milestones(cur: dict, old: dict) -> dict:
     ms = cur.get("milestones") if isinstance(cur.get("milestones"), dict) else {}
     if not ms:
         ms = old.get("milestones") if isinstance(old.get("milestones"), dict) else {}
-    row = ms.get(name) if isinstance(ms.get(name), dict) else {}
-    return row
+    return ms
 
 
 def run(data_dir: Path = DATA) -> dict:
-    """Persist early CEX Spot evidence until exact identity is resolved.
+    """Persist no-hindsight CEX Spot early evidence until exact identity resolves.
 
-    Research/observability only. The lane deliberately keeps a pre-alert watch milestone
-    when it has multi-exchange coherence plus price/volume acceleration, because waiting
-    for the full score can turn discovery into a post-pump observation. It never bypasses
-    exact identity, pair, liquidity, age, survival, or production validation gates.
+    Research only. FIRST_WATCH may be retained before the full alert threshold when
+    multi-exchange coherence and real scan-to-scan acceleration are already present.
+    Production identity, pair, liquidity, age and survival gates remain untouched.
     """
     data_dir.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc).isoformat()
@@ -65,59 +63,51 @@ def run(data_dir: Path = DATA) -> dict:
     identity = _load(data_dir / "cex-spot-identity-radar.json", {})
     previous = _load(data_dir / "cex-early-revival-pending.json", {})
 
-    resolved = set()
-    for row in identity.get("candidates") or []:
-        if isinstance(row, dict) and row.get("identity_status") == "DEX_VERIFIED" and row.get("identity_verified") is True:
-            resolved.add(_base_symbol(row.get("symbol")))
+    resolved = {
+        _base_symbol(r.get("symbol"))
+        for r in (identity.get("candidates") or [])
+        if isinstance(r, dict)
+        and r.get("identity_status") == "DEX_VERIFIED"
+        and r.get("identity_verified") is True
+    }
+    prior = {
+        _base_symbol(r.get("symbol")): r
+        for r in (previous.get("candidates") or [])
+        if isinstance(r, dict) and _base_symbol(r.get("symbol"))
+    }
+    current = {
+        _base_symbol(r.get("symbol")): r
+        for r in (spot.get("watchlist") or [])
+        if isinstance(r, dict) and _base_symbol(r.get("symbol"))
+    }
 
-    prior = {}
-    for row in previous.get("candidates") or []:
-        if isinstance(row, dict):
-            symbol = _base_symbol(row.get("symbol"))
-            if symbol:
-                prior[symbol] = row
-
-    current_by_symbol = {}
-    for row in spot.get("watchlist") or []:
-        if not isinstance(row, dict):
-            continue
-        symbol = _base_symbol(row.get("symbol"))
-        if symbol:
-            current_by_symbol[symbol] = row
-
-    symbols = set(prior) | set(current_by_symbol)
     candidates = []
-    for symbol in sorted(symbols):
-        cur = current_by_symbol.get(symbol, {})
-        old = prior.get(symbol, {})
-        milestones = cur.get("milestones") if isinstance(cur.get("milestones"), dict) else {}
-        if not milestones:
-            milestones = old.get("milestones") if isinstance(old.get("milestones"), dict) else {}
-
-        first_watch = _milestone(cur, old, "first_watch")
-        first_alert = _milestone(cur, old, "first_alert")
+    for symbol in sorted(set(prior) | set(current)):
+        if symbol in resolved:
+            continue
+        cur, old = current.get(symbol, {}), prior.get(symbol, {})
+        ms = _milestones(cur, old)
+        first_watch = ms.get("first_watch") if isinstance(ms.get("first_watch"), dict) else {}
+        first_alert = ms.get("first_alert") if isinstance(ms.get("first_alert"), dict) else {}
 
         alert_score = _i(first_alert.get("score") or old.get("first_alert_score"))
         alert_coherent = _i(first_alert.get("coherent_confirmations") or old.get("first_alert_coherent_confirmations"))
-        alert_qualifies = alert_score >= MIN_EARLY_ALERT_SCORE and alert_coherent >= MIN_COHERENT_CONFIRMATIONS
+        alert_ok = alert_score >= MIN_EARLY_ALERT_SCORE and alert_coherent >= MIN_COHERENT_CONFIRMATIONS
 
         watch_score = _i(first_watch.get("score") or old.get("first_watch_score"))
         watch_coherent = _i(first_watch.get("coherent_confirmations") or old.get("first_watch_coherent_confirmations"))
         watch_price_acc = _f(first_watch.get("price_acceleration_max_pct") or old.get("first_watch_price_acceleration_max_pct"))
         watch_volume_acc = _f(first_watch.get("volume_acceleration_max_pct") or old.get("first_watch_volume_acceleration_max_pct"))
-        watch_qualifies = (
+        watch_ok = (
             watch_score >= MIN_EARLY_WATCH_SCORE
             and watch_coherent >= MIN_COHERENT_CONFIRMATIONS
             and (watch_price_acc >= MIN_PRICE_ACCEL_PCT or watch_volume_acc >= MIN_VOLUME_ACCEL_PCT)
         )
-
-        if not (alert_qualifies or watch_qualifies):
-            continue
-        if symbol in resolved:
+        if not (watch_ok or alert_ok):
             continue
 
-        anchor = first_watch if watch_qualifies else first_alert
-        anchor_kind = "FIRST_WATCH" if watch_qualifies else "FIRST_ALERT"
+        anchor = first_watch if watch_ok else first_alert
+        anchor_kind = "FIRST_WATCH" if watch_ok else "FIRST_ALERT"
         anchor_change = _f(anchor.get("change_24h_max_pct") or anchor.get("reference_change_24h_pct"))
         timing_quality = "LATE_BREAKOUT_ALREADY_EXTENDED" if anchor_change >= LATE_MOVE_PCT else "EARLY_BREAKOUT_EVIDENCE"
 
@@ -145,7 +135,7 @@ def run(data_dir: Path = DATA) -> dict:
             "current_score": cur.get("spot_revival_score", old.get("current_score")),
             "current_coherent_confirmations": cur.get("coherent_confirmations", old.get("current_coherent_confirmations")),
             "current_change_24h_max_pct": cur.get("change_24h_max_pct", old.get("current_change_24h_max_pct")),
-            "milestones": milestones,
+            "milestones": ms,
             "promotion_rule": "EXACT_IDENTITY_RESOLUTION_REQUIRED_BEFORE_ANY_ONCHAIN_PROMOTION",
         })
 
@@ -171,6 +161,7 @@ def run(data_dir: Path = DATA) -> dict:
         "late_move_pct": LATE_MOVE_PCT,
         "truth_contract": {
             "no_hindsight": True,
+            "first_alert_timestamp_immutable": True,
             "first_seen_watch_alert_timestamps_immutable": True,
             "symbol_only_never_actionable": True,
             "exact_chain_contract_required": True,
