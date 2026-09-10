@@ -15,7 +15,6 @@ import re
 import threading
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -51,20 +50,27 @@ def _headers() -> dict[str, str]:
     token = str(os.getenv("X_BEARER_TOKEN") or "").strip()
     if not token:
         raise RuntimeError("X_BEARER_TOKEN_MISSING")
-    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "User-Agent": "Wallet500-MoonshotRealtime/1.0"}
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "User-Agent": "Wallet500-MoonshotRealtime/1.0",
+    }
 
 
 def _load_state() -> dict[str, Any]:
     try:
-        return json.loads(STATE_PATH.read_text(encoding="utf-8")) if STATE_PATH.exists() else {"sent_post_ids": []}
+        return json.loads(STATE_PATH.read_text(encoding="utf-8")) if STATE_PATH.exists() else {"sent_event_keys": []}
     except Exception:
-        return {"sent_post_ids": []}
+        return {"sent_event_keys": []}
 
 
 def _save_state(state: dict[str, Any]) -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    sent = list(dict.fromkeys(str(x) for x in (state.get("sent_post_ids") or []) if x))[-5000:]
-    STATE_PATH.write_text(json.dumps({"updated_at": _iso_now(), "sent_post_ids": sent}, indent=2) + "\n", encoding="utf-8")
+    sent = list(dict.fromkeys(str(x) for x in (state.get("sent_event_keys") or []) if x))[-5000:]
+    STATE_PATH.write_text(
+        json.dumps({"updated_at": _iso_now(), "sent_event_keys": sent}, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _classification(text: str) -> str | None:
@@ -117,15 +123,19 @@ def _message(event: dict[str, Any]) -> str:
     ])
 
 
+def _event_key(event: dict[str, Any]) -> str:
+    return f"{event.get('post_id') or ''}:{event.get('token') or ''}"
+
+
 def _send_event(event: dict[str, Any], state: dict[str, Any]) -> bool:
-    post_id = str(event.get("post_id") or "")
-    sent = set(str(x) for x in (state.get("sent_post_ids") or []))
-    if not post_id or post_id in sent:
+    key = _event_key(event)
+    sent = set(str(x) for x in (state.get("sent_event_keys") or []))
+    if key == ":" or key in sent:
         return False
     ok, status = fw._telegram_send(_message(event))
     if not ok:
         raise RuntimeError(f"TELEGRAM_{status}")
-    state.setdefault("sent_post_ids", []).append(post_id)
+    state.setdefault("sent_event_keys", []).append(key)
     _save_state(state)
     STATUS["last_event_at"] = _iso_now()
     STATUS["telegram_delivered"] = int(STATUS.get("telegram_delivered") or 0) + 1
@@ -173,12 +183,15 @@ def stream_once() -> None:
 class _Health(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path not in {"/", "/health", "/healthz"}:
-            self.send_response(404); self.end_headers(); return
+            self.send_response(404)
+            self.end_headers()
+            return
         body = json.dumps(STATUS, separators=(",", ":")).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
-        self.end_headers(); self.wfile.write(body)
+        self.end_headers()
+        self.wfile.write(body)
 
     def log_message(self, *_args):
         return
