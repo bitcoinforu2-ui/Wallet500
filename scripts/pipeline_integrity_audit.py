@@ -26,19 +26,32 @@ ALLOWED_CANONICAL_PUBLISHERS = {
     "live-scan.yml",
 }
 CANONICAL_CONCURRENCY_GROUP = "wallet500-live-scan-publisher"
+PATH_RE = re.compile(r"data/[A-Za-z0-9_.\-/]+\.json")
 
 
 def _workflow_direct_writes(text: str) -> set[str]:
-    """Conservative writer detection.
+    """Return only JSON paths actually passed to a publishing command.
 
-    A workflow counts as a writer only when it contains a git publication
-    primitive and references the file. This catches multiline atomic_publish
-    invocations as well as direct git-add publishers.
+    Merely listing a canonical file as an input/trigger must not classify the
+    workflow as a writer. Multiline atomic_publish commands are followed only
+    while shell continuation backslashes remain active.
     """
-    publishing = any(x in text for x in ("git push", "atomic_publish.py", "publish_verified_snapshot.py"))
-    if not publishing:
-        return set()
-    return {f for f in CANONICAL_DECISION_FILES if f in text}
+    out: set[str] = set()
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if "git add " in stripped:
+            out.update(PATH_RE.findall(stripped))
+        if "atomic_publish.py" in stripped or "publish_verified_snapshot.py" in stripped:
+            block = [stripped]
+            while block[-1].rstrip().endswith("\\") and i + 1 < len(lines):
+                i += 1
+                block.append(lines[i].strip())
+            out.update(PATH_RE.findall("\n".join(block)))
+        i += 1
+    return out & CANONICAL_DECISION_FILES
 
 
 def audit() -> dict:
@@ -95,7 +108,7 @@ def audit() -> dict:
     }
     critical = [x for x in findings if x["severity"] == "CRITICAL"]
     return {
-        "version": 2,
+        "version": 3,
         "status": "FAIL" if critical else "PASS_WITH_WARNINGS" if findings else "PASS",
         "workflow_count": workflow_count,
         "canonical_writer_map": {k: sorted(set(v)) for k, v in sorted(writers.items()) if k in CANONICAL_DECISION_FILES},
