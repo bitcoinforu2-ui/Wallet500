@@ -9,6 +9,7 @@ on:
     paths:
       - '.github/workflows/cex-spot-revival-fast.yml'
       - 'src/wallet500/cex_spot_identity.py'
+      - 'src/wallet500/cex_early_revival_pending.py'
 
 permissions:
   contents: write
@@ -38,7 +39,7 @@ jobs:
           tests/test_cex_identity_preflight.py
           tests/test_cex_identity.py
           tests/test_multichain_veteran_revival.py
-      - name: Refresh veteran Spot momentum and dynamic exact identity
+      - name: Refresh veteran Spot momentum, dynamic exact identity and persistent pending lane
         env:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: |
@@ -47,10 +48,12 @@ jobs:
           from pathlib import Path
           from wallet500.cex_spot_revival import run_cex_spot_revival
           from wallet500.cex_spot_identity import run as resolve_spot_identity
+          from wallet500.cex_early_revival_pending import run as persist_early_revival
 
           now=datetime.now(timezone.utc).isoformat()
           spot=run_cex_spot_revival(Path('data'), now)
           ident=resolve_spot_identity(Path('data'))
+          pending=persist_early_revival(Path('data'))
           print('CEX_SPOT_FAST', {
               'generated_at': spot.get('generated_at'),
               'healthy_sources': spot.get('healthy_sources'),
@@ -60,6 +63,7 @@ jobs:
               'identity_status': ident.get('status'),
               'identity_counts': ident.get('counts'),
               'auto_registry': ident.get('auto_registry'),
+              'early_pending_count': pending.get('candidate_count'),
           })
           PY
       - name: Validate research-only fail-closed output
@@ -71,11 +75,13 @@ jobs:
 
           spot=json.loads(Path('data/cex-spot-revival-radar.json').read_text())
           ident=json.loads(Path('data/cex-spot-identity-radar.json').read_text())
+          pending=json.loads(Path('data/cex-early-revival-pending.json').read_text())
           def age(ts):
               s=str(ts or '').replace('Z','+00:00')
               return (datetime.now(timezone.utc)-datetime.fromisoformat(s)).total_seconds()
           if age(spot.get('generated_at')) > 600: raise SystemExit('CEX_SPOT_OUTPUT_STALE')
           if age(ident.get('generated_at')) > 600: raise SystemExit('CEX_SPOT_IDENTITY_OUTPUT_STALE')
+          if age(pending.get('generated_at')) > 600: raise SystemExit('CEX_EARLY_PENDING_OUTPUT_STALE')
           if ident.get('automatic_buy') is not False: raise SystemExit('CEX_SPOT_AUTO_BUY_LEAK')
           truth=ident.get('truth_contract') or {}
           if truth.get('symbol_only_never_actionable') is not True: raise SystemExit('SYMBOL_ONLY_GUARD_MISSING')
@@ -83,7 +89,29 @@ jobs:
           for row in ident.get('candidates') or []:
               if row.get('research_only') is not True or row.get('actionable') is not False:
                   raise SystemExit('CEX_SPOT_RESEARCH_BOUNDARY_LEAK')
-          print('CEX_SPOT_FAIL_CLOSED_VALID')
+
+          if pending.get('automatic_buy') is not False or pending.get('production_portfolio_impact') != 'NONE':
+              raise SystemExit('CEX_EARLY_PENDING_PRODUCTION_LEAK')
+          ptruth=pending.get('truth_contract') or {}
+          required=(
+              'no_hindsight',
+              'first_alert_timestamp_immutable',
+              'symbol_only_never_actionable',
+              'exact_chain_contract_required',
+              'exact_dex_pair_required',
+              'production_liquidity_and_survival_gates_unchanged',
+          )
+          if not all(ptruth.get(k) is True for k in required):
+              raise SystemExit('CEX_EARLY_PENDING_TRUTH_GUARD_MISSING')
+          rows=pending.get('candidates') or []
+          if pending.get('candidate_count') != len(rows):
+              raise SystemExit('CEX_EARLY_PENDING_COUNT_MISMATCH')
+          for row in rows:
+              if row.get('research_only') is not True or row.get('actionable') is not False or row.get('automatic_buy') is not False:
+                  raise SystemExit('CEX_EARLY_PENDING_RESEARCH_BOUNDARY_LEAK')
+              if row.get('persistent_until_exact_identity_resolution') is not True:
+                  raise SystemExit('CEX_EARLY_PENDING_PERSISTENCE_GUARD_MISSING')
+          print('CEX_SPOT_FAIL_CLOSED_VALID', {'early_pending_count': len(rows)})
           PY
       - name: Publish fresh Spot research state with bounded optimistic retries
         run: |
@@ -94,6 +122,7 @@ jobs:
           targets=(
             data/cex-spot-revival-radar.json
             data/cex-spot-identity-radar.json
+            data/cex-early-revival-pending.json
             data/cex-spot-state.json
             data/cex-spot-state.json.gz
             data/cex-identity-registry.json
