@@ -7,6 +7,12 @@ on:
     types: [completed]
   schedule:
     - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/six_of_seven_live_intelligence.py'
+      - 'tests/test_six_of_seven_live_intelligence.py'
+      - '.github/workflows/six-of-seven-deep-live.yml'
 
 permissions:
   contents: write
@@ -63,8 +69,7 @@ jobs:
           python -m wallet500.moonshot_verification_watch
           python -m wallet500.moonshot_future_listing_watch
 
-      - name: Deep-search live social news and public-index intelligence
-        if: steps.detect.outputs.count != '0'
+      - name: Refresh current 6-of-7 snapshot and deep-search when active
         env:
           SOCIAL_SCAN_BUDGET: '8'
           MESH_PUBLIC_INDEX_SLOTS: '8'
@@ -83,6 +88,29 @@ jobs:
           BSKY_IDENTIFIER: ${{ secrets.BSKY_IDENTIFIER }}
           BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
         run: python -m wallet500.six_of_seven_live_intelligence
+
+      - name: Assert current 6-of-7 snapshot freshness contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          deep=json.loads(Path('data/six-of-seven-live-intelligence.json').read_text())
+          if deep.get('production_effect') is not False or deep.get('automatic_buy') is not False:
+              raise SystemExit('SIX_OF_SEVEN_PRODUCTION_LEAK')
+          truth=deep.get('truth_contract') or {}
+          if truth.get('empty_current_set_must_publish_fresh_snapshot') is not True:
+              raise SystemExit('SIX_OF_SEVEN_EMPTY_SNAPSHOT_CONTRACT_MISSING')
+          count=int(deep.get('candidate_count') or 0)
+          if count == 0:
+              if deep.get('triggered') is not False or deep.get('snapshot_status') != 'CURRENT_EMPTY':
+                  raise SystemExit('SIX_OF_SEVEN_STALE_EMPTY_SNAPSHOT')
+              if deep.get('candidate_identities') not in ([], None):
+                  raise SystemExit('SIX_OF_SEVEN_EMPTY_IDENTITIES_NOT_CLEARED')
+          else:
+              if deep.get('triggered') is not True or deep.get('snapshot_status') != 'CURRENT_ACTIVE':
+                  raise SystemExit('SIX_OF_SEVEN_ACTIVE_SNAPSHOT_INVALID')
+          print('SIX_OF_SEVEN_CURRENT_SNAPSHOT_OK', count, deep.get('snapshot_status'))
+          PY
 
       - name: Recompute organic acceleration and social intelligence
         if: steps.detect.outputs.count != '0'
@@ -146,7 +174,6 @@ jobs:
           PY
 
       - name: Publish coherent war-room snapshot atomically
-        if: steps.detect.outputs.count != '0'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
