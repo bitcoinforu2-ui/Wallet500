@@ -46,11 +46,6 @@ def _status(row: dict) -> str:
 
 
 def _identity_priority(row: dict) -> tuple:
-    """Order identity work using evidence already observed before this attempt only.
-
-    Persistent early-revival evidence is allowed to move a candidate earlier in the
-    resolver queue, but can never resolve identity or satisfy any production gate.
-    """
     persistent = bool(row.get("persistent_until_exact_identity_resolution"))
     early = str(row.get("timing_quality") or "") == "EARLY_BREAKOUT_EVIDENCE"
     alert_score = _num(row.get("first_alert_score") or row.get("spot_revival_score"))
@@ -67,14 +62,28 @@ def _identity_priority(row: dict) -> tuple:
     return (persistent, early, coherent, alert_score, watch_score, accel)
 
 
-def _build_identity_queue(spot: dict, pending: dict) -> tuple[list[dict], dict]:
-    """Merge current watches with unresolved persistent candidates, then prioritize.
+def _last_attempted_symbols(previous_identity: dict) -> set[str]:
+    attempted: set[str] = set()
+    for key in ("candidates", "rejections"):
+        for row in previous_identity.get(key) or []:
+            if not isinstance(row, dict):
+                continue
+            symbol = _base_symbol(row.get("symbol"))
+            if symbol:
+                attempted.add(symbol)
+    return attempted
 
-    This fixes the historical failure mode where a strong unresolved candidate could
-    disappear from the current top-N watchlist before exact identity was obtained.
-    A bounded persistent reserve prevents the backlog from starving fresh watches.
-    Only already-recorded evidence is used; later price/outcome data is not consulted.
+
+def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | None = None) -> tuple[list[dict], dict]:
+    """Prioritize unresolved exact-identity work without hindsight or starvation.
+
+    Persistent candidates may receive resolver priority after a strong early signal, but
+    that priority is ordering-only. At most half the resolver is reserved for persistent
+    backlog, fresh/current watches retain capacity, and candidates attempted in the prior
+    run receive a one-cycle cooldown when other unresolved candidates are waiting.
     """
+    previous_identity = previous_identity if isinstance(previous_identity, dict) else {}
+    recent_attempts = _last_attempted_symbols(previous_identity)
     current_rows = [x for x in (spot.get("watchlist") or []) if isinstance(x, dict)]
     pending_rows = [x for x in (pending.get("candidates") or []) if isinstance(x, dict)]
 
@@ -94,7 +103,6 @@ def _build_identity_queue(spot: dict, pending: dict) -> tuple[list[dict], dict]:
             continue
         pending_symbols.add(symbol)
         if symbol in merged:
-            # Preserve current market fields while adding immutable first-watch/alert evidence.
             combined = dict(row)
             combined.update(merged[symbol])
             for key in (
@@ -121,7 +129,14 @@ def _build_identity_queue(spot: dict, pending: dict) -> tuple[list[dict], dict]:
             carried += 1
 
     ordered = sorted(merged.values(), key=_identity_priority, reverse=True)
-    pending_ordered = [row for row in ordered if _base_symbol(row.get("symbol")) in pending_symbols]
+    pending_ordered = sorted(
+        [row for row in ordered if _base_symbol(row.get("symbol")) in pending_symbols],
+        key=lambda row: (
+            _base_symbol(row.get("symbol")) not in recent_attempts,
+            _identity_priority(row),
+        ),
+        reverse=True,
+    )
     current_ordered = [row for row in ordered if _base_symbol(row.get("symbol")) in current_symbols]
 
     selected: list[dict] = []
@@ -137,12 +152,12 @@ def _build_identity_queue(spot: dict, pending: dict) -> tuple[list[dict], dict]:
             selected.append(row)
             selected_symbols.add(symbol)
 
-    # First reserve bounded capacity for unresolved historical signals, then guarantee
-    # the remaining resolver capacity to fresh/current watches, then fill spare slots.
     add_rows(pending_ordered, min(MAX_PERSISTENT_PRIORITY_SLOTS, MAX_WATCH_CANDIDATES))
     add_rows(current_ordered, MAX_WATCH_CANDIDATES)
     add_rows(ordered, MAX_WATCH_CANDIDATES)
 
+    selected_recent = len(selected_symbols & recent_attempts)
+    pending_not_recent = len(pending_symbols - recent_attempts)
     report = {
         "current_watch_count": len(current_rows),
         "persistent_pending_count": len(pending_rows),
@@ -151,9 +166,13 @@ def _build_identity_queue(spot: dict, pending: dict) -> tuple[list[dict], dict]:
         "selected_count": len(selected),
         "selected_persistent_count": len(selected_symbols & pending_symbols),
         "selected_current_count": len(selected_symbols & current_symbols),
+        "previous_attempted_symbol_count": len(recent_attempts),
+        "pending_not_attempted_previous_run": pending_not_recent,
+        "selected_attempted_previous_run": selected_recent,
         "limit": MAX_WATCH_CANDIDATES,
         "persistent_priority_slot_cap": MAX_PERSISTENT_PRIORITY_SLOTS,
         "fresh_watch_capacity_protected": True,
+        "one_cycle_backlog_rotation": True,
         "ordering_only": True,
         "production_effect": False,
         "no_hindsight": True,
@@ -162,7 +181,6 @@ def _build_identity_queue(spot: dict, pending: dict) -> tuple[list[dict], dict]:
 
 
 def _persist_verified_registry(data_dir: Path, rows: list[dict], now: str) -> dict:
-    """Self-expand the veteran identity registry only from fully exact, conflict-free CoinGecko-backed evidence."""
     path = data_dir / "cex-identity-registry.json"
     registry = _load(path, {})
     if not isinstance(registry, dict):
@@ -248,15 +266,6 @@ def _research_wrap(row: dict, source_lane: str, attempted_at: str) -> dict:
 
 
 def run(data_dir: Path = DATA) -> dict:
-    """Resolve CEX Spot watches to exact on-chain identity without relaxing production gates.
-
-    Primary path uses CoinGecko identity + age evidence then exact chain/contract/pair.
-    Persistent unresolved early-revival candidates are prioritized for future resolver
-    attempts even if they fall out of the current watchlist. This is ordering only.
-    If CoinGecko has no symbol entry, a strict DexScreener fallback may resolve identity only
-    when exact base symbol, CEX-price coherence, exact token+pair, and >=90d pair age all agree.
-    Ambiguous matches fail closed. Symbol-only evidence never becomes actionable.
-    """
     data_dir.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc).isoformat()
     spot_path = data_dir / "cex-spot-revival-radar.json"
@@ -264,13 +273,14 @@ def run(data_dir: Path = DATA) -> dict:
     out_path = data_dir / "cex-spot-identity-radar.json"
     spot = _load(spot_path, {})
     pending = _load(pending_path, {})
-    watch, queue_report = _build_identity_queue(spot, pending)
+    previous_identity = _load(out_path, {})
+    watch, queue_report = _build_identity_queue(spot, pending, previous_identity)
 
     base = {
-        "version": 3,
+        "version": 4,
         "generated_at": now,
         "source_generated_at": spot.get("generated_at"),
-        "mode": "RESEARCH_ONLY_DYNAMIC_CEX_SPOT_EXACT_IDENTITY_V3_PRIORITY_QUEUE",
+        "mode": "RESEARCH_ONLY_DYNAMIC_CEX_SPOT_EXACT_IDENTITY_V4_FAIR_PRIORITY_QUEUE",
         "production_portfolio_impact": "NONE",
         "automatic_buy": False,
         "symbol_only_actionable": False,
@@ -290,6 +300,7 @@ def run(data_dir: Path = DATA) -> dict:
             "persistent_pending_never_satisfies_identity": True,
             "priority_uses_only_preexisting_evidence": True,
             "fresh_watch_capacity_protected": True,
+            "previous_attempt_only_controls_future_queue_order": True,
             "no_hindsight": True,
         },
         "source_watch_count": len(watch),
@@ -325,7 +336,6 @@ def run(data_dir: Path = DATA) -> dict:
                 fallback_rows.append(_research_wrap(fallback, "CEX_SPOT_STRICT_DEX_IDENTITY_FALLBACK", now))
         rows.extend(fallback_rows)
 
-        # Prevent duplicate exact token/pair identities if both providers converge.
         unique = {}
         for row in rows:
             key = (
