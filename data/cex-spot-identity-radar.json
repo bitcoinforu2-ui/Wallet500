@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "generated_at": "2026-09-11T11:29:29.925895+00:00",
-  "source_generated_at": "2026-09-11T11:29:24.448083+00:00",
+  "generated_at": "2026-09-11T11:43:04.872786+00:00",
+  "source_generated_at": "2026-09-11T11:42:57.451689+00:00",
   "mode": "RESEARCH_ONLY_DYNAMIC_CEX_SPOT_EXACT_IDENTITY_V2",
   "production_portfolio_impact": "NONE",
   "automatic_buy": false,
@@ -18,13 +18,13 @@
     "dex_fallback_only_for_coingecko_not_found": true,
     "dex_fallback_requires_price_pair_age_coherence": true
   },
-  "source_watch_count": 11,
+  "source_watch_count": 34,
   "status": "OK",
   "counts": {
-    "age_identity_verified": 5,
-    "dex_verified": 4,
+    "age_identity_verified": 20,
+    "dex_verified": 15,
     "pair_pending": 0,
-    "identity_pending": 1,
+    "identity_pending": 5,
     "dex_fallback_verified": 0
   },
   "auto_registry": {
@@ -32,8 +32,19 @@
     "confirmed_existing": [
       "STORJ",
       "MET",
+      "NAVX",
+      "XCN",
+      "AURORA",
+      "GOCHU",
+      "NS",
+      "VC",
+      "BELIEVE",
       "DN",
-      "哈基米"
+      "XAVA",
+      "KNC",
+      "RIZE",
+      "哈基米",
+      "REIGN"
     ],
     "conflicts": [],
     "added_count": 0,
@@ -43,18 +54,38 @@
   "age_identity_preflight": {
     "status": "ENFORCED_FAIL_CLOSED",
     "minimum_market_age_days": 90,
-    "accepted": 5,
-    "rejected": 6,
+    "accepted": 20,
+    "rejected": 14,
     "identity_rule": "UNIQUE_SYMBOL_OR_STRICT_CEX_PRICE/TICKER_COHERENCE_TO_ONE_COINGECKO_ID",
     "evidence_rule": "EXACT_COINGECKO_ID_THEN_EARLIEST_ATH_OR_ATL_PROVES_180D",
     "unknown_or_unresolved_identity": "REJECT",
     "rejections": [
+      {
+        "symbol": "SLCWUSDT",
+        "base_symbol": "SLCW",
+        "reason": "AGE_IDENTITY_NOT_FOUND",
+        "coingecko_matches": 0,
+        "identity_evidence": null
+      },
       {
         "symbol": "MCATUSDT",
         "base_symbol": "MCAT",
         "reason": "AGE_IDENTITY_NOT_FOUND",
         "coingecko_matches": 0,
         "identity_evidence": null
+      },
+      {
+        "symbol": "CPUSDT",
+        "base_symbol": "CP",
+        "reason": "UNDER_60_DAYS_OR_AGE_UNVERIFIED",
+        "coingecko_id": "cluster-protocol",
+        "identity_evidence": {
+          "method": "COINGECKO_TICKER_EXCHANGE_OVERLAP",
+          "reference_price": 0.01362,
+          "ticker_exchange_overlap": 3,
+          "relative_log_error": 0.006631,
+          "candidate_count": 3
+        }
       },
       {
         "symbol": "牛来USDT",
@@ -74,8 +105,65 @@
         "identity_evidence": null
       },
       {
-        "symbol": "OVUSDT",
-        "base_symbol": "OV",
+        "symbol": "ZZZUSDT",
+        "base_symbol": "ZZZ",
+        "reason": "UNDER_60_DAYS_OR_AGE_UNVERIFIED",
+        "coingecko_id": "zzz-2",
+        "identity_evidence": {
+          "method": "UNIQUE_COINGECKO_SYMBOL",
+          "candidate_count": 1
+        }
+      },
+      {
+        "symbol": "SUEUSDT",
+        "base_symbol": "SUE",
+        "reason": "UNDER_60_DAYS_OR_AGE_UNVERIFIED",
+        "coingecko_id": "shi-gong-mao",
+        "identity_evidence": {
+          "method": "CEX_PRICE_COHERENCE",
+          "reference_price": 0.00374,
+          "relative_log_error": 0.023011,
+          "candidate_count": 2
+        }
+      },
+      {
+        "symbol": "BLOBUSDT",
+        "base_symbol": "BLOB",
+        "reason": "AGE_IDENTITY_AMBIGUOUS",
+        "coingecko_matches": 4,
+        "identity_evidence": {
+          "method": "AMBIGUOUS_FAIL_CLOSED",
+          "candidate_count": 4,
+          "reference_price": 9.252
+        }
+      },
+      {
+        "symbol": "ZAYUSDT",
+        "base_symbol": "ZAY",
+        "reason": "AGE_IDENTITY_NOT_FOUND",
+        "coingecko_matches": 0,
+        "identity_evidence": null
+      },
+      {
+        "symbol": "MODAUSDT",
+        "base_symbol": "MODA",
+        "reason": "AGE_IDENTITY_NOT_FOUND",
+        "coingecko_matches": 0,
+        "identity_evidence": null
+      },
+      {
+        "symbol": "STONKEXUSDT",
+        "base_symbol": "STONKEX",
+        "reason": "UNDER_60_DAYS_OR_AGE_UNVERIFIED",
+        "coingecko_id": "the-stonks-exchange",
+        "identity_evidence": {
+          "method": "UNIQUE_COINGECKO_SYMBOL",
+          "candidate_count": 1
+        }
+      },
+      {
+        "symbol": "MEMEROBINHOODUSDT",
+        "base_symbol": "MEMEROBINHOOD",
         "reason": "AGE_IDENTITY_NOT_FOUND",
         "coingecko_matches": 0,
         "identity_evidence": null
@@ -87,30 +175,28 @@
         "coingecko_id": "canopy",
         "identity_evidence": {
           "method": "CEX_PRICE_COHERENCE",
-          "reference_price": 0.23724,
-          "relative_log_error": 0.001815,
+          "reference_price": 0.239045,
+          "relative_log_error": 0.002593,
           "candidate_count": 2
         }
       },
       {
-        "symbol": "OTCUSDT",
-        "base_symbol": "OTC",
+        "symbol": "CHAMELEONUSDT",
+        "base_symbol": "CHAMELEON",
         "reason": "UNDER_60_DAYS_OR_AGE_UNVERIFIED",
-        "coingecko_id": "otc",
+        "coingecko_id": "chameleon",
         "identity_evidence": {
-          "method": "CEX_PRICE_COHERENCE",
-          "reference_price": 0.011643,
-          "relative_log_error": 0.054096,
-          "candidate_count": 2
+          "method": "UNIQUE_COINGECKO_SYMBOL",
+          "candidate_count": 1
         }
       }
     ]
   },
   "platform_catalog": {
-    "requested_coin_ids": 5,
-    "resolved_coin_ids": 4,
-    "status": "OK",
-    "error": null,
+    "requested_coin_ids": 20,
+    "resolved_coin_ids": 0,
+    "status": "DEGRADED_FAIL_CLOSED",
+    "error": "HTTPError: HTTP Error 429: Too Many Requests",
     "anti_rate_limit_rule": "ONE_CATALOG_REQUEST_PER_RUN_NOT_ONE_COIN_REQUEST_PER_ALERT"
   },
   "identity_contract": {
@@ -139,7 +225,7 @@
     {
       "symbol": "STORJUSDT",
       "market_type": "spot",
-      "spot_revival_score": 56,
+      "spot_revival_score": 73,
       "status": "CEX_SPOT_EXACT_IDENTITY_RESEARCH",
       "research_only": true,
       "actionable": false,
@@ -147,8 +233,9 @@
       "leveraged_product": false,
       "learning_eligible": true,
       "reasons": [
-        "24h spot momentum 49.8%",
-        "spot price acceleration 3.25%/scan",
+        "24h spot momentum 56.6%",
+        "spot price acceleration 4.39%/scan",
+        "spot volume acceleration 8.2%/scan",
         "spot turnover >= $100k",
         "4 coherent spot exchange confirmation"
       ],
@@ -157,11 +244,12 @@
       "coherent_exchange": "okx",
       "coherent_feature_hits": [
         "MOMENTUM",
-        "PRICE_ACCEL"
+        "PRICE_ACCEL",
+        "VOLUME_ACCEL"
       ],
-      "change_24h_max_pct": 49.845,
-      "price_acceleration_max_pct": 4.1885,
-      "volume_acceleration_max_pct": 2.4901,
+      "change_24h_max_pct": 56.93,
+      "price_acceleration_max_pct": 4.8618,
+      "volume_acceleration_max_pct": 9.0195,
       "exchanges": [
         "gate",
         "kucoin",
@@ -244,23 +332,11 @@
           "market_type": "spot",
           "symbol": "STORJUSDT",
           "market_id": "STORJ-USDT",
-          "price": 0.0435,
-          "change_24h_pct": 49.844987943506716,
-          "volume_24h": 2220893.7714485824,
-          "price_delta_pct": 3.2518,
-          "volume24_delta_pct": 2.4901,
-          "history_points": 96
-        },
-        {
-          "exchange": "kucoin",
-          "market_type": "spot",
-          "symbol": "STORJUSDT",
-          "market_id": "STORJ-USDT",
-          "price": 0.0436,
-          "change_24h_pct": 48.8,
-          "volume_24h": 359875.08550728,
-          "price_delta_pct": 3.0733,
-          "volume24_delta_pct": 0.4592,
+          "price": 0.04541,
+          "change_24h_pct": 56.6402207657813,
+          "volume_24h": 2402385.1586173913,
+          "price_delta_pct": 4.3908,
+          "volume24_delta_pct": 8.172,
           "history_points": 96
         },
         {
@@ -268,11 +344,23 @@
           "market_type": "spot",
           "symbol": "STORJUSDT",
           "market_id": "STORJUSDT",
-          "price": 0.04378,
-          "change_24h_pct": 0.508,
-          "volume_24h": 149946.62247,
-          "price_delta_pct": 4.1885,
-          "volume24_delta_pct": 1.6643,
+          "price": 0.04565,
+          "change_24h_pct": 0.5725,
+          "volume_24h": 162304.40903,
+          "price_delta_pct": 4.2714,
+          "volume24_delta_pct": 8.2415,
+          "history_points": 96
+        },
+        {
+          "exchange": "kucoin",
+          "market_type": "spot",
+          "symbol": "STORJUSDT",
+          "market_id": "STORJ-USDT",
+          "price": 0.0457,
+          "change_24h_pct": 55.97,
+          "volume_24h": 375716.37882888,
+          "price_delta_pct": 4.8165,
+          "volume24_delta_pct": 4.4019,
           "history_points": 96
         },
         {
@@ -280,11 +368,11 @@
           "market_type": "spot",
           "symbol": "STORJUSDT",
           "market_id": "STORJ_USDT",
-          "price": 0.0434,
-          "change_24h_pct": 49.44,
-          "volume_24h": 3072622.80545,
-          "price_delta_pct": 2.7462,
-          "volume24_delta_pct": 1.7629,
+          "price": 0.04551,
+          "change_24h_pct": 56.93,
+          "volume_24h": 3349756.76317,
+          "price_delta_pct": 4.8618,
+          "volume24_delta_pct": 9.0195,
           "history_points": 96
         }
       ],
@@ -305,17 +393,17 @@
       "pair_address": "0xAEF16913b6C50EBCf627a394921F306985FC8604",
       "dex": "uniswap",
       "dex_url": "https://dexscreener.com/ethereum/0xaef16913b6c50ebcf627a394921f306985fc8604",
-      "dex_price_usd": 0.04245,
-      "dex_liquidity_usd": 90769.71,
-      "dex_volume_h1": 11424.85,
-      "dex_volume_h24": 103581.82,
+      "dex_price_usd": 0.0455,
+      "dex_liquidity_usd": 94000.39,
+      "dex_volume_h1": 17225.37,
+      "dex_volume_h24": 112287.4,
       "pair_created_at": 1589848026000,
       "pair_provider": "DEXSCREENER_TOKEN_PAIRS",
       "exact_token_side": "BASE",
-      "identity_source": "COINGECKO_PLATFORM_CATALOG_PLUS_EXACT_ADDRESS_DEX_POOL",
+      "identity_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH_PLUS_EXACT_ADDRESS_DEX_POOL",
       "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
-      "execution_pool_liquidity_usd": 90769.71,
-      "dex_total_liquidity_usd": 181014.68,
+      "execution_pool_liquidity_usd": 94000.39,
+      "dex_total_liquidity_usd": 185523.88,
       "dex_pool_count": 14,
       "dex_tradable_pool_count_50k": 1,
       "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
@@ -328,16 +416,16 @@
         {
           "pair_address": "0xAEF16913b6C50EBCf627a394921F306985FC8604",
           "dex": "uniswap",
-          "liquidity_usd": 90769.71,
-          "volume_h24": 103581.82,
+          "liquidity_usd": 94000.39,
+          "volume_h24": 112287.4,
           "provider": "DEXSCREENER_TOKEN_PAIRS",
           "url": "https://dexscreener.com/ethereum/0xaef16913b6c50ebcf627a394921f306985fc8604"
         },
         {
           "pair_address": "0x5a3959cba1a671a0896182774d9e09f3ab69d22e0deed524ea9a7a2c811e4e91",
           "dex": "Uniswap V4 (Ethereum)",
-          "liquidity_usd": 46129.56,
-          "volume_h24": 185.71,
+          "liquidity_usd": 47407.29,
+          "volume_h24": 208.81,
           "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
           "url": "https://www.geckoterminal.com/eth/pools/0x5a3959cba1a671a0896182774d9e09f3ab69d22e0deed524ea9a7a2c811e4e91"
         },
@@ -353,7 +441,7 @@
           "pair_address": "0xB29148f6eA9F2d78BA9B2d6b30AF37AfDcC31a9E",
           "dex": "uniswap",
           "liquidity_usd": 7582.08,
-          "volume_h24": 37.32,
+          "volume_h24": 37.05,
           "provider": "DEXSCREENER_TOKEN_PAIRS",
           "url": "https://dexscreener.com/ethereum/0xb29148f6ea9f2d78ba9b2d6b30af37afdcc31a9e"
         },
@@ -372,7 +460,7 @@
     {
       "symbol": "METUSDT",
       "market_type": "spot",
-      "spot_revival_score": 33,
+      "spot_revival_score": 68,
       "status": "CEX_SPOT_EXACT_IDENTITY_RESEARCH",
       "research_only": true,
       "actionable": false,
@@ -380,19 +468,23 @@
       "leveraged_product": false,
       "learning_eligible": true,
       "reasons": [
-        "24h spot momentum 27.1%",
+        "24h spot momentum 30.5%",
+        "spot price acceleration 3.71%/scan",
+        "spot volume acceleration 21.6%/scan",
         "spot turnover >= $100k",
-        "3 coherent spot exchange confirmation"
+        "4 coherent spot exchange confirmation"
       ],
       "confirmations": 4,
-      "coherent_confirmations": 3,
+      "coherent_confirmations": 4,
       "coherent_exchange": "okx",
       "coherent_feature_hits": [
-        "MOMENTUM"
+        "MOMENTUM",
+        "PRICE_ACCEL",
+        "VOLUME_ACCEL"
       ],
-      "change_24h_max_pct": 28.66,
-      "price_acceleration_max_pct": -4.0143,
-      "volume_acceleration_max_pct": 3.4747,
+      "change_24h_max_pct": 31.15,
+      "price_acceleration_max_pct": 3.7108,
+      "volume_acceleration_max_pct": 21.6154,
       "exchanges": [
         "gate",
         "kucoin",
@@ -475,23 +567,11 @@
           "market_type": "spot",
           "symbol": "METUSDT",
           "market_id": "MET-USDT",
-          "price": 0.2614,
-          "change_24h_pct": 27.140077821011687,
-          "volume_24h": 2460783.0321431,
-          "price_delta_pct": -5.3927,
-          "volume24_delta_pct": 3.4747,
-          "history_points": 96
-        },
-        {
-          "exchange": "kucoin",
-          "market_type": "spot",
-          "symbol": "METUSDT",
-          "market_id": "MET-USDT",
-          "price": 0.2619,
-          "change_24h_pct": 26.39,
-          "volume_24h": 356783.900736,
-          "price_delta_pct": -5.2117,
-          "volume24_delta_pct": 2.7793,
+          "price": 0.2711,
+          "change_24h_pct": 30.524795377948966,
+          "volume_24h": 2992691.9129663,
+          "price_delta_pct": 3.7108,
+          "volume24_delta_pct": 21.6154,
           "history_points": 96
         },
         {
@@ -499,11 +579,23 @@
           "market_type": "spot",
           "symbol": "METUSDT",
           "market_id": "METUSDT",
-          "price": 0.2643,
-          "change_24h_pct": 0.2811,
-          "volume_24h": 465557.426,
-          "price_delta_pct": -4.8596,
-          "volume24_delta_pct": 1.9237,
+          "price": 0.2715,
+          "change_24h_pct": 0.3065,
+          "volume_24h": 520571.912,
+          "price_delta_pct": 2.7242,
+          "volume24_delta_pct": 11.8169,
+          "history_points": 96
+        },
+        {
+          "exchange": "kucoin",
+          "market_type": "spot",
+          "symbol": "METUSDT",
+          "market_id": "MET-USDT",
+          "price": 0.2715,
+          "change_24h_pct": 31.15,
+          "volume_24h": 402782.031048,
+          "price_delta_pct": 3.6655,
+          "volume24_delta_pct": 12.8924,
           "history_points": 96
         },
         {
@@ -511,11 +603,11 @@
           "market_type": "spot",
           "symbol": "METUSDT",
           "market_id": "MET_USDT",
-          "price": 0.26493,
-          "change_24h_pct": 28.66,
-          "volume_24h": 150459.55722,
-          "price_delta_pct": -4.0143,
-          "volume24_delta_pct": 2.4768,
+          "price": 0.27234,
+          "change_24h_pct": 31.09,
+          "volume_24h": 158313.00051,
+          "price_delta_pct": 2.797,
+          "volume24_delta_pct": 5.2196,
           "history_points": 96
         }
       ],
@@ -527,8 +619,8 @@
       "cex_identity_preflight_verified": true,
       "cex_identity_preflight": {
         "method": "CEX_PRICE_COHERENCE",
-        "reference_price": 0.2631,
-        "relative_log_error": 0.049872,
+        "reference_price": 0.2715,
+        "relative_log_error": 0.016695,
         "candidate_count": 3
       },
       "identity_status": "DEX_VERIFIED",
@@ -536,19 +628,19 @@
       "chain": "solana",
       "token_address": "METvsvVRapdj9cFLzq4Tr43xK4tAjQfwX76z3n6mWQL",
       "pair_address": "BnztueWcXv93mgW7yJe8WYpnCxpz34nujPhfjQT6SLu1",
-      "dex": "Meteora DAMM V2",
-      "dex_url": "https://www.geckoterminal.com/solana/pools/BnztueWcXv93mgW7yJe8WYpnCxpz34nujPhfjQT6SLu1",
-      "dex_price_usd": 0.2757196232,
-      "dex_liquidity_usd": 2775715.77,
-      "dex_volume_h1": 2863365.99294379,
-      "dex_volume_h24": 4730074.71547921,
-      "pair_created_at": 1762997160000,
-      "pair_provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+      "dex": "meteora",
+      "dex_url": "https://dexscreener.com/solana/bnztuewcxv93mgw7yje8wypncxpz34nujphfjqt6slu1",
+      "dex_price_usd": 0.2702,
+      "dex_liquidity_usd": 2746404.59,
+      "dex_volume_h1": 3846743.76,
+      "dex_volume_h24": 5866876.04,
+      "pair_created_at": 1762996995000,
+      "pair_provider": "DEXSCREENER_TOKEN_PAIRS",
       "exact_token_side": "BASE",
-      "identity_source": "COINGECKO_PLATFORM_CATALOG_PLUS_EXACT_ADDRESS_DEX_POOL",
+      "identity_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH_PLUS_EXACT_ADDRESS_DEX_POOL",
       "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
-      "execution_pool_liquidity_usd": 2775715.77,
-      "dex_total_liquidity_usd": 7437020.31,
+      "execution_pool_liquidity_usd": 2746404.59,
+      "dex_total_liquidity_usd": 7522132.08,
       "dex_pool_count": 36,
       "dex_tradable_pool_count_50k": 18,
       "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
@@ -560,43 +652,1528 @@
       "dex_liquidity_pools_top5": [
         {
           "pair_address": "BnztueWcXv93mgW7yJe8WYpnCxpz34nujPhfjQT6SLu1",
-          "dex": "Meteora DAMM V2",
-          "liquidity_usd": 2775715.77,
-          "volume_h24": 4730074.72,
-          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
-          "url": "https://www.geckoterminal.com/solana/pools/BnztueWcXv93mgW7yJe8WYpnCxpz34nujPhfjQT6SLu1"
+          "dex": "meteora",
+          "liquidity_usd": 2746404.59,
+          "volume_h24": 5866876.04,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/solana/bnztuewcxv93mgw7yje8wypncxpz34nujphfjqt6slu1"
         },
         {
           "pair_address": "AsSyvUnbfaZJPRrNh3kUuvZTeHKoMVWEoHz86f4Q5D9x",
           "dex": "meteora",
-          "liquidity_usd": 1132309.99,
-          "volume_h24": 9646304.19,
+          "liquidity_usd": 1135594.26,
+          "volume_h24": 11366350.11,
           "provider": "DEXSCREENER_TOKEN_PAIRS",
           "url": "https://dexscreener.com/solana/assyvunbfazjprrnh3kuuvztehkomvweohz86f4q5d9x"
         },
         {
           "pair_address": "5hbf9JP8k5zdrZp9pokPypFQoBse5mGCmW6nqodurGcd",
           "dex": "Meteora",
-          "liquidity_usd": 938482.06,
-          "volume_h24": 2644194.83,
+          "liquidity_usd": 937842.41,
+          "volume_h24": 2893415.51,
           "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
           "url": "https://www.geckoterminal.com/solana/pools/5hbf9JP8k5zdrZp9pokPypFQoBse5mGCmW6nqodurGcd"
         },
         {
           "pair_address": "2y6PCqa4fEp3jLiFdan9jVMw7LSK8F3gwsTfy8p7traE",
           "dex": "Meteora DAMM V2",
-          "liquidity_usd": 617760.64,
-          "volume_h24": 8707058.11,
+          "liquidity_usd": 721651.59,
+          "volume_h24": 10566641.77,
           "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
           "url": "https://www.geckoterminal.com/solana/pools/2y6PCqa4fEp3jLiFdan9jVMw7LSK8F3gwsTfy8p7traE"
         },
         {
           "pair_address": "AvpjYo2akRt8xCSWHVgcnXD6JwjiSdMK3gBFwCERWEyB",
-          "dex": "Meteora",
-          "liquidity_usd": 422708.99,
-          "volume_h24": 438908.13,
+          "dex": "meteora",
+          "liquidity_usd": 422367.97,
+          "volume_h24": 529620.89,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/solana/avpjyo2akrt8xcswhvgcnxd6jwjisdmk3gbfwcerweyb"
+        }
+      ],
+      "automatic_buy": false,
+      "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
+    },
+    {
+      "symbol": "NAVXUSDT",
+      "market_type": "spot",
+      "spot_revival_score": 51,
+      "status": "CEX_SPOT_EXACT_IDENTITY_RESEARCH",
+      "research_only": true,
+      "actionable": false,
+      "identity_required_before_actionable": true,
+      "leveraged_product": false,
+      "learning_eligible": true,
+      "reasons": [
+        "spot price acceleration 2.50%/scan",
+        "spot volume acceleration 28.5%/scan",
+        "4 coherent spot exchange confirmation"
+      ],
+      "confirmations": 4,
+      "coherent_confirmations": 4,
+      "coherent_exchange": "kucoin",
+      "coherent_feature_hits": [
+        "PRICE_ACCEL",
+        "VOLUME_ACCEL"
+      ],
+      "change_24h_max_pct": 8.3155,
+      "price_acceleration_max_pct": 3.225,
+      "volume_acceleration_max_pct": 28.5127,
+      "exchanges": [
+        "gate",
+        "kucoin",
+        "mexc",
+        "okx"
+      ],
+      "milestones": {
+        "first_seen": {
+          "kind": "FIRST_SEEN",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "okx",
+          "reference_price": 0.010883,
+          "reference_change_24h_pct": 2.621404997642629,
+          "score": 3,
+          "confirmations": 4,
+          "coherent_confirmations": 0,
+          "coherent_exchange": "okx",
+          "coherent_feature_hits": [],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 3.05
+        },
+        "first_anomaly": {
+          "kind": "FIRST_ANOMALY",
+          "observed_at": "2026-09-04T14:04:33.169268+00:00",
+          "reference_exchange": "okx",
+          "reference_price": 0.010755,
+          "reference_change_24h_pct": 2.204694478760816,
+          "score": 15,
+          "confirmations": 4,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "okx",
+          "coherent_feature_hits": [
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 1.4227,
+          "volume_acceleration_max_pct": 9.3542,
+          "change_24h_max_pct": 3.31
+        },
+        "first_watch": {
+          "kind": "FIRST_WATCH",
+          "observed_at": "2026-09-06T06:20:00.170293+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.010496,
+          "reference_change_24h_pct": -0.0178,
+          "score": 28,
+          "confirmations": 4,
+          "coherent_confirmations": 2,
+          "coherent_exchange": "kucoin",
+          "coherent_feature_hits": [
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 0.6641,
+          "volume_acceleration_max_pct": 64.6121,
+          "change_24h_max_pct": -0.0178
+        },
+        "first_alert": {
+          "kind": "FIRST_ALERT",
+          "observed_at": "2026-09-07T15:35:17.615599+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.010107,
+          "reference_change_24h_pct": -0.029,
+          "score": 36,
+          "confirmations": 4,
+          "coherent_confirmations": 4,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": -0.8058,
+          "volume_acceleration_max_pct": 51.0648,
+          "change_24h_max_pct": -0.029
+        }
+      },
+      "markets": [
+        {
+          "exchange": "okx",
+          "market_type": "spot",
+          "symbol": "NAVXUSDT",
+          "market_id": "NAVX-USDT",
+          "price": 0.00861,
+          "change_24h_pct": 8.315511385079887,
+          "volume_24h": 212854.07055,
+          "price_delta_pct": 3.225,
+          "volume24_delta_pct": 7.9658,
+          "history_points": 96
+        },
+        {
+          "exchange": "mexc",
+          "market_type": "spot",
+          "symbol": "NAVXUSDT",
+          "market_id": "NAVXUSDT",
+          "price": 0.008579,
+          "change_24h_pct": 0.0834,
+          "volume_24h": 61058.297586,
+          "price_delta_pct": 2.5093,
+          "volume24_delta_pct": 2.9903,
+          "history_points": 96
+        },
+        {
+          "exchange": "kucoin",
+          "market_type": "spot",
+          "symbol": "NAVXUSDT",
+          "market_id": "NAVX-USDT",
+          "price": 0.0086,
+          "change_24h_pct": 7.23,
+          "volume_24h": 8342.741529704,
+          "price_delta_pct": 2.503,
+          "volume24_delta_pct": 28.5127,
+          "history_points": 96
+        },
+        {
+          "exchange": "gate",
+          "market_type": "spot",
+          "symbol": "NAVXUSDT",
+          "market_id": "NAVX_USDT",
+          "price": 0.008606,
+          "change_24h_pct": 8.31,
+          "volume_24h": 16391.001266,
+          "price_delta_pct": 2.8442,
+          "volume24_delta_pct": 6.1476,
+          "history_points": 96
+        }
+      ],
+      "market_age_verified": true,
+      "market_age_min_days": 896,
+      "market_age_evidence_at": "2024-03-28T19:27:06+00:00",
+      "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_AFTER_CEX_IDENTITY_PREFLIGHT",
+      "coingecko_id": "navi",
+      "cex_identity_preflight_verified": true,
+      "cex_identity_preflight": {
+        "method": "UNIQUE_COINGECKO_SYMBOL",
+        "candidate_count": 1
+      },
+      "identity_status": "DEX_VERIFIED",
+      "identity_verified": true,
+      "chain": "sui",
+      "token_address": "0xa99b8952d4f7d947ea77fe0ecdcc9e5fc0bcab2841d6e2a5aa00c3044e5544b5::navx::NAVX",
+      "pair_address": "0x0254747f5ca059a1972cd7f6016485d51392a3fde608107b93bbaebea550f703",
+      "dex": "cetus",
+      "dex_url": "https://dexscreener.com/sui/0x0254747f5ca059a1972cd7f6016485d51392a3fde608107b93bbaebea550f703",
+      "dex_price_usd": 0.008712,
+      "dex_liquidity_usd": 157025.1,
+      "dex_volume_h1": 31433.08,
+      "dex_volume_h24": 84476.01,
+      "pair_created_at": 1706708833000,
+      "pair_provider": "DEXSCREENER_TOKEN_PAIRS",
+      "exact_token_side": "BASE",
+      "identity_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH_PLUS_EXACT_ADDRESS_DEX_POOL",
+      "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
+      "execution_pool_liquidity_usd": 157025.1,
+      "dex_total_liquidity_usd": 258739.8,
+      "dex_pool_count": 32,
+      "dex_tradable_pool_count_50k": 1,
+      "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
+      "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+      "liquidity_provider_coverage": [
+        "DEXSCREENER_TOKEN_PAIRS",
+        "GECKOTERMINAL_EXACT_TOKEN_POOLS"
+      ],
+      "dex_liquidity_pools_top5": [
+        {
+          "pair_address": "0x0254747f5ca059a1972cd7f6016485d51392a3fde608107b93bbaebea550f703",
+          "dex": "cetus",
+          "liquidity_usd": 157025.1,
+          "volume_h24": 84476.01,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/sui/0x0254747f5ca059a1972cd7f6016485d51392a3fde608107b93bbaebea550f703"
+        },
+        {
+          "pair_address": "0xa6275fa7e6b2bf96b841db41924d87d43f90e6992ce3593dca8180d99f20df58",
+          "dex": "cetus",
+          "liquidity_usd": 36509.01,
+          "volume_h24": 10337.39,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/sui/0xa6275fa7e6b2bf96b841db41924d87d43f90e6992ce3593dca8180d99f20df58"
+        },
+        {
+          "pair_address": "0x4bbf106b3953df96cee6ebfd2af4681adace2e3778f5fcc600e8d70c6342d45d",
+          "dex": "momentum",
+          "liquidity_usd": 31076.65,
+          "volume_h24": 172.59,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/sui/0x4bbf106b3953df96cee6ebfd2af4681adace2e3778f5fcc600e8d70c6342d45d"
+        },
+        {
+          "pair_address": "0x3ec8401520022aac67935188eb1f82c13cbbc949ab04692e5b62445d89b61c9f",
+          "dex": "cetus",
+          "liquidity_usd": 27266.97,
+          "volume_h24": 5599.05,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/sui/0x3ec8401520022aac67935188eb1f82c13cbbc949ab04692e5b62445d89b61c9f"
+        },
+        {
+          "pair_address": "0x8666262f9e00fac4a1afee7ef589a82380def3b84269e03b6a2ff990c9cfb058",
+          "dex": "cetus",
+          "liquidity_usd": 2843.55,
+          "volume_h24": 1020.01,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/sui/0x8666262f9e00fac4a1afee7ef589a82380def3b84269e03b6a2ff990c9cfb058"
+        }
+      ],
+      "automatic_buy": false,
+      "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
+    },
+    {
+      "symbol": "XCNUSDT",
+      "market_type": "spot",
+      "spot_revival_score": 46,
+      "status": "CEX_SPOT_EXACT_IDENTITY_RESEARCH",
+      "research_only": true,
+      "actionable": false,
+      "identity_required_before_actionable": true,
+      "leveraged_product": false,
+      "learning_eligible": true,
+      "reasons": [
+        "24h spot momentum 13.0%",
+        "spot price acceleration 5.29%/scan",
+        "spot turnover >= $100k",
+        "3 coherent spot exchange confirmation"
+      ],
+      "confirmations": 3,
+      "coherent_confirmations": 3,
+      "coherent_exchange": "kucoin",
+      "coherent_feature_hits": [
+        "MOMENTUM",
+        "PRICE_ACCEL"
+      ],
+      "change_24h_max_pct": 12.97,
+      "price_acceleration_max_pct": 5.2864,
+      "volume_acceleration_max_pct": 5.8213,
+      "exchanges": [
+        "gate",
+        "kucoin",
+        "mexc"
+      ],
+      "milestones": {
+        "first_seen": {
+          "kind": "FIRST_SEEN",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.004042,
+          "reference_change_24h_pct": 24.48,
+          "score": 33,
+          "confirmations": 3,
+          "coherent_confirmations": 2,
+          "coherent_exchange": "kucoin",
+          "coherent_feature_hits": [
+            "MOMENTUM"
+          ],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 25.57
+        },
+        "first_anomaly": {
+          "kind": "FIRST_ANOMALY",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.004042,
+          "reference_change_24h_pct": 24.48,
+          "score": 33,
+          "confirmations": 3,
+          "coherent_confirmations": 2,
+          "coherent_exchange": "kucoin",
+          "coherent_feature_hits": [
+            "MOMENTUM"
+          ],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 25.57
+        },
+        "first_watch": {
+          "kind": "FIRST_WATCH",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.004042,
+          "reference_change_24h_pct": 24.48,
+          "score": 33,
+          "confirmations": 3,
+          "coherent_confirmations": 2,
+          "coherent_exchange": "kucoin",
+          "coherent_feature_hits": [
+            "MOMENTUM"
+          ],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 25.57
+        },
+        "first_alert": {
+          "kind": "FIRST_ALERT",
+          "observed_at": "2026-09-04T16:54:25.043709+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.003889,
+          "reference_change_24h_pct": 13.28,
+          "score": 38,
+          "confirmations": 3,
+          "coherent_confirmations": 3,
+          "coherent_exchange": "kucoin",
+          "coherent_feature_hits": [
+            "MOMENTUM",
+            "PRICE_ACCEL"
+          ],
+          "price_acceleration_max_pct": 3.6252,
+          "volume_acceleration_max_pct": 1.378,
+          "change_24h_max_pct": 13.42
+        }
+      },
+      "markets": [
+        {
+          "exchange": "mexc",
+          "market_type": "spot",
+          "symbol": "XCNUSDT",
+          "market_id": "XCNUSDT",
+          "price": 0.0042427,
+          "change_24h_pct": 0.1164,
+          "volume_24h": 46593.6896197,
+          "price_delta_pct": 3.9139,
+          "volume24_delta_pct": 2.3982,
+          "history_points": 96
+        },
+        {
+          "exchange": "kucoin",
+          "market_type": "spot",
+          "symbol": "XCNUSDT",
+          "market_id": "XCN-USDT",
+          "price": 0.004298,
+          "change_24h_pct": 12.97,
+          "volume_24h": 782726.9349711098,
+          "price_delta_pct": 5.2864,
+          "volume24_delta_pct": 4.2862,
+          "history_points": 96
+        },
+        {
+          "exchange": "gate",
+          "market_type": "spot",
+          "symbol": "XCNUSDT",
+          "market_id": "XCN_USDT",
+          "price": 0.00427,
+          "change_24h_pct": 12.39,
+          "volume_24h": 2410748.54092935,
+          "price_delta_pct": 4.35,
+          "volume24_delta_pct": 5.8213,
+          "history_points": 96
+        }
+      ],
+      "market_age_verified": true,
+      "market_age_min_days": 1568,
+      "market_age_evidence_at": "2022-05-27T03:45:24+00:00",
+      "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_AFTER_CEX_IDENTITY_PREFLIGHT",
+      "coingecko_id": "chain-2",
+      "cex_identity_preflight_verified": true,
+      "cex_identity_preflight": {
+        "method": "UNIQUE_COINGECKO_SYMBOL",
+        "candidate_count": 1
+      },
+      "identity_status": "DEX_VERIFIED",
+      "identity_verified": true,
+      "chain": "ethereum",
+      "token_address": "0xa2cd3d43c775978a96bdbf12d733d5a1ed94fb18",
+      "pair_address": "0x859f7092f56c43bb48bb46de7119d9c799716cdf",
+      "dex": "Uniswap V2",
+      "dex_url": "https://www.geckoterminal.com/eth/pools/0x859f7092f56c43bb48bb46de7119d9c799716cdf",
+      "dex_price_usd": 0.004252056437,
+      "dex_liquidity_usd": 794665.49,
+      "dex_volume_h1": 43355.4998916514,
+      "dex_volume_h24": 413910.787389747,
+      "pair_created_at": 1647560589000,
+      "pair_provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+      "exact_token_side": "BASE",
+      "identity_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH_PLUS_EXACT_ADDRESS_DEX_POOL",
+      "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
+      "execution_pool_liquidity_usd": 794665.49,
+      "dex_total_liquidity_usd": 856539.37,
+      "dex_pool_count": 20,
+      "dex_tradable_pool_count_50k": 1,
+      "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
+      "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+      "liquidity_provider_coverage": [
+        "DEXSCREENER_TOKEN_PAIRS",
+        "GECKOTERMINAL_EXACT_TOKEN_POOLS"
+      ],
+      "dex_liquidity_pools_top5": [
+        {
+          "pair_address": "0x859f7092f56c43bb48bb46de7119d9c799716cdf",
+          "dex": "Uniswap V2",
+          "liquidity_usd": 794665.49,
+          "volume_h24": 413910.79,
           "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
-          "url": "https://www.geckoterminal.com/solana/pools/AvpjYo2akRt8xCSWHVgcnXD6JwjiSdMK3gBFwCERWEyB"
+          "url": "https://www.geckoterminal.com/eth/pools/0x859f7092f56c43bb48bb46de7119d9c799716cdf"
+        },
+        {
+          "pair_address": "0xf2145bcb3f4a3edaf82cac65bb6f4c3410adb0b70e66176cf30ad1de617daafb",
+          "dex": "uniswap",
+          "liquidity_usd": 13714.45,
+          "volume_h24": 1233.7,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/ethereum/0xf2145bcb3f4a3edaf82cac65bb6f4c3410adb0b70e66176cf30ad1de617daafb"
+        },
+        {
+          "pair_address": "0xdf98309f9c847bed252308e2cd131a42f23eafe1b31adb1fcf1c99da006ee632",
+          "dex": "uniswap",
+          "liquidity_usd": 11812.99,
+          "volume_h24": 1261.27,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/ethereum/0xdf98309f9c847bed252308e2cd131a42f23eafe1b31adb1fcf1c99da006ee632"
+        },
+        {
+          "pair_address": "0x47cf5617e7053362f2bba39859164d9579400670693a7a35bae559b48a595a6b",
+          "dex": "Uniswap V4 (Ethereum)",
+          "liquidity_usd": 11021.4,
+          "volume_h24": 1008.87,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/eth/pools/0x47cf5617e7053362f2bba39859164d9579400670693a7a35bae559b48a595a6b"
+        },
+        {
+          "pair_address": "0x3a008d7171a563fea5053a50b8c35f288081f2da454219996668e8177baf896b",
+          "dex": "Uniswap V4 (Ethereum)",
+          "liquidity_usd": 9819.34,
+          "volume_h24": 1378.23,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/eth/pools/0x3a008d7171a563fea5053a50b8c35f288081f2da454219996668e8177baf896b"
+        }
+      ],
+      "automatic_buy": false,
+      "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
+    },
+    {
+      "symbol": "AURORAUSDT",
+      "market_type": "spot",
+      "spot_revival_score": 45,
+      "status": "CEX_SPOT_EXACT_IDENTITY_RESEARCH",
+      "research_only": true,
+      "actionable": false,
+      "identity_required_before_actionable": true,
+      "leveraged_product": false,
+      "learning_eligible": true,
+      "reasons": [
+        "24h spot momentum 11.1%",
+        "spot price acceleration 2.90%/scan",
+        "spot volume acceleration 19.4%/scan",
+        "2 coherent spot exchange confirmation"
+      ],
+      "confirmations": 3,
+      "coherent_confirmations": 2,
+      "coherent_exchange": "gate",
+      "coherent_feature_hits": [
+        "MOMENTUM",
+        "PRICE_ACCEL",
+        "VOLUME_ACCEL"
+      ],
+      "change_24h_max_pct": 11.18,
+      "price_acceleration_max_pct": 2.9011,
+      "volume_acceleration_max_pct": 19.4106,
+      "exchanges": [
+        "gate",
+        "kucoin",
+        "mexc"
+      ],
+      "milestones": {
+        "first_seen": {
+          "kind": "FIRST_SEEN",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.01715,
+          "reference_change_24h_pct": 0.0457,
+          "score": 0,
+          "confirmations": 3,
+          "coherent_confirmations": 0,
+          "coherent_exchange": "kucoin",
+          "coherent_feature_hits": [],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 4.26
+        },
+        "first_anomaly": {
+          "kind": "FIRST_ANOMALY",
+          "observed_at": "2026-09-04T11:07:35.397922+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.01714,
+          "reference_change_24h_pct": 0.0419,
+          "score": 12,
+          "confirmations": 3,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "kucoin",
+          "coherent_feature_hits": [
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 0.3505,
+          "volume_acceleration_max_pct": 8.755,
+          "change_24h_max_pct": 4.62
+        },
+        "first_watch": {
+          "kind": "FIRST_WATCH",
+          "observed_at": "2026-09-05T18:55:50.520435+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.01686,
+          "reference_change_24h_pct": -0.0029,
+          "score": 28,
+          "confirmations": 3,
+          "coherent_confirmations": 2,
+          "coherent_exchange": "kucoin",
+          "coherent_feature_hits": [
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": -3.6995,
+          "volume_acceleration_max_pct": 64.2484,
+          "change_24h_max_pct": -0.0029
+        },
+        "first_alert": {
+          "kind": "FIRST_ALERT",
+          "observed_at": "2026-09-11T10:53:02.750677+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.01655,
+          "reference_change_24h_pct": 0.0554,
+          "score": 53,
+          "confirmations": 3,
+          "coherent_confirmations": 3,
+          "coherent_exchange": "kucoin",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 6.1986,
+          "volume_acceleration_max_pct": 60.4742,
+          "change_24h_max_pct": 7.28
+        }
+      },
+      "markets": [
+        {
+          "exchange": "mexc",
+          "market_type": "spot",
+          "symbol": "AURORAUSDT",
+          "market_id": "AURORAUSDT",
+          "price": 0.01736,
+          "change_24h_pct": 0.1057,
+          "volume_24h": 59772.41709,
+          "price_delta_pct": 0.9302,
+          "volume24_delta_pct": 0.3033,
+          "history_points": 96
+        },
+        {
+          "exchange": "kucoin",
+          "market_type": "spot",
+          "symbol": "AURORAUSDT",
+          "market_id": "AURORA-USDT",
+          "price": 0.01739,
+          "change_24h_pct": 11.18,
+          "volume_24h": 29279.948152174,
+          "price_delta_pct": 2.2941,
+          "volume24_delta_pct": 4.9121,
+          "history_points": 96
+        },
+        {
+          "exchange": "gate",
+          "market_type": "spot",
+          "symbol": "AURORAUSDT",
+          "market_id": "AURORA_USDT",
+          "price": 0.01738,
+          "change_24h_pct": 11.12,
+          "volume_24h": 21324.961643,
+          "price_delta_pct": 2.9011,
+          "volume24_delta_pct": 19.4106,
+          "history_points": 96
+        }
+      ],
+      "market_age_verified": true,
+      "market_age_min_days": 1698,
+      "market_age_evidence_at": "2022-01-16T14:13:43+00:00",
+      "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_AFTER_CEX_IDENTITY_PREFLIGHT",
+      "coingecko_id": "aurora-near",
+      "cex_identity_preflight_verified": true,
+      "cex_identity_preflight": {
+        "method": "CEX_PRICE_COHERENCE",
+        "reference_price": 0.01738,
+        "relative_log_error": 0.008899,
+        "candidate_count": 3
+      },
+      "identity_status": "DEX_VERIFIED",
+      "identity_verified": true,
+      "chain": "ethereum",
+      "token_address": "0xaaaaaa20d9e0e2461697782ef11675f668207961",
+      "pair_address": "0x629D22E6eEaC46A11dBC96be93b90aee9309Be4c",
+      "dex": "uniswap",
+      "dex_url": "https://dexscreener.com/ethereum/0x629d22e6eeac46a11dbc96be93b90aee9309be4c",
+      "dex_price_usd": 0.01768,
+      "dex_liquidity_usd": 222453.76,
+      "dex_volume_h1": 17388.45,
+      "dex_volume_h24": 19415.42,
+      "pair_created_at": 1644414387000,
+      "pair_provider": "DEXSCREENER_TOKEN_PAIRS",
+      "exact_token_side": "BASE",
+      "identity_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH_PLUS_EXACT_ADDRESS_DEX_POOL",
+      "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
+      "execution_pool_liquidity_usd": 222453.76,
+      "dex_total_liquidity_usd": 231342.57,
+      "dex_pool_count": 6,
+      "dex_tradable_pool_count_50k": 1,
+      "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
+      "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+      "liquidity_provider_coverage": [
+        "DEXSCREENER_TOKEN_PAIRS",
+        "GECKOTERMINAL_EXACT_TOKEN_POOLS"
+      ],
+      "dex_liquidity_pools_top5": [
+        {
+          "pair_address": "0x629D22E6eEaC46A11dBC96be93b90aee9309Be4c",
+          "dex": "uniswap",
+          "liquidity_usd": 222453.76,
+          "volume_h24": 19415.42,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/ethereum/0x629d22e6eeac46a11dbc96be93b90aee9309be4c"
+        },
+        {
+          "pair_address": "0x41cddf3043144c6e360f2b43fe6a0420c1b8ee9f81987c2747434a11b57f7e98",
+          "dex": "Uniswap V4 (Ethereum)",
+          "liquidity_usd": 8760.69,
+          "volume_h24": 229.5,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/eth/pools/0x41cddf3043144c6e360f2b43fe6a0420c1b8ee9f81987c2747434a11b57f7e98"
+        },
+        {
+          "pair_address": "0x032ee74856c325781a72af12ee21f304d155a06d12b74e8a23eea62e80e86e50",
+          "dex": "Uniswap V4 (Ethereum)",
+          "liquidity_usd": 127.17,
+          "volume_h24": 0.0,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/eth/pools/0x032ee74856c325781a72af12ee21f304d155a06d12b74e8a23eea62e80e86e50"
+        },
+        {
+          "pair_address": "0xce22b42ee7ec24c435ad7e140dcdf2f796f57c7bb8dcf4b1e764c5c28815c7a6",
+          "dex": "Uniswap V4 (Ethereum)",
+          "liquidity_usd": 0.95,
+          "volume_h24": 0.0,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/eth/pools/0xce22b42ee7ec24c435ad7e140dcdf2f796f57c7bb8dcf4b1e764c5c28815c7a6"
+        },
+        {
+          "pair_address": "0x733111b623ddd846a58c58444edb5e85a03e8a40",
+          "dex": "Uniswap V3",
+          "liquidity_usd": 0.01,
+          "volume_h24": 0.0,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/eth/pools/0x733111b623ddd846a58c58444edb5e85a03e8a40"
+        }
+      ],
+      "automatic_buy": false,
+      "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
+    },
+    {
+      "symbol": "GOCHUUSDT",
+      "market_type": "spot",
+      "spot_revival_score": 45,
+      "status": "CEX_SPOT_EXACT_IDENTITY_RESEARCH",
+      "research_only": true,
+      "actionable": false,
+      "identity_required_before_actionable": true,
+      "leveraged_product": false,
+      "learning_eligible": true,
+      "reasons": [
+        "24h spot momentum 27.9%",
+        "spot price acceleration 7.78%/scan"
+      ],
+      "confirmations": 2,
+      "coherent_confirmations": 1,
+      "coherent_exchange": "gate",
+      "coherent_feature_hits": [
+        "MOMENTUM",
+        "PRICE_ACCEL"
+      ],
+      "change_24h_max_pct": 27.9,
+      "price_acceleration_max_pct": 7.783,
+      "volume_acceleration_max_pct": 2.8442,
+      "exchanges": [
+        "gate",
+        "mexc"
+      ],
+      "milestones": {
+        "first_seen": {
+          "kind": "FIRST_SEEN",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 3.109e-09,
+          "reference_change_24h_pct": 2.3394,
+          "score": 0,
+          "confirmations": 2,
+          "coherent_confirmations": 0,
+          "coherent_exchange": "mexc",
+          "coherent_feature_hits": [],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 2.3394
+        },
+        "first_anomaly": {
+          "kind": "FIRST_ANOMALY",
+          "observed_at": "2026-09-04T11:55:45.052715+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 3.165e-09,
+          "reference_change_24h_pct": 2.4665,
+          "score": 25,
+          "confirmations": 2,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "mexc",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL"
+          ],
+          "price_acceleration_max_pct": 9.0627,
+          "volume_acceleration_max_pct": 0.7061,
+          "change_24h_max_pct": 2.4665
+        },
+        "first_watch": {
+          "kind": "FIRST_WATCH",
+          "observed_at": "2026-09-04T11:55:45.052715+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 3.165e-09,
+          "reference_change_24h_pct": 2.4665,
+          "score": 25,
+          "confirmations": 2,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "mexc",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL"
+          ],
+          "price_acceleration_max_pct": 9.0627,
+          "volume_acceleration_max_pct": 0.7061,
+          "change_24h_max_pct": 2.4665
+        },
+        "first_alert": {
+          "kind": "FIRST_ALERT",
+          "observed_at": "2026-09-05T06:45:19.920390+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 1.293e-09,
+          "reference_change_24h_pct": -0.4165,
+          "score": 37,
+          "confirmations": 2,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "mexc",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 7.75,
+          "volume_acceleration_max_pct": 9.7661,
+          "change_24h_max_pct": -0.4165
+        }
+      },
+      "markets": [
+        {
+          "exchange": "mexc",
+          "market_type": "spot",
+          "symbol": "GOCHUUSDT",
+          "market_id": "GOCHUUSDT",
+          "price": 1.349e-10,
+          "change_24h_pct": -0.1734,
+          "volume_24h": 1296.7427802783473,
+          "price_delta_pct": 0.0,
+          "volume24_delta_pct": 0.0,
+          "history_points": 96
+        },
+        {
+          "exchange": "gate",
+          "market_type": "spot",
+          "symbol": "GOCHUUSDT",
+          "market_id": "GOCHU_USDT",
+          "price": 3.199e-08,
+          "change_24h_pct": 27.9,
+          "volume_24h": 4247.87987100247,
+          "price_delta_pct": 7.783,
+          "volume24_delta_pct": 2.8442,
+          "history_points": 96
+        }
+      ],
+      "market_age_verified": true,
+      "market_age_min_days": 468,
+      "market_age_evidence_at": "2025-05-30T21:11:21+00:00",
+      "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_AFTER_CEX_IDENTITY_PREFLIGHT",
+      "coingecko_id": "gochujangcoin",
+      "cex_identity_preflight_verified": true,
+      "cex_identity_preflight": {
+        "method": "UNIQUE_COINGECKO_SYMBOL",
+        "candidate_count": 1
+      },
+      "identity_status": "DEX_VERIFIED",
+      "identity_verified": true,
+      "chain": "base",
+      "token_address": "0x9aaae745cf2830fb8ddc6248b17436dc3a5e701c",
+      "pair_address": "0xdeaff6dc50b86e76622c8a365605aeb6351aa09600f5e9f5e2fc706c12511ea0",
+      "dex": "Uniswap V4 (Base)",
+      "dex_url": "https://www.geckoterminal.com/base/pools/0xdeaff6dc50b86e76622c8a365605aeb6351aa09600f5e9f5e2fc706c12511ea0",
+      "dex_price_usd": 1.722882687e-10,
+      "dex_liquidity_usd": 2518.37,
+      "dex_volume_h1": 0.0,
+      "dex_volume_h24": 0.6810520106,
+      "pair_created_at": 1757666117000,
+      "pair_provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+      "exact_token_side": "BASE",
+      "identity_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH_PLUS_EXACT_ADDRESS_DEX_POOL",
+      "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
+      "execution_pool_liquidity_usd": 2518.37,
+      "dex_total_liquidity_usd": 11750.96,
+      "dex_pool_count": 22,
+      "dex_tradable_pool_count_50k": 0,
+      "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
+      "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+      "liquidity_provider_coverage": [
+        "DEXSCREENER_TOKEN_PAIRS",
+        "GECKOTERMINAL_EXACT_TOKEN_POOLS"
+      ],
+      "dex_liquidity_pools_top5": [
+        {
+          "pair_address": "0xdeaff6dc50b86e76622c8a365605aeb6351aa09600f5e9f5e2fc706c12511ea0",
+          "dex": "Uniswap V4 (Base)",
+          "liquidity_usd": 2518.37,
+          "volume_h24": 0.68,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/base/pools/0xdeaff6dc50b86e76622c8a365605aeb6351aa09600f5e9f5e2fc706c12511ea0"
+        },
+        {
+          "pair_address": "0x1bf360f3d0980c3d1a46da5dabdca3a5e0b9fcb630d2461c291e90b4c4e61430",
+          "dex": "Uniswap V4 (Base)",
+          "liquidity_usd": 2320.49,
+          "volume_h24": 3.5,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/base/pools/0x1bf360f3d0980c3d1a46da5dabdca3a5e0b9fcb630d2461c291e90b4c4e61430"
+        },
+        {
+          "pair_address": "0x3d954ff6d756274a11ffc81f9116d91b8ea60cbb42b046d5fd839e6f52db889e",
+          "dex": "Uniswap V4 (Base)",
+          "liquidity_usd": 1241.56,
+          "volume_h24": 0.02,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/base/pools/0x3d954ff6d756274a11ffc81f9116d91b8ea60cbb42b046d5fd839e6f52db889e"
+        },
+        {
+          "pair_address": "0x73ccdeaa8957422c0a64e83f50c8814c7b33fe99",
+          "dex": "Uniswap V3 (Base)",
+          "liquidity_usd": 1149.32,
+          "volume_h24": 0.0,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/base/pools/0x73ccdeaa8957422c0a64e83f50c8814c7b33fe99"
+        },
+        {
+          "pair_address": "0x943ce2bb7fbb0514e21feadf950b5991f5910c696167a16f0bef7c2fdd1c5ad1",
+          "dex": "Uniswap V4 (Base)",
+          "liquidity_usd": 895.46,
+          "volume_h24": 71.21,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/base/pools/0x943ce2bb7fbb0514e21feadf950b5991f5910c696167a16f0bef7c2fdd1c5ad1"
+        }
+      ],
+      "automatic_buy": false,
+      "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
+    },
+    {
+      "symbol": "NSUSDT",
+      "market_type": "spot",
+      "spot_revival_score": 43,
+      "status": "CEX_SPOT_EXACT_IDENTITY_RESEARCH",
+      "research_only": true,
+      "actionable": false,
+      "identity_required_before_actionable": true,
+      "leveraged_product": false,
+      "learning_eligible": true,
+      "reasons": [
+        "spot price acceleration 2.50%/scan",
+        "spot volume acceleration 54.0%/scan",
+        "3 coherent spot exchange confirmation"
+      ],
+      "confirmations": 3,
+      "coherent_confirmations": 3,
+      "coherent_exchange": "gate",
+      "coherent_feature_hits": [
+        "PRICE_ACCEL",
+        "VOLUME_ACCEL"
+      ],
+      "change_24h_max_pct": -0.1197,
+      "price_acceleration_max_pct": 2.4955,
+      "volume_acceleration_max_pct": 55.2515,
+      "exchanges": [
+        "gate",
+        "kucoin",
+        "mexc"
+      ],
+      "milestones": {
+        "first_seen": {
+          "kind": "FIRST_SEEN",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.01328,
+          "reference_change_24h_pct": 0.0239,
+          "score": 0,
+          "confirmations": 3,
+          "coherent_confirmations": 0,
+          "coherent_exchange": "kucoin",
+          "coherent_feature_hits": [],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 3.63
+        },
+        "first_anomaly": {
+          "kind": "FIRST_ANOMALY",
+          "observed_at": "2026-09-04T12:40:18.579349+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.01336,
+          "reference_change_24h_pct": 0.0261,
+          "score": 20,
+          "confirmations": 3,
+          "coherent_confirmations": 2,
+          "coherent_exchange": "kucoin",
+          "coherent_feature_hits": [
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 1.1312,
+          "volume_acceleration_max_pct": 15.4826,
+          "change_24h_max_pct": 2.99
+        },
+        "first_watch": {
+          "kind": "FIRST_WATCH",
+          "observed_at": "2026-09-04T21:54:49.965721+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.01287,
+          "reference_change_24h_pct": -0.0388,
+          "score": 28,
+          "confirmations": 3,
+          "coherent_confirmations": 2,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": -2.1277,
+          "volume_acceleration_max_pct": 308.8505,
+          "change_24h_max_pct": -0.0388
+        },
+        "first_alert": {
+          "kind": "FIRST_ALERT",
+          "observed_at": "2026-09-05T18:55:50.520435+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.01369,
+          "reference_change_24h_pct": 0.0363,
+          "score": 35,
+          "confirmations": 3,
+          "coherent_confirmations": 3,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 4.2683,
+          "volume_acceleration_max_pct": 12.8879,
+          "change_24h_max_pct": 3.63
+        }
+      },
+      "markets": [
+        {
+          "exchange": "mexc",
+          "market_type": "spot",
+          "symbol": "NSUSDT",
+          "market_id": "NSUSDT",
+          "price": 0.01147,
+          "change_24h_pct": -0.1197,
+          "volume_24h": 53842.37493,
+          "price_delta_pct": 2.1371,
+          "volume24_delta_pct": 3.3332,
+          "history_points": 96
+        },
+        {
+          "exchange": "kucoin",
+          "market_type": "spot",
+          "symbol": "NSUSDT",
+          "market_id": "NS-USDT",
+          "price": 0.0114,
+          "change_24h_pct": -13.170000000000002,
+          "volume_24h": 3024.513632,
+          "price_delta_pct": 0.7958,
+          "volume24_delta_pct": 55.2515,
+          "history_points": 96
+        },
+        {
+          "exchange": "gate",
+          "market_type": "spot",
+          "symbol": "NSUSDT",
+          "market_id": "NS_USDT",
+          "price": 0.0115,
+          "change_24h_pct": -11.53,
+          "volume_24h": 5432.1024105,
+          "price_delta_pct": 2.4955,
+          "volume24_delta_pct": 54.046,
+          "history_points": 96
+        }
+      ],
+      "market_age_verified": true,
+      "market_age_min_days": 664,
+      "market_age_evidence_at": "2024-11-15T16:00:00+00:00",
+      "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_AFTER_CEX_IDENTITY_PREFLIGHT",
+      "coingecko_id": "suins-token",
+      "cex_identity_preflight_verified": true,
+      "cex_identity_preflight": {
+        "method": "UNIQUE_COINGECKO_SYMBOL",
+        "candidate_count": 1
+      },
+      "identity_status": "DEX_VERIFIED",
+      "identity_verified": true,
+      "chain": "sui",
+      "token_address": "0x5145494a5f5100e645e4b0aa950fa6b68f614e8c59e17bc5ded3495123a79178::ns::NS",
+      "pair_address": "0x763f63cbada3a932c46972c6c6dcf1abd8a9a73331908a1d7ef24c2232d85520",
+      "dex": "cetus",
+      "dex_url": "https://dexscreener.com/sui/0x763f63cbada3a932c46972c6c6dcf1abd8a9a73331908a1d7ef24c2232d85520",
+      "dex_price_usd": 0.01148,
+      "dex_liquidity_usd": 53653.08,
+      "dex_volume_h1": 12257.83,
+      "dex_volume_h24": 49124.02,
+      "pair_created_at": 1731560137000,
+      "pair_provider": "DEXSCREENER_TOKEN_PAIRS",
+      "exact_token_side": "BASE",
+      "identity_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH_PLUS_EXACT_ADDRESS_DEX_POOL",
+      "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
+      "execution_pool_liquidity_usd": 53653.08,
+      "dex_total_liquidity_usd": 186628.43,
+      "dex_pool_count": 22,
+      "dex_tradable_pool_count_50k": 1,
+      "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
+      "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+      "liquidity_provider_coverage": [
+        "DEXSCREENER_TOKEN_PAIRS",
+        "GECKOTERMINAL_EXACT_TOKEN_POOLS"
+      ],
+      "dex_liquidity_pools_top5": [
+        {
+          "pair_address": "0x763f63cbada3a932c46972c6c6dcf1abd8a9a73331908a1d7ef24c2232d85520",
+          "dex": "cetus",
+          "liquidity_usd": 53653.08,
+          "volume_h24": 49124.02,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/sui/0x763f63cbada3a932c46972c6c6dcf1abd8a9a73331908a1d7ef24c2232d85520"
+        },
+        {
+          "pair_address": "0x88baf66852663c1d204d550b4537ef800fc54e228e8693d2f8688099194ed07b",
+          "dex": "Cetus",
+          "liquidity_usd": 45880.86,
+          "volume_h24": 0.0,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/sui-network/pools/0x88baf66852663c1d204d550b4537ef800fc54e228e8693d2f8688099194ed07b"
+        },
+        {
+          "pair_address": "0x4a64d901e4a2227d8f7f35e10075c92e2b4925a7b9a1337e350d02e0f647869e",
+          "dex": "FlowX CLMM",
+          "liquidity_usd": 40353.27,
+          "volume_h24": 0.0,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/sui-network/pools/0x4a64d901e4a2227d8f7f35e10075c92e2b4925a7b9a1337e350d02e0f647869e"
+        },
+        {
+          "pair_address": "0x3572f90508656a8d8e9d7f4c28566b1fff4b8d0704c7684db0863f44b9e09178",
+          "dex": "Cetus",
+          "liquidity_usd": 17955.19,
+          "volume_h24": 0.0,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/sui-network/pools/0x3572f90508656a8d8e9d7f4c28566b1fff4b8d0704c7684db0863f44b9e09178"
+        },
+        {
+          "pair_address": "0xa0b55c090a286dfc77125231735077bc12a7bf865feb07accdac6f5be03f69b4",
+          "dex": "turbos-finance",
+          "liquidity_usd": 10067.37,
+          "volume_h24": 3269.17,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/sui/0xa0b55c090a286dfc77125231735077bc12a7bf865feb07accdac6f5be03f69b4"
+        }
+      ],
+      "automatic_buy": false,
+      "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
+    },
+    {
+      "symbol": "VCUSDT",
+      "market_type": "spot",
+      "spot_revival_score": 37,
+      "status": "CEX_SPOT_EXACT_IDENTITY_RESEARCH",
+      "research_only": true,
+      "actionable": false,
+      "identity_required_before_actionable": true,
+      "leveraged_product": false,
+      "learning_eligible": true,
+      "reasons": [
+        "spot price acceleration 5.51%/scan",
+        "spot volume acceleration 10.6%/scan"
+      ],
+      "confirmations": 1,
+      "coherent_confirmations": 1,
+      "coherent_exchange": "gate",
+      "coherent_feature_hits": [
+        "PRICE_ACCEL",
+        "VOLUME_ACCEL"
+      ],
+      "change_24h_max_pct": 4.68,
+      "price_acceleration_max_pct": 5.5104,
+      "volume_acceleration_max_pct": 10.6069,
+      "exchanges": [
+        "gate"
+      ],
+      "milestones": {
+        "first_seen": {
+          "kind": "FIRST_SEEN",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.0004327,
+          "reference_change_24h_pct": 23.94,
+          "score": 20,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "MOMENTUM"
+          ],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 23.94
+        },
+        "first_anomaly": {
+          "kind": "FIRST_ANOMALY",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.0004327,
+          "reference_change_24h_pct": 23.94,
+          "score": 20,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "MOMENTUM"
+          ],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 23.94
+        },
+        "first_watch": {
+          "kind": "FIRST_WATCH",
+          "observed_at": "2026-09-04T11:42:52.362830+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.0004409,
+          "reference_change_24h_pct": 24.16,
+          "score": 35,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "MOMENTUM",
+            "PRICE_ACCEL"
+          ],
+          "price_acceleration_max_pct": 2.2495,
+          "volume_acceleration_max_pct": 7.1642,
+          "change_24h_max_pct": 24.16
+        },
+        "first_alert": {
+          "kind": "FIRST_ALERT",
+          "observed_at": "2026-09-04T11:42:52.362830+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.0004409,
+          "reference_change_24h_pct": 24.16,
+          "score": 35,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "MOMENTUM",
+            "PRICE_ACCEL"
+          ],
+          "price_acceleration_max_pct": 2.2495,
+          "volume_acceleration_max_pct": 7.1642,
+          "change_24h_max_pct": 24.16
+        }
+      },
+      "markets": [
+        {
+          "exchange": "gate",
+          "market_type": "spot",
+          "symbol": "VCUSDT",
+          "market_id": "VC_USDT",
+          "price": 0.0005457,
+          "change_24h_pct": 4.68,
+          "volume_24h": 12404.0494394,
+          "price_delta_pct": 5.5104,
+          "volume24_delta_pct": 10.6069,
+          "history_points": 96
+        }
+      ],
+      "market_age_verified": true,
+      "market_age_min_days": 998,
+      "market_age_evidence_at": "2023-12-18T08:24:51+00:00",
+      "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_AFTER_CEX_IDENTITY_PREFLIGHT",
+      "coingecko_id": "vinuchain",
+      "cex_identity_preflight_verified": true,
+      "cex_identity_preflight": {
+        "method": "CEX_PRICE_COHERENCE",
+        "reference_price": 0.0005457,
+        "relative_log_error": 0.053968,
+        "candidate_count": 2
+      },
+      "identity_status": "DEX_VERIFIED",
+      "identity_verified": true,
+      "chain": "bsc",
+      "token_address": "0x2bf83d080d8bc4715984e75e5b3d149805d11751",
+      "pair_address": "0xbd675129725acc8d57765c9064dcf456aa7801ac",
+      "dex": "Pancakeswap V3 (BSC)",
+      "dex_url": "https://www.geckoterminal.com/bsc/pools/0xbd675129725acc8d57765c9064dcf456aa7801ac",
+      "dex_price_usd": 0.0005400261039,
+      "dex_liquidity_usd": 29918.43,
+      "dex_volume_h1": 264.3834207368,
+      "dex_volume_h24": 1530.8155755853,
+      "pair_created_at": 1733866893000,
+      "pair_provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+      "exact_token_side": "BASE",
+      "identity_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH_PLUS_EXACT_ADDRESS_DEX_POOL",
+      "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
+      "execution_pool_liquidity_usd": 29918.43,
+      "dex_total_liquidity_usd": 67243.7,
+      "dex_pool_count": 21,
+      "dex_tradable_pool_count_50k": 0,
+      "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
+      "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+      "liquidity_provider_coverage": [
+        "DEXSCREENER_TOKEN_PAIRS",
+        "GECKOTERMINAL_EXACT_TOKEN_POOLS"
+      ],
+      "dex_liquidity_pools_top5": [
+        {
+          "pair_address": "0xbd675129725acc8d57765c9064dcf456aa7801ac",
+          "dex": "Pancakeswap V3 (BSC)",
+          "liquidity_usd": 29918.43,
+          "volume_h24": 1530.82,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/bsc/pools/0xbd675129725acc8d57765c9064dcf456aa7801ac"
+        },
+        {
+          "pair_address": "0xb1b3fbdb060cfb9cce2ce37ce1f264264329d5c3",
+          "dex": "Pancakeswap V3 (BSC)",
+          "liquidity_usd": 21703.16,
+          "volume_h24": 4856.39,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/bsc/pools/0xb1b3fbdb060cfb9cce2ce37ce1f264264329d5c3"
+        },
+        {
+          "pair_address": "0x35cbe5f60ba3fcf48fb3a3e968de8803b998f3ec",
+          "dex": "Pancakeswap V3 (BSC)",
+          "liquidity_usd": 11212.34,
+          "volume_h24": 4084.47,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/bsc/pools/0x35cbe5f60ba3fcf48fb3a3e968de8803b998f3ec"
+        },
+        {
+          "pair_address": "0xc6dddcf94e53f8997dab999a32a3aa8fd3f7f106",
+          "dex": "Pancakeswap V3 (BSC)",
+          "liquidity_usd": 3873.35,
+          "volume_h24": 82.04,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/bsc/pools/0xc6dddcf94e53f8997dab999a32a3aa8fd3f7f106"
+        },
+        {
+          "pair_address": "0x68e782cd3234aecd8cd64bee672c4cc69105dd87519f708641577099b83fb014",
+          "dex": "Uniswap V4 (BSC)",
+          "liquidity_usd": 196.31,
+          "volume_h24": 0.0,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/bsc/pools/0x68e782cd3234aecd8cd64bee672c4cc69105dd87519f708641577099b83fb014"
+        }
+      ],
+      "automatic_buy": false,
+      "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
+    },
+    {
+      "symbol": "BELIEVEUSDT",
+      "market_type": "spot",
+      "spot_revival_score": 35,
+      "status": "CEX_SPOT_EXACT_IDENTITY_RESEARCH",
+      "research_only": true,
+      "actionable": false,
+      "identity_required_before_actionable": true,
+      "leveraged_product": false,
+      "learning_eligible": true,
+      "reasons": [
+        "24h spot momentum 10.0%",
+        "spot price acceleration 5.37%/scan"
+      ],
+      "confirmations": 1,
+      "coherent_confirmations": 1,
+      "coherent_exchange": "gate",
+      "coherent_feature_hits": [
+        "MOMENTUM",
+        "PRICE_ACCEL"
+      ],
+      "change_24h_max_pct": 10.01,
+      "price_acceleration_max_pct": 5.3674,
+      "volume_acceleration_max_pct": 6.5021,
+      "exchanges": [
+        "gate"
+      ],
+      "milestones": {
+        "first_seen": {
+          "kind": "FIRST_SEEN",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.0012593,
+          "reference_change_24h_pct": 2.37,
+          "score": 0,
+          "confirmations": 1,
+          "coherent_confirmations": 0,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 2.37
+        },
+        "first_anomaly": {
+          "kind": "FIRST_ANOMALY",
+          "observed_at": "2026-09-04T17:15:36.073485+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.0012699,
+          "reference_change_24h_pct": 1.59,
+          "score": 15,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL"
+          ],
+          "price_acceleration_max_pct": 2.041,
+          "volume_acceleration_max_pct": 1.1202,
+          "change_24h_max_pct": 1.59
+        },
+        "first_watch": {
+          "kind": "FIRST_WATCH",
+          "observed_at": "2026-09-08T10:18:18.365432+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.001235,
+          "reference_change_24h_pct": 1.68,
+          "score": 27,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 2.0661,
+          "volume_acceleration_max_pct": 15.883,
+          "change_24h_max_pct": 1.68
+        },
+        "first_alert": {
+          "kind": "FIRST_ALERT",
+          "observed_at": "2026-09-11T09:16:39.566836+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.0012358,
+          "reference_change_24h_pct": 11.03,
+          "score": 47,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "MOMENTUM",
+            "PRICE_ACCEL",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 7.4609,
+          "volume_acceleration_max_pct": 13.095,
+          "change_24h_max_pct": 11.03
+        }
+      },
+      "markets": [
+        {
+          "exchange": "gate",
+          "market_type": "spot",
+          "symbol": "BELIEVEUSDT",
+          "market_id": "BELIEVE_USDT",
+          "price": 0.0012603,
+          "change_24h_pct": 10.01,
+          "volume_24h": 68277.9791201,
+          "price_delta_pct": 5.3674,
+          "volume24_delta_pct": 6.5021,
+          "history_points": 96
+        }
+      ],
+      "market_age_verified": true,
+      "market_age_min_days": 547,
+      "market_age_evidence_at": "2025-03-13T01:29:49+00:00",
+      "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_AFTER_CEX_IDENTITY_PREFLIGHT",
+      "coingecko_id": "ben-pasternak",
+      "cex_identity_preflight_verified": true,
+      "cex_identity_preflight": {
+        "method": "CEX_PRICE_COHERENCE",
+        "reference_price": 0.0012603,
+        "relative_log_error": 0.002272,
+        "candidate_count": 4
+      },
+      "identity_status": "DEX_VERIFIED",
+      "identity_verified": true,
+      "chain": "solana",
+      "token_address": "BLVxek8YMXUQhcKmMvrFTrzh5FXg8ec88Crp6otEaCMf",
+      "pair_address": "DXwjTJm7zshc1RsWDspU59WVtdrjj1Unxrz2KhQ7tW11",
+      "dex": "meteora",
+      "dex_url": "https://dexscreener.com/solana/dxwjtjm7zshc1rswdspu59wvtdrjj1unxrz2khq7tw11",
+      "dex_price_usd": 5.81,
+      "dex_liquidity_usd": 6124563.55,
+      "dex_volume_h1": 0.0,
+      "dex_volume_h24": 233378.84,
+      "pair_created_at": 1761224450000,
+      "pair_provider": "DEXSCREENER_TOKEN_PAIRS",
+      "exact_token_side": "BASE",
+      "identity_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH_PLUS_EXACT_ADDRESS_DEX_POOL",
+      "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
+      "execution_pool_liquidity_usd": 6124563.55,
+      "dex_total_liquidity_usd": 6238881.76,
+      "dex_pool_count": 7,
+      "dex_tradable_pool_count_50k": 2,
+      "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
+      "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+      "liquidity_provider_coverage": [
+        "DEXSCREENER_TOKEN_PAIRS"
+      ],
+      "dex_liquidity_pools_top5": [
+        {
+          "pair_address": "DXwjTJm7zshc1RsWDspU59WVtdrjj1Unxrz2KhQ7tW11",
+          "dex": "meteora",
+          "liquidity_usd": 6124563.55,
+          "volume_h24": 233378.84,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/solana/dxwjtjm7zshc1rswdspu59wvtdrjj1unxrz2khq7tw11"
+        },
+        {
+          "pair_address": "BJsSymifLkwUq8r3KMSiFH6t5JbLLBd1VJDgzD7qYNxF",
+          "dex": "meteora",
+          "liquidity_usd": 110195.96,
+          "volume_h24": 24872.69,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/solana/bjssymiflkwuq8r3kmsifh6t5jbllbd1vjdgzd7qynxf"
+        },
+        {
+          "pair_address": "FJRyfjwjTxcW6d5na84Q8tLx8FhDHMNhf9JyACUCFiU7",
+          "dex": "meteora",
+          "liquidity_usd": 3686.41,
+          "volume_h24": 27.35,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/solana/fjryfjwjtxcw6d5na84q8tlx8fhdhmnhf9jyacucfiu7"
+        },
+        {
+          "pair_address": "AgBKL6Qf2FeECWdCYbikh8kabEJrjptTUi4ZnXnwAqBt",
+          "dex": "meteora",
+          "liquidity_usd": 266.4,
+          "volume_h24": 21.72,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/solana/agbkl6qf2feecwdcybikh8kabejrjpttui4znxnwaqbt"
+        },
+        {
+          "pair_address": "7dFNY5RZ9hZ74uKn2Nssq8HyQLnKH3pi6j4pFYrcC3tb",
+          "dex": "meteora",
+          "liquidity_usd": 158.33,
+          "volume_h24": 3.59,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/solana/7dfny5rz9hz74ukn2nssq8hyqlnkh3pi6j4pfyrcc3tb"
         }
       ],
       "automatic_buy": false,
@@ -613,7 +2190,7 @@
       "leveraged_product": false,
       "learning_eligible": true,
       "reasons": [
-        "24h spot momentum 36.0%",
+        "24h spot momentum 35.9%",
         "spot turnover >= $100k",
         "2 coherent spot exchange confirmation"
       ],
@@ -623,9 +2200,9 @@
       "coherent_feature_hits": [
         "MOMENTUM"
       ],
-      "change_24h_max_pct": 37.23,
-      "price_acceleration_max_pct": 0.8737,
-      "volume_acceleration_max_pct": 0.0012,
+      "change_24h_max_pct": 36.06,
+      "price_acceleration_max_pct": 0.0714,
+      "volume_acceleration_max_pct": 0.3538,
       "exchanges": [
         "gate",
         "kucoin",
@@ -703,27 +2280,27 @@
       },
       "markets": [
         {
-          "exchange": "kucoin",
-          "market_type": "spot",
-          "symbol": "TFUELUSDT",
-          "market_id": "TFUEL-USDT",
-          "price": 0.0127,
-          "change_24h_pct": 35.97,
-          "volume_24h": 597498.22480663,
-          "price_delta_pct": 0.8737,
-          "volume24_delta_pct": 0.0012,
-          "history_points": 96
-        },
-        {
           "exchange": "mexc",
           "market_type": "spot",
           "symbol": "TFUELUSDT",
           "market_id": "TFUELUSDT",
-          "price": 0.012609,
-          "change_24h_pct": 0.3488,
-          "volume_24h": 246298.694617,
-          "price_delta_pct": -0.4657,
-          "volume24_delta_pct": -0.0597,
+          "price": 0.012618,
+          "change_24h_pct": 0.344,
+          "volume_24h": 246438.579859,
+          "price_delta_pct": 0.0714,
+          "volume24_delta_pct": 0.0568,
+          "history_points": 96
+        },
+        {
+          "exchange": "kucoin",
+          "market_type": "spot",
+          "symbol": "TFUELUSDT",
+          "market_id": "TFUEL-USDT",
+          "price": 0.01267,
+          "change_24h_pct": 35.94,
+          "volume_24h": 599612.324186144,
+          "price_delta_pct": -0.2362,
+          "volume24_delta_pct": 0.3538,
           "history_points": 96
         },
         {
@@ -731,11 +2308,11 @@
           "market_type": "spot",
           "symbol": "TFUELUSDT",
           "market_id": "TFUEL_USDT",
-          "price": 0.012759,
-          "change_24h_pct": 37.23,
-          "volume_24h": 262571.581741,
-          "price_delta_pct": 0.0,
-          "volume24_delta_pct": 0.0,
+          "price": 0.01265,
+          "change_24h_pct": 36.06,
+          "volume_24h": 263020.546694,
+          "price_delta_pct": -0.8543,
+          "volume24_delta_pct": 0.171,
           "history_points": 96
         }
       ],
@@ -765,7 +2342,7 @@
       "leveraged_product": false,
       "learning_eligible": true,
       "reasons": [
-        "24h spot momentum 35.6%",
+        "24h spot momentum 36.4%",
         "spot turnover >= $100k",
         "2 coherent spot exchange confirmation"
       ],
@@ -775,9 +2352,9 @@
       "coherent_feature_hits": [
         "MOMENTUM"
       ],
-      "change_24h_max_pct": 35.65,
-      "price_acceleration_max_pct": -3.2024,
-      "volume_acceleration_max_pct": 2.0094,
+      "change_24h_max_pct": 37.13,
+      "price_acceleration_max_pct": 0.9447,
+      "volume_acceleration_max_pct": 2.6091,
       "exchanges": [
         "gate",
         "kucoin",
@@ -856,27 +2433,27 @@
       },
       "markets": [
         {
-          "exchange": "kucoin",
-          "market_type": "spot",
-          "symbol": "DNUSDT",
-          "market_id": "DN-USDT",
-          "price": 0.03599,
-          "change_24h_pct": 35.65,
-          "volume_24h": 121845.412896,
-          "price_delta_pct": -4.6117,
-          "volume24_delta_pct": 0.6222,
-          "history_points": 96
-        },
-        {
           "exchange": "mexc",
           "market_type": "spot",
           "symbol": "DNUSDT",
           "market_id": "DNUSDT",
-          "price": 0.03608,
-          "change_24h_pct": 0.3589,
-          "volume_24h": 189254.8409,
-          "price_delta_pct": -3.5552,
-          "volume24_delta_pct": 0.4026,
+          "price": 0.03629,
+          "change_24h_pct": 0.3741,
+          "volume_24h": 190796.99845,
+          "price_delta_pct": 0.582,
+          "volume24_delta_pct": 0.8149,
+          "history_points": 96
+        },
+        {
+          "exchange": "kucoin",
+          "market_type": "spot",
+          "symbol": "DNUSDT",
+          "market_id": "DN-USDT",
+          "price": 0.03633,
+          "change_24h_pct": 36.42,
+          "volume_24h": 122615.249968,
+          "price_delta_pct": 0.9447,
+          "volume24_delta_pct": 0.6318,
           "history_points": 96
         },
         {
@@ -884,11 +2461,11 @@
           "market_type": "spot",
           "symbol": "DNUSDT",
           "market_id": "DN_USDT",
-          "price": 0.03597,
-          "change_24h_pct": 34.97,
-          "volume_24h": 169190.60423,
-          "price_delta_pct": -3.2024,
-          "volume24_delta_pct": 2.0094,
+          "price": 0.03619,
+          "change_24h_pct": 37.13,
+          "volume_24h": 173604.9415,
+          "price_delta_pct": 0.6116,
+          "volume24_delta_pct": 2.6091,
           "history_points": 96
         }
       ],
@@ -906,22 +2483,629 @@
       "identity_verified": true,
       "chain": "bsc",
       "token_address": "0x9b6a1d4fa5d90e5f2d34130053978d14cd301d58",
-      "pair_address": "0x054698de0d473208c167746659dc8a7c732093ab8d1d7c78976353a9fe36e749",
-      "dex": "Pancakeswap Infinity (CLMM)",
-      "dex_url": "https://www.geckoterminal.com/bsc/pools/0x054698de0d473208c167746659dc8a7c732093ab8d1d7c78976353a9fe36e749",
-      "dex_price_usd": 0.03842793341,
-      "dex_liquidity_usd": 104636.64,
-      "dex_volume_h1": 26238.7599479859,
-      "dex_volume_h24": 108379.873253377,
-      "pair_created_at": 1767858442000,
-      "pair_provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+      "pair_address": "0xA36E5b863c5570d5d2d43FA48Eaba6464ED731fb",
+      "dex": "uniswap",
+      "dex_url": "https://dexscreener.com/bsc/0xa36e5b863c5570d5d2d43fa48eaba6464ed731fb",
+      "dex_price_usd": 0.03708,
+      "dex_liquidity_usd": 13785.81,
+      "dex_volume_h1": 21359.46,
+      "dex_volume_h24": 72818.86,
+      "pair_created_at": 1767939899000,
+      "pair_provider": "DEXSCREENER_TOKEN_PAIRS",
       "exact_token_side": "BASE",
-      "identity_source": "COINGECKO_PLATFORM_CATALOG_PLUS_EXACT_ADDRESS_DEX_POOL",
+      "identity_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH_PLUS_EXACT_ADDRESS_DEX_POOL",
       "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
-      "execution_pool_liquidity_usd": 104636.64,
-      "dex_total_liquidity_usd": 162877.27,
-      "dex_pool_count": 20,
+      "execution_pool_liquidity_usd": 13785.81,
+      "dex_total_liquidity_usd": 13892.25,
+      "dex_pool_count": 4,
+      "dex_tradable_pool_count_50k": 0,
+      "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
+      "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+      "liquidity_provider_coverage": [
+        "DEXSCREENER_TOKEN_PAIRS"
+      ],
+      "dex_liquidity_pools_top5": [
+        {
+          "pair_address": "0xA36E5b863c5570d5d2d43FA48Eaba6464ED731fb",
+          "dex": "uniswap",
+          "liquidity_usd": 13785.81,
+          "volume_h24": 72818.86,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/bsc/0xa36e5b863c5570d5d2d43fa48eaba6464ed731fb"
+        },
+        {
+          "pair_address": "0x2e4D2aAB231B79A0bDe63f7F134C7d6C9955fFb1",
+          "dex": "pancakeswap",
+          "liquidity_usd": 97.01,
+          "volume_h24": 1471.43,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/bsc/0x2e4d2aab231b79a0bde63f7f134c7d6c9955ffb1"
+        },
+        {
+          "pair_address": "0xbeC53b46cefc077C305A6311Ef77F66AB472F3aA",
+          "dex": "pancakeswap",
+          "liquidity_usd": 9.18,
+          "volume_h24": 8.53,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/bsc/0xbec53b46cefc077c305a6311ef77f66ab472f3aa"
+        },
+        {
+          "pair_address": "0xa6a16B9B95cb6CEd5b820EDe1E24c0f11Ba29a7b",
+          "dex": "pancakeswap",
+          "liquidity_usd": 0.25,
+          "volume_h24": 0.06,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/bsc/0xa6a16b9b95cb6ced5b820ede1e24c0f11ba29a7b"
+        }
+      ],
+      "automatic_buy": false,
+      "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
+    },
+    {
+      "symbol": "XAVAUSDT",
+      "market_type": "spot",
+      "spot_revival_score": 28,
+      "status": "CEX_SPOT_EXACT_IDENTITY_RESEARCH",
+      "research_only": true,
+      "actionable": false,
+      "identity_required_before_actionable": true,
+      "leveraged_product": false,
+      "learning_eligible": true,
+      "reasons": [
+        "spot volume acceleration 29.8%/scan",
+        "3 coherent spot exchange confirmation"
+      ],
+      "confirmations": 3,
+      "coherent_confirmations": 3,
+      "coherent_exchange": "kucoin",
+      "coherent_feature_hits": [
+        "VOLUME_ACCEL"
+      ],
+      "change_24h_max_pct": -0.0698,
+      "price_acceleration_max_pct": -1.5839,
+      "volume_acceleration_max_pct": 82.505,
+      "exchanges": [
+        "gate",
+        "kucoin",
+        "mexc"
+      ],
+      "milestones": {
+        "first_seen": {
+          "kind": "FIRST_SEEN",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.2043,
+          "reference_change_24h_pct": 0.0138,
+          "score": 0,
+          "confirmations": 3,
+          "coherent_confirmations": 0,
+          "coherent_exchange": "kucoin",
+          "coherent_feature_hits": [],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 1.03
+        },
+        "first_anomaly": {
+          "kind": "FIRST_ANOMALY",
+          "observed_at": "2026-09-05T06:20:02.680036+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.2048,
+          "reference_change_24h_pct": -0.0029,
+          "score": 20,
+          "confirmations": 3,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 1.7831,
+          "volume_acceleration_max_pct": 3019.5173,
+          "change_24h_max_pct": 0.93
+        },
+        "first_watch": {
+          "kind": "FIRST_WATCH",
+          "observed_at": "2026-09-05T18:55:50.520435+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.2045,
+          "reference_change_24h_pct": 0.0019,
+          "score": 28,
+          "confirmations": 3,
+          "coherent_confirmations": 2,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 0.2445,
+          "volume_acceleration_max_pct": 101.8597,
+          "change_24h_max_pct": 0.34
+        }
+      },
+      "markets": [
+        {
+          "exchange": "mexc",
+          "market_type": "spot",
+          "symbol": "XAVAUSDT",
+          "market_id": "XAVAUSDT",
+          "price": 0.1864,
+          "change_24h_pct": -0.0698,
+          "volume_24h": 86759.0052,
+          "price_delta_pct": -1.5839,
+          "volume24_delta_pct": 15.7529,
+          "history_points": 96
+        },
+        {
+          "exchange": "kucoin",
+          "market_type": "spot",
+          "symbol": "XAVAUSDT",
+          "market_id": "XAVA-USDT",
+          "price": 0.1859,
+          "change_24h_pct": -8.06,
+          "volume_24h": 30783.81210292,
+          "price_delta_pct": -3.5288,
+          "volume24_delta_pct": 29.8117,
+          "history_points": 96
+        },
+        {
+          "exchange": "gate",
+          "market_type": "spot",
+          "symbol": "XAVAUSDT",
+          "market_id": "XAVA_USDT",
+          "price": 0.1831,
+          "change_24h_pct": -7.66,
+          "volume_24h": 2339.191206,
+          "price_delta_pct": -3.7835,
+          "volume24_delta_pct": 82.505,
+          "history_points": 96
+        }
+      ],
+      "market_age_verified": true,
+      "market_age_min_days": 1743,
+      "market_age_evidence_at": "2021-12-03T06:12:24+00:00",
+      "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_AFTER_CEX_IDENTITY_PREFLIGHT",
+      "coingecko_id": "avalaunch",
+      "cex_identity_preflight_verified": true,
+      "cex_identity_preflight": {
+        "method": "UNIQUE_COINGECKO_SYMBOL",
+        "candidate_count": 1
+      },
+      "identity_status": "DEX_VERIFIED",
+      "identity_verified": true,
+      "chain": "avalanche",
+      "token_address": "0xd1c3f94de7e5b45fa4edbba472491a9f4b166fc4",
+      "pair_address": "0x78e5E1dbb5f663B21aF2B6969E1Be2892A91297D",
+      "dex": "traderjoe",
+      "dex_url": "https://dexscreener.com/avalanche/0x78e5e1dbb5f663b21af2b6969e1be2892a91297d",
+      "dex_price_usd": 0.1876,
+      "dex_liquidity_usd": 407629.41,
+      "dex_volume_h1": 8158.85,
+      "dex_volume_h24": 16789.46,
+      "pair_created_at": 1652795628000,
+      "pair_provider": "DEXSCREENER_TOKEN_PAIRS",
+      "exact_token_side": "BASE",
+      "identity_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH_PLUS_EXACT_ADDRESS_DEX_POOL",
+      "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
+      "execution_pool_liquidity_usd": 407629.41,
+      "dex_total_liquidity_usd": 449817.98,
+      "dex_pool_count": 25,
       "dex_tradable_pool_count_50k": 1,
+      "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
+      "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+      "liquidity_provider_coverage": [
+        "DEXSCREENER_TOKEN_PAIRS"
+      ],
+      "dex_liquidity_pools_top5": [
+        {
+          "pair_address": "0x78e5E1dbb5f663B21aF2B6969E1Be2892A91297D",
+          "dex": "traderjoe",
+          "liquidity_usd": 407629.41,
+          "volume_h24": 16789.46,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/avalanche/0x78e5e1dbb5f663b21af2b6969e1be2892a91297d"
+        },
+        {
+          "pair_address": "0x42152bDD72dE8d6767FE3B4E17a221D6985E8B25",
+          "dex": "pangolin",
+          "liquidity_usd": 26233.53,
+          "volume_h24": 1130.69,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/avalanche/0x42152bdd72de8d6767fe3b4e17a221d6985e8b25"
+        },
+        {
+          "pair_address": "0x72c3438cf1c915EcF5D9F17A6eD346B273d5bF71",
+          "dex": "traderjoe",
+          "liquidity_usd": 11435.85,
+          "volume_h24": 434.2,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/avalanche/0x72c3438cf1c915ecf5d9f17a6ed346b273d5bf71"
+        },
+        {
+          "pair_address": "0x6079c6c97792c6F90351C166B54a363FD65157c2",
+          "dex": "traderjoe",
+          "liquidity_usd": 2435.12,
+          "volume_h24": 197.91,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/avalanche/0x6079c6c97792c6f90351c166b54a363fd65157c2"
+        },
+        {
+          "pair_address": "0x24727b9DE31B3c6B3D3D98c21Df4A95EcEa2AC36",
+          "dex": "traderjoe",
+          "liquidity_usd": 1100.45,
+          "volume_h24": 918.17,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/avalanche/0x24727b9de31b3c6b3d3d98c21df4a95ecea2ac36"
+        }
+      ],
+      "automatic_buy": false,
+      "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
+    },
+    {
+      "symbol": "KNCUSDT",
+      "market_type": "spot",
+      "spot_revival_score": 28,
+      "status": "CEX_SPOT_EXACT_IDENTITY_RESEARCH",
+      "research_only": true,
+      "actionable": false,
+      "identity_required_before_actionable": true,
+      "leveraged_product": false,
+      "learning_eligible": true,
+      "reasons": [
+        "spot volume acceleration 29.5%/scan",
+        "2 coherent spot exchange confirmation"
+      ],
+      "confirmations": 4,
+      "coherent_confirmations": 2,
+      "coherent_exchange": "okx",
+      "coherent_feature_hits": [
+        "VOLUME_ACCEL"
+      ],
+      "change_24h_max_pct": 8.05,
+      "price_acceleration_max_pct": 1.0957,
+      "volume_acceleration_max_pct": 29.5006,
+      "exchanges": [
+        "gate",
+        "kucoin",
+        "mexc",
+        "okx"
+      ],
+      "milestones": {
+        "first_seen": {
+          "kind": "FIRST_SEEN",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.11671,
+          "reference_change_24h_pct": 0.0447,
+          "score": 0,
+          "confirmations": 4,
+          "coherent_confirmations": 0,
+          "coherent_exchange": "okx",
+          "coherent_feature_hits": [],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 4.5658
+        },
+        "first_anomaly": {
+          "kind": "FIRST_ANOMALY",
+          "observed_at": "2026-09-04T12:40:18.579349+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.11449,
+          "reference_change_24h_pct": 0.0127,
+          "score": 28,
+          "confirmations": 4,
+          "coherent_confirmations": 3,
+          "coherent_exchange": "okx",
+          "coherent_feature_hits": [
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": -1.801,
+          "volume_acceleration_max_pct": 77.7717,
+          "change_24h_max_pct": 2.6372
+        },
+        "first_watch": {
+          "kind": "FIRST_WATCH",
+          "observed_at": "2026-09-04T12:40:18.579349+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.11449,
+          "reference_change_24h_pct": 0.0127,
+          "score": 28,
+          "confirmations": 4,
+          "coherent_confirmations": 3,
+          "coherent_exchange": "okx",
+          "coherent_feature_hits": [
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": -1.801,
+          "volume_acceleration_max_pct": 77.7717,
+          "change_24h_max_pct": 2.6372
+        },
+        "first_alert": {
+          "kind": "FIRST_ALERT",
+          "observed_at": "2026-09-11T11:09:13.211710+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.13105,
+          "reference_change_24h_pct": 0.0768,
+          "score": 38,
+          "confirmations": 4,
+          "coherent_confirmations": 3,
+          "coherent_exchange": "kucoin",
+          "coherent_feature_hits": [
+            "MOMENTUM",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 1.6094,
+          "volume_acceleration_max_pct": 90.6844,
+          "change_24h_max_pct": 8.45
+        }
+      },
+      "markets": [
+        {
+          "exchange": "okx",
+          "market_type": "spot",
+          "symbol": "KNCUSDT",
+          "market_id": "KNC-USDT",
+          "price": 0.13053,
+          "change_24h_pct": 7.246734039930991,
+          "volume_24h": 16089.66385852297,
+          "price_delta_pct": 0.7487,
+          "volume24_delta_pct": 29.5006,
+          "history_points": 96
+        },
+        {
+          "exchange": "mexc",
+          "market_type": "spot",
+          "symbol": "KNCUSDT",
+          "market_id": "KNCUSDT",
+          "price": 0.1312,
+          "change_24h_pct": 0.0763,
+          "volume_24h": 69958.21057,
+          "price_delta_pct": 0.6444,
+          "volume24_delta_pct": 0.8507,
+          "history_points": 96
+        },
+        {
+          "exchange": "kucoin",
+          "market_type": "spot",
+          "symbol": "KNCUSDT",
+          "market_id": "KNC-USDT",
+          "price": 0.1305,
+          "change_24h_pct": 7.23,
+          "volume_24h": 52028.75763002,
+          "price_delta_pct": 0.6944,
+          "volume24_delta_pct": 5.435,
+          "history_points": 96
+        },
+        {
+          "exchange": "gate",
+          "market_type": "spot",
+          "symbol": "KNCUSDT",
+          "market_id": "KNC_USDT",
+          "price": 0.13102,
+          "change_24h_pct": 8.05,
+          "volume_24h": 25631.96515,
+          "price_delta_pct": 1.0957,
+          "volume24_delta_pct": 7.3047,
+          "history_points": 96
+        }
+      ],
+      "market_age_verified": true,
+      "market_age_min_days": 1596,
+      "market_age_evidence_at": "2022-04-28T16:29:36+00:00",
+      "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_AFTER_CEX_IDENTITY_PREFLIGHT",
+      "coingecko_id": "kyber-network-crystal",
+      "cex_identity_preflight_verified": true,
+      "cex_identity_preflight": {
+        "method": "UNIQUE_COINGECKO_SYMBOL",
+        "candidate_count": 1
+      },
+      "identity_status": "DEX_VERIFIED",
+      "identity_verified": true,
+      "chain": "ethereum",
+      "token_address": "0xdefa4e8a7bcba345f687a2f1456f5edd9ce97202",
+      "pair_address": "0x115103a95a279b80b66c993a853495a94fe3cf2c7baa054959c4ed511c5d76e6",
+      "dex": "uniswap",
+      "dex_url": "https://dexscreener.com/ethereum/0x115103a95a279b80b66c993a853495a94fe3cf2c7baa054959c4ed511c5d76e6",
+      "dex_price_usd": 0.1306,
+      "dex_liquidity_usd": 826047.48,
+      "dex_volume_h1": 9211.57,
+      "dex_volume_h24": 28796.6,
+      "pair_created_at": 1789060043000,
+      "pair_provider": "DEXSCREENER_TOKEN_PAIRS",
+      "exact_token_side": "BASE",
+      "identity_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH_PLUS_EXACT_ADDRESS_DEX_POOL",
+      "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
+      "execution_pool_liquidity_usd": 826047.48,
+      "dex_total_liquidity_usd": 834094.34,
+      "dex_pool_count": 6,
+      "dex_tradable_pool_count_50k": 1,
+      "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
+      "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+      "liquidity_provider_coverage": [
+        "DEXSCREENER_TOKEN_PAIRS"
+      ],
+      "dex_liquidity_pools_top5": [
+        {
+          "pair_address": "0x115103a95a279b80b66c993a853495a94fe3cf2c7baa054959c4ed511c5d76e6",
+          "dex": "uniswap",
+          "liquidity_usd": 826047.48,
+          "volume_h24": 28796.6,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/ethereum/0x115103a95a279b80b66c993a853495a94fe3cf2c7baa054959c4ed511c5d76e6"
+        },
+        {
+          "pair_address": "0x0cead81344dcaaaea7d01438567fae56ba24aadb4c390fdda82ea9987e4e53b2",
+          "dex": "uniswap",
+          "liquidity_usd": 6974.66,
+          "volume_h24": 282.08,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/ethereum/0x0cead81344dcaaaea7d01438567fae56ba24aadb4c390fdda82ea9987e4e53b2"
+        },
+        {
+          "pair_address": "0x1f8d70f5351dc2f22779dc2ebe09bb840cbb6f9ce213e07aa745b7cd69a994cb",
+          "dex": "uniswap",
+          "liquidity_usd": 793.55,
+          "volume_h24": 32.96,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/ethereum/0x1f8d70f5351dc2f22779dc2ebe09bb840cbb6f9ce213e07aa745b7cd69a994cb"
+        },
+        {
+          "pair_address": "0xF0975d4817Fb0e6D0dD3Cc2eE69B407595e50D92",
+          "dex": "kyberswap",
+          "liquidity_usd": 135.65,
+          "volume_h24": 2.04,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/ethereum/0xf0975d4817fb0e6d0dd3cc2ee69b407595e50d92"
+        },
+        {
+          "pair_address": "0xbDC120feF90Fb185A49aD8fa62c7bC0ED0516CC7",
+          "dex": "sushiswap",
+          "liquidity_usd": 102.29,
+          "volume_h24": 28.65,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/ethereum/0xbdc120fef90fb185a49ad8fa62c7bc0ed0516cc7"
+        }
+      ],
+      "automatic_buy": false,
+      "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
+    },
+    {
+      "symbol": "RIZEUSDT",
+      "market_type": "spot",
+      "spot_revival_score": 28,
+      "status": "CEX_SPOT_EXACT_IDENTITY_RESEARCH",
+      "research_only": true,
+      "actionable": false,
+      "identity_required_before_actionable": true,
+      "leveraged_product": false,
+      "learning_eligible": true,
+      "reasons": [
+        "spot price acceleration 8.60%/scan",
+        "spot turnover >= $100k"
+      ],
+      "confirmations": 1,
+      "coherent_confirmations": 1,
+      "coherent_exchange": "mexc",
+      "coherent_feature_hits": [
+        "PRICE_ACCEL"
+      ],
+      "change_24h_max_pct": 0.1731,
+      "price_acceleration_max_pct": 8.5987,
+      "volume_acceleration_max_pct": -0.7746,
+      "exchanges": [
+        "mexc"
+      ],
+      "milestones": {
+        "first_seen": {
+          "kind": "FIRST_SEEN",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.00395,
+          "reference_change_24h_pct": -0.0152,
+          "score": 0,
+          "confirmations": 1,
+          "coherent_confirmations": 0,
+          "coherent_exchange": "mexc",
+          "coherent_feature_hits": [],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": -0.0152
+        },
+        "first_anomaly": {
+          "kind": "FIRST_ANOMALY",
+          "observed_at": "2026-09-04T11:07:35.397922+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.003765,
+          "reference_change_24h_pct": -0.0563,
+          "score": 12,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "mexc",
+          "coherent_feature_hits": [
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": -4.7318,
+          "volume_acceleration_max_pct": 9.1041,
+          "change_24h_max_pct": -0.0563
+        },
+        "first_watch": {
+          "kind": "FIRST_WATCH",
+          "observed_at": "2026-09-04T11:29:18.598829+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.00282,
+          "reference_change_24h_pct": -0.3074,
+          "score": 37,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "mexc",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 10.0703,
+          "volume_acceleration_max_pct": 11.4615,
+          "change_24h_max_pct": -0.3074
+        },
+        "first_alert": {
+          "kind": "FIRST_ALERT",
+          "observed_at": "2026-09-04T11:29:18.598829+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.00282,
+          "reference_change_24h_pct": -0.3074,
+          "score": 37,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "mexc",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 10.0703,
+          "volume_acceleration_max_pct": 11.4615,
+          "change_24h_max_pct": -0.3074
+        }
+      },
+      "markets": [
+        {
+          "exchange": "mexc",
+          "market_type": "spot",
+          "symbol": "RIZEUSDT",
+          "market_id": "RIZEUSDT",
+          "price": 0.001023,
+          "change_24h_pct": 0.1731,
+          "volume_24h": 131315.186716,
+          "price_delta_pct": 8.5987,
+          "volume24_delta_pct": -0.7746,
+          "history_points": 96
+        }
+      ],
+      "market_age_verified": true,
+      "market_age_min_days": 416,
+      "market_age_evidence_at": "2025-07-21T20:02:02+00:00",
+      "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_AFTER_CEX_IDENTITY_PREFLIGHT",
+      "coingecko_id": "rize",
+      "cex_identity_preflight_verified": true,
+      "cex_identity_preflight": {
+        "method": "UNIQUE_COINGECKO_SYMBOL",
+        "candidate_count": 1
+      },
+      "identity_status": "DEX_VERIFIED",
+      "identity_verified": true,
+      "chain": "base",
+      "token_address": "0x9818b6c09f5ecc843060927e8587c427c7c93583",
+      "pair_address": "0xEa5cb64754Ad7aA24F7A6BBe3b724F29B4f822B8",
+      "dex": "aerodrome",
+      "dex_url": "https://dexscreener.com/base/0xea5cb64754ad7aa24f7a6bbe3b724f29b4f822b8",
+      "dex_price_usd": 0.0009736,
+      "dex_liquidity_usd": 37252.85,
+      "dex_volume_h1": 10907.03,
+      "dex_volume_h24": 175749.76,
+      "pair_created_at": null,
+      "pair_provider": "DEXSCREENER_TOKEN_PAIRS",
+      "exact_token_side": "BASE",
+      "identity_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH_PLUS_EXACT_ADDRESS_DEX_POOL",
+      "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
+      "execution_pool_liquidity_usd": 37252.85,
+      "dex_total_liquidity_usd": 39064.47,
+      "dex_pool_count": 21,
+      "dex_tradable_pool_count_50k": 0,
       "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
       "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
       "liquidity_provider_coverage": [
@@ -930,46 +3114,439 @@
       ],
       "dex_liquidity_pools_top5": [
         {
-          "pair_address": "0x054698de0d473208c167746659dc8a7c732093ab8d1d7c78976353a9fe36e749",
-          "dex": "Pancakeswap Infinity (CLMM)",
-          "liquidity_usd": 104636.64,
-          "volume_h24": 108379.87,
-          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
-          "url": "https://www.geckoterminal.com/bsc/pools/0x054698de0d473208c167746659dc8a7c732093ab8d1d7c78976353a9fe36e749"
+          "pair_address": "0xEa5cb64754Ad7aA24F7A6BBe3b724F29B4f822B8",
+          "dex": "aerodrome",
+          "liquidity_usd": 37252.85,
+          "volume_h24": 175749.76,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/base/0xea5cb64754ad7aa24f7a6bbe3b724f29b4f822b8"
         },
         {
-          "pair_address": "0x08a35a6f27a8dfc1a082ae61be750b2fa0d1ca220b8114f645ef295c85b0135d",
-          "dex": "Uniswap V4 (BSC)",
-          "liquidity_usd": 21627.02,
-          "volume_h24": 2907.03,
-          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
-          "url": "https://www.geckoterminal.com/bsc/pools/0x08a35a6f27a8dfc1a082ae61be750b2fa0d1ca220b8114f645ef295c85b0135d"
-        },
-        {
-          "pair_address": "0xa36e5b863c5570d5d2d43fa48eaba6464ed731fb",
-          "dex": "Uniswap V3 (BSC)",
-          "liquidity_usd": 13740.24,
-          "volume_h24": 68184.22,
-          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
-          "url": "https://www.geckoterminal.com/bsc/pools/0xa36e5b863c5570d5d2d43fa48eaba6464ed731fb"
-        },
-        {
-          "pair_address": "0xe4d74014662499521ae1f83589734d3709930ea6a6e1fd4eadebd58182ccb4a1",
-          "dex": "Uniswap V4 (BSC)",
-          "liquidity_usd": 10913.47,
+          "pair_address": "0xbe73d2a2fffc7fa5284ee3e2adcee93dee87341a11da63f742da006a8bba3f72",
+          "dex": "Uniswap V4 (Base)",
+          "liquidity_usd": 909.65,
           "volume_h24": 0.0,
           "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
-          "url": "https://www.geckoterminal.com/bsc/pools/0xe4d74014662499521ae1f83589734d3709930ea6a6e1fd4eadebd58182ccb4a1"
+          "url": "https://www.geckoterminal.com/base/pools/0xbe73d2a2fffc7fa5284ee3e2adcee93dee87341a11da63f742da006a8bba3f72"
         },
         {
-          "pair_address": "0x15b50817b253f84bc11e7dbb88f72f2763ed1c8a868863536ffb1ced4b167338",
-          "dex": "Uniswap V4 (BSC)",
-          "liquidity_usd": 2396.93,
+          "pair_address": "0xe9d5c40140654a869961662d3e9a8ceeaf5698a1cb53f3884689fc01be89ea3a",
+          "dex": "Uniswap V4 (Base)",
+          "liquidity_usd": 426.73,
           "volume_h24": 0.0,
           "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
-          "url": "https://www.geckoterminal.com/bsc/pools/0x15b50817b253f84bc11e7dbb88f72f2763ed1c8a868863536ffb1ced4b167338"
+          "url": "https://www.geckoterminal.com/base/pools/0xe9d5c40140654a869961662d3e9a8ceeaf5698a1cb53f3884689fc01be89ea3a"
+        },
+        {
+          "pair_address": "0xe31982eac4d3d0b5d2b38d26b7be175fd09100cde6da92e89366f66e8c7af04a",
+          "dex": "Uniswap V4 (Base)",
+          "liquidity_usd": 219.16,
+          "volume_h24": 2.36,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/base/pools/0xe31982eac4d3d0b5d2b38d26b7be175fd09100cde6da92e89366f66e8c7af04a"
+        },
+        {
+          "pair_address": "0x502e82f76384de9a0fa93a015d243aaacda07668097492d7461d1987a3a6a94c",
+          "dex": "Uniswap V4 (Base)",
+          "liquidity_usd": 159.83,
+          "volume_h24": 0.0,
+          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+          "url": "https://www.geckoterminal.com/base/pools/0x502e82f76384de9a0fa93a015d243aaacda07668097492d7461d1987a3a6a94c"
         }
       ],
+      "automatic_buy": false,
+      "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
+    },
+    {
+      "symbol": "NUXUSDT",
+      "market_type": "spot",
+      "spot_revival_score": 27,
+      "status": "CEX_SPOT_IDENTITY_PENDING_RESEARCH",
+      "research_only": true,
+      "actionable": false,
+      "identity_required_before_actionable": true,
+      "leveraged_product": false,
+      "learning_eligible": true,
+      "reasons": [
+        "spot price acceleration 2.86%/scan",
+        "spot volume acceleration 15.9%/scan"
+      ],
+      "confirmations": 1,
+      "coherent_confirmations": 1,
+      "coherent_exchange": "gate",
+      "coherent_feature_hits": [
+        "PRICE_ACCEL",
+        "VOLUME_ACCEL"
+      ],
+      "change_24h_max_pct": -8.89,
+      "price_acceleration_max_pct": 2.8592,
+      "volume_acceleration_max_pct": 15.8943,
+      "exchanges": [
+        "gate"
+      ],
+      "milestones": {
+        "first_seen": {
+          "kind": "FIRST_SEEN",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.003565,
+          "reference_change_24h_pct": 0.79,
+          "score": 0,
+          "confirmations": 1,
+          "coherent_confirmations": 0,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 0.79
+        },
+        "first_anomaly": {
+          "kind": "FIRST_ANOMALY",
+          "observed_at": "2026-09-05T19:13:33.615998+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.0035,
+          "reference_change_24h_pct": -1.57,
+          "score": 20,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 55.2013,
+          "change_24h_max_pct": -1.57
+        },
+        "first_watch": {
+          "kind": "FIRST_WATCH",
+          "observed_at": "2026-09-07T10:38:41.402905+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.003827,
+          "reference_change_24h_pct": 9.34,
+          "score": 55,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "MOMENTUM",
+            "PRICE_ACCEL",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 9.3429,
+          "volume_acceleration_max_pct": 167.7191,
+          "change_24h_max_pct": 9.34
+        },
+        "first_alert": {
+          "kind": "FIRST_ALERT",
+          "observed_at": "2026-09-07T10:38:41.402905+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.003827,
+          "reference_change_24h_pct": 9.34,
+          "score": 55,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "MOMENTUM",
+            "PRICE_ACCEL",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 9.3429,
+          "volume_acceleration_max_pct": 167.7191,
+          "change_24h_max_pct": 9.34
+        }
+      },
+      "markets": [
+        {
+          "exchange": "gate",
+          "market_type": "spot",
+          "symbol": "NUXUSDT",
+          "market_id": "NUX_USDT",
+          "price": 0.002878,
+          "change_24h_pct": -8.89,
+          "volume_24h": 129.6164384,
+          "price_delta_pct": 2.8592,
+          "volume24_delta_pct": 15.8943,
+          "history_points": 96
+        }
+      ],
+      "market_age_verified": true,
+      "market_age_min_days": 2030,
+      "market_age_evidence_at": "2021-02-18T21:57:35+00:00",
+      "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_AFTER_CEX_IDENTITY_PREFLIGHT",
+      "coingecko_id": "peanut",
+      "cex_identity_preflight_verified": true,
+      "cex_identity_preflight": {
+        "method": "UNIQUE_COINGECKO_SYMBOL",
+        "candidate_count": 1
+      },
+      "identity_status": "IDENTITY_PENDING",
+      "identity_blocker": "NO_EXACT_ONCHAIN_PLATFORM_IDENTITY",
+      "automatic_buy": false,
+      "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
+    },
+    {
+      "symbol": "3ULLUSDT",
+      "market_type": "spot",
+      "spot_revival_score": 27,
+      "status": "CEX_SPOT_IDENTITY_PENDING_RESEARCH",
+      "research_only": true,
+      "actionable": false,
+      "identity_required_before_actionable": true,
+      "leveraged_product": false,
+      "learning_eligible": true,
+      "reasons": [
+        "spot price acceleration 2.27%/scan",
+        "spot volume acceleration 13.3%/scan"
+      ],
+      "confirmations": 1,
+      "coherent_confirmations": 1,
+      "coherent_exchange": "gate",
+      "coherent_feature_hits": [
+        "PRICE_ACCEL",
+        "VOLUME_ACCEL"
+      ],
+      "change_24h_max_pct": -10.29,
+      "price_acceleration_max_pct": 2.2659,
+      "volume_acceleration_max_pct": 13.2693,
+      "exchanges": [
+        "gate"
+      ],
+      "milestones": {
+        "first_seen": {
+          "kind": "FIRST_SEEN",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.00013848,
+          "reference_change_24h_pct": 0.025,
+          "score": 0,
+          "confirmations": 2,
+          "coherent_confirmations": 0,
+          "coherent_exchange": "mexc",
+          "coherent_feature_hits": [],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 0.8
+        },
+        "first_anomaly": {
+          "kind": "FIRST_ANOMALY",
+          "observed_at": "2026-09-04T19:41:16.018410+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.00013149,
+          "reference_change_24h_pct": -0.0752,
+          "score": 15,
+          "confirmations": 2,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL"
+          ],
+          "price_acceleration_max_pct": 4.4946,
+          "volume_acceleration_max_pct": 4.076,
+          "change_24h_max_pct": -0.0752
+        },
+        "first_watch": {
+          "kind": "FIRST_WATCH",
+          "observed_at": "2026-09-05T19:13:33.615998+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 8.064e-05,
+          "reference_change_24h_pct": -0.3802,
+          "score": 25,
+          "confirmations": 2,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "mexc",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL"
+          ],
+          "price_acceleration_max_pct": 36.2162,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": -0.3802
+        },
+        "first_alert": {
+          "kind": "FIRST_ALERT",
+          "observed_at": "2026-09-06T08:17:14.926479+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 6.8e-05,
+          "reference_change_24h_pct": -26.23,
+          "score": 37,
+          "confirmations": 2,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 19.4449,
+          "volume_acceleration_max_pct": 9.6097,
+          "change_24h_max_pct": -0.4369
+        }
+      },
+      "markets": [
+        {
+          "exchange": "gate",
+          "market_type": "spot",
+          "symbol": "3ULLUSDT",
+          "market_id": "3ULL_USDT",
+          "price": 4.062e-05,
+          "change_24h_pct": -10.29,
+          "volume_24h": 945.879697956,
+          "price_delta_pct": 2.2659,
+          "volume24_delta_pct": 13.2693,
+          "history_points": 96
+        }
+      ],
+      "market_age_verified": true,
+      "market_age_min_days": 1000,
+      "market_age_evidence_at": "2023-12-16T04:09:45+00:00",
+      "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_AFTER_CEX_IDENTITY_PREFLIGHT",
+      "coingecko_id": "playa3ull-games-2",
+      "cex_identity_preflight_verified": true,
+      "cex_identity_preflight": {
+        "method": "UNIQUE_COINGECKO_SYMBOL",
+        "candidate_count": 1
+      },
+      "identity_status": "IDENTITY_PENDING",
+      "identity_blocker": "NO_EXACT_ONCHAIN_PLATFORM_IDENTITY",
+      "automatic_buy": false,
+      "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
+    },
+    {
+      "symbol": "TNKUSDT",
+      "market_type": "spot",
+      "spot_revival_score": 26,
+      "status": "CEX_SPOT_IDENTITY_PENDING_RESEARCH",
+      "research_only": true,
+      "actionable": false,
+      "identity_required_before_actionable": true,
+      "leveraged_product": false,
+      "learning_eligible": true,
+      "reasons": [
+        "spot price acceleration 2.23%/scan",
+        "spot turnover >= $100k",
+        "2 coherent spot exchange confirmation"
+      ],
+      "confirmations": 2,
+      "coherent_confirmations": 2,
+      "coherent_exchange": "mexc",
+      "coherent_feature_hits": [
+        "PRICE_ACCEL"
+      ],
+      "change_24h_max_pct": -0.074,
+      "price_acceleration_max_pct": 2.2601,
+      "volume_acceleration_max_pct": 1.5875,
+      "exchanges": [
+        "gate",
+        "mexc"
+      ],
+      "milestones": {
+        "first_seen": {
+          "kind": "FIRST_SEEN",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.14792,
+          "reference_change_24h_pct": 16.66,
+          "score": 13,
+          "confirmations": 2,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "MOMENTUM"
+          ],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 16.66
+        },
+        "first_anomaly": {
+          "kind": "FIRST_ANOMALY",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.14792,
+          "reference_change_24h_pct": 16.66,
+          "score": 13,
+          "confirmations": 2,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "MOMENTUM"
+          ],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 16.66
+        },
+        "first_watch": {
+          "kind": "FIRST_WATCH",
+          "observed_at": "2026-09-04T12:40:18.579349+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.14681,
+          "reference_change_24h_pct": 17.66,
+          "score": 26,
+          "confirmations": 2,
+          "coherent_confirmations": 2,
+          "coherent_exchange": "mexc",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL"
+          ],
+          "price_acceleration_max_pct": 2.3846,
+          "volume_acceleration_max_pct": 3.6367,
+          "change_24h_max_pct": 17.66
+        },
+        "first_alert": {
+          "kind": "FIRST_ALERT",
+          "observed_at": "2026-09-04T13:17:15.661312+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.15142,
+          "reference_change_24h_pct": 20.81,
+          "score": 38,
+          "confirmations": 2,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "MOMENTUM",
+            "PRICE_ACCEL"
+          ],
+          "price_acceleration_max_pct": 2.5603,
+          "volume_acceleration_max_pct": 2.1128,
+          "change_24h_max_pct": 20.81
+        }
+      },
+      "markets": [
+        {
+          "exchange": "mexc",
+          "market_type": "spot",
+          "symbol": "TNKUSDT",
+          "market_id": "TNKUSDT",
+          "price": 0.12534,
+          "change_24h_pct": -0.074,
+          "volume_24h": 506605.06926,
+          "price_delta_pct": 2.2266,
+          "volume24_delta_pct": 0.8094,
+          "history_points": 96
+        },
+        {
+          "exchange": "gate",
+          "market_type": "spot",
+          "symbol": "TNKUSDT",
+          "market_id": "TNK_USDT",
+          "price": 0.12533,
+          "change_24h_pct": -8.18,
+          "volume_24h": 285765.40032,
+          "price_delta_pct": 2.2601,
+          "volume24_delta_pct": 1.5875,
+          "history_points": 96
+        }
+      ],
+      "market_age_verified": true,
+      "market_age_min_days": 217,
+      "market_age_evidence_at": "2026-02-05T23:00:55+00:00",
+      "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_AFTER_CEX_IDENTITY_PREFLIGHT",
+      "coingecko_id": "trac-network",
+      "cex_identity_preflight_verified": true,
+      "cex_identity_preflight": {
+        "method": "UNIQUE_COINGECKO_SYMBOL",
+        "candidate_count": 1
+      },
+      "identity_status": "IDENTITY_PENDING",
+      "identity_blocker": "NO_EXACT_ONCHAIN_PLATFORM_IDENTITY",
       "automatic_buy": false,
       "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
     },
@@ -984,7 +3561,7 @@
       "leveraged_product": false,
       "learning_eligible": true,
       "reasons": [
-        "24h spot momentum 23.3%",
+        "24h spot momentum 20.0%",
         "spot turnover >= $100k"
       ],
       "confirmations": 2,
@@ -993,9 +3570,9 @@
       "coherent_feature_hits": [
         "MOMENTUM"
       ],
-      "change_24h_max_pct": 23.28,
-      "price_acceleration_max_pct": -0.1072,
-      "volume_acceleration_max_pct": 0.1736,
+      "change_24h_max_pct": 20.0,
+      "price_acceleration_max_pct": -1.824,
+      "volume_acceleration_max_pct": 0.6613,
       "exchanges": [
         "gate",
         "mexc"
@@ -1076,11 +3653,11 @@
           "market_type": "spot",
           "symbol": "哈基米USDT",
           "market_id": "哈基米USDT",
-          "price": 0.03728,
-          "change_24h_pct": 0.234,
-          "volume_24h": 254754.98233,
-          "price_delta_pct": -0.1607,
-          "volume24_delta_pct": -0.0369,
+          "price": 0.0366,
+          "change_24h_pct": 0.1972,
+          "volume_24h": 255307.98951,
+          "price_delta_pct": -1.824,
+          "volume24_delta_pct": 0.2171,
           "history_points": 96
         },
         {
@@ -1088,11 +3665,11 @@
           "market_type": "spot",
           "symbol": "哈基米USDT",
           "market_id": "哈基米_USDT",
-          "price": 0.03728,
-          "change_24h_pct": 23.28,
-          "volume_24h": 1016671.97401,
-          "price_delta_pct": -0.1072,
-          "volume24_delta_pct": 0.1736,
+          "price": 0.03659,
+          "change_24h_pct": 20.0,
+          "volume_24h": 1023395.67592,
+          "price_delta_pct": -1.8509,
+          "volume24_delta_pct": 0.6613,
           "history_points": 96
         }
       ],
@@ -1113,65 +3690,346 @@
       "pair_address": "0xc33bACFf9141Da689875e6381c1932348aB4c5CB",
       "dex": "pancakeswap",
       "dex_url": "https://dexscreener.com/bsc/0xc33bacff9141da689875e6381c1932348ab4c5cb",
-      "dex_price_usd": 0.03724,
-      "dex_liquidity_usd": 2228872.71,
-      "dex_volume_h1": 269522.57,
-      "dex_volume_h24": 6617902.19,
+      "dex_price_usd": 0.03656,
+      "dex_liquidity_usd": 2209833.59,
+      "dex_volume_h1": 265055.42,
+      "dex_volume_h24": 6643870.97,
       "pair_created_at": 1759878542000,
       "pair_provider": "DEXSCREENER_TOKEN_PAIRS",
       "exact_token_side": "BASE",
-      "identity_source": "COINGECKO_PLATFORM_CATALOG_PLUS_EXACT_ADDRESS_DEX_POOL",
+      "identity_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH_PLUS_EXACT_ADDRESS_DEX_POOL",
       "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
-      "execution_pool_liquidity_usd": 2228872.71,
-      "dex_total_liquidity_usd": 2938257.88,
-      "dex_pool_count": 38,
-      "dex_tradable_pool_count_50k": 4,
+      "execution_pool_liquidity_usd": 2209833.59,
+      "dex_total_liquidity_usd": 2676711.69,
+      "dex_pool_count": 30,
+      "dex_tradable_pool_count_50k": 3,
       "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
       "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
       "liquidity_provider_coverage": [
-        "DEXSCREENER_TOKEN_PAIRS",
-        "GECKOTERMINAL_EXACT_TOKEN_POOLS"
+        "DEXSCREENER_TOKEN_PAIRS"
       ],
       "dex_liquidity_pools_top5": [
         {
           "pair_address": "0xc33bACFf9141Da689875e6381c1932348aB4c5CB",
           "dex": "pancakeswap",
-          "liquidity_usd": 2228872.71,
-          "volume_h24": 6617902.19,
+          "liquidity_usd": 2209833.59,
+          "volume_h24": 6643870.97,
           "provider": "DEXSCREENER_TOKEN_PAIRS",
           "url": "https://dexscreener.com/bsc/0xc33bacff9141da689875e6381c1932348ab4c5cb"
         },
         {
           "pair_address": "0x31d3f4016ff42bE89468868Ba3Ee3F6d70AC6f49",
           "dex": "pancakeswap",
-          "liquidity_usd": 276408.63,
-          "volume_h24": 716783.15,
+          "liquidity_usd": 273336.62,
+          "volume_h24": 719355.89,
           "provider": "DEXSCREENER_TOKEN_PAIRS",
           "url": "https://dexscreener.com/bsc/0x31d3f4016ff42be89468868ba3ee3f6d70ac6f49"
         },
         {
-          "pair_address": "0x34f1cca64b0f3623983dc1a4131aee4acc15af83b14cbeff8671f4c499d8a5f9",
-          "dex": "Uniswap V4 (BSC)",
-          "liquidity_usd": 204457.83,
-          "volume_h24": 8781.25,
-          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
-          "url": "https://www.geckoterminal.com/bsc/pools/0x34f1cca64b0f3623983dc1a4131aee4acc15af83b14cbeff8671f4c499d8a5f9"
-        },
-        {
           "pair_address": "0x3a97f913C1b534612374d3bCb7b71c7735E43D3f",
           "dex": "uniswap",
-          "liquidity_usd": 79789.51,
-          "volume_h24": 343788.42,
+          "liquidity_usd": 78468.44,
+          "volume_h24": 344853.22,
           "provider": "DEXSCREENER_TOKEN_PAIRS",
           "url": "https://dexscreener.com/bsc/0x3a97f913c1b534612374d3bcb7b71c7735e43d3f"
         },
         {
-          "pair_address": "0x8c9605d48b359039ea3864e8748ddb710184d38b",
-          "dex": "Pancakeswap V3 (BSC)",
-          "liquidity_usd": 16401.08,
-          "volume_h24": 19027.77,
-          "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
-          "url": "https://www.geckoterminal.com/bsc/pools/0x8c9605d48b359039ea3864e8748ddb710184d38b"
+          "pair_address": "0x8C9605D48b359039Ea3864E8748DdB710184d38B",
+          "dex": "pancakeswap",
+          "liquidity_usd": 15917.94,
+          "volume_h24": 19145.96,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/bsc/0x8c9605d48b359039ea3864e8748ddb710184d38b"
+        },
+        {
+          "pair_address": "0x5769701425592a36c09D7BE54AA6FAb7e2637A58",
+          "dex": "pancakeswap",
+          "liquidity_usd": 11572.16,
+          "volume_h24": 26910.21,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/bsc/0x5769701425592a36c09d7be54aa6fab7e2637a58"
+        }
+      ],
+      "automatic_buy": false,
+      "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
+    },
+    {
+      "symbol": "NEXMUSDT",
+      "market_type": "spot",
+      "spot_revival_score": 25,
+      "status": "CEX_SPOT_IDENTITY_PENDING_RESEARCH",
+      "research_only": true,
+      "actionable": false,
+      "identity_required_before_actionable": true,
+      "leveraged_product": false,
+      "learning_eligible": true,
+      "reasons": [
+        "spot price acceleration 8.69%/scan"
+      ],
+      "confirmations": 1,
+      "coherent_confirmations": 1,
+      "coherent_exchange": "mexc",
+      "coherent_feature_hits": [
+        "PRICE_ACCEL"
+      ],
+      "change_24h_max_pct": -0.0438,
+      "price_acceleration_max_pct": 8.6909,
+      "volume_acceleration_max_pct": 7.1249,
+      "exchanges": [
+        "mexc"
+      ],
+      "milestones": {
+        "first_seen": {
+          "kind": "FIRST_SEEN",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.003017,
+          "reference_change_24h_pct": 0.0049,
+          "score": 0,
+          "confirmations": 1,
+          "coherent_confirmations": 0,
+          "coherent_exchange": "mexc",
+          "coherent_feature_hits": [],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": 0.0049
+        },
+        "first_anomaly": {
+          "kind": "FIRST_ANOMALY",
+          "observed_at": "2026-09-04T15:17:14.288696+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.002944,
+          "reference_change_24h_pct": -0.0006,
+          "score": 20,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "mexc",
+          "coherent_feature_hits": [
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": -2.4196,
+          "volume_acceleration_max_pct": 57.3344,
+          "change_24h_max_pct": -0.0006
+        },
+        "first_watch": {
+          "kind": "FIRST_WATCH",
+          "observed_at": "2026-09-05T18:55:50.520435+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.002928,
+          "reference_change_24h_pct": 0.0342,
+          "score": 35,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "mexc",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 4.721,
+          "volume_acceleration_max_pct": 27.7475,
+          "change_24h_max_pct": 0.0342
+        },
+        "first_alert": {
+          "kind": "FIRST_ALERT",
+          "observed_at": "2026-09-05T18:55:50.520435+00:00",
+          "reference_exchange": "mexc",
+          "reference_price": 0.002928,
+          "reference_change_24h_pct": 0.0342,
+          "score": 35,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "mexc",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 4.721,
+          "volume_acceleration_max_pct": 27.7475,
+          "change_24h_max_pct": 0.0342
+        }
+      },
+      "markets": [
+        {
+          "exchange": "mexc",
+          "market_type": "spot",
+          "symbol": "NEXMUSDT",
+          "market_id": "NEXMUSDT",
+          "price": 0.002964,
+          "change_24h_pct": -0.0438,
+          "volume_24h": 1474.173156,
+          "price_delta_pct": 8.6909,
+          "volume24_delta_pct": 7.1249,
+          "history_points": 96
+        }
+      ],
+      "market_age_verified": true,
+      "market_age_min_days": 1596,
+      "market_age_evidence_at": "2022-04-28T14:43:13+00:00",
+      "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_AFTER_CEX_IDENTITY_PREFLIGHT",
+      "coingecko_id": "nexum",
+      "cex_identity_preflight_verified": true,
+      "cex_identity_preflight": {
+        "method": "UNIQUE_COINGECKO_SYMBOL",
+        "candidate_count": 1
+      },
+      "identity_status": "IDENTITY_PENDING",
+      "identity_blocker": "NO_EXACT_ONCHAIN_PLATFORM_IDENTITY",
+      "automatic_buy": false,
+      "source_lane": "CEX_SPOT_DYNAMIC_EXACT_IDENTITY"
+    },
+    {
+      "symbol": "REIGNUSDT",
+      "market_type": "spot",
+      "spot_revival_score": 25,
+      "status": "CEX_SPOT_EXACT_IDENTITY_RESEARCH",
+      "research_only": true,
+      "actionable": false,
+      "identity_required_before_actionable": true,
+      "leveraged_product": false,
+      "learning_eligible": true,
+      "reasons": [
+        "spot price acceleration 12.63%/scan"
+      ],
+      "confirmations": 1,
+      "coherent_confirmations": 1,
+      "coherent_exchange": "gate",
+      "coherent_feature_hits": [
+        "PRICE_ACCEL"
+      ],
+      "change_24h_max_pct": -25.4,
+      "price_acceleration_max_pct": 12.6329,
+      "volume_acceleration_max_pct": -1.3517,
+      "exchanges": [
+        "gate"
+      ],
+      "milestones": {
+        "first_seen": {
+          "kind": "FIRST_SEEN",
+          "observed_at": "2026-09-04T10:50:55.521230+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.0003241,
+          "reference_change_24h_pct": -35.29,
+          "score": 0,
+          "confirmations": 1,
+          "coherent_confirmations": 0,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [],
+          "price_acceleration_max_pct": 0.0,
+          "volume_acceleration_max_pct": 0.0,
+          "change_24h_max_pct": -35.29
+        },
+        "first_anomaly": {
+          "kind": "FIRST_ANOMALY",
+          "observed_at": "2026-09-04T14:16:19.805442+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.00037001,
+          "reference_change_24h_pct": -26.12,
+          "score": 37,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 14.5542,
+          "volume_acceleration_max_pct": 14.4364,
+          "change_24h_max_pct": -26.12
+        },
+        "first_watch": {
+          "kind": "FIRST_WATCH",
+          "observed_at": "2026-09-04T14:16:19.805442+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.00037001,
+          "reference_change_24h_pct": -26.12,
+          "score": 37,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 14.5542,
+          "volume_acceleration_max_pct": 14.4364,
+          "change_24h_max_pct": -26.12
+        },
+        "first_alert": {
+          "kind": "FIRST_ALERT",
+          "observed_at": "2026-09-04T14:16:19.805442+00:00",
+          "reference_exchange": "gate",
+          "reference_price": 0.00037001,
+          "reference_change_24h_pct": -26.12,
+          "score": 37,
+          "confirmations": 1,
+          "coherent_confirmations": 1,
+          "coherent_exchange": "gate",
+          "coherent_feature_hits": [
+            "PRICE_ACCEL",
+            "VOLUME_ACCEL"
+          ],
+          "price_acceleration_max_pct": 14.5542,
+          "volume_acceleration_max_pct": 14.4364,
+          "change_24h_max_pct": -26.12
+        }
+      },
+      "markets": [
+        {
+          "exchange": "gate",
+          "market_type": "spot",
+          "symbol": "REIGNUSDT",
+          "market_id": "REIGN_USDT",
+          "price": 6.99e-05,
+          "change_24h_pct": -25.4,
+          "volume_24h": 6084.44931665,
+          "price_delta_pct": 12.6329,
+          "volume24_delta_pct": -1.3517,
+          "history_points": 96
+        }
+      ],
+      "market_age_verified": true,
+      "market_age_min_days": 1228,
+      "market_age_evidence_at": "2023-05-02T04:44:36+00:00",
+      "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_AFTER_CEX_IDENTITY_PREFLIGHT",
+      "coingecko_id": "reign-of-terror",
+      "cex_identity_preflight_verified": true,
+      "cex_identity_preflight": {
+        "method": "UNIQUE_COINGECKO_SYMBOL",
+        "candidate_count": 1
+      },
+      "identity_status": "DEX_VERIFIED",
+      "identity_verified": true,
+      "chain": "bsc",
+      "token_address": "0xaa88fd757fa81ebbbce0eb1f324172d0e446093e",
+      "pair_address": "0x002d7fDFBfEcE19A24CD25CA7329E87103F4eC6E",
+      "dex": "pancakeswap",
+      "dex_url": "https://dexscreener.com/bsc/0x002d7fdfbfece19a24cd25ca7329e87103f4ec6e",
+      "dex_price_usd": 0.0003179,
+      "dex_liquidity_usd": 0.31,
+      "dex_volume_h1": 0.2,
+      "dex_volume_h24": 0.2,
+      "pair_created_at": 1703491340000,
+      "pair_provider": "DEXSCREENER_TOKEN_PAIRS",
+      "exact_token_side": "BASE",
+      "identity_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH_PLUS_EXACT_ADDRESS_DEX_POOL",
+      "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
+      "execution_pool_liquidity_usd": 0.31,
+      "dex_total_liquidity_usd": 0.31,
+      "dex_pool_count": 1,
+      "dex_tradable_pool_count_50k": 0,
+      "dex_liquidity_scope": "EXACT_TOKEN_SELECTED_CHAIN_ALL_VERIFIED_POOLS",
+      "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+      "liquidity_provider_coverage": [
+        "DEXSCREENER_TOKEN_PAIRS"
+      ],
+      "dex_liquidity_pools_top5": [
+        {
+          "pair_address": "0x002d7fDFBfEcE19A24CD25CA7329E87103F4eC6E",
+          "dex": "pancakeswap",
+          "liquidity_usd": 0.31,
+          "volume_h24": 0.2,
+          "provider": "DEXSCREENER_TOKEN_PAIRS",
+          "url": "https://dexscreener.com/bsc/0x002d7fdfbfece19a24cd25ca7329e87103f4ec6e"
         }
       ],
       "automatic_buy": false,
@@ -1180,11 +4038,31 @@
   ],
   "rejections": [
     {
+      "symbol": "SLCWUSDT",
+      "base_symbol": "SLCW",
+      "reason": "AGE_IDENTITY_NOT_FOUND",
+      "coingecko_matches": 0,
+      "identity_evidence": null
+    },
+    {
       "symbol": "MCATUSDT",
       "base_symbol": "MCAT",
       "reason": "AGE_IDENTITY_NOT_FOUND",
       "coingecko_matches": 0,
       "identity_evidence": null
+    },
+    {
+      "symbol": "CPUSDT",
+      "base_symbol": "CP",
+      "reason": "UNDER_60_DAYS_OR_AGE_UNVERIFIED",
+      "coingecko_id": "cluster-protocol",
+      "identity_evidence": {
+        "method": "COINGECKO_TICKER_EXCHANGE_OVERLAP",
+        "reference_price": 0.01362,
+        "ticker_exchange_overlap": 3,
+        "relative_log_error": 0.006631,
+        "candidate_count": 3
+      }
     },
     {
       "symbol": "牛来USDT",
@@ -1204,8 +4082,65 @@
       "identity_evidence": null
     },
     {
-      "symbol": "OVUSDT",
-      "base_symbol": "OV",
+      "symbol": "ZZZUSDT",
+      "base_symbol": "ZZZ",
+      "reason": "UNDER_60_DAYS_OR_AGE_UNVERIFIED",
+      "coingecko_id": "zzz-2",
+      "identity_evidence": {
+        "method": "UNIQUE_COINGECKO_SYMBOL",
+        "candidate_count": 1
+      }
+    },
+    {
+      "symbol": "SUEUSDT",
+      "base_symbol": "SUE",
+      "reason": "UNDER_60_DAYS_OR_AGE_UNVERIFIED",
+      "coingecko_id": "shi-gong-mao",
+      "identity_evidence": {
+        "method": "CEX_PRICE_COHERENCE",
+        "reference_price": 0.00374,
+        "relative_log_error": 0.023011,
+        "candidate_count": 2
+      }
+    },
+    {
+      "symbol": "BLOBUSDT",
+      "base_symbol": "BLOB",
+      "reason": "AGE_IDENTITY_AMBIGUOUS",
+      "coingecko_matches": 4,
+      "identity_evidence": {
+        "method": "AMBIGUOUS_FAIL_CLOSED",
+        "candidate_count": 4,
+        "reference_price": 9.252
+      }
+    },
+    {
+      "symbol": "ZAYUSDT",
+      "base_symbol": "ZAY",
+      "reason": "AGE_IDENTITY_NOT_FOUND",
+      "coingecko_matches": 0,
+      "identity_evidence": null
+    },
+    {
+      "symbol": "MODAUSDT",
+      "base_symbol": "MODA",
+      "reason": "AGE_IDENTITY_NOT_FOUND",
+      "coingecko_matches": 0,
+      "identity_evidence": null
+    },
+    {
+      "symbol": "STONKEXUSDT",
+      "base_symbol": "STONKEX",
+      "reason": "UNDER_60_DAYS_OR_AGE_UNVERIFIED",
+      "coingecko_id": "the-stonks-exchange",
+      "identity_evidence": {
+        "method": "UNIQUE_COINGECKO_SYMBOL",
+        "candidate_count": 1
+      }
+    },
+    {
+      "symbol": "MEMEROBINHOODUSDT",
+      "base_symbol": "MEMEROBINHOOD",
       "reason": "AGE_IDENTITY_NOT_FOUND",
       "coingecko_matches": 0,
       "identity_evidence": null
@@ -1217,21 +4152,19 @@
       "coingecko_id": "canopy",
       "identity_evidence": {
         "method": "CEX_PRICE_COHERENCE",
-        "reference_price": 0.23724,
-        "relative_log_error": 0.001815,
+        "reference_price": 0.239045,
+        "relative_log_error": 0.002593,
         "candidate_count": 2
       }
     },
     {
-      "symbol": "OTCUSDT",
-      "base_symbol": "OTC",
+      "symbol": "CHAMELEONUSDT",
+      "base_symbol": "CHAMELEON",
       "reason": "UNDER_60_DAYS_OR_AGE_UNVERIFIED",
-      "coingecko_id": "otc",
+      "coingecko_id": "chameleon",
       "identity_evidence": {
-        "method": "CEX_PRICE_COHERENCE",
-        "reference_price": 0.011643,
-        "relative_log_error": 0.054096,
-        "candidate_count": 2
+        "method": "UNIQUE_COINGECKO_SYMBOL",
+        "candidate_count": 1
       }
     }
   ]
