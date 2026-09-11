@@ -5,9 +5,11 @@ from wallet500.telegram_alerts import (
     MIN_MARKET_AGE_DAYS,
     _fmt_israel_time,
     _is_actionable_real_alert,
+    _is_pre_wave_alert,
     _merge_display_context,
     _message,
     _pair_key,
+    _pre_wave_message,
     _tier,
     run,
 )
@@ -70,6 +72,44 @@ def _real_alert():
     }
 
 
+def _pre_wave():
+    return {
+        "status": "PRE_WAVE_ALERT",
+        "radar_tier": "PRE_WAVE",
+        "user_alert_eligible": True,
+        "manual_decision_only": True,
+        "automatic_buy": False,
+        "research_only": False,
+        "actionable_research_alert": False,
+        "symbol": "STORJ",
+        "chain": "ethereum",
+        "token_address": "0xb64ef51c888972c908cfacf59b47c1afbc0ab8ac",
+        "pair_address": "0xAEF16913b6C50EBCf627a394921F306985FC8604",
+        "dex": "uniswap",
+        "dex_url": "https://dexscreener.com/ethereum/0xaef16913b6c50ebcf627a394921f306985fc8604",
+        "price_usd": 0.03276,
+        "execution_pool_liquidity_usd": 79651.61,
+        "dex_volume_h1": 4522.59,
+        "market_age_days": 1993,
+        "exact_identity_verified": True,
+        "exact_pair_verified": True,
+        "market_age_verified": True,
+        "risk_reasons": [],
+        "source_lanes": ["CEX_REVIVAL", "CEX_SPOT_BREADTH"],
+        "source_lane_count": 2,
+        "full_real_alert_pending_gates": ["STRONG_DECISION_LANE"],
+        "cex_spot_score": 38,
+        "cex_spot_confirmations": 4,
+        "cex_spot_exchanges": ["gate", "kucoin", "mexc", "okx"],
+        "pre_wave_gates": {
+            "cex_spot_breadth": True,
+            "multichain_market_activity": True,
+            "risk_clear": True,
+        },
+        "first_alert_at": "2026-09-06T09:41:49.288906+00:00",
+    }
+
+
 def test_telegram_production_thresholds_are_canonical():
     assert MIN_MARKET_AGE_DAYS == CANONICAL_MIN_MARKET_AGE_DAYS == 180
     assert MIN_LIQUIDITY_USD == CANONICAL_MIN_EXECUTION_LIQUIDITY_USD == 50_000.0
@@ -112,6 +152,27 @@ def test_real_alert_must_be_explicitly_actionable():
     assert _is_actionable_real_alert(research_only) is False
 
 
+def test_pre_wave_is_separate_manual_user_alert_not_research_only_or_auto_buy():
+    row = _pre_wave()
+    assert _is_pre_wave_alert(row) is True
+    assert _is_actionable_real_alert(row) is False
+    assert row["automatic_buy"] is False
+    assert row["research_only"] is False
+    msg = _pre_wave_message(row, sent_at="2026-09-11T11:30:00+00:00", alert_event_id="pre123")
+    assert "🔥🔥🔥 PRE-WAVE ALERT" in msg
+    assert "NOT A BUY ORDER" in msg
+    assert "MANUAL REVIEW ONLY" in msg
+    assert "Token: STORJ" in msg
+    assert "Full REAL ALERT still pending: STRONG_DECISION_LANE" in msg
+    assert "OPEN DEX: https://dexscreener.com/ethereum/0xaef16913b6c50ebcf627a394921f306985fc8604" in msg
+    bad = dict(row)
+    bad["research_only"] = True
+    assert _is_pre_wave_alert(bad) is False
+    bad = dict(row)
+    bad["user_alert_eligible"] = False
+    assert _is_pre_wave_alert(bad) is False
+
+
 def test_israel_time_format_is_explicit_and_dst_aware():
     assert _fmt_israel_time("2026-09-05T14:30:00+00:00") == "05/09/2026 17:30:00"
 
@@ -146,7 +207,7 @@ def test_unconfigured_scan_lane_cannot_overwrite_production_telegram_truth(tmp_p
     (tmp_path / "telegram-alert-report.json").write_text(json.dumps(existing_report), encoding="utf-8")
     (tmp_path / "telegram-alert-state.json").write_text(json.dumps(existing_state), encoding="utf-8")
     (tmp_path / "active-qualified-candidates.json").write_text("[]", encoding="utf-8")
-    (tmp_path / "real-alerts.json").write_text('{"alerts": []}', encoding="utf-8")
+    (tmp_path / "real-alerts.json").write_text('{"alerts": [], "pre_wave_alerts": []}', encoding="utf-8")
     monkeypatch.setenv("WALLET500_OUTPUT_DIR", str(tmp_path))
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)

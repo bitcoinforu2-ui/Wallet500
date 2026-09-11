@@ -11,10 +11,22 @@ DATA = Path("data")
 REAL_PRECURSOR_STATUSES = {"HIGH_CONVICTION_PRECURSOR", "PRE_BREAKOUT_CANDIDATE", "EARLY_REVIVAL_WATCH"}
 REAL_WAKING_STATUSES = {"WAKING_CONFIRMED_RESEARCH", "WAKING_STRONG_RESEARCH"}
 EVM_CHAINS = {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche", "fantom", "linea", "zksync", "mantle", "scroll", "blast"}
-SOURCE_LANE_TOTAL = 5
+SOURCE_LANE_TOTAL = 7
 WATCH_TRACKING_VERSION = 2
 WATCH_NEW_TTL_HOURS = 24
 WATCH_DISPLAY_TZ = ZoneInfo("Asia/Jerusalem")
+
+PRE_WAVE_MIN_CEX_SPOT_SCORE = 35.0
+PRE_WAVE_MIN_CEX_SPOT_CONFIRMATIONS = 3
+PRE_WAVE_MIN_CEX_SPOT_EXCHANGES = 3
+PRE_WAVE_MAX_24H_CHANGE_PCT = 35.0
+PRE_WAVE_MIN_DEX_VOLUME_H1_USD = 1_000.0
+PRE_WAVE_MIN_DEX_VOLUME_H24_USD = 10_000.0
+PRE_WAVE_MIN_ACTIVITY_H1 = 10
+PRE_WAVE_MIN_PAIR_AGE_MINUTES = 45.0
+PRE_WAVE_SOFT_MULTICHAIN_BLOCKERS = {"VOLUME_H1_LT_15K", "TXNS_H1_LT_50"}
+CEX_SPOT_MAX_AGE_SECONDS = 45 * 60
+MULTICHAIN_MAX_AGE_SECONDS = 45 * 60
 
 
 def _load(path: Path, default):
@@ -72,6 +84,14 @@ def _parse_dt(value: object) -> datetime | None:
         return None
 
 
+def _source_fresh(row: dict, now_dt: datetime, max_age_seconds: int) -> bool:
+    observed = _parse_dt(row.get("_source_generated_at") if isinstance(row, dict) else None)
+    if observed is None:
+        return False
+    age = (now_dt - observed).total_seconds()
+    return 0 <= age <= max_age_seconds
+
+
 def _watch_is_new_24h(watch_added_at: object, now_dt: datetime) -> bool:
     observed = _parse_dt(watch_added_at)
     if observed is None:
@@ -87,6 +107,13 @@ def _watch_label(watch_added_at: object) -> str:
     return observed.astimezone(WATCH_DISPLAY_TZ).strftime("%d/%m %H:%M IL")
 
 
+def _earliest_timestamp(*values: object) -> str | None:
+    parsed = [(dt, str(value)) for value in values if (dt := _parse_dt(value)) is not None]
+    if not parsed:
+        return None
+    return min(parsed, key=lambda x: x[0])[1]
+
+
 def _age_ok(*rows: dict) -> tuple[bool, int | None]:
     ages = []
     for row in rows:
@@ -94,13 +121,13 @@ def _age_ok(*rows: dict) -> tuple[bool, int | None]:
             continue
         if row.get("market_age_verified") is True:
             try:
-                ages.append(int(row.get("market_age_min_days")))
+                ages.append(int(float(row.get("market_age_min_days"))))
             except (TypeError, ValueError):
                 pass
         truth = row.get("truth") if isinstance(row.get("truth"), dict) else {}
         if truth.get("market_age_verified_60d_plus") is True:
             try:
-                ages.append(int(truth.get("market_age_days")))
+                ages.append(int(float(truth.get("market_age_days"))))
             except (TypeError, ValueError):
                 pass
     if not ages:
@@ -119,6 +146,8 @@ def _row_pair_exact(row: dict) -> bool:
     identity = row.get("identity") if isinstance(row.get("identity"), dict) else {}
     return bool(
         str(row.get("identity_status") or "").startswith("DEX_VERIFIED")
+        or row.get("identity_verified") is True
+        or row.get("token_identity_verified") is True
         or row.get("exact_pair_verified") is True
         or truth.get("exact_pair_verified") is True
         or identity.get("exact_pair_verified") is True
@@ -192,12 +221,6 @@ def _same_pair(a: object, b: object) -> bool:
 
 
 def _pair_context(pair: str | None, *rows: dict) -> dict:
-    """Build market metadata only from rows carrying the selected exact pair.
-
-    Never mix pair address from one pool with dex/url/protocol metadata from another pool.
-    Among same-pair rows prefer the row with the strongest explicit execution liquidity,
-    then fill missing metadata only from other rows for that exact same pair.
-    """
     if not pair:
         return {}
     matches = [r for r in rows if isinstance(r, dict) and _same_pair(_row_pair(r), pair) and _row_pair_exact(r)]
@@ -216,9 +239,10 @@ def _pair_context(pair: str | None, *rows: dict) -> dict:
         "dex", "dex_id", "dex_url", "url", "dex_link", "pool_type", "protocol",
         "market_protocol", "market_program", "price_usd", "dex_price_usd",
         "current_price_usd", "reference_price", "dex_volume_h1", "dex_volume_h24",
-        "buys_h1", "sells_h1", "buys_h24", "sells_h24", "execution_depth_verified",
-        "execution_depth_usd_1pct", "execution_depth_usd_2pct", "execution_depth_usd_5pct",
-        "execution_depth_source", "concentrated_liquidity_pool",
+        "volume_h1", "volume_h24", "buys_h1", "sells_h1", "buys_h24", "sells_h24",
+        "pair_created_at", "execution_depth_verified", "execution_depth_usd_1pct",
+        "execution_depth_usd_2pct", "execution_depth_usd_5pct", "execution_depth_source",
+        "concentrated_liquidity_pool",
     )
     for row in matches[1:]:
         for field in fields:
@@ -240,6 +264,7 @@ def _identity_truth(*rows: dict) -> tuple[str | None, str | None, bool]:
         exact = (
             str(row.get("identity_status") or "").startswith("DEX_VERIFIED")
             or row.get("identity_verified") is True
+            or row.get("token_identity_verified") is True
             or identity.get("exact_mint_verified") is True
             or truth.get("exact_identity_verified") is True
             or row.get("network_verified") is True
@@ -285,7 +310,65 @@ def _index_rows(rows: list[dict]) -> dict[str, dict]:
     return out
 
 
-def _source_score(precursor: dict, waking: dict, cex: dict, active: dict, revival: dict) -> tuple[list[str], int]:
+def _spot_rows(payload: dict) -> list[dict]:
+    rows = payload.get("candidates") if isinstance(payload, dict) else []
+    stamp = payload.get("generated_at") if isinstance(payload, dict) else None
+    return [{**x, "_source_generated_at": stamp} for x in rows or [] if isinstance(x, dict)]
+
+
+def _multichain_rows(payload: dict) -> list[dict]:
+    if not isinstance(payload, dict):
+        return []
+    out = []
+    stamp = payload.get("generated_at")
+    for name in ("veteran_watch", "dna_watch", "items"):
+        for row in payload.get(name) or []:
+            if isinstance(row, dict):
+                out.append({**row, "_source_generated_at": stamp})
+    return out
+
+
+def _spot_lane_positive(row: dict, now_dt: datetime) -> bool:
+    if not isinstance(row, dict):
+        return False
+    if not _source_fresh(row, now_dt, CEX_SPOT_MAX_AGE_SECONDS):
+        return False
+    if not (str(row.get("identity_status") or "").startswith("DEX_VERIFIED") or row.get("identity_verified") is True):
+        return False
+    if not row.get("chain") or not row.get("token_address") or not _row_pair(row):
+        return False
+    if row.get("market_age_verified") is not True:
+        return False
+    if row.get("leveraged_product") is True:
+        return False
+    score = _num(row.get("spot_revival_score"), 0)
+    confirmations = int(_num(row.get("coherent_confirmations"), 0))
+    exchanges = {str(x).lower() for x in row.get("exchanges") or [] if str(x).strip()}
+    return score >= PRE_WAVE_MIN_CEX_SPOT_SCORE and confirmations >= PRE_WAVE_MIN_CEX_SPOT_CONFIRMATIONS and len(exchanges) >= PRE_WAVE_MIN_CEX_SPOT_EXCHANGES
+
+
+def _multichain_strong(row: dict, now_dt: datetime) -> bool:
+    gate = row.get("real_time_gate") if isinstance(row.get("real_time_gate"), dict) else {}
+    turnover = _num(gate.get("turnover_h1"), 0)
+    buys = int(_num(row.get("buys_h1"), 0))
+    sells = int(_num(row.get("sells_h1"), 0))
+    txns = int(_num(gate.get("txns_h1"), buys + sells))
+    buy_sell = _num(gate.get("buy_sell_ratio_h1"), (buys / max(sells, 1) if txns else 0))
+    onchain_strength = turnover >= 0.20 or buy_sell >= 1.18 or txns >= 100
+    return bool(
+        isinstance(row, dict)
+        and _source_fresh(row, now_dt, MULTICHAIN_MAX_AGE_SECONDS)
+        and row.get("status") == "DNA_WATCH_RESEARCH"
+        and not (row.get("blockers") or [])
+        and row.get("chase_risk") is not True
+        and row.get("token_identity_verified") is True
+        and row.get("market_age_verified") is True
+        and _row_pair(row)
+        and onchain_strength
+    )
+
+
+def _source_score(precursor: dict, waking: dict, cex: dict, active: dict, revival: dict, cex_spot: dict, multichain: dict, now_dt: datetime) -> tuple[list[str], int]:
     lanes = []
     if active and active.get("qualification") in {"QUALIFIED", "REVIVAL_QUALIFIED"}:
         lanes.append("ACTIVE_PRODUCTION_GATE")
@@ -295,6 +378,10 @@ def _source_score(precursor: dict, waking: dict, cex: dict, active: dict, reviva
         lanes.append("WAKING_CONFIRMATION")
     if cex and _num(cex.get("cex_revival_score")) >= 35 and int(cex.get("coherent_confirmations") or 0) >= 2:
         lanes.append("CEX_REVIVAL")
+    if _spot_lane_positive(cex_spot, now_dt):
+        lanes.append("CEX_SPOT_BREADTH")
+    if _multichain_strong(multichain, now_dt):
+        lanes.append("MULTICHAIN_VETERAN_REVIVAL")
     if revival and (revival.get("watch_status") in {"WAKING_MARKET_ONLY", "ABSORPTION_WATCH_DISCOVERY_EXPANSION"} or (revival.get("order_flow_absorption") or {}).get("signal") is True):
         lanes.append("REVIVAL_MARKET_STRUCTURE")
     return lanes, len(set(lanes))
@@ -316,12 +403,14 @@ def _risk_blocked(*rows: dict) -> tuple[bool, list[str]]:
     return bool(reasons), sorted(set(reasons))
 
 
-def _signal_context(precursor: dict, waking: dict, cex: dict, revival: dict, envelope: dict) -> tuple[float, str | None, dict]:
+def _signal_context(precursor: dict, waking: dict, cex: dict, cex_spot: dict, multichain: dict, revival: dict, envelope: dict) -> tuple[float, str | None, dict]:
     market = envelope.get("market") if isinstance(envelope.get("market"), dict) else {}
     components = {
         "PRECURSOR_CONFIDENCE": _opt_num(precursor.get("confidence_adjusted_score")),
         "PRECURSOR_AVAILABLE_EVIDENCE": _opt_num(precursor.get("normalized_score_available_evidence")),
         "CEX_REVIVAL": _opt_num(cex.get("cex_revival_score")),
+        "CEX_SPOT_BREADTH": _opt_num(cex_spot.get("spot_revival_score")),
+        "MULTICHAIN_VETERAN_DNA": _opt_num(multichain.get("winner_dna_score_research")),
         "REVIVAL_VERIFIED": _opt_num(revival.get("revival_score_verified")),
         "REVIVAL_RAW": _opt_num(revival.get("revival_score")),
         "WAKING_CONFIRMATION": _opt_num(waking.get("confirmation_score")),
@@ -359,6 +448,109 @@ def _clarity_tier(blockers: list[str], risk_reasons: list[str], liquidity_ok: bo
     return "VERIFIED_WATCH", "CLEAR"
 
 
+def _pair_age_minutes(pair_ctx: dict, now_dt: datetime) -> float | None:
+    raw = pair_ctx.get("pair_created_at") if isinstance(pair_ctx, dict) else None
+    try:
+        ts = float(raw)
+        if ts <= 0:
+            return None
+        if ts > 10_000_000_000:
+            ts /= 1000.0
+        created = datetime.fromtimestamp(ts, tz=timezone.utc)
+        if created > now_dt:
+            return None
+        return (now_dt - created).total_seconds() / 60.0
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
+
+
+def _pre_wave_spot_ok(cex_spot: dict, pair: str | None, now_dt: datetime) -> tuple[bool, dict]:
+    score = _num(cex_spot.get("spot_revival_score"), 0)
+    confirmations = int(_num(cex_spot.get("coherent_confirmations"), 0))
+    exchanges = sorted({str(x).lower() for x in cex_spot.get("exchanges") or [] if str(x).strip()})
+    change24 = _opt_num(cex_spot.get("change_24h_max_pct"))
+    features = {str(x) for x in cex_spot.get("coherent_feature_hits") or []}
+    pair_match = _same_pair(_row_pair(cex_spot), pair)
+    acceleration = bool(features & {"PRICE_ACCEL", "VOLUME_ACCEL"}) or _num(cex_spot.get("price_acceleration_max_pct"), 0) > 0 or _num(cex_spot.get("volume_acceleration_max_pct"), 0) > 0
+    ok = bool(
+        _spot_lane_positive(cex_spot, now_dt)
+        and pair_match
+        and acceleration
+        and (change24 is None or change24 < PRE_WAVE_MAX_24H_CHANGE_PCT)
+    )
+    return ok, {
+        "spot_score": round(score, 2),
+        "spot_confirmations": confirmations,
+        "spot_exchange_count": len(exchanges),
+        "spot_exchanges": exchanges,
+        "spot_change_24h_max_pct": change24,
+        "spot_acceleration_present": acceleration,
+        "spot_pair_match": pair_match,
+    }
+
+
+def _pre_wave_multichain_ok(multichain: dict, pair: str | None, min_liq: float, now_dt: datetime) -> tuple[bool, dict]:
+    gate = multichain.get("real_time_gate") if isinstance(multichain.get("real_time_gate"), dict) else {}
+    liq = _num(_first(multichain.get("execution_pool_liquidity_usd"), multichain.get("dex_liquidity_usd"), multichain.get("liquidity_usd")), 0)
+    vol_h1 = _num(_first(gate.get("volume_h1_usd"), multichain.get("volume_h1"), multichain.get("dex_volume_h1")), 0)
+    vol_h24 = _num(_first(multichain.get("volume_h24"), multichain.get("dex_volume_h24")), 0)
+    buys = int(_num(_first(multichain.get("buys_h1"), gate.get("buys_h1")), 0))
+    sells = int(_num(_first(multichain.get("sells_h1"), gate.get("sells_h1")), 0))
+    txns = int(_num(gate.get("txns_h1"), buys + sells))
+    h1 = _num(_first(gate.get("price_change_h1_pct"), multichain.get("price_change_h1")), 0)
+    h24 = _num(_first(gate.get("price_change_h24_pct"), multichain.get("price_change_h24")), 0)
+    blockers = {str(x) for x in multichain.get("blockers") or []}
+    hard_blockers = sorted(blockers - PRE_WAVE_SOFT_MULTICHAIN_BLOCKERS)
+    pair_match = _same_pair(_row_pair(multichain), pair)
+    ok = bool(
+        multichain
+        and _source_fresh(multichain, now_dt, MULTICHAIN_MAX_AGE_SECONDS)
+        and multichain.get("token_identity_verified") is True
+        and multichain.get("market_age_verified") is True
+        and _num(multichain.get("market_age_min_days"), 0) >= 180
+        and pair_match
+        and liq >= min_liq
+        and vol_h1 >= PRE_WAVE_MIN_DEX_VOLUME_H1_USD
+        and txns >= PRE_WAVE_MIN_ACTIVITY_H1
+        and not hard_blockers
+        and multichain.get("chase_risk") is not True
+        and h1 <= 25
+        and h24 < PRE_WAVE_MAX_24H_CHANGE_PCT
+    )
+    return ok, {
+        "multichain_pair_match": pair_match,
+        "multichain_liquidity_usd": round(liq, 2),
+        "multichain_volume_h1_usd": round(vol_h1, 2),
+        "multichain_volume_h24_usd": round(vol_h24, 2),
+        "multichain_activity_h1": txns,
+        "multichain_price_change_h1_pct": round(h1, 4),
+        "multichain_price_change_h24_pct": round(h24, 4),
+        "multichain_soft_blockers": sorted(blockers & PRE_WAVE_SOFT_MULTICHAIN_BLOCKERS),
+        "multichain_hard_blockers": hard_blockers,
+    }
+
+
+def _pre_wave_eligible(*, exact_identity: bool, exact_pair: bool, age_ok: bool, liquidity_ok: bool, risk_clear: bool, pair: str | None, pair_ctx: dict, cex_spot: dict, multichain: dict, min_liq: float, now_dt: datetime) -> tuple[bool, dict]:
+    spot_ok, spot_metrics = _pre_wave_spot_ok(cex_spot, pair, now_dt)
+    market_ok, market_metrics = _pre_wave_multichain_ok(multichain, pair, min_liq, now_dt)
+    pair_age = _pair_age_minutes(pair_ctx, now_dt)
+    pair_age_ok = pair_age is None or pair_age >= PRE_WAVE_MIN_PAIR_AGE_MINUTES
+    hard_truth = bool(exact_identity and exact_pair and age_ok and liquidity_ok and risk_clear and pair_age_ok)
+    return bool(hard_truth and spot_ok and market_ok), {
+        "exact_identity": bool(exact_identity),
+        "exact_pair": bool(exact_pair),
+        "veteran_age_180d": bool(age_ok),
+        "execution_liquidity": bool(liquidity_ok),
+        "risk_clear": bool(risk_clear),
+        "pair_age_minutes": round(pair_age, 2) if pair_age is not None else None,
+        "pair_age_ok": pair_age_ok,
+        "cex_spot_breadth": spot_ok,
+        "multichain_market_activity": market_ok,
+        **spot_metrics,
+        **market_metrics,
+    }
+
+
 def build(data_dir: Path = DATA) -> dict:
     cfg = Settings()
     now_dt = datetime.now(timezone.utc)
@@ -371,6 +563,8 @@ def build(data_dir: Path = DATA) -> dict:
     previous_watch_rows = _index_rows(list(previous_payload.get("verified_watch") or []))
 
     cex_payload = _load(data_dir / "cex-revival-radar.json", {})
+    cex_spot_payload = _load(data_dir / "cex-spot-identity-radar.json", {})
+    multichain_payload = _load(data_dir / "multichain-veteran-revival.json", {})
     precursor_payload = _load(data_dir / "revival-precursor-latest.json", {})
     waking_payload = _load(data_dir / "waking-confirmation-latest.json", {})
     revival_payload = _load(data_dir / "revival-1000-latest.json", {})
@@ -378,6 +572,8 @@ def build(data_dir: Path = DATA) -> dict:
     active_rows = _load(data_dir / "active-qualified-candidates.json", [])
 
     cex_rows = list(cex_payload.get("alerts") or [])
+    cex_spot_rows = _spot_rows(cex_spot_payload)
+    multichain_rows = _multichain_rows(multichain_payload)
     precursor_rows = list(precursor_payload.get("targets") or [])
     waking_rows = list(waking_payload.get("targets") or [])
     revival_rows = list(revival_payload.get("coins") or [])
@@ -385,22 +581,30 @@ def build(data_dir: Path = DATA) -> dict:
     active_rows = active_rows if isinstance(active_rows, list) else []
 
     indexes = {
-        "cex": _index_rows(cex_rows), "precursor": _index_rows(precursor_rows),
-        "waking": _index_rows(waking_rows), "revival": _index_rows(revival_rows),
-        "envelope": _index_rows(envelope_rows), "active": _index_rows(active_rows),
+        "cex": _index_rows(cex_rows),
+        "cex_spot": _index_rows(cex_spot_rows),
+        "multichain": _index_rows(multichain_rows),
+        "precursor": _index_rows(precursor_rows),
+        "waking": _index_rows(waking_rows),
+        "revival": _index_rows(revival_rows),
+        "envelope": _index_rows(envelope_rows),
+        "active": _index_rows(active_rows),
     }
     keys = set().union(*(set(index) for index in indexes.values()))
 
     real_alerts = []
+    pre_wave_alerts = []
     verified_watch = []
     for k in keys:
         cex = indexes["cex"].get(k) or {}
+        cex_spot = indexes["cex_spot"].get(k) or {}
+        multichain = indexes["multichain"].get(k) or {}
         precursor = indexes["precursor"].get(k) or {}
         waking = indexes["waking"].get(k) or {}
         revival = indexes["revival"].get(k) or {}
         envelope = indexes["envelope"].get(k) or {}
         active = indexes["active"].get(k) or {}
-        rows = (active, precursor, waking, cex, revival, envelope)
+        rows = (active, precursor, waking, cex, cex_spot, multichain, revival, envelope)
 
         chain, token, exact_identity = _identity_truth(*rows)
         pair, exact_pair = _pair_truth(*rows)
@@ -411,18 +615,19 @@ def build(data_dir: Path = DATA) -> dict:
         pair_ctx = _pair_context(pair, *rows)
 
         age_ok, age_days = _age_ok(*rows)
-        lanes, lane_count = _source_score(precursor, waking, cex, active, revival)
+        lanes, lane_count = _source_score(precursor, waking, cex, active, revival, cex_spot, multichain, now_dt)
         blocked, risk_reasons = _risk_blocked(*rows)
         precursor_status = precursor.get("status")
         production_pass = active.get("qualification") in {"QUALIFIED", "REVIVAL_QUALIFIED"}
         precursor_pass = precursor_status in REAL_PRECURSOR_STATUSES
+        multichain_pass = _multichain_strong(multichain, now_dt)
         envelope_status = str(envelope.get("status") or "")
         envelope_coverage = envelope.get("coverage") if isinstance(envelope.get("coverage"), dict) else {}
         evidence_positive_lanes = list(envelope_coverage.get("positive_independent_lanes") or [])
         evidence_verified_lanes = list(envelope_coverage.get("verified_independent_lanes") or [])
 
         liquidity_ok = execution_liq >= cfg.verified_min_liquidity_usd
-        strong_decision = production_pass or precursor_pass
+        strong_decision = production_pass or precursor_pass or multichain_pass
         independent_confirmation = production_pass or lane_count >= 2
 
         blockers = []
@@ -442,10 +647,14 @@ def build(data_dir: Path = DATA) -> dict:
             blockers.append("INDEPENDENT_CONFIRMATION_LT_2")
         blockers = sorted(set(blockers))
 
-        signal_score, signal_leader, score_components = _signal_context(precursor, waking, cex, revival, envelope)
+        signal_score, signal_leader, score_components = _signal_context(precursor, waking, cex, cex_spot, multichain, revival, envelope)
         readiness_gates, readiness_passed = _readiness(
-            exact_identity=exact_identity, exact_pair=exact_pair, age_ok=age_ok,
-            liquidity_ok=liquidity_ok, risk_clear=not blocked, strong_decision=strong_decision,
+            exact_identity=exact_identity,
+            exact_pair=exact_pair,
+            age_ok=age_ok,
+            liquidity_ok=liquidity_ok,
+            risk_clear=not blocked,
+            strong_decision=strong_decision,
             independent_confirmation=independent_confirmation,
         )
         radar_tier, risk_level = _clarity_tier(blockers, risk_reasons, liquidity_ok)
@@ -454,9 +663,32 @@ def build(data_dir: Path = DATA) -> dict:
         pair_dex = _first(pair_ctx.get("dex"), pair_ctx.get("dex_id"))
         pair_url = _first(pair_ctx.get("dex_url"), pair_ctx.get("url"), pair_ctx.get("dex_link"))
         pair_price = _price(pair_ctx) if pair_ctx else None
+        cex_milestones = cex.get("milestones") if isinstance(cex.get("milestones"), dict) else {}
+        spot_milestones = cex_spot.get("milestones") if isinstance(cex_spot.get("milestones"), dict) else {}
+        first_alert_at = _earliest_timestamp(
+            (cex_milestones.get("first_alert") or {}).get("observed_at"),
+            (spot_milestones.get("first_watch") or {}).get("observed_at"),
+            (spot_milestones.get("first_alert") or {}).get("observed_at"),
+            (precursor.get("t0") or {}).get("observed_at"),
+            active.get("qualified_at"),
+        )
+
+        pre_wave_ok, pre_wave_gates = _pre_wave_eligible(
+            exact_identity=exact_identity,
+            exact_pair=exact_pair,
+            age_ok=age_ok,
+            liquidity_ok=liquidity_ok,
+            risk_clear=not blocked,
+            pair=pair,
+            pair_ctx=pair_ctx,
+            cex_spot=cex_spot,
+            multichain=multichain,
+            min_liq=cfg.verified_min_liquidity_usd,
+            now_dt=now_dt,
+        )
 
         item = {
-            "symbol": _symbol(active, precursor, waking, cex, revival, envelope),
+            "symbol": _symbol(active, precursor, waking, cex, cex_spot, multichain, revival, envelope),
             "chain": chain,
             "token_address": token,
             "pair_address": pair,
@@ -484,6 +716,11 @@ def build(data_dir: Path = DATA) -> dict:
             "waking_status": waking.get("confirmation_status"),
             "cex_score": cex.get("cex_revival_score"),
             "cex_confirmations": cex.get("coherent_confirmations"),
+            "cex_spot_score": cex_spot.get("spot_revival_score"),
+            "cex_spot_confirmations": cex_spot.get("coherent_confirmations"),
+            "cex_spot_exchanges": cex_spot.get("exchanges") or [],
+            "multichain_status": multichain.get("status"),
+            "multichain_score": multichain.get("winner_dna_score_research"),
             "evidence_envelope_status": envelope_status or None,
             "evidence_ready": envelope_status == "EVIDENCE_READY",
             "evidence_positive_lanes": evidence_positive_lanes,
@@ -499,19 +736,28 @@ def build(data_dir: Path = DATA) -> dict:
             "risk_level": risk_level,
             "risk_reasons": risk_reasons,
             "why_now": sorted(set(lanes)),
-            "first_alert_at": _first((cex.get("milestones") or {}).get("first_alert", {}).get("observed_at"), precursor.get("t0", {}).get("observed_at"), active.get("qualified_at")),
+            "first_alert_at": first_alert_at,
             "exact_identity_verified": exact_identity,
             "exact_pair_verified": exact_pair,
             "market_age_verified": age_ok,
             "blockers": blockers,
+            "automatic_buy": False,
         }
+        for f in ("dex_volume_h1", "dex_volume_h24", "volume_h1", "volume_h24", "buys_h1", "sells_h1", "buys_h24", "sells_h24", "pair_created_at", "concentrated_liquidity_pool", "execution_depth_verified", "execution_depth_usd_5pct"):
+            if pair_ctx.get(f) not in (None, ""):
+                item[f] = pair_ctx.get(f)
 
         if not blockers:
             item["status"] = "REAL_ALERT"
             item["actionable_research_alert"] = True
             real_alerts.append(item)
         else:
-            watch_interest = bool(lane_count >= 1 or envelope_status in {"EVIDENCE_READY", "VERIFIED_WATCH"} or revival.get("watch_status") == "WAKING_MARKET_ONLY")
+            watch_interest = bool(
+                lane_count >= 1
+                or envelope_status in {"EVIDENCE_READY", "VERIFIED_WATCH"}
+                or revival.get("watch_status") == "WAKING_MARKET_ONLY"
+                or pre_wave_ok
+            )
             if exact_identity and exact_pair and age_ok and watch_interest:
                 if tracking_initialized:
                     if k in previous_registry:
@@ -536,26 +782,57 @@ def build(data_dir: Path = DATA) -> dict:
                 item["actionable_research_alert"] = False
                 verified_watch.append(item)
 
+                if pre_wave_ok:
+                    pre = dict(item)
+                    pre.update({
+                        "status": "PRE_WAVE_ALERT",
+                        "radar_tier": "PRE_WAVE_ALERT",
+                        "user_alert_eligible": True,
+                        "manual_decision_only": True,
+                        "research_only": False,
+                        "actionable_research_alert": False,
+                        "automatic_buy": False,
+                        "pre_wave_gates": pre_wave_gates,
+                        "full_real_alert_pending_gates": missing_gates,
+                        "pre_wave_reason_codes": [
+                            "EXACT_IDENTITY_PAIR_AGE_LIQUIDITY_RISK_PASS",
+                            "MULTI_EXCHANGE_CEX_SPOT_ACCELERATION",
+                            "ONCHAIN_ACTIVITY_PRESENT_BEFORE_FULL_PRODUCTION_CONFIRMATION",
+                        ],
+                    })
+                    pre_wave_alerts.append(pre)
+
     identity_pending = []
     for row in cex_rows:
         if str(row.get("identity_status") or "").startswith("DEX_VERIFIED"):
             continue
         identity_pending.append({
-            "symbol": _symbol(row), "cex_score": row.get("cex_revival_score"),
+            "symbol": _symbol(row),
+            "cex_score": row.get("cex_revival_score"),
             "market_age_days": row.get("market_age_min_days"),
             "coherent_confirmations": row.get("coherent_confirmations"),
             "identity_status": row.get("identity_status") or "IDENTITY_PENDING",
             "identity_blocker": row.get("identity_blocker") or "EXACT_IDENTITY_NOT_VERIFIED",
-            "status": "IDENTITY_PENDING_NOT_ACTIONABLE", "radar_tier": "IDENTITY_PENDING",
+            "status": "IDENTITY_PENDING_NOT_ACTIONABLE",
+            "radar_tier": "IDENTITY_PENDING",
             "actionable_research_alert": False,
         })
 
     tier_priority = {"NEAR_ALERT": 3, "VERIFIED_WATCH": 2, "BLOCKED": 1}
     real_alerts.sort(key=lambda x: (x.get("signal_score") or 0, x.get("source_lane_count") or 0, x.get("execution_pool_liquidity_usd") or 0), reverse=True)
+    pre_wave_alerts.sort(key=lambda x: (
+        _num(x.get("cex_spot_score"), 0),
+        _num((x.get("pre_wave_gates") or {}).get("multichain_volume_h1_usd"), 0),
+        _num(x.get("execution_pool_liquidity_usd"), 0),
+    ), reverse=True)
     verified_watch.sort(key=lambda x: (
-        tier_priority.get(x.get("radar_tier"), 0), x.get("watch_is_new_24h") is True,
-        str(x.get("watch_added_at") or ""), x.get("readiness_passed") or 0,
-        x.get("evidence_ready") is True, x.get("source_lane_count") or 0, x.get("signal_score") or 0,
+        tier_priority.get(x.get("radar_tier"), 0),
+        x.get("watch_is_new_24h") is True,
+        str(x.get("watch_added_at") or ""),
+        x.get("readiness_passed") or 0,
+        x.get("evidence_ready") is True,
+        x.get("source_lane_count") or 0,
+        x.get("signal_score") or 0,
     ), reverse=True)
     identity_pending.sort(key=lambda x: (x.get("cex_score") or 0, x.get("coherent_confirmations") or 0), reverse=True)
 
@@ -572,14 +849,15 @@ def build(data_dir: Path = DATA) -> dict:
     baseline_keys = sorted(k for k in previous_baseline_keys if k in active_registry) if tracking_initialized else sorted(active_registry.keys())
 
     return {
-        "version": 3,
+        "version": 4,
         "generated_at": now,
-        "mode": "FAIL_CLOSED_REAL_ALERT_FEED_V3_EVIDENCE_ENVELOPE",
+        "mode": "FAIL_CLOSED_REAL_ALERT_FEED_V4_PRE_WAVE_MULTICHAIN",
         "score_contract": {
             "signal_score_semantics": "maximum currently available subsystem signal; not a probability and not overall conviction",
-            "confirmation_total_lanes": SOURCE_LANE_TOTAL, "readiness_gate_total": 7,
+            "confirmation_total_lanes": SOURCE_LANE_TOTAL,
+            "readiness_gate_total": 7,
             "readiness_is_gate_completion_not_profit_probability": True,
-            "radar_tiers": ["REAL_ALERT", "NEAR_ALERT", "VERIFIED_WATCH", "BLOCKED", "IDENTITY_PENDING"],
+            "radar_tiers": ["REAL_ALERT", "PRE_WAVE_ALERT", "NEAR_ALERT", "VERIFIED_WATCH", "BLOCKED", "IDENTITY_PENDING"],
         },
         "truth_contract": {
             "focus": "VETERAN_COIN_REVIVAL_ONLY",
@@ -592,40 +870,102 @@ def build(data_dir: Path = DATA) -> dict:
             "pair_market_metadata_must_match_exact_pair": True,
             "symbol_only_never_actionable": True,
             "cex_only_never_real_alert": True,
-            "production_gate_or_strong_precursor_required": True,
+            "production_gate_or_strong_precursor_or_multichain_decision_required": True,
             "non_production_alert_requires_min_independent_lanes": 2,
+            "cex_spot_exact_identity_lane_enabled": True,
+            "multichain_veteran_strong_lane_enabled": True,
+            "pre_wave_user_alert_is_not_real_alert": True,
+            "pre_wave_never_automatic_buy": True,
+            "pre_wave_does_not_weaken_real_alert_gates": True,
+            "pre_wave_requires_exact_identity_pair_age_liquidity_and_clear_risk": True,
+            "pre_wave_requires_exact_cex_spot_breadth": True,
+            "pre_wave_min_cex_spot_confirmations": PRE_WAVE_MIN_CEX_SPOT_CONFIRMATIONS,
+            "pre_wave_min_cex_spot_exchanges": PRE_WAVE_MIN_CEX_SPOT_EXCHANGES,
+            "pre_wave_max_change_24h_pct": PRE_WAVE_MAX_24H_CHANGE_PCT,
+            "pre_wave_min_dex_volume_h1_usd": PRE_WAVE_MIN_DEX_VOLUME_H1_USD,
+            "pre_wave_min_activity_h1": PRE_WAVE_MIN_ACTIVITY_H1,
+            "cex_spot_max_age_seconds": CEX_SPOT_MAX_AGE_SECONDS,
+            "multichain_max_age_seconds": MULTICHAIN_MAX_AGE_SECONDS,
+            "stale_multichain_or_spot_never_promotes": True,
             "evidence_ready_is_visible_but_does_not_auto_promote_to_real_alert": True,
             "late_move_or_pump_dump_never_real_alert": True,
-            "label_meaning": "REAL_ALERT means the system's strict research alert criteria are met; it is not a guarantee of profit or an instruction to buy.",
+            "label_meaning": "REAL_ALERT is strict manual review; PRE_WAVE_ALERT is an earlier manual-review warning, never an instruction or automatic trade.",
         },
         "watch_tracking": {
-            "version": WATCH_TRACKING_VERSION, "new_watch_ttl_hours": WATCH_NEW_TTL_HOURS,
-            "display_timezone": "Asia/Jerusalem", "new_watch_24h_count": new_watch_count,
-            "active_registry": active_registry, "baseline_keys": baseline_keys,
+            "version": WATCH_TRACKING_VERSION,
+            "new_watch_ttl_hours": WATCH_NEW_TTL_HOURS,
+            "display_timezone": "Asia/Jerusalem",
+            "new_watch_24h_count": new_watch_count,
+            "active_registry": active_registry,
+            "baseline_keys": baseline_keys,
         },
         "counts": {
-            "real_alerts": len(real_alerts), "near_alert_not_real": near_count,
-            "verified_watch_core": plain_watch_count, "blocked_verified_watch": blocked_count,
-            "verified_watch_not_real": len(verified_watch), "new_watch_24h": new_watch_count,
+            "real_alerts": len(real_alerts),
+            "pre_wave_alerts": len(pre_wave_alerts),
+            "near_alert_not_real": near_count,
+            "verified_watch_core": plain_watch_count,
+            "blocked_verified_watch": blocked_count,
+            "verified_watch_not_real": len(verified_watch),
+            "new_watch_24h": new_watch_count,
             "evidence_ready_research": evidence_ready_count,
             "identity_pending_not_actionable": len(identity_pending),
         },
         "latest_real_alert": real_alerts[0] if real_alerts else None,
+        "latest_pre_wave_alert": pre_wave_alerts[0] if pre_wave_alerts else None,
         "alerts": real_alerts,
+        "pre_wave_alerts": pre_wave_alerts[:50],
         "verified_watch": verified_watch[:50],
         "identity_pending": identity_pending[:50],
     }
 
 
+def _sanitize_pre_wave_rows(payload: dict, min_liq: float) -> tuple[list[dict], int]:
+    from .liquidity_truth_guard import annotate_row
+    kept = []
+    rejected = 0
+    for row in payload.get("pre_wave_alerts") or []:
+        if not isinstance(row, dict):
+            rejected += 1
+            continue
+        clean = annotate_row(row)
+        liq = _num(_first(clean.get("execution_pool_liquidity_usd"), clean.get("liquidity_usd")), 0)
+        h1 = _num(_first(clean.get("dex_volume_h1"), clean.get("volume_h1")), 0)
+        h24 = _num(_first(clean.get("dex_volume_h24"), clean.get("volume_h24")), 0)
+        concentrated_unverified = clean.get("concentrated_liquidity_pool") is True and clean.get("execution_depth_verified") is not True
+        if (
+            concentrated_unverified
+            or liq < min_liq
+            or (h1 < PRE_WAVE_MIN_DEX_VOLUME_H1_USD and h24 < PRE_WAVE_MIN_DEX_VOLUME_H24_USD)
+            or clean.get("exact_identity_verified") is not True
+            or clean.get("exact_pair_verified") is not True
+            or clean.get("market_age_verified") is not True
+            or clean.get("risk_reasons")
+        ):
+            rejected += 1
+            continue
+        clean["pre_wave_liquidity_guard_pass"] = True
+        kept.append(clean)
+    return kept, rejected
+
+
 def run(data_dir: Path = DATA) -> dict:
     from .liquidity_truth_guard import sanitize_real_alerts
+    cfg = Settings()
     path = data_dir / "real-alerts.json"
     payload = build(data_dir)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     sanitize_real_alerts(path)
     final_payload = _load(path, {})
+    pre_wave, rejected = _sanitize_pre_wave_rows(final_payload, cfg.verified_min_liquidity_usd)
+    final_payload["pre_wave_alerts"] = pre_wave[:50]
+    final_payload["latest_pre_wave_alert"] = pre_wave[0] if pre_wave else None
+    counts = final_payload.get("counts") if isinstance(final_payload.get("counts"), dict) else {}
+    counts["pre_wave_alerts"] = len(pre_wave)
+    counts["pre_wave_liquidity_guard_rejections"] = rejected
+    final_payload["counts"] = counts
     truth = final_payload.get("truth_contract") if isinstance(final_payload.get("truth_contract"), dict) else {}
     truth["producer_liquidity_sanitized_before_publish"] = True
+    truth["pre_wave_rows_liquidity_sanitized_before_publish"] = True
     final_payload["truth_contract"] = truth
     path.write_text(json.dumps(final_payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return final_payload.get("counts") or {}

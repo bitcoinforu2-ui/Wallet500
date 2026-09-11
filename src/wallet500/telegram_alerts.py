@@ -20,6 +20,9 @@ MIN_MARKET_AGE_DAYS = CANONICAL_MIN_MARKET_AGE_DAYS
 MIN_LIQUIDITY_USD = CANONICAL_MIN_EXECUTION_LIQUIDITY_USD
 MIN_VOLUME_H1_USD = 15_000.0
 MIN_ACTIVITY_H1 = 50
+PRE_WAVE_MIN_VOLUME_H1_USD = 1_000.0
+PRE_WAVE_MIN_CEX_CONFIRMATIONS = 3
+PRE_WAVE_MIN_CEX_EXCHANGES = 3
 ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
 
 
@@ -44,7 +47,7 @@ def _pair_key(row: dict) -> str:
     chain = str(row.get("chain") or "unknown").lower()
     token = str(row.get("token") or row.get("mint") or row.get("token_address") or "")
     pair = str(row.get("pair_address") or "")
-    if chain in {"ethereum", "bsc", "bnb", "eth"}:
+    if chain in {"ethereum", "bsc", "bnb", "eth", "base", "arbitrum", "optimism", "polygon", "avalanche"}:
         token, pair = token.lower(), pair.lower()
     return f"{chain}:{token}:{pair}"
 
@@ -133,6 +136,40 @@ def _is_actionable_real_alert(row: object) -> bool:
     return bool(isinstance(row, dict) and row.get("status") == "REAL_ALERT" and row.get("actionable_research_alert") is True)
 
 
+def _is_pre_wave_alert(row: object) -> bool:
+    if not isinstance(row, dict):
+        return False
+    if row.get("status") != "PRE_WAVE_ALERT" or row.get("user_alert_eligible") is not True:
+        return False
+    if row.get("manual_decision_only") is not True or row.get("automatic_buy") is not False:
+        return False
+    if row.get("research_only") is True or row.get("actionable_research_alert") is True:
+        return False
+    if row.get("exact_identity_verified") is not True or row.get("exact_pair_verified") is not True:
+        return False
+    if row.get("market_age_verified") is not True:
+        return False
+    try:
+        if int(row.get("market_age_days") or 0) < MIN_MARKET_AGE_DAYS:
+            return False
+        liq = float(row.get("execution_pool_liquidity_usd") or row.get("liquidity_usd") or 0)
+        volume = float(row.get("dex_volume_h1") or row.get("volume_h1") or 0)
+        spot_conf = int(row.get("cex_spot_confirmations") or 0)
+        spot_exchanges = len(set(row.get("cex_spot_exchanges") or []))
+    except (TypeError, ValueError):
+        return False
+    if liq < MIN_LIQUIDITY_USD or volume < PRE_WAVE_MIN_VOLUME_H1_USD:
+        return False
+    if spot_conf < PRE_WAVE_MIN_CEX_CONFIRMATIONS or spot_exchanges < PRE_WAVE_MIN_CEX_EXCHANGES:
+        return False
+    if row.get("risk_reasons"):
+        return False
+    gates = row.get("pre_wave_gates") if isinstance(row.get("pre_wave_gates"), dict) else {}
+    if gates.get("cex_spot_breadth") is not True or gates.get("multichain_market_activity") is not True:
+        return False
+    return True
+
+
 def _merge_display_context(active: dict, real: dict) -> dict:
     merged = dict(active)
     for key in (
@@ -205,6 +242,52 @@ def _message(row: dict, tier: str, sent_at: str | None = None, alert_event_id: s
     return "\n".join(lines)
 
 
+def _pre_wave_message(row: dict, sent_at: str | None = None, alert_event_id: str | None = None) -> str:
+    chain = str(row.get("chain") or "unknown").upper().replace("BSC", "BNB")
+    symbol = str(row.get("symbol") or row.get("name") or "UNKNOWN")
+    token = str(row.get("token_address") or row.get("token") or row.get("mint") or "unknown")
+    pair = str(row.get("pair_address") or "unknown")
+    dex = str(row.get("dex") or "unknown")
+    sent_at = sent_at or datetime.now(timezone.utc).isoformat()
+    gates = row.get("pre_wave_gates") if isinstance(row.get("pre_wave_gates"), dict) else {}
+    missing = list(row.get("full_real_alert_pending_gates") or [])
+    exchanges = list(row.get("cex_spot_exchanges") or [])
+    liquidity = row.get("execution_pool_liquidity_usd") or row.get("liquidity_usd")
+    volume = row.get("dex_volume_h1") or row.get("volume_h1")
+    price = row.get("price_usd")
+    dex_url = row.get("dex_url") or row.get("url") or ""
+    lines = [
+        "🔥🔥🔥 PRE-WAVE ALERT — WALLET500",
+        "⚠️ MANUAL REVIEW ONLY — NOT A BUY ORDER — NO AUTOMATIC TRADE",
+        f"📅 נשלח (ישראל): {_fmt_israel_time(sent_at)}",
+        f"🕒 אות מוקדם ראשון (ישראל): {_fmt_israel_time(row.get('first_alert_at'))}",
+    ]
+    if alert_event_id:
+        lines.append(f"🧾 Alert ID: {alert_event_id}")
+    lines.extend([
+        f"Token: {symbol}",
+        f"Chain: {chain}",
+        f"Contract: {token}",
+        f"Pair: {pair}",
+        f"DEX: {dex}",
+        "Exact identity + exact pair: PASS ✅",
+        f"Market age: ≥{int(row.get('market_age_days') or 0)}d ✅",
+        f"Price: {_fmt_money(price)}",
+        f"Liquidity: {_fmt_money(liquidity)} ✅",
+        f"DEX Volume 1H: {_fmt_money(volume)}",
+        f"CEX Spot score: {float(row.get('cex_spot_score') or 0):.1f}",
+        f"CEX confirmations: {int(row.get('cex_spot_confirmations') or 0)}",
+        f"CEX exchanges: {', '.join(map(str, exchanges)) if exchanges else 'n/a'}",
+        f"Spot 24H move at detection: {gates.get('spot_change_24h_max_pct') if gates.get('spot_change_24h_max_pct') is not None else 'n/a'}%",
+        "On-chain activity before full production confirmation: PASS ✅",
+        f"Full REAL ALERT still pending: {', '.join(map(str, missing)) if missing else 'none'}",
+        "Verified Intelligence. The Pure Truth.",
+    ])
+    if dex_url:
+        lines.append(f"🔗 OPEN DEX: {dex_url}")
+    return "\n".join(lines)
+
+
 def _send(bot_token: str, chat_id: str, text: str, max_attempts: int = 3) -> tuple[int | None, int]:
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     body = urllib.parse.urlencode({"chat_id": chat_id, "text": text, "disable_web_page_preview": "true"}).encode("utf-8")
@@ -243,25 +326,35 @@ def run() -> dict:
     state_path = out / "telegram-alert-state.json"
     if not isinstance(candidates, list):
         candidates = []
+
     real_rows = list(real_payload.get("alerts") or []) if isinstance(real_payload, dict) else []
+    pre_wave_rows = list(real_payload.get("pre_wave_alerts") or []) if isinstance(real_payload, dict) else []
     real_index = {_pair_key(row): row for row in real_rows if isinstance(row, dict) and _is_actionable_real_alert(row)}
+
     state = _load(state_path, {})
     if not isinstance(state, dict):
         state = {}
     sent = state.get("sent") if isinstance(state.get("sent"), dict) else {}
+
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
     configured = bool(bot_token and chat_id)
     if not configured:
         existing = _load(out / "telegram-alert-report.json", {})
-        skipped = {"status": "SKIPPED_UNCONFIGURED_NO_STATE_WRITE", "reason": "TELEGRAM_SECRETS_NOT_PRESENT_IN_THIS_LANE", "preserved_existing_report": isinstance(existing, dict) and bool(existing)}
+        skipped = {
+            "status": "SKIPPED_UNCONFIGURED_NO_STATE_WRITE",
+            "reason": "TELEGRAM_SECRETS_NOT_PRESENT_IN_THIS_LANE",
+            "preserved_existing_report": isinstance(existing, dict) and bool(existing),
+        }
         print(json.dumps(skipped, indent=2))
         return existing if isinstance(existing, dict) else skipped
 
     now = datetime.now(timezone.utc).isoformat()
     now_israel = _fmt_israel_time(now)
     delivered, eligible, errors = [], [], []
-    active_now: set[str] = set()
+    active_real_now: set[str] = set()
+    active_pre_wave_now: set[str] = set()
+
     for row in candidates:
         if not isinstance(row, dict):
             continue
@@ -272,43 +365,157 @@ def run() -> dict:
         real = real_index.get(key)
         if not _is_actionable_real_alert(real):
             continue
-        active_now.add(key)
+        active_real_now.add(key)
         display = _merge_display_context(row, real)
         fingerprint = f"REAL_ALERT:{tier}:{_norm_addr(row.get('locked_pair_address'))}"
-        eligible.append({"key": key, "tier": tier, "symbol": display.get("symbol"), "pair_address": row.get("pair_address"), "market_age_min_days": row.get("market_age_min_days"), "promotion": "EVIDENCE_READY_TO_ACTIONABLE" if display.get("evidence_ready") else "VERIFIED_TO_ACTIONABLE", "dex_url": display.get("dex_url") or display.get("url")})
+        eligible.append({
+            "alert_type": "REAL_ALERT",
+            "key": key,
+            "tier": tier,
+            "symbol": display.get("symbol"),
+            "pair_address": row.get("pair_address"),
+            "market_age_min_days": row.get("market_age_min_days"),
+            "promotion": "EVIDENCE_READY_TO_ACTIONABLE" if display.get("evidence_ready") else "VERIFIED_TO_ACTIONABLE",
+            "dex_url": display.get("dex_url") or display.get("url"),
+        })
         previous = sent.get(key) if isinstance(sent.get(key), dict) else {}
         if previous.get("actionable") is True:
             continue
         event_id = _alert_event_id(key, now)
         try:
             telegram_message_id, attempts = _send(bot_token, chat_id, _message(display, tier, sent_at=now, alert_event_id=event_id))
-            sent[key] = {"fingerprint": fingerprint, "alert_event_id": event_id, "telegram_message_id": telegram_message_id, "delivery_attempts": attempts, "tier": tier, "symbol": display.get("symbol"), "pair_address": row.get("pair_address"), "actionable": True, "sent_at": now, "sent_at_israel": now_israel, "dex_url": display.get("dex_url") or display.get("url")}
-            delivered.append({"key": key, "alert_event_id": event_id, "telegram_message_id": telegram_message_id, "delivery_attempts": attempts, "tier": tier, "symbol": display.get("symbol"), "pair_address": row.get("pair_address"), "sent_at": now, "sent_at_israel": now_israel, "dex_url": display.get("dex_url") or display.get("url")})
+            sent[key] = {
+                "fingerprint": fingerprint,
+                "alert_event_id": event_id,
+                "telegram_message_id": telegram_message_id,
+                "delivery_attempts": attempts,
+                "tier": tier,
+                "symbol": display.get("symbol"),
+                "pair_address": row.get("pair_address"),
+                "actionable": True,
+                "sent_at": now,
+                "sent_at_israel": now_israel,
+                "dex_url": display.get("dex_url") or display.get("url"),
+            }
+            delivered.append({
+                "alert_type": "REAL_ALERT",
+                "key": key,
+                "alert_event_id": event_id,
+                "telegram_message_id": telegram_message_id,
+                "delivery_attempts": attempts,
+                "tier": tier,
+                "symbol": display.get("symbol"),
+                "pair_address": row.get("pair_address"),
+                "sent_at": now,
+                "sent_at_israel": now_israel,
+                "dex_url": display.get("dex_url") or display.get("url"),
+            })
         except Exception as exc:
-            errors.append({"key": key, "alert_event_id": event_id, "error": f"{type(exc).__name__}: {exc}"[:300]})
+            errors.append({"alert_type": "REAL_ALERT", "key": key, "alert_event_id": event_id, "error": f"{type(exc).__name__}: {exc}"[:300]})
+
+    for row in pre_wave_rows:
+        if not _is_pre_wave_alert(row):
+            continue
+        key = _pair_key(row)
+        state_key = f"PRE_WAVE:{key}"
+        active_pre_wave_now.add(state_key)
+        eligible.append({
+            "alert_type": "PRE_WAVE_ALERT",
+            "key": key,
+            "tier": "PRE_WAVE",
+            "symbol": row.get("symbol"),
+            "pair_address": row.get("pair_address"),
+            "market_age_min_days": row.get("market_age_days"),
+            "promotion": "EARLY_MANUAL_REVIEW",
+            "dex_url": row.get("dex_url") or row.get("url"),
+        })
+        previous = sent.get(state_key) if isinstance(sent.get(state_key), dict) else {}
+        if previous.get("pre_wave_active") is True:
+            continue
+        event_id = _alert_event_id(state_key, now)
+        try:
+            telegram_message_id, attempts = _send(bot_token, chat_id, _pre_wave_message(row, sent_at=now, alert_event_id=event_id))
+            sent[state_key] = {
+                "fingerprint": f"PRE_WAVE:{_norm_addr(row.get('pair_address'))}",
+                "alert_event_id": event_id,
+                "telegram_message_id": telegram_message_id,
+                "delivery_attempts": attempts,
+                "tier": "PRE_WAVE",
+                "symbol": row.get("symbol"),
+                "pair_address": row.get("pair_address"),
+                "pre_wave_active": True,
+                "actionable": False,
+                "sent_at": now,
+                "sent_at_israel": now_israel,
+                "dex_url": row.get("dex_url") or row.get("url"),
+            }
+            delivered.append({
+                "alert_type": "PRE_WAVE_ALERT",
+                "key": key,
+                "alert_event_id": event_id,
+                "telegram_message_id": telegram_message_id,
+                "delivery_attempts": attempts,
+                "tier": "PRE_WAVE",
+                "symbol": row.get("symbol"),
+                "pair_address": row.get("pair_address"),
+                "sent_at": now,
+                "sent_at_israel": now_israel,
+                "dex_url": row.get("dex_url") or row.get("url"),
+            })
+        except Exception as exc:
+            errors.append({"alert_type": "PRE_WAVE_ALERT", "key": key, "alert_event_id": event_id, "error": f"{type(exc).__name__}: {exc}"[:300]})
 
     for key, info in list(sent.items()):
-        if isinstance(info, dict) and info.get("actionable") is True and key not in active_now:
+        if not isinstance(info, dict):
+            continue
+        if key.startswith("PRE_WAVE:"):
+            if info.get("pre_wave_active") is True and key not in active_pre_wave_now:
+                info["pre_wave_active"] = False
+                info["cleared_at"] = now
+                sent[key] = info
+        elif info.get("actionable") is True and key not in active_real_now:
             info["actionable"] = False
             info["cleared_at"] = now
             sent[key] = info
+
     if len(sent) > 5000:
         sent = dict(sorted(sent.items(), key=lambda kv: kv[1].get("sent_at", "") if isinstance(kv[1], dict) else "", reverse=True)[:5000])
 
     report = {
-        "version": 11,
+        "version": 12,
         "updated_at": now,
         "updated_at_israel": now_israel,
         "configured": True,
-        "candidate_count": len(candidates), "real_alert_count": len(real_rows), "eligible_count": len(eligible),
-        "delivered_count": len(delivered), "error_count": len(errors), "eligible": eligible, "delivered": delivered, "errors": errors,
+        "candidate_count": len(candidates),
+        "real_alert_count": len(real_rows),
+        "pre_wave_alert_count": len(pre_wave_rows),
+        "eligible_count": len(eligible),
+        "delivered_count": len(delivered),
+        "error_count": len(errors),
+        "eligible": eligible,
+        "delivered": delivered,
+        "errors": errors,
         "policy": {
             "source": source_name,
             "real_alert_source": real_source_name,
-            "lane": "PRODUCTION_REAL_ALERT_TELEGRAM",
+            "lane": "PRODUCTION_REAL_ALERT_PLUS_PRE_WAVE_TELEGRAM",
             "canonical_policy_source": "wallet500.policy",
-            "transition_rule": "send once when an exact-pair candidate ENTERS actionable REAL_ALERT; re-arm after it leaves actionable state",
-            "requires": [
+            "transition_rule": "send once when exact-pair candidate enters actionable REAL_ALERT or fail-closed PRE_WAVE manual-review state; re-arm after it leaves that state",
+            "research_only_notifications": "FORBIDDEN",
+            "pre_wave": {
+                "meaning": "earlier manual-review warning, separate from REAL_ALERT and never a buy instruction",
+                "requires": [
+                    "status=PRE_WAVE_ALERT and user_alert_eligible=true",
+                    "research_only=false and actionable_research_alert=false and automatic_buy=false",
+                    "exact identity + exact pair + verified market age >=180d",
+                    f"verified execution liquidity>={int(MIN_LIQUIDITY_USD)}",
+                    f"DEX volume_h1>={int(PRE_WAVE_MIN_VOLUME_H1_USD)}",
+                    f"CEX spot confirmations>={PRE_WAVE_MIN_CEX_CONFIRMATIONS} across >= {PRE_WAVE_MIN_CEX_EXCHANGES} exchanges",
+                    "multichain on-chain activity gate=true and risk clear",
+                ],
+                "format": "three fire symbols + explicit manual review / not a buy order",
+            },
+            "real_alert_requires": [
                 "matching real-alerts.json row with status=REAL_ALERT and actionable_research_alert=true",
                 "market_age_verified=true", f"market_age_min_days>={MIN_MARKET_AGE_DAYS}",
                 "qualification=QUALIFIED or REVIVAL_QUALIFIED", "live_survival_gate=ACTIVE", "pump_dump_blocked=false",
@@ -318,11 +525,11 @@ def run() -> dict:
             ],
             "research_90d_15k_lane": "SEPARATE_NON_PRODUCTION_LANE; NEVER REDEFINES REAL_ALERT",
             "high_conviction": f"score>=90, verified_execution_liquidity>={int(MIN_LIQUIDITY_USD)}, volume_h1>=30000, risk=LOW",
-            "manual_execution": "Telegram is a review alert only; no automatic trade is executed",
-            "dedupe": "one alert per transition into actionable state for chain+token+exact_pair",
+            "manual_execution": "Telegram alerts are review alerts only; no automatic trade is executed",
+            "dedupe": "separate transition state for REAL_ALERT and PRE_WAVE per chain+token+exact_pair; later REAL_ALERT remains independently deliverable",
             "telegram_timestamp": "every delivered message includes explicit Asia/Jerusalem send date/time plus original signal T0",
             "delivery_retries": "up to 3 attempts on transient Telegram/network failures",
-            "audit_id": "each delivery has a stable alert_event_id derived from exact-pair key plus send timestamp",
+            "audit_id": "each delivery has a stable alert_event_id derived from exact-pair stage key plus send timestamp",
             "state_writer": "only configured production lanes may write Telegram state/report; unconfigured scan lanes are read-only no-ops",
         },
     }

@@ -3,11 +3,24 @@ from wallet500.signal_alert_guard import apply
 
 def real_payload():
     return {
-        "counts": {"real_alerts": 1, "verified_watch_not_real": 0},
+        "counts": {"real_alerts": 1, "verified_watch_not_real": 0, "pre_wave_alerts": 1},
         "truth_contract": {},
         "alerts": [{
             "status": "REAL_ALERT",
             "actionable_research_alert": True,
+            "chain": "solana",
+            "token_address": "MINT",
+            "pair_address": "PAIR",
+            "symbol": "OLD",
+            "blockers": [],
+        }],
+        "pre_wave_alerts": [{
+            "status": "PRE_WAVE_ALERT",
+            "user_alert_eligible": True,
+            "manual_decision_only": True,
+            "automatic_buy": False,
+            "research_only": False,
+            "actionable_research_alert": False,
             "chain": "solana",
             "token_address": "MINT",
             "pair_address": "PAIR",
@@ -42,18 +55,29 @@ def signal(safe=True, validated=False):
 def test_healthy_signal_intelligence_enriches_without_changing_gate():
     out = apply(real_payload(), signal(True))
     assert out["counts"]["real_alerts"] == 1
+    assert out["counts"]["pre_wave_alerts"] == 1
     row = out["alerts"][0]
     assert row["status"] == "REAL_ALERT"
     assert row["revival_phase"]["phase"] == "WAKING"
     assert row["wallet_intent"]["label"] == "CLUSTER_ACCUMULATION"
+    pre = out["pre_wave_alerts"][0]
+    assert pre["status"] == "PRE_WAVE_ALERT"
+    assert pre["user_alert_eligible"] is True
+    assert pre["revival_phase"]["phase"] == "WAKING"
     assert out["truth_contract"]["self_learning_can_rank_but_never_auto_promote"] is True
 
 
-def test_degraded_required_data_demotes_every_real_alert_fail_closed():
+def test_degraded_required_data_demotes_every_real_alert_fail_closed_and_suppresses_prewave():
     out = apply(real_payload(), signal(False))
     assert out["counts"]["real_alerts"] == 0
+    assert out["counts"]["pre_wave_alerts"] == 0
     assert out["counts"]["data_degraded_demotions"] == 1
+    assert out["counts"]["data_degraded_pre_wave_suppressions"] == 1
     row = out["verified_watch"][0]
     assert row["status"] == "DATA_DEGRADED_NOT_REAL_ALERT"
     assert row["actionable_research_alert"] is False
     assert "DATA_DEGRADED_FAIL_CLOSED" in row["blockers"]
+    suppressed = out["suppressed_pre_wave_alerts"][0]
+    assert suppressed["status"] == "DATA_DEGRADED_PRE_WAVE_SUPPRESSED"
+    assert suppressed["user_alert_eligible"] is False
+    assert "DATA_DEGRADED_FAIL_CLOSED" in suppressed["blockers"]
