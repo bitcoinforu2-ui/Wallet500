@@ -126,6 +126,19 @@ def _summarize_target(target: dict) -> dict:
     }
 
 
+def _truth_contract() -> dict:
+    return {
+        "focus": "VETERAN_COIN_REVIVAL_ONLY",
+        "exact_token_and_pair_required": True,
+        "risk_blocked_candidates_excluded": True,
+        "symbol_or_name_only_context_never_promotes_gate": True,
+        "exact_contract_pair_or_verified_official_context_required_for_evidence": True,
+        "deep_live_search_never_bypasses_strong_decision_gate": True,
+        "missing_provider_means_unknown_not_zero": True,
+        "empty_current_set_must_publish_fresh_snapshot": True,
+    }
+
+
 def run(data_dir: str | Path = DATA) -> dict:
     data = Path(data_dir)
     now = datetime.now(timezone.utc).isoformat()
@@ -134,16 +147,25 @@ def run(data_dir: str | Path = DATA) -> dict:
     previous = _load(data / OUTPUT.name, {})
 
     if not urgent:
-        return {
+        payload = {
             "version": 1,
             "mode": MODE,
             "generated_at": now,
             "triggered": False,
+            "trigger_rule": "EVERY_VERIFIED_VETERAN_CANDIDATE_AT_EXACTLY_6_OF_7_READINESS",
             "candidate_count": 0,
-            "candidates": [],
+            "candidate_identities": [],
+            "meaningful_changes": [],
+            "targets": [],
+            "snapshot_status": "CURRENT_EMPTY",
+            "previous_generated_at": previous.get("generated_at") if isinstance(previous, dict) else None,
+            "stale_snapshot_prevented": True,
             "production_effect": False,
             "automatic_buy": False,
+            "truth_contract": _truth_contract(),
         }
+        _write(data / OUTPUT.name, payload)
+        return payload
 
     envelope_path = data / "candidate-evidence-envelope.json"
     original_text = envelope_path.read_text(encoding="utf-8") if envelope_path.exists() else None
@@ -198,17 +220,11 @@ def run(data_dir: str | Path = DATA) -> dict:
         ],
         "meaningful_changes": changed,
         "targets": targets,
+        "snapshot_status": "CURRENT_ACTIVE",
+        "stale_snapshot_prevented": True,
         "production_effect": False,
         "automatic_buy": False,
-        "truth_contract": {
-            "focus": "VETERAN_COIN_REVIVAL_ONLY",
-            "exact_token_and_pair_required": True,
-            "risk_blocked_candidates_excluded": True,
-            "symbol_or_name_only_context_never_promotes_gate": True,
-            "exact_contract_pair_or_verified_official_context_required_for_evidence": True,
-            "deep_live_search_never_bypasses_strong_decision_gate": True,
-            "missing_provider_means_unknown_not_zero": True,
-        },
+        "truth_contract": _truth_contract(),
     }
     _write(data / OUTPUT.name, payload)
     return payload
@@ -219,6 +235,7 @@ def main() -> None:
     print(json.dumps({
         "triggered": payload.get("triggered"),
         "candidate_count": payload.get("candidate_count"),
+        "snapshot_status": payload.get("snapshot_status"),
         "meaningful_changes": payload.get("meaningful_changes", []),
     }, ensure_ascii=False))
 
