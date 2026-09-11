@@ -49,7 +49,9 @@ def _identity(row: dict) -> tuple[str, str, str]:
 
 
 def _rows(payload: dict) -> list[dict]:
-    for key in ("alerts", "targets", "coins", "candidates", "rows"):
+    # Each feed has one canonical row collection. PRE-T0 calls it
+    # active_deep_watch; treating it as zero hid a denominator mismatch.
+    for key in ("alerts", "targets", "active_deep_watch", "coins", "candidates", "rows"):
         value = payload.get(key)
         if isinstance(value, list):
             return [x for x in value if isinstance(x, dict)]
@@ -69,6 +71,7 @@ def build(data_dir: str | Path = "data", now: str | None = None) -> dict:
         payload = _load(p)
         stamp = _dt(payload.get("generated_at"))
         age = None if stamp is None else max(0.0, (now_dt - stamp).total_seconds() / 60.0)
+        rows = _rows(payload)
         feeds[lane] = {
             "file": name,
             "present": p.exists(),
@@ -79,11 +82,11 @@ def build(data_dir: str | Path = "data", now: str | None = None) -> dict:
             "mode": payload.get("mode"),
             "no_hindsight": payload.get("no_hindsight"),
             "production_portfolio_impact": payload.get("production_portfolio_impact"),
-            "count": len(_rows(payload)),
+            "count": len(rows),
         }
         if not payload:
             findings.append({"severity": "CRITICAL", "code": "FEED_MISSING_OR_INVALID", "feed": lane})
-        for row in _rows(payload):
+        for row in rows:
             ident = _identity(row)
             if ident[1] and ident[2]:
                 identities.setdefault(ident, []).append(lane)
