@@ -24,7 +24,7 @@ def _load_json(path: Path) -> dict:
 
 
 def _insight_priority_candidates(previous: dict | None = None, *, slots: int = INSIGHT_PRIORITY_SLOTS) -> list[dict]:
-    """Select current exact-pair coverage gaps for forward-only deep wallet monitoring."""
+    """Schedule current exact-pair coverage gaps for forward-only deep wallet monitoring only."""
     insight = _load_json(WALLET_INSIGHT)
     if (
         insight.get("version") != "WALLET500_WALLET_INSIGHT_REVIEW_V1"
@@ -46,7 +46,7 @@ def _insight_priority_candidates(previous: dict | None = None, *, slots: int = I
     prior = {
         str(row.get("token_address") or "")
         for row in ((previous or {}).get("tokens") or [])
-        if isinstance(row, dict) and row.get("selection_lane") == "WALLET_COVERAGE_GAP_PRIORITY"
+        if isinstance(row, dict) and isinstance(row.get("wallet_insight_bridge"), dict)
     }
     eligible: list[dict] = []
     for row in insight.get("rows") or []:
@@ -65,7 +65,7 @@ def _insight_priority_candidates(previous: dict | None = None, *, slots: int = I
             "token_address": mint,
             "symbol": row.get("symbol"),
             "pair_address": pair,
-            "reason": "WALLET_INSIGHT_CURRENT_COVERAGE_PRIORITY",
+            "reason": "PRE_WAKING_DEEP_WATCH",
             "activity_tier": "CURRENT_EXACT_PAIR_COVERAGE_GAP",
             "activity_rank": 3,
             "exact_pair_liquidity_usd": 0.0,
@@ -90,7 +90,7 @@ def _install_insight_bridge() -> dict:
         return priority + [row for row in normal if row.get("token_address") not in priority_tokens]
 
     pre._ranked_candidates = bridged
-    return {"eligible_selected": len(priority), "selected_tokens": [row["token_address"] for row in priority], "source": str(WALLET_INSIGHT)}
+    return {"eligible_selected": len(priority), "selected_tokens": [row["token_address"] for row in priority]}
 
 
 def _fetch_transactions_resilient(rows: list[dict], mint: str) -> tuple[list[dict], int]:
@@ -131,9 +131,14 @@ def run() -> dict:
     bridge_tokens = set(bridge["selected_tokens"])
     for row in payload.get("tokens") or []:
         if str(row.get("token_address") or "") in bridge_tokens:
-            row["selection_lane"] = "WALLET_COVERAGE_GAP_PRIORITY"
-            row["target_reason"] = "WALLET_INSIGHT_CURRENT_COVERAGE_PRIORITY"
-            row["wallet_insight_bridge"] = {"scheduling_only": True, "current_exact_pair_coverage_required": True, "production_effect": False}
+            row["wallet_insight_bridge"] = {
+                "source_reason": "CURRENT_EXACT_PAIR_COVERAGE_WITHOUT_DEEP_WALLET_ROW",
+                "scheduling_only": True,
+                "current_exact_pair_coverage_required": True,
+                "production_effect": False,
+                "automatic_buy": False,
+                "no_hindsight": True,
+            }
 
     truth = payload.get("truth_contract") if isinstance(payload.get("truth_contract"), dict) else {}
     truth.update({
