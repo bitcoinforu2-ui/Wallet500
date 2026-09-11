@@ -1,4 +1,6 @@
-from wallet500.six_of_seven_live_intelligence import select_six_of_seven
+import json
+
+from wallet500.six_of_seven_live_intelligence import run, select_six_of_seven
 
 
 def _row(**overrides):
@@ -46,3 +48,24 @@ def test_any_single_missing_gate_is_eligible_for_deep_intelligence():
     out = select_six_of_seven({"verified_watch": [_row(missing_gates=["INDEPENDENT_CONFIRMATION"]) ]})
     assert len(out) == 1
     assert out[0]["deep_live_missing_gate"] == "INDEPENDENT_CONFIRMATION"
+
+
+def test_empty_current_set_overwrites_stale_snapshot(tmp_path):
+    (tmp_path / "real-alerts.json").write_text(json.dumps({"verified_watch": []}), encoding="utf-8")
+    (tmp_path / "six-of-seven-live-intelligence.json").write_text(json.dumps({
+        "generated_at": "2026-09-10T00:00:00+00:00",
+        "triggered": True,
+        "candidate_count": 1,
+        "candidate_identities": [{"symbol": "RAY"}],
+    }), encoding="utf-8")
+
+    payload = run(tmp_path)
+    written = json.loads((tmp_path / "six-of-seven-live-intelligence.json").read_text(encoding="utf-8"))
+
+    assert payload["triggered"] is False
+    assert payload["candidate_count"] == 0
+    assert payload["snapshot_status"] == "CURRENT_EMPTY"
+    assert payload["stale_snapshot_prevented"] is True
+    assert payload["previous_generated_at"] == "2026-09-10T00:00:00+00:00"
+    assert written["candidate_identities"] == []
+    assert written["truth_contract"]["empty_current_set_must_publish_fresh_snapshot"] is True
