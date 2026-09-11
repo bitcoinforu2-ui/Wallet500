@@ -9,10 +9,11 @@ on:
 permissions:
   contents: write
 
-# Derived analysis may run independently. Publishing is path-scoped and atomic,
-# so unrelated writers cannot make this workflow fail or lose its output.
+# This output is also part of the active 6-of-7 war-room snapshot.
+# Serialize all writers that can publish the same file so the atomic publisher
+# does not repeatedly fail closed on a legitimate concurrent refresh.
 concurrency:
-  group: wallet500-organic-social-acceleration
+  group: wallet500-live-scan-publisher
   cancel-in-progress: false
 
 jobs:
