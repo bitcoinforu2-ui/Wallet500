@@ -3,7 +3,10 @@ name: Wallet500 Revival PRE-T0 Evidence
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/5 * * * *'
+    # Keep the 5-minute cadence but avoid the repo-wide */5 publisher burst.
+    # This coherent immutable snapshot must win one clean main ref update; shifting
+    # by two minutes reduces branch-head races without weakening any truth gate.
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
   pull_request:
     paths:
       - 'src/wallet500/revival_pre_t0_evidence.py'
