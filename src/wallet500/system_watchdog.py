@@ -101,6 +101,29 @@ def github_live_status(token: str | None = None) -> dict[str, Any]:
     completed = [r for r in runs if r.get("status") == "completed"]
     successes = [r for r in completed if r.get("conclusion") == "success"]
     last_success = successes[0] if successes else {}
+
+    # A single cancelled dispatch is not equivalent to a scanner failure. GitHub can
+    # cancel/replace a queued dispatch before a job starts. Health is anchored to the
+    # last real success; cancellations are escalated only when they repeat or success
+    # itself becomes stale. Real execution failures are still reported immediately.
+    recent_after_success: list[dict[str, Any]] = []
+    last_success_id = last_success.get("id")
+    for run in runs:
+        if last_success_id is not None and run.get("id") == last_success_id:
+            break
+        recent_after_success.append(run)
+
+    cancellations = [
+        r for r in recent_after_success
+        if r.get("status") == "completed" and r.get("conclusion") == "cancelled"
+    ]
+    hard_failures = [
+        r for r in recent_after_success
+        if r.get("status") == "completed"
+        and r.get("conclusion") not in {"success", "skipped", "neutral", "cancelled", None}
+    ]
+    latest_hard_failure = hard_failures[0] if hard_failures else {}
+
     return {
         "latest_status": latest.get("status"),
         "latest_conclusion": latest.get("conclusion"),
@@ -109,6 +132,11 @@ def github_live_status(token: str | None = None) -> dict[str, Any]:
         "latest_run_id": latest.get("id"),
         "last_success_at": last_success.get("updated_at") or last_success.get("created_at"),
         "last_success_run_id": last_success.get("id"),
+        "cancellations_since_success": len(cancellations),
+        "latest_cancelled_run_id": cancellations[0].get("id") if cancellations else None,
+        "latest_hard_failure_conclusion": latest_hard_failure.get("conclusion"),
+        "latest_hard_failure_run_id": latest_hard_failure.get("id"),
+        "active_run_count": sum(1 for r in recent_after_success if r.get("status") in {"queued", "in_progress", "waiting", "pending"}),
     }
 
 
@@ -181,10 +209,15 @@ def build_report(
     if gh is not None:
         checks["github_live_scan"] = gh
         success_age = _age_seconds(gh.get("last_success_at"), now)
-        if success_age is None or success_age > 45 * 60:
+        success_stale = success_age is None or success_age > 45 * 60
+        if success_stale:
             incidents.append(_incident("LIVE_SCAN_LAST_SUCCESS_STALE", "CRITICAL", f"last successful Live Scan age={round(success_age,1) if success_age is not None else 'missing'}s", run_id=gh.get("last_success_run_id")))
-        if gh.get("latest_status") == "completed" and gh.get("latest_conclusion") not in {"success", "skipped", None}:
-            incidents.append(_incident("LIVE_SCAN_LATEST_FAILED", "HIGH", f"latest Live Scan conclusion={gh.get('latest_conclusion')}", run_id=gh.get("latest_run_id")))
+        else:
+            hard_failure = gh.get("latest_hard_failure_conclusion")
+            if hard_failure:
+                incidents.append(_incident("LIVE_SCAN_EXECUTION_FAILED", "HIGH", f"Live Scan execution conclusion={hard_failure} after last success", run_id=gh.get("latest_hard_failure_run_id")))
+            elif int(gh.get("cancellations_since_success") or 0) >= 2:
+                incidents.append(_incident("LIVE_SCAN_REPEATED_CANCELLATIONS", "HIGH", f"Live Scan cancelled {int(gh.get('cancellations_since_success') or 0)} times since last success", run_id=gh.get("latest_cancelled_run_id")))
 
     if public is not None:
         checks["public_surface"] = public
@@ -245,6 +278,7 @@ def build_report(
             "INCIDENTS_ARE_DEDUPED_AND_RATE_LIMITED",
             "CURRENT_REAL_ALERTS_ARE_BASELINED_ON_FIRST_WATCHDOG_RUN",
             "NEW_REAL_ALERT_TELEGRAM_GAPS_ARE_DETECTED_BY_EXACT_PAIR_TRANSITION",
+            "SINGLE_LIVE_SCAN_CANCELLATION_IS_TRANSIENT_WHILE_LAST_SUCCESS_IS_FRESH",
         ],
     }
     return report, next_state
