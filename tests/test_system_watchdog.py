@@ -1,7 +1,8 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from wallet500 import system_watchdog as watchdog
 from wallet500.system_watchdog import build_report
 
 
@@ -77,3 +78,103 @@ def test_healthy_fresh_snapshot_has_no_incidents(tmp_path):
     assert report["overall"] == "HEALTHY"
     assert report["incident_count"] == 0
     assert report["new_notifications"] == []
+
+
+def test_single_cancelled_live_scan_is_transient_when_success_is_fresh(tmp_path):
+    now = datetime(2026, 9, 11, 6, 15, tzinfo=timezone.utc)
+    seed(tmp_path, now)
+    gh = {
+        "latest_status": "completed",
+        "latest_conclusion": "cancelled",
+        "latest_run_id": 200,
+        "last_success_at": (now - timedelta(minutes=15)).isoformat(),
+        "last_success_run_id": 199,
+        "cancellations_since_success": 1,
+        "latest_cancelled_run_id": 200,
+        "latest_hard_failure_conclusion": None,
+        "latest_hard_failure_run_id": None,
+        "active_run_count": 0,
+    }
+    report, _ = build_report(tmp_path, now=now, state={}, gh=gh)
+    assert "LIVE_SCAN_EXECUTION_FAILED" not in codes(report)
+    assert "LIVE_SCAN_REPEATED_CANCELLATIONS" not in codes(report)
+    assert "LIVE_SCAN_LAST_SUCCESS_STALE" not in codes(report)
+    assert report["overall"] == "HEALTHY"
+
+
+def test_repeated_live_scan_cancellations_degrade_before_success_goes_stale(tmp_path):
+    now = datetime(2026, 9, 11, 6, 15, tzinfo=timezone.utc)
+    seed(tmp_path, now)
+    gh = {
+        "latest_status": "completed",
+        "latest_conclusion": "cancelled",
+        "latest_run_id": 201,
+        "last_success_at": (now - timedelta(minutes=20)).isoformat(),
+        "last_success_run_id": 199,
+        "cancellations_since_success": 2,
+        "latest_cancelled_run_id": 201,
+        "latest_hard_failure_conclusion": None,
+        "latest_hard_failure_run_id": None,
+        "active_run_count": 0,
+    }
+    report, _ = build_report(tmp_path, now=now, state={}, gh=gh)
+    assert "LIVE_SCAN_REPEATED_CANCELLATIONS" in codes(report)
+    assert report["overall"] == "DEGRADED"
+
+
+def test_real_live_scan_execution_failure_is_reported_with_fresh_prior_success(tmp_path):
+    now = datetime(2026, 9, 11, 6, 15, tzinfo=timezone.utc)
+    seed(tmp_path, now)
+    gh = {
+        "latest_status": "completed",
+        "latest_conclusion": "failure",
+        "latest_run_id": 202,
+        "last_success_at": (now - timedelta(minutes=10)).isoformat(),
+        "last_success_run_id": 199,
+        "cancellations_since_success": 0,
+        "latest_cancelled_run_id": None,
+        "latest_hard_failure_conclusion": "failure",
+        "latest_hard_failure_run_id": 202,
+        "active_run_count": 0,
+    }
+    report, _ = build_report(tmp_path, now=now, state={}, gh=gh)
+    assert "LIVE_SCAN_EXECUTION_FAILED" in codes(report)
+    assert report["overall"] == "DEGRADED"
+
+
+def test_stale_last_success_is_critical_even_if_latest_run_was_only_cancelled(tmp_path):
+    now = datetime(2026, 9, 11, 6, 15, tzinfo=timezone.utc)
+    seed(tmp_path, now)
+    gh = {
+        "latest_status": "completed",
+        "latest_conclusion": "cancelled",
+        "latest_run_id": 203,
+        "last_success_at": (now - timedelta(minutes=46)).isoformat(),
+        "last_success_run_id": 190,
+        "cancellations_since_success": 1,
+        "latest_cancelled_run_id": 203,
+        "latest_hard_failure_conclusion": None,
+        "latest_hard_failure_run_id": None,
+        "active_run_count": 0,
+    }
+    report, _ = build_report(tmp_path, now=now, state={}, gh=gh)
+    assert "LIVE_SCAN_LAST_SUCCESS_STALE" in codes(report)
+    assert "LIVE_SCAN_REPEATED_CANCELLATIONS" not in codes(report)
+    assert report["overall"] == "CRITICAL"
+
+
+def test_github_live_status_separates_cancelled_dispatch_from_real_failure(monkeypatch):
+    payload = {
+        "workflow_runs": [
+            {"id": 303, "status": "in_progress", "conclusion": None, "created_at": "2026-09-11T06:14:00Z", "updated_at": "2026-09-11T06:14:30Z"},
+            {"id": 302, "status": "completed", "conclusion": "cancelled", "created_at": "2026-09-11T06:00:00Z", "updated_at": "2026-09-11T06:08:00Z"},
+            {"id": 301, "status": "completed", "conclusion": "success", "created_at": "2026-09-11T05:45:00Z", "updated_at": "2026-09-11T05:55:00Z"},
+            {"id": 300, "status": "completed", "conclusion": "failure", "created_at": "2026-09-11T05:30:00Z", "updated_at": "2026-09-11T05:40:00Z"},
+        ]
+    }
+    monkeypatch.setattr(watchdog, "_http_json", lambda *args, **kwargs: payload)
+    status = watchdog.github_live_status()
+    assert status["last_success_run_id"] == 301
+    assert status["cancellations_since_success"] == 1
+    assert status["latest_hard_failure_conclusion"] is None
+    assert status["active_run_count"] == 1
