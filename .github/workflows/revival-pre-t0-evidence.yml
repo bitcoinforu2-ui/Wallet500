@@ -36,11 +36,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
       - name: Sync capture base to latest main
         if: github.event_name != 'pull_request'
         run: |
-          git fetch origin main
+          git fetch --depth=1 origin main
           git reset --hard origin/main
       - uses: actions/setup-python@v5
         with:
