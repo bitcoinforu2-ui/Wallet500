@@ -9,7 +9,9 @@ on:
     paths:
       - 'src/wallet500/operational_intelligence.py'
       - 'src/wallet500/prospective_benchmark.py'
+      - 'src/wallet500/engine_learning_review.py'
       - 'tests/test_operational_intelligence.py'
+      - 'tests/test_engine_learning_review.py'
       - '.github/workflows/operational-intelligence.yml'
 
 permissions:
@@ -33,11 +35,13 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Unit tests
-        run: python -m pytest -q tests/test_operational_intelligence.py
+        run: python -m pytest -q tests/test_operational_intelligence.py tests/test_engine_learning_review.py
       - name: Build fail-closed operational intelligence
         run: python -m wallet500.operational_intelligence
       - name: Update prospective no-hindsight benchmark
         run: python -m wallet500.prospective_benchmark
+      - name: Build prospective engine learning review
+        run: python -m wallet500.engine_learning_review
       - name: Validate research/production separation and exact-pair keys
         run: |
           python - <<'PY'
@@ -45,14 +49,23 @@ jobs:
           from pathlib import Path
           op=json.loads(Path('data/operational-intelligence.json').read_text())
           bench=json.loads(Path('data/prospective-benchmark-latest.json').read_text())
+          learn=json.loads(Path('data/engine-learning-review.json').read_text())
           if op.get('production_effect') is not False or op.get('no_hindsight') is not True: raise SystemExit('OPERATIONAL_TRUTH_INVALID')
           if bench.get('production_effect') is not False or bench.get('no_hindsight') is not True: raise SystemExit('BENCHMARK_TRUTH_INVALID')
+          if learn.get('production_effect') is not False or learn.get('no_hindsight') is not True: raise SystemExit('ENGINE_LEARNING_TRUTH_INVALID')
+          if (learn.get('truth_contract') or {}).get('production_threshold_changes')!='FORBIDDEN': raise SystemExit('ENGINE_LEARNING_THRESHOLD_GUARD_MISSING')
+          if (learn.get('truth_contract') or {}).get('retrospective_first_seen_backfill')!='FORBIDDEN': raise SystemExit('ENGINE_LEARNING_BACKFILL_GUARD_MISSING')
           for row in bench.get('progression') or []:
-              if len(str(row.get('identity') or '').split('|')) != 3: raise SystemExit('EXACT_PAIR_IDENTITY_INVALID')
+              parts=str(row.get('identity') or '').split('|')
+              if len(parts)!=3 or not all(parts): raise SystemExit('EXACT_PAIR_IDENTITY_INVALID')
+          for row in ((learn.get('prospective_cohort') or {}).get('rows') or []):
+              parts=str(row.get('identity') or '').split('|')
+              if len(parts)!=3 or not all(parts): raise SystemExit('LEARNING_EXACT_PAIR_IDENTITY_INVALID')
           print('OPERATIONAL_INTELLIGENCE_OK', op.get('counts'))
-          print('PROSPECTIVE_BENCHMARK_OK', bench.get('counts'), bench.get('dwell'))
+          print('PROSPECTIVE_BENCHMARK_OK', bench.get('counts'), bench.get('dwell'), bench.get('attribution_quality'))
+          print('ENGINE_LEARNING_REVIEW_OK', (learn.get('prospective_cohort') or {}).get('blocker_counts'), learn.get('provider_health'), learn.get('smart_money_quality'))
           PY
-      - name: Publish observability snapshot atomically
+      - name: Publish observability and learning snapshots atomically
         if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
@@ -62,7 +75,8 @@ jobs:
           python scripts/atomic_publish.py \
             --base "$BASE_SHA" \
             --fail-on-newer \
-            --message 'data: refresh operational intelligence' \
+            --message 'data: refresh operational intelligence and prospective learning' \
             data/operational-intelligence.json \
             data/prospective-benchmark-ledger.json \
-            data/prospective-benchmark-latest.json
+            data/prospective-benchmark-latest.json \
+            data/engine-learning-review.json
