@@ -193,7 +193,7 @@ def test_dedupe_key_contains_pair_and_message_exposes_manual_promotion_dex_and_t
     assert "Contract: 0xABC" in msg
     assert "Pair: 0xPAIR" in msg
     assert "DEX: pancakeswap" in msg
-    assert "Pair identity: EXACT LOCK" in msg
+    assert "Pair identity: EXACT VERIFIED" in msg
     assert "Market age: ≥420d" in msg
     assert "min $50K" in msg
     assert "Positive evidence: VERIFIED_SOCIAL" in msg
