@@ -13,7 +13,10 @@ LATEST = DATA / "revival-1000-latest.json"
 STATE = DATA / "revival-1000-state.json"
 MODE = "RESEARCH_ONLY_REVIVAL_SOLANA_500_V4"
 NETWORK = "solana"
-MAX_CANDIDATES = 500
+# No fixed candidate ceiling. Wallet500 is the brand, not a universe-size limit.
+# Source pagination / provider limits are handled separately and must not silently
+# truncate the post-filter Revival candidate set.
+MAX_CANDIDATES = None
 DEX_BATCH_SIZE = 30
 BASE58 = set("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
 
@@ -273,7 +276,8 @@ def fetch_coingecko() -> list[dict]:
         })
 
     rows.sort(key=lambda x: (x.get("market_cap_usd") is None, -n(x.get("market_cap_usd"))))
-    rows = rows[:MAX_CANDIDATES]
+    if MAX_CANDIDATES is not None:
+        rows = rows[:MAX_CANDIDATES]
 
     dex_pairs = fetch_dex_pair_map([str(x.get("token_address") or "") for x in rows])
     for x in rows:
@@ -473,7 +477,8 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
     coins_state = state.setdefault("coins", {})
     normalized = []
 
-    for i, x in enumerate(rows[:MAX_CANDIDATES], 1):
+    candidate_rows = rows if MAX_CANDIDATES is None else rows[:MAX_CANDIDATES]
+    for i, x in enumerate(candidate_rows, 1):
         if (
             x.get("network") != NETWORK
             or x.get("network_verified") is not True
@@ -567,7 +572,8 @@ def build(rows: list[dict], source: str, failures: list[dict]) -> dict:
         "previous_snapshot_at": previous_generated_at,
         "production_portfolio_impact": "NONE",
         "no_hindsight": True,
-        "universe_definition": "UP_TO_500_SOLANA_ONLY_PLATFORM_ASSETS_BY_MARKET_CAP_FROM_SOLANA_ECOSYSTEM_FEED; ANY OTHER ACTIVE PLATFORM ADDRESS, STABLE, WRAPPED, PEGGED, STAKED, LP OR TOKENIZED_RECEIPT IS EXCLUDED",
+        "candidate_cap": MAX_CANDIDATES,
+        "universe_definition": "SOLANA_ONLY_PLATFORM_ASSETS_FROM_THE_CONFIGURED_SOLANA_ECOSYSTEM_SOURCE_PAGES_WITHOUT_A_SECONDARY_500_CANDIDATE_TRUNCATION; ANY OTHER ACTIVE PLATFORM ADDRESS, STABLE, WRAPPED, PEGGED, STAKED, LP OR TOKENIZED_RECEIPT IS EXCLUDED",
         "source": source,
         "counts": {
             "universe": len(normalized),
