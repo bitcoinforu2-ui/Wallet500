@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 1
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -145,12 +145,17 @@ jobs:
               'real_alerts':(real.get('counts') or {}).get('real_alerts')})
           PY
 
-      - name: Publish only changed war-room derived data
+      - name: Publish coherent war-room snapshot atomically
         if: steps.detect.outputs.count != '0'
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
+          BASE_SHA="$(git rev-parse HEAD)"
+          python scripts/atomic_publish.py \
+            --base "$BASE_SHA" \
+            --fail-on-newer \
+            --message "data: refresh 6-of-7 intelligence war room" \
             data/six-of-seven-live-intelligence.json \
             data/deep-intelligence-edge.json \
             data/deep-intelligence-event-ledger.json \
@@ -170,17 +175,4 @@ jobs:
             data/real-alerts.json \
             data/revival-funnel-diagnostics.json \
             data/near-alert-observatory.json \
-            data/research-decision-engine.json 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "No meaningful deep-live data changes"
-            exit 0
-          fi
-          git commit -m "data: refresh 6-of-7 intelligence war room"
-          # Some scanners intentionally refresh additional local research/cache files
-          # that are not part of this publisher's immutable output contract. Keep those
-          # residues out of the commit while making the worktree clean enough to rebase.
-          if [ -n "$(git status --porcelain)" ]; then
-            git stash push --include-untracked -m "deep-live-unpublished-residue"
-          fi
-          git pull --rebase origin main
-          git push origin HEAD:main
+            data/research-decision-engine.json
