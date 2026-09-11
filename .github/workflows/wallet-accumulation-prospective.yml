@@ -1,0 +1,89 @@
+name: Wallet500 Wallet Accumulation Prospective Experiment
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/wallet_accumulation_prospective.py'
+      - 'tests/test_wallet_accumulation_prospective.py'
+      - '.github/workflows/wallet-accumulation-prospective.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-wallet-accumulation-prospective
+  cancel-in-progress: false
+
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Experiment truth tests
+        run: python -m pytest -q tests/test_wallet_accumulation_prospective.py
+      - name: Update locked prospective cohort
+        run: python -m wallet500.wallet_accumulation_prospective
+      - name: Validate research-only no-hindsight contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path('data/wallet-accumulation-prospective.json').read_text())
+          state=json.loads(Path('data/wallet-accumulation-prospective-state.json').read_text())
+          assert report['version']=='WALLET500_WALLET_ACCUMULATION_PROSPECTIVE_V1'
+          assert report['mode']=='RESEARCH_ONLY_EXACT_PAIR_PROSPECTIVE_WALLET_ACCUMULATION'
+          assert report['production_effect'] is False
+          assert report['automatic_buy'] is False
+          assert report['no_hindsight'] is True
+          assert state['locked_cohort'] is True
+          assert state['production_effect'] is False
+          assert state['automatic_buy'] is False
+          assert state['no_hindsight'] is True
+          assert len(state.get('cohort') or []) <= 8
+          for row in state.get('cohort') or []:
+              parts=str(row.get('identity') or '').split('|')
+              assert len(parts)==3 and parts[0]=='solana' and all(parts)
+              assert row.get('token_address')==parts[1]
+              assert row.get('exact_pair')==parts[2]
+          print('WALLET_ACCUMULATION_PROSPECTIVE_OK', report['phase'], report['cohort_size'])
+          PY
+      - name: Publish experiment state and report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          tmp="$(mktemp -d)"
+          cp data/wallet-accumulation-prospective-state.json "$tmp/state.json"
+          cp data/wallet-accumulation-prospective.json "$tmp/report.json"
+          for attempt in 1 2 3 4 5 6 7 8; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$tmp/state.json" data/wallet-accumulation-prospective-state.json
+            cp "$tmp/report.json" data/wallet-accumulation-prospective.json
+            git add data/wallet-accumulation-prospective-state.json data/wallet-accumulation-prospective.json
+            if git diff --cached --quiet; then
+              echo 'WALLET_ACCUMULATION_NO_CHANGE'
+              exit 0
+            fi
+            git commit -m 'data: update prospective wallet accumulation experiment'
+            if git push origin HEAD:main; then
+              echo 'WALLET_ACCUMULATION_PUBLISH_OK'
+              exit 0
+            fi
+            sleep $((attempt * 2))
+          done
+          echo '::error::WALLET_ACCUMULATION_PUBLISH_RACE_EXHAUSTED'
+          exit 1
