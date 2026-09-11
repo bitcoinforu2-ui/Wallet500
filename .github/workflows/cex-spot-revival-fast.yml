@@ -13,6 +13,7 @@ on:
       - 'src/wallet500/cex_early_revival_pending.py'
       - 'tests/test_cex_spot_revival.py'
       - 'tests/test_cex_early_revival_pending.py'
+      - 'tests/test_cex_identity_certainty_1_5.py'
 
 permissions:
   contents: write
@@ -40,6 +41,7 @@ jobs:
           tests/test_cex_spot_revival.py
           tests/test_cex_early_revival_pending.py
           tests/test_cex_spot_identity.py
+          tests/test_cex_identity_certainty_1_5.py
           tests/test_cex_spot_dynamic_identity_bridge.py
           tests/test_cex_identity_preflight.py
           tests/test_cex_identity.py
@@ -68,6 +70,7 @@ jobs:
               'leveraged_products_excluded_count': spot.get('leveraged_products_excluded_count'),
               'identity_status': ident.get('status'),
               'identity_counts': ident.get('counts'),
+              'identity_queue': ident.get('identity_queue'),
               'auto_registry': ident.get('auto_registry'),
               'early_pending_count': pending.get('candidate_count'),
           })
@@ -105,6 +108,16 @@ jobs:
           truth=ident.get('truth_contract') or {}
           if truth.get('symbol_only_never_actionable') is not True: raise SystemExit('SYMBOL_ONLY_GUARD_MISSING')
           if truth.get('cex_only_never_real_alert') is not True: raise SystemExit('CEX_ONLY_REAL_ALERT_GUARD_MISSING')
+          if truth.get('exact_dex_pair_required_before_registry_learning') is not True: raise SystemExit('EXACT_PAIR_GUARD_MISSING')
+          if truth.get('persistent_pending_never_satisfies_identity') is not True: raise SystemExit('PERSISTENT_PENDING_IDENTITY_LEAK')
+          if truth.get('priority_uses_only_preexisting_evidence') is not True: raise SystemExit('IDENTITY_PRIORITY_HINDSIGHT_RISK')
+          if truth.get('no_hindsight') is not True: raise SystemExit('IDENTITY_NO_HINDSIGHT_GUARD_MISSING')
+          q=ident.get('identity_queue') or {}
+          if q.get('selected_count',0) > 60: raise SystemExit('IDENTITY_QUEUE_LIMIT_BROKEN')
+          if q.get('persistent_priority_slot_cap') != 30: raise SystemExit('IDENTITY_PERSISTENT_CAP_BROKEN')
+          if q.get('fresh_watch_capacity_protected') is not True: raise SystemExit('IDENTITY_FRESH_CAPACITY_UNPROTECTED')
+          if q.get('one_cycle_backlog_rotation') is not True: raise SystemExit('IDENTITY_ROTATION_GUARD_MISSING')
+          if q.get('production_effect') is not False: raise SystemExit('IDENTITY_PRIORITY_PRODUCTION_EFFECT_LEAK')
           for row in ident.get('candidates') or []:
               if row.get('research_only') is not True or row.get('actionable') is not False:
                   raise SystemExit('CEX_SPOT_RESEARCH_BOUNDARY_LEAK')
@@ -132,7 +145,11 @@ jobs:
                   raise SystemExit('CEX_EARLY_PENDING_RESEARCH_BOUNDARY_LEAK')
               if row.get('persistent_until_exact_identity_resolution') is not True:
                   raise SystemExit('CEX_EARLY_PENDING_PERSISTENCE_GUARD_MISSING')
-          print('CEX_SPOT_FAIL_CLOSED_VALID', {'early_pending_count': len(rows), 'leveraged_excluded': len(excluded)})
+          print('CEX_SPOT_FAIL_CLOSED_VALID', {
+              'early_pending_count': len(rows),
+              'leveraged_excluded': len(excluded),
+              'identity_queue': q,
+          })
           PY
       - name: Publish fresh Spot research state with bounded optimistic retries
         run: |
