@@ -158,8 +158,10 @@ def _merge_watchlist(auto_rows):
     current = _load(WATCHLIST, [])
     if not isinstance(current, list): current = []
     manual = [x for x in current if isinstance(x, dict) and x.get("source") != "GLOBAL_LISTING_INTELLIGENCE"]
-    _write(WATCHLIST, manual + auto_rows[:500])
-    return len(manual), min(len(auto_rows), 500)
+    # Do not silently truncate the discovery universe at the Wallet500 brand number.
+    # Downstream safety/production gates remain responsible for qualification.
+    _write(WATCHLIST, manual + auto_rows)
+    return len(manual), len(auto_rows)
 
 
 def run():
