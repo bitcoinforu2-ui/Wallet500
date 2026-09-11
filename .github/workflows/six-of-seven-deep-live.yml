@@ -176,5 +176,11 @@ jobs:
             exit 0
           fi
           git commit -m "data: refresh 6-of-7 intelligence war room"
+          # Some scanners intentionally refresh additional local research/cache files
+          # that are not part of this publisher's immutable output contract. Keep those
+          # residues out of the commit while making the worktree clean enough to rebase.
+          if [ -n "$(git status --porcelain)" ]; then
+            git stash push --include-untracked -m "deep-live-unpublished-residue"
+          fi
           git pull --rebase origin main
           git push origin HEAD:main
