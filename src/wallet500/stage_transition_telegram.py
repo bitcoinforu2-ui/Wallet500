@@ -12,8 +12,9 @@ SOURCE = "candidate-evidence-envelope.json"
 STATE = "stage-transition-telegram-state.json"
 REPORT = "stage-transition-telegram-report.json"
 
-# Research/watch remains silent. User-facing stage notifications begin only once
-# a candidate has advanced beyond raw research into evidence-ready or stronger.
+# Raw research, WATCH and EVIDENCE_READY remain silent. User-facing stage
+# notifications begin only at PAPER_BUY_CANDIDATE: one stage before BUY/REAL
+# ALERT, then continue for stronger stages. This lane never weakens BUY gates.
 STAGE_RANK = {
     "RESEARCH": 0,
     "WATCH": 0,
@@ -22,6 +23,8 @@ STAGE_RANK = {
     "STRONG_GENESIS": 3,
     "EXCEPTIONAL_GENESIS": 4,
 }
+MIN_USER_FACING_RANK = STAGE_RANK["PAPER_BUY_CANDIDATE"]
+MIN_USER_FACING_STAGE = "PAPER_BUY_CANDIDATE"
 
 
 def _load(path: Path, default: Any) -> Any:
@@ -65,8 +68,8 @@ def _message(row: dict, previous_stage: str, current_stage: str) -> str:
     pending = row.get("pending_confirmations") if isinstance(row.get("pending_confirmations"), list) else []
     blockers = row.get("blockers") if isinstance(row.get("blockers"), list) else []
     return "\n".join([
-        "🟠 WALLET500 — STAGE ADVANCE",
-        "⚠️ שינוי שלב משמעותי — עדיין לא הוראת BUY",
+        "🔥 WALLET500 — PRE-BUY STAGE",
+        "⚠️ שלב אחד לפני BUY או חזק יותר — עדיין לא הוראת BUY",
         f"Token: {token}",
         f"Mint: {mint}",
         f"Exact Pair: {pair}",
@@ -76,7 +79,7 @@ def _message(row: dict, previous_stage: str, current_stage: str) -> str:
         f"Positive lanes: {positive if positive is not None else 'n/a'}",
         f"Pending confirmations: {', '.join(map(str, pending)) if pending else 'none'}",
         f"Blockers: {', '.join(map(str, blockers)) if blockers else 'none'}",
-        "REAL ALERT נשאר מסלול נפרד עם gates קשיחים יותר.",
+        "REAL ALERT / BUY נשארים במסלול נפרד עם gates קשיחים יותר.",
     ])
 
 
@@ -84,7 +87,7 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
     out = Path(output_dir or os.getenv("WALLET500_OUTPUT_DIR", "data"))
     source = _load(out / SOURCE, {})
     state_exists = (out / STATE).exists()
-    state = _load(out / STATE, {"version": 1, "candidates": {}})
+    state = _load(out / STATE, {"version": 2, "candidates": {}})
     previous = state.get("candidates") if isinstance(state.get("candidates"), dict) else {}
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
@@ -119,7 +122,9 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
         # First execution establishes a baseline and never replays historical research.
         if not state_exists:
             continue
-        if rank <= old_rank or rank <= 0:
+        # EVIDENCE_READY and all earlier stages are dashboard/state only. Telegram
+        # starts at PAPER_BUY_CANDIDATE (one stage before BUY) and only on upward moves.
+        if rank <= old_rank or rank < MIN_USER_FACING_RANK:
             continue
         event = {"key": key, "from_stage": old_stage, "to_stage": stage, "rank": rank}
         eligible.append(event)
@@ -138,10 +143,10 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
             else:
                 current.pop(key, None)
 
-    state_payload = {"version": 1, "updated_at": reference.isoformat(), "candidates": current}
+    state_payload = {"version": 2, "updated_at": reference.isoformat(), "candidates": current}
     report = {
-        "version": 1,
-        "mode": "POST_RESEARCH_STAGE_ADVANCE_TELEGRAM",
+        "version": 2,
+        "mode": "PRE_BUY_AND_STRONGER_STAGE_TELEGRAM",
         "updated_at": reference.isoformat(),
         "source": SOURCE,
         "configured": configured,
@@ -154,7 +159,9 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
         "errors": errors,
         "policy": {
             "raw_research_notifications": False,
-            "minimum_user_facing_stage": "EVIDENCE_READY",
+            "evidence_ready_notifications": False,
+            "minimum_user_facing_stage": MIN_USER_FACING_STAGE,
+            "minimum_user_facing_rank": MIN_USER_FACING_RANK,
             "only_upward_transitions": True,
             "exact_pair_scoped_state": True,
             "historical_replay_on_first_run": False,
