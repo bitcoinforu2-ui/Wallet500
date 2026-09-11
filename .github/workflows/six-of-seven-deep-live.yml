@@ -173,7 +173,21 @@ jobs:
               'real_alerts':(real.get('counts') or {}).get('real_alerts')})
           PY
 
-      - name: Publish coherent war-room snapshot atomically
+      - name: Publish fresh empty 6-of-7 snapshot atomically
+        if: steps.detect.outputs.count == '0'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          BASE_SHA="$(git rev-parse HEAD)"
+          python scripts/atomic_publish.py \
+            --base "$BASE_SHA" \
+            --fail-on-newer \
+            --message "data: refresh empty 6-of-7 intelligence snapshot" \
+            data/six-of-seven-live-intelligence.json
+
+      - name: Publish coherent active war-room snapshot atomically
+        if: steps.detect.outputs.count != '0'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
