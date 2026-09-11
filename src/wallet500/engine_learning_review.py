@@ -65,7 +65,6 @@ def _provider_health(waking: dict) -> dict:
     for row in waking.get("targets") or []:
         if isinstance(row, dict):
             statuses.extend(x for x in (row.get("provider_status") or []) if isinstance(x, dict))
-    # Top-level counts are only used when row-level evidence is unavailable.
     if not statuses:
         for key, count in (waking.get("provider_status_counts") or {}).items():
             if ":" in str(key):
@@ -90,12 +89,24 @@ def _provider_health(waking: dict) -> dict:
     return {"providers": out, "degraded_providers": degraded, "provider_count": len(out), "healthy_provider_count": sum(x["state"] == "HEALTHY" for x in out.values())}
 
 
+def _num(obj: dict, *keys: str) -> float:
+    for key in keys:
+        try:
+            value = obj.get(key)
+            if value is not None:
+                return float(value)
+        except (TypeError, ValueError):
+            pass
+    return 0.0
+
+
 def _smart_money(data: Path) -> dict:
     files = sorted({*data.glob("*smart*money*.json"), *data.glob("*wallet*quality*.json")})
     status_counts = Counter()
     tier_counts = Counter()
     wallets = 0
     exact_files = []
+    pending_rows: dict[str, dict] = {}
     for path in files:
         payload = _load(path, {})
         if not payload:
@@ -111,9 +122,45 @@ def _smart_money(data: Path) -> dict:
                     status_counts[str(status)] += 1
                 if tier:
                     tier_counts[str(tier)] += 1
+                if status and "PENDING_HISTORY" in str(status).upper():
+                    completed = _num(obj, "completed_exposures", "history_completed", "completed_history")
+                    eligible = _num(obj, "eligible_exposures", "history_eligible", "eligible_history")
+                    cross = _num(obj, "cross_token_count", "cross_token", "tokens_seen")
+                    evidence_fields = sum(obj.get(k) not in (None, "", [], {}) for k in (
+                        "completed_exposures", "eligible_exposures", "cross_token_count",
+                        "win_rate", "roi", "realized_pnl", "timing_edge", "false_positive_rate",
+                    ))
+                    score = completed * 1000.0 + cross * 100.0 + eligible * 10.0 + evidence_fields
+                    row = {
+                        "wallet": str(address),
+                        "status": str(status),
+                        "source_file": path.name,
+                        "completed_exposures": completed,
+                        "eligible_exposures": eligible,
+                        "cross_token_count": cross,
+                        "existing_evidence_fields": evidence_fields,
+                        "priority_score_existing_evidence_only": score,
+                        "promotion_forbidden": True,
+                        "threshold_change_forbidden": True,
+                    }
+                    prev = pending_rows.get(str(address))
+                    if prev is None or score > prev["priority_score_existing_evidence_only"]:
+                        pending_rows[str(address)] = row
     pending = sum(v for k, v in status_counts.items() if "PENDING_HISTORY" in k.upper())
     qualified = sum(v for k, v in status_counts.items() if any(x in k.upper() for x in ("QUALIFIED", "VERIFIED", "ELITE", "STRONG")) and "PENDING" not in k.upper())
-    return {"source_files": exact_files, "wallet_rows_with_quality_state": wallets, "status_counts": dict(status_counts), "tier_counts": dict(tier_counts), "pending_history": pending, "qualified_or_verified": qualified, "backlog_ratio": round(pending / max(1, pending + qualified), 4)}
+    queue = sorted(pending_rows.values(), key=lambda x: (-x["priority_score_existing_evidence_only"], x["wallet"]))[:100]
+    return {
+        "source_files": exact_files,
+        "wallet_rows_with_quality_state": wallets,
+        "status_counts": dict(status_counts),
+        "tier_counts": dict(tier_counts),
+        "pending_history": pending,
+        "qualified_or_verified": qualified,
+        "backlog_ratio": round(pending / max(1, pending + qualified), 4),
+        "qualification_queue_mode": "RESEARCH_ONLY_EXISTING_EVIDENCE_PRIORITY",
+        "qualification_queue": queue,
+        "qualification_queue_rule": "ORDER_EXISTING_PENDING_HISTORY_FOR_REVIEW_ONLY; NEVER PROMOTE_OR_CHANGE_QUALIFICATION_THRESHOLDS",
+    }
 
 
 def _outcome_index(data: Path) -> dict[str, dict]:
@@ -124,7 +171,6 @@ def _outcome_index(data: Path) -> dict[str, dict]:
             key = _identity(row)
             if not key:
                 continue
-            # Only retain source-defined outcome fields; this module invents no winner threshold.
             outcome = row.get("outcome") or row.get("classification") or row.get("result") or row.get("status")
             observed = row.get("outcome_at") or row.get("resolved_at") or row.get("updated_at") or row.get("generated_at")
             if outcome is not None:
@@ -195,6 +241,7 @@ def run(data_dir: str | Path = "data", now: str | None = None) -> dict:
             "outcome_success_threshold_invented_here": False,
             "exact_pair_identity_required": True,
             "failed_provider_counts_as_positive_evidence": False,
+            "smart_money_queue_can_promote": False,
         },
         "prospective_cohort": {"records": len(cohort), "stage_counts": (latest.get("counts") or {}), "blocker_counts": dict(blocker_counts), "attribution_ready_records": attribution_ready, "rows": cohort},
         "missed_outcomes": {"count": len(missed), "rows": missed},
