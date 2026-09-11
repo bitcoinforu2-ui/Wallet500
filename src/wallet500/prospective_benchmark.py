@@ -41,11 +41,6 @@ def _direct_identity(row: dict) -> tuple[str, str, str]:
 
 
 def _unique_pair_index(revival: dict) -> dict[tuple[str, str], str]:
-    """Return a token->pair map only when the current snapshot has one unique pair.
-
-    Ambiguous tokens are deliberately omitted. There is no symbol fallback and no
-    retroactive inference from outcomes or later production state.
-    """
     seen: dict[tuple[str, str], set[str]] = {}
     for row in _rows(revival):
         chain, token, pair = _direct_identity(row)
@@ -71,6 +66,24 @@ def _iso(value: Any) -> datetime | None:
         return None
 
 
+def _freeze_evidence(row: dict) -> dict:
+    """Freeze only evidence present at first stage observation.
+
+    This intentionally ignores later outcomes and never mutates an existing stage.
+    The allow-list prevents accidental persistence of bulky or unrelated state.
+    """
+    out: dict[str, Any] = {}
+    for key in (
+        "confirmation_status", "confirmation_score", "base_watch_status", "watch_status",
+        "signals", "strong_channels", "channels", "provider_status", "provider_status_counts",
+        "pre_t0_shadow_status", "pre_t0_metrics", "decision", "decision_status", "withheld_reason",
+        "verified", "actionable", "liquidity_usd", "execution_liquidity_usd",
+    ):
+        if key in row:
+            out[key] = row.get(key)
+    return out
+
+
 def run(data_dir: str | Path = "data", now: str | None = None) -> dict:
     data = Path(data_dir)
     generated = now or datetime.now(timezone.utc).isoformat()
@@ -92,21 +105,30 @@ def run(data_dir: str | Path = "data", now: str | None = None) -> dict:
     ]
     skipped_missing_exact_pair = 0
     joined_exact_pair = 0
+    frozen_new_stage_evidence = 0
     for stage, payload in feeds:
         feed_observed_at = payload.get("generated_at") or generated
         for row in _rows(payload):
             key, joined = _key(row, unique_pairs)
             if not key:
                 skipped_missing_exact_pair += 1
-                continue  # fail closed: no exact pair identity, no cohort record
-            # If exact pair had to be joined from the current Revival snapshot,
-            # do not claim an earlier first-seen time. The identity is considered
-            # observed only now, preserving strict prospective/no-hindsight time.
+                continue
             observed_at = generated if joined else feed_observed_at
             if joined:
                 joined_exact_pair += 1
             rec = records.setdefault(key, {"identity": key, "first_seen_at": observed_at, "stages": {}, "immutable_first_observation": True})
-            rec.setdefault("stages", {}).setdefault(stage, {"first_seen_at": observed_at, "exact_pair_joined_at_observation": joined})
+            stages = rec.setdefault("stages", {})
+            if stage not in stages:
+                frozen = _freeze_evidence(row)
+                stages[stage] = {
+                    "first_seen_at": observed_at,
+                    "exact_pair_joined_at_observation": joined,
+                    "frozen_evidence": frozen,
+                    "frozen_evidence_backfilled": False,
+                }
+                if frozen:
+                    frozen_new_stage_evidence += 1
+            # Critical no-hindsight rule: an existing stage is never enriched later.
 
     progression = []
     dwell: dict[str, list[float]] = {"WAKING_TO_PRE_T0": [], "PRE_T0_TO_PRODUCTION": []}
@@ -118,6 +140,8 @@ def run(data_dir: str | Path = "data", now: str | None = None) -> dict:
             blockers.append("WAITING_FOR_IMMUTABLE_PRE_T0_BINDING_OR_EVIDENCE")
         if "PRE_T0" in stages and "PRODUCTION" not in stages:
             blockers.append("RESEARCH_ONLY_NOT_PRODUCTION_VERIFIED")
+        if not any((info or {}).get("frozen_evidence") for info in stages.values() if isinstance(info, dict)):
+            blockers.append("ATTRIBUTION_NOT_FROZEN_AT_FIRST_SEEN")
         if w and p and p >= w:
             dwell["WAKING_TO_PRE_T0"].append((p-w).total_seconds()/60)
         if p and r and r >= p:
@@ -127,38 +151,21 @@ def run(data_dir: str | Path = "data", now: str | None = None) -> dict:
     def stats(xs: list[float]) -> dict:
         if not xs:
             return {"n": 0, "median_minutes": None, "p90_minutes": None}
-        ys = sorted(xs)
-        n = len(ys)
+        ys = sorted(xs); n = len(ys)
         return {"n": n, "median_minutes": round(ys[(n-1)//2], 2), "p90_minutes": round(ys[min(n-1, int((n-1)*0.9))], 2)}
 
     ledger["updated_at"] = generated
     ledger["production_effect"] = False
     ledger["automatic_buy"] = False
-    ledger["identity_contract"] = {
-        "key": "chain|token|exact_pair",
-        "symbol_fallback": False,
-        "ambiguous_pair_join": "FORBIDDEN",
-        "joined_pair_first_seen_backdating": "FORBIDDEN",
-    }
+    ledger["identity_contract"] = {"key": "chain|token|exact_pair", "symbol_fallback": False, "ambiguous_pair_join": "FORBIDDEN", "joined_pair_first_seen_backdating": "FORBIDDEN"}
+    ledger["attribution_contract"] = {"freeze_only_at_first_stage_observation": True, "retrospective_evidence_backfill": "FORBIDDEN", "outcome_fields_frozen_as_signal_evidence": False}
     _write(ledger_path, ledger)
     out = {
-        "version": VERSION,
-        "generated_at": generated,
-        "mode": ledger["mode"],
-        "no_hindsight": True,
-        "production_effect": False,
-        "identity_quality": {
-            "joined_unique_exact_pair_this_run": joined_exact_pair,
-            "skipped_missing_or_ambiguous_exact_pair_this_run": skipped_missing_exact_pair,
-        },
-        "counts": {
-            "cohort": len(records),
-            "waking": sum("WAKING" in (r.get("stages") or {}) for r in records.values()),
-            "pre_t0": sum("PRE_T0" in (r.get("stages") or {}) for r in records.values()),
-            "production": sum("PRODUCTION" in (r.get("stages") or {}) for r in records.values()),
-        },
-        "dwell": {k: stats(v) for k, v in dwell.items()},
-        "progression": progression,
+        "version": VERSION, "generated_at": generated, "mode": ledger["mode"], "no_hindsight": True, "production_effect": False,
+        "identity_quality": {"joined_unique_exact_pair_this_run": joined_exact_pair, "skipped_missing_or_ambiguous_exact_pair_this_run": skipped_missing_exact_pair},
+        "attribution_quality": {"new_stage_evidence_frozen_this_run": frozen_new_stage_evidence, "retrospective_backfill": False},
+        "counts": {"cohort": len(records), "waking": sum("WAKING" in (r.get("stages") or {}) for r in records.values()), "pre_t0": sum("PRE_T0" in (r.get("stages") or {}) for r in records.values()), "production": sum("PRODUCTION" in (r.get("stages") or {}) for r in records.values())},
+        "dwell": {k: stats(v) for k, v in dwell.items()}, "progression": progression,
     }
     _write(data / "prospective-benchmark-latest.json", out)
     return out
