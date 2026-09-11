@@ -1,0 +1,91 @@
+name: Wallet500 Stage Transition Telegram
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - "Wallet500 Candidate Evidence Envelope"
+      - "Wallet500 Pending Confirmation Refresh"
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/stage_transition_telegram.py'
+      - 'tests/test_stage_transition_telegram.py'
+      - '.github/workflows/stage-transition-telegram.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-stage-transition-telegram
+  cancel-in-progress: false
+
+jobs:
+  deliver:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install and test stage alert policy
+        run: |
+          pip install -e . pytest
+          python -m pytest -q tests/test_stage_transition_telegram.py
+      - name: Verify fresh post-research source
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+          p=Path('data/candidate-evidence-envelope.json')
+          if not p.is_file(): raise SystemExit('STAGE_ALERT_SOURCE_MISSING')
+          x=json.loads(p.read_text())
+          if x.get('mode')!='RESEARCH_ONLY_CANDIDATE_EVIDENCE_ENVELOPE_V1': raise SystemExit('STAGE_ALERT_SOURCE_MODE_INVALID')
+          if x.get('production_change') is not False or x.get('automatic_buy') is not False: raise SystemExit('STAGE_ALERT_SOURCE_SAFETY_DRIFT')
+          t=x.get('truth_contract') or {}
+          if t.get('exact_pair_required') is not True: raise SystemExit('STAGE_ALERT_EXACT_PAIR_CONTRACT_MISSING')
+          raw=str(x.get('generated_at') or '').replace('Z','+00:00')
+          d=datetime.fromisoformat(raw)
+          if d.tzinfo is None: d=d.replace(tzinfo=timezone.utc)
+          age=(datetime.now(timezone.utc)-d.astimezone(timezone.utc)).total_seconds()
+          if age < -120 or age > 35*60: raise SystemExit(f'STAGE_ALERT_SOURCE_STALE age={age:.0f}s')
+          print('STAGE_ALERT_SOURCE_OK', {'age_seconds':round(age,1),'evidence_ready':(x.get('counts') or {}).get('evidence_ready')})
+          PY
+      - name: Deliver meaningful post-research stage advances
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m wallet500.stage_transition_telegram
+      - name: Persist stage dedupe state and report atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-truth-bot'
+          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          python scripts/atomic_publish.py \
+            --message 'telegram: persist post-research stage transitions' \
+            data/stage-transition-telegram-state.json \
+            data/stage-transition-telegram-report.json
+      - name: Validate stage delivery outcome
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('data/stage-transition-telegram-report.json').read_text())
+          if r.get('configured') is not True: raise SystemExit('STAGE_TELEGRAM_NOT_CONFIGURED')
+          if int(r.get('error_count') or 0)>0: raise SystemExit(f"STAGE_TELEGRAM_ERRORS={r.get('error_count')}")
+          p=r.get('policy') or {}
+          if p.get('raw_research_notifications') is not False: raise SystemExit('STAGE_RESEARCH_SPAM_GUARD_DRIFT')
+          if p.get('minimum_user_facing_stage')!='EVIDENCE_READY': raise SystemExit('STAGE_MINIMUM_DRIFT')
+          if p.get('exact_pair_scoped_state') is not True: raise SystemExit('STAGE_EXACT_PAIR_DRIFT')
+          if p.get('automatic_buy') is not False: raise SystemExit('STAGE_AUTO_BUY_DRIFT')
+          if p.get('real_alert_pipeline_unchanged') is not True: raise SystemExit('STAGE_REAL_ALERT_ISOLATION_DRIFT')
+          print('STAGE_TELEGRAM_OK', {'baseline_only':r.get('baseline_only'),'eligible':r.get('eligible_count'),'delivered':r.get('delivered_count')})
+          PY
