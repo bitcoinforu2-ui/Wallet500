@@ -20,6 +20,18 @@ FRESH_SECONDS = int(os.environ.get("REVIVAL_WALLET_PROBE_FRESH_SECONDS", "7200")
 MIN_AGE_DAYS = 90
 
 
+_HISTORY_META_KEYS = {
+    "current_probe",
+    "first_verified_evidence",
+    "last_verified_evidence",
+    "historical_coverage_verified",
+    "coverage_degraded",
+    "coverage_state",
+    "first_verified_at",
+    "last_verified_at",
+}
+
+
 def _now() -> int:
     return int(datetime.now(timezone.utc).timestamp())
 
@@ -107,6 +119,9 @@ def _probe(target: dict, now: int) -> dict:
             result.update({"coverage_verified": True, "status": "VERIFIED_NO_RECENT_PAIR_TRANSACTION"})
             return result
         row = valid[0]
+        result["transaction_signature"] = str(row["signature"])
+        if isinstance(row.get("blockTime"), (int, float)):
+            result["transaction_time"] = _iso(row["blockTime"])
         tx = rpcbase._rpc(
             "getTransaction",
             [row["signature"], {"encoding": "jsonParsed", "commitment": "confirmed", "maxSupportedTransactionVersion": 0}],
@@ -141,6 +156,69 @@ def _probe(target: dict, now: int) -> dict:
         return result
 
 
+def _same_pair(left: dict | None, right: dict | None) -> bool:
+    if not isinstance(left, dict) or not isinstance(right, dict):
+        return False
+    left_pair = str(left.get("pair_address") or "").strip().lower()
+    right_pair = str(right.get("pair_address") or "").strip().lower()
+    return bool(left_pair and right_pair and left_pair == right_pair)
+
+
+def _verified_evidence_snapshot(row: dict) -> dict | None:
+    if not isinstance(row, dict) or row.get("coverage_verified") is not True:
+        return None
+    snapshot = {key: value for key, value in row.items() if key not in _HISTORY_META_KEYS and key != "evidence_age_seconds"}
+    verified_at = str(row.get("observed_at") or "") or None
+    snapshot["verified_at"] = verified_at
+    return snapshot
+
+
+def _merge_probe_result(previous: dict | None, current: dict) -> dict:
+    """Preserve exact-pair verified history while keeping the current probe fail-closed.
+
+    A weaker current RPC/resolver observation must never erase the fact that the same
+    exact pair was verified earlier.  The current probe still controls current
+    coverage_verified/status semantics; historical evidence is diagnostic/audit-only
+    and cannot promote a candidate or alter REAL ALERT gates.
+    """
+    merged = dict(current)
+    merged["current_probe"] = dict(current)
+
+    first_verified = None
+    last_verified = None
+    if _same_pair(previous, current):
+        if isinstance(previous.get("first_verified_evidence"), dict):
+            first_verified = dict(previous["first_verified_evidence"])
+        elif previous.get("coverage_verified") is True:
+            first_verified = _verified_evidence_snapshot(previous)
+
+        if isinstance(previous.get("last_verified_evidence"), dict):
+            last_verified = dict(previous["last_verified_evidence"])
+        elif previous.get("coverage_verified") is True:
+            last_verified = _verified_evidence_snapshot(previous)
+
+    current_verified = _verified_evidence_snapshot(current)
+    if current_verified is not None:
+        if first_verified is None:
+            first_verified = dict(current_verified)
+        last_verified = dict(current_verified)
+
+    historical_verified = first_verified is not None
+    merged["historical_coverage_verified"] = historical_verified
+    merged["first_verified_evidence"] = first_verified
+    merged["last_verified_evidence"] = last_verified
+    merged["first_verified_at"] = (first_verified or {}).get("verified_at")
+    merged["last_verified_at"] = (last_verified or {}).get("verified_at")
+    merged["coverage_degraded"] = bool(historical_verified and current.get("coverage_verified") is not True)
+    if current.get("coverage_verified") is True:
+        merged["coverage_state"] = "CURRENTLY_VERIFIED"
+    elif historical_verified:
+        merged["coverage_state"] = "COVERAGE_DEGRADED"
+    else:
+        merged["coverage_state"] = "UNVERIFIED_NO_HISTORY"
+    return merged
+
+
 def run() -> dict:
     now = _now()
     revival = _load(REVIVAL, {})
@@ -151,7 +229,8 @@ def run() -> dict:
     target_by = {row["token_address"]: row for row in targets}
 
     for target in selected:
-        token_state[target["token_address"]] = _probe(target, now)
+        mint = target["token_address"]
+        token_state[mint] = _merge_probe_result(token_state.get(mint), _probe(target, now))
     if selected:
         state["rotation_cursor_token"] = selected[-1]["token_address"]
 
@@ -191,6 +270,8 @@ def run() -> dict:
         "published_fresh_rows": len(fresh_rows),
         "coverage_verified": sum(1 for row in fresh_rows if row.get("coverage_verified") is True),
         "coverage_partial": sum(1 for row in fresh_rows if row.get("coverage_verified") is not True),
+        "historical_coverage_verified": sum(1 for row in fresh_rows if row.get("historical_coverage_verified") is True),
+        "coverage_degraded": sum(1 for row in fresh_rows if row.get("coverage_degraded") is True),
         "rotation": {
             "max_targets_per_run": MAX_TARGETS,
             "freshness_seconds": FRESH_SECONDS,
@@ -205,6 +286,9 @@ def run() -> dict:
             "probe_never_changes_candidate_promotion": True,
             "probe_never_changes_real_alert_gate": True,
             "unresolved_target_mint_touch_fails_closed": True,
+            "historical_verified_evidence_is_preserved": True,
+            "historical_evidence_never_overrides_current_fail_closed_status": True,
+            "current_probe_and_historical_truth_are_separate": True,
             "no_hindsight": True,
         },
         "tokens": sorted(fresh_rows, key=lambda row: str(row.get("token_address") or "")),
@@ -221,6 +305,8 @@ def main() -> None:
         "published_fresh_rows": payload["published_fresh_rows"],
         "coverage_verified": payload["coverage_verified"],
         "coverage_partial": payload["coverage_partial"],
+        "historical_coverage_verified": payload["historical_coverage_verified"],
+        "coverage_degraded": payload["coverage_degraded"],
     }, ensure_ascii=False))
 
 
