@@ -10,6 +10,7 @@ from .cex_spot_identity_fallback import resolve as resolve_dex_fallback
 
 DATA = Path("data")
 MAX_WATCH_CANDIDATES = 60
+MAX_PERSISTENT_PRIORITY_SLOTS = 30
 
 
 def _load(path: Path, default):
@@ -28,6 +29,13 @@ def _base_symbol(value: object) -> str:
     return s[:-4] if s.endswith("USDT") else s
 
 
+def _num(value: object) -> float:
+    try:
+        return float(value or 0)
+    except Exception:
+        return 0.0
+
+
 def _status(row: dict) -> str:
     identity = str(row.get("identity_status") or "")
     if identity == "DEX_VERIFIED":
@@ -35,6 +43,122 @@ def _status(row: dict) -> str:
     if identity == "IDENTITY_RESOLVED_PAIR_PENDING":
         return "CEX_SPOT_IDENTITY_RESOLVED_PAIR_PENDING_RESEARCH"
     return "CEX_SPOT_IDENTITY_PENDING_RESEARCH"
+
+
+def _identity_priority(row: dict) -> tuple:
+    """Order identity work using evidence already observed before this attempt only.
+
+    Persistent early-revival evidence is allowed to move a candidate earlier in the
+    resolver queue, but can never resolve identity or satisfy any production gate.
+    """
+    persistent = bool(row.get("persistent_until_exact_identity_resolution"))
+    early = str(row.get("timing_quality") or "") == "EARLY_BREAKOUT_EVIDENCE"
+    alert_score = _num(row.get("first_alert_score") or row.get("spot_revival_score"))
+    watch_score = _num(row.get("first_watch_score"))
+    coherent = _num(
+        row.get("first_alert_coherent_confirmations")
+        or row.get("first_watch_coherent_confirmations")
+        or row.get("coherent_confirmations")
+    )
+    accel = max(
+        _num(row.get("first_watch_price_acceleration_max_pct")),
+        _num(row.get("first_watch_volume_acceleration_max_pct")),
+    )
+    return (persistent, early, coherent, alert_score, watch_score, accel)
+
+
+def _build_identity_queue(spot: dict, pending: dict) -> tuple[list[dict], dict]:
+    """Merge current watches with unresolved persistent candidates, then prioritize.
+
+    This fixes the historical failure mode where a strong unresolved candidate could
+    disappear from the current top-N watchlist before exact identity was obtained.
+    A bounded persistent reserve prevents the backlog from starving fresh watches.
+    Only already-recorded evidence is used; later price/outcome data is not consulted.
+    """
+    current_rows = [x for x in (spot.get("watchlist") or []) if isinstance(x, dict)]
+    pending_rows = [x for x in (pending.get("candidates") or []) if isinstance(x, dict)]
+
+    merged: dict[str, dict] = {}
+    current_symbols: set[str] = set()
+    for row in current_rows:
+        symbol = _base_symbol(row.get("symbol"))
+        if symbol:
+            merged[symbol] = dict(row)
+            current_symbols.add(symbol)
+
+    carried = 0
+    pending_symbols: set[str] = set()
+    for row in pending_rows:
+        symbol = _base_symbol(row.get("symbol"))
+        if not symbol:
+            continue
+        pending_symbols.add(symbol)
+        if symbol in merged:
+            # Preserve current market fields while adding immutable first-watch/alert evidence.
+            combined = dict(row)
+            combined.update(merged[symbol])
+            for key in (
+                "persistent_until_exact_identity_resolution",
+                "timing_quality",
+                "earliest_retained_milestone",
+                "first_watch_score",
+                "first_watch_coherent_confirmations",
+                "first_watch_observed_at",
+                "first_watch_reference_price",
+                "first_watch_price_acceleration_max_pct",
+                "first_watch_volume_acceleration_max_pct",
+                "first_alert_score",
+                "first_alert_coherent_confirmations",
+                "first_alert_observed_at",
+                "first_alert_reference_price",
+                "first_alert_reference_exchange",
+            ):
+                if row.get(key) is not None:
+                    combined[key] = row.get(key)
+            merged[symbol] = combined
+        else:
+            merged[symbol] = dict(row)
+            carried += 1
+
+    ordered = sorted(merged.values(), key=_identity_priority, reverse=True)
+    pending_ordered = [row for row in ordered if _base_symbol(row.get("symbol")) in pending_symbols]
+    current_ordered = [row for row in ordered if _base_symbol(row.get("symbol")) in current_symbols]
+
+    selected: list[dict] = []
+    selected_symbols: set[str] = set()
+
+    def add_rows(rows: list[dict], limit: int) -> None:
+        for row in rows:
+            if len(selected) >= limit:
+                return
+            symbol = _base_symbol(row.get("symbol"))
+            if not symbol or symbol in selected_symbols:
+                continue
+            selected.append(row)
+            selected_symbols.add(symbol)
+
+    # First reserve bounded capacity for unresolved historical signals, then guarantee
+    # the remaining resolver capacity to fresh/current watches, then fill spare slots.
+    add_rows(pending_ordered, min(MAX_PERSISTENT_PRIORITY_SLOTS, MAX_WATCH_CANDIDATES))
+    add_rows(current_ordered, MAX_WATCH_CANDIDATES)
+    add_rows(ordered, MAX_WATCH_CANDIDATES)
+
+    report = {
+        "current_watch_count": len(current_rows),
+        "persistent_pending_count": len(pending_rows),
+        "persistent_carried_when_absent_from_current_watch": carried,
+        "merged_unique_count": len(ordered),
+        "selected_count": len(selected),
+        "selected_persistent_count": len(selected_symbols & pending_symbols),
+        "selected_current_count": len(selected_symbols & current_symbols),
+        "limit": MAX_WATCH_CANDIDATES,
+        "persistent_priority_slot_cap": MAX_PERSISTENT_PRIORITY_SLOTS,
+        "fresh_watch_capacity_protected": True,
+        "ordering_only": True,
+        "production_effect": False,
+        "no_hindsight": True,
+    }
+    return selected, report
 
 
 def _persist_verified_registry(data_dir: Path, rows: list[dict], now: str) -> dict:
@@ -111,7 +235,7 @@ def _persist_verified_registry(data_dir: Path, rows: list[dict], now: str) -> di
     }
 
 
-def _research_wrap(row: dict, source_lane: str) -> dict:
+def _research_wrap(row: dict, source_lane: str, attempted_at: str) -> dict:
     return {
         **row,
         "status": _status(row),
@@ -119,6 +243,7 @@ def _research_wrap(row: dict, source_lane: str) -> dict:
         "actionable": False,
         "automatic_buy": False,
         "source_lane": source_lane,
+        "identity_attempted_at": attempted_at,
     }
 
 
@@ -126,6 +251,8 @@ def run(data_dir: Path = DATA) -> dict:
     """Resolve CEX Spot watches to exact on-chain identity without relaxing production gates.
 
     Primary path uses CoinGecko identity + age evidence then exact chain/contract/pair.
+    Persistent unresolved early-revival candidates are prioritized for future resolver
+    attempts even if they fall out of the current watchlist. This is ordering only.
     If CoinGecko has no symbol entry, a strict DexScreener fallback may resolve identity only
     when exact base symbol, CEX-price coherence, exact token+pair, and >=90d pair age all agree.
     Ambiguous matches fail closed. Symbol-only evidence never becomes actionable.
@@ -133,19 +260,22 @@ def run(data_dir: Path = DATA) -> dict:
     data_dir.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc).isoformat()
     spot_path = data_dir / "cex-spot-revival-radar.json"
+    pending_path = data_dir / "cex-early-revival-pending.json"
     out_path = data_dir / "cex-spot-identity-radar.json"
     spot = _load(spot_path, {})
-    watch = [x for x in (spot.get("watchlist") or []) if isinstance(x, dict)][:MAX_WATCH_CANDIDATES]
+    pending = _load(pending_path, {})
+    watch, queue_report = _build_identity_queue(spot, pending)
 
     base = {
-        "version": 2,
+        "version": 3,
         "generated_at": now,
         "source_generated_at": spot.get("generated_at"),
-        "mode": "RESEARCH_ONLY_DYNAMIC_CEX_SPOT_EXACT_IDENTITY_V2",
+        "mode": "RESEARCH_ONLY_DYNAMIC_CEX_SPOT_EXACT_IDENTITY_V3_PRIORITY_QUEUE",
         "production_portfolio_impact": "NONE",
         "automatic_buy": False,
         "symbol_only_actionable": False,
         "minimum_market_age_days": 90,
+        "identity_queue": queue_report,
         "truth_contract": {
             "symbol_only_never_actionable": True,
             "unique_or_strictly_coherent_coin_identity_required": True,
@@ -156,6 +286,11 @@ def run(data_dir: Path = DATA) -> dict:
             "existing_registry_conflict_never_overwritten": True,
             "dex_fallback_only_for_coingecko_not_found": True,
             "dex_fallback_requires_price_pair_age_coherence": True,
+            "persistent_pending_priority_is_ordering_only": True,
+            "persistent_pending_never_satisfies_identity": True,
+            "priority_uses_only_preexisting_evidence": True,
+            "fresh_watch_capacity_protected": True,
+            "no_hindsight": True,
         },
         "source_watch_count": len(watch),
     }
@@ -177,7 +312,7 @@ def run(data_dir: Path = DATA) -> dict:
         age_report = verify_age_and_coin_identity(temp)
         resolve_exact_identity(temp)
         resolved = _load(temp, {})
-        rows = [_research_wrap(row, "CEX_SPOT_DYNAMIC_EXACT_IDENTITY") for row in (resolved.get("alerts") or []) if isinstance(row, dict)]
+        rows = [_research_wrap(row, "CEX_SPOT_DYNAMIC_EXACT_IDENTITY", now) for row in (resolved.get("alerts") or []) if isinstance(row, dict)]
 
         rejected = list((age_report or {}).get("rejections") or [])
         not_found = {_base_symbol(x.get("symbol")) for x in rejected if isinstance(x, dict) and x.get("reason") == "AGE_IDENTITY_NOT_FOUND"}
@@ -187,7 +322,7 @@ def run(data_dir: Path = DATA) -> dict:
                 continue
             fallback = resolve_dex_fallback(original)
             if fallback:
-                fallback_rows.append(_research_wrap(fallback, "CEX_SPOT_STRICT_DEX_IDENTITY_FALLBACK"))
+                fallback_rows.append(_research_wrap(fallback, "CEX_SPOT_STRICT_DEX_IDENTITY_FALLBACK", now))
         rows.extend(fallback_rows)
 
         # Prevent duplicate exact token/pair identities if both providers converge.
