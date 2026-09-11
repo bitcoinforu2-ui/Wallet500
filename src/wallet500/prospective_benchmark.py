@@ -26,24 +26,49 @@ def _write(path: Path, payload: dict) -> None:
 
 
 def _rows(payload: dict) -> list[dict]:
-    for key in ("alerts", "targets", "coins", "candidates"):
+    for key in ("alerts", "targets", "active_deep_watch", "coins", "candidates"):
         v = payload.get(key)
-        if isinstance(v, list): return [x for x in v if isinstance(x, dict)]
+        if isinstance(v, list):
+            return [x for x in v if isinstance(x, dict)]
     return []
 
 
-def _key(row: dict) -> str:
+def _direct_identity(row: dict) -> tuple[str, str, str]:
     chain = str(row.get("network") or row.get("chain") or "").lower().strip()
     token = str(row.get("token_address") or row.get("address") or row.get("mint") or "").strip()
     pair = str(row.get("pair_address") or row.get("dex_pair_address") or row.get("pair") or "").lower().strip()
-    return f"{chain}|{token}|{pair}" if chain and token and pair else ""
+    return chain, token, pair
+
+
+def _unique_pair_index(revival: dict) -> dict[tuple[str, str], str]:
+    """Return a token->pair map only when the current snapshot has one unique pair.
+
+    Ambiguous tokens are deliberately omitted. There is no symbol fallback and no
+    retroactive inference from outcomes or later production state.
+    """
+    seen: dict[tuple[str, str], set[str]] = {}
+    for row in _rows(revival):
+        chain, token, pair = _direct_identity(row)
+        if chain and token and pair:
+            seen.setdefault((chain, token), set()).add(pair)
+    return {key: next(iter(pairs)) for key, pairs in seen.items() if len(pairs) == 1}
+
+
+def _key(row: dict, unique_pairs: dict[tuple[str, str], str]) -> tuple[str, bool]:
+    chain, token, pair = _direct_identity(row)
+    joined = False
+    if chain and token and not pair:
+        pair = unique_pairs.get((chain, token), "")
+        joined = bool(pair)
+    return (f"{chain}|{token}|{pair}" if chain and token and pair else "", joined)
 
 
 def _iso(value: Any) -> datetime | None:
     try:
         d = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
-    except Exception: return None
+    except Exception:
+        return None
 
 
 def run(data_dir: str | Path = "data", now: str | None = None) -> dict:
@@ -55,19 +80,33 @@ def run(data_dir: str | Path = "data", now: str | None = None) -> dict:
         raise RuntimeError("PROSPECTIVE_LEDGER_TRUTH_INVALID")
     records = ledger.setdefault("records", {})
 
+    revival = _load(data / "revival-1000-latest.json", {})
+    if revival and (revival.get("network") != "solana" or revival.get("no_hindsight") is not True):
+        raise RuntimeError("PROSPECTIVE_IDENTITY_SOURCE_TRUTH_INVALID")
+    unique_pairs = _unique_pair_index(revival)
+
     feeds = [
         ("WAKING", _load(data / "waking-confirmation-latest.json", {})),
         ("PRE_T0", _load(data / "waking-pre-t0-confirmation.json", {})),
         ("PRODUCTION", _load(data / "real-alerts.json", {})),
     ]
+    skipped_missing_exact_pair = 0
+    joined_exact_pair = 0
     for stage, payload in feeds:
-        observed_at = payload.get("generated_at") or generated
+        feed_observed_at = payload.get("generated_at") or generated
         for row in _rows(payload):
-            key = _key(row)
-            if not key: continue  # fail closed: no exact pair identity, no cohort record
+            key, joined = _key(row, unique_pairs)
+            if not key:
+                skipped_missing_exact_pair += 1
+                continue  # fail closed: no exact pair identity, no cohort record
+            # If exact pair had to be joined from the current Revival snapshot,
+            # do not claim an earlier first-seen time. The identity is considered
+            # observed only now, preserving strict prospective/no-hindsight time.
+            observed_at = generated if joined else feed_observed_at
+            if joined:
+                joined_exact_pair += 1
             rec = records.setdefault(key, {"identity": key, "first_seen_at": observed_at, "stages": {}, "immutable_first_observation": True})
-            # First observation is immutable; later runs can append new stage first-seen only.
-            rec.setdefault("stages", {}).setdefault(stage, {"first_seen_at": observed_at})
+            rec.setdefault("stages", {}).setdefault(stage, {"first_seen_at": observed_at, "exact_pair_joined_at_observation": joined})
 
     progression = []
     dwell: dict[str, list[float]] = {"WAKING_TO_PRE_T0": [], "PRE_T0_TO_PRODUCTION": []}
@@ -75,22 +114,52 @@ def run(data_dir: str | Path = "data", now: str | None = None) -> dict:
         stages = rec.get("stages") or {}
         w, p, r = (_iso((stages.get(x) or {}).get("first_seen_at")) for x in ("WAKING", "PRE_T0", "PRODUCTION"))
         blockers = []
-        if "WAKING" in stages and "PRE_T0" not in stages: blockers.append("WAITING_FOR_IMMUTABLE_PRE_T0_BINDING_OR_EVIDENCE")
-        if "PRE_T0" in stages and "PRODUCTION" not in stages: blockers.append("RESEARCH_ONLY_NOT_PRODUCTION_VERIFIED")
-        if w and p and p >= w: dwell["WAKING_TO_PRE_T0"].append((p-w).total_seconds()/60)
-        if p and r and r >= p: dwell["PRE_T0_TO_PRODUCTION"].append((r-p).total_seconds()/60)
+        if "WAKING" in stages and "PRE_T0" not in stages:
+            blockers.append("WAITING_FOR_IMMUTABLE_PRE_T0_BINDING_OR_EVIDENCE")
+        if "PRE_T0" in stages and "PRODUCTION" not in stages:
+            blockers.append("RESEARCH_ONLY_NOT_PRODUCTION_VERIFIED")
+        if w and p and p >= w:
+            dwell["WAKING_TO_PRE_T0"].append((p-w).total_seconds()/60)
+        if p and r and r >= p:
+            dwell["PRE_T0_TO_PRODUCTION"].append((r-p).total_seconds()/60)
         progression.append({"identity": key, "highest_stage": next((s for s in reversed(STAGES) if s in stages), "DISCOVERED"), "blockers": blockers})
 
     def stats(xs: list[float]) -> dict:
-        if not xs: return {"n": 0, "median_minutes": None, "p90_minutes": None}
-        ys=sorted(xs); n=len(ys)
-        return {"n": n, "median_minutes": round(ys[(n-1)//2],2), "p90_minutes": round(ys[min(n-1, int((n-1)*0.9))],2)}
+        if not xs:
+            return {"n": 0, "median_minutes": None, "p90_minutes": None}
+        ys = sorted(xs)
+        n = len(ys)
+        return {"n": n, "median_minutes": round(ys[(n-1)//2], 2), "p90_minutes": round(ys[min(n-1, int((n-1)*0.9))], 2)}
 
     ledger["updated_at"] = generated
     ledger["production_effect"] = False
     ledger["automatic_buy"] = False
+    ledger["identity_contract"] = {
+        "key": "chain|token|exact_pair",
+        "symbol_fallback": False,
+        "ambiguous_pair_join": "FORBIDDEN",
+        "joined_pair_first_seen_backdating": "FORBIDDEN",
+    }
     _write(ledger_path, ledger)
-    out = {"version": VERSION, "generated_at": generated, "mode": ledger["mode"], "no_hindsight": True, "production_effect": False, "counts": {"cohort": len(records), "waking": sum("WAKING" in (r.get("stages") or {}) for r in records.values()), "pre_t0": sum("PRE_T0" in (r.get("stages") or {}) for r in records.values()), "production": sum("PRODUCTION" in (r.get("stages") or {}) for r in records.values())}, "dwell": {k:stats(v) for k,v in dwell.items()}, "progression": progression}
+    out = {
+        "version": VERSION,
+        "generated_at": generated,
+        "mode": ledger["mode"],
+        "no_hindsight": True,
+        "production_effect": False,
+        "identity_quality": {
+            "joined_unique_exact_pair_this_run": joined_exact_pair,
+            "skipped_missing_or_ambiguous_exact_pair_this_run": skipped_missing_exact_pair,
+        },
+        "counts": {
+            "cohort": len(records),
+            "waking": sum("WAKING" in (r.get("stages") or {}) for r in records.values()),
+            "pre_t0": sum("PRE_T0" in (r.get("stages") or {}) for r in records.values()),
+            "production": sum("PRODUCTION" in (r.get("stages") or {}) for r in records.values()),
+        },
+        "dwell": {k: stats(v) for k, v in dwell.items()},
+        "progression": progression,
+    }
     _write(data / "prospective-benchmark-latest.json", out)
     return out
 
@@ -98,4 +167,6 @@ def run(data_dir: str | Path = "data", now: str | None = None) -> dict:
 def main() -> None:
     print(json.dumps(run(), ensure_ascii=False))
 
-if __name__ == "__main__": main()
+
+if __name__ == "__main__":
+    main()
