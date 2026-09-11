@@ -32,7 +32,7 @@ def run(
     # product scope is a configuration error and remains fail-closed.
     if MIN_MARKET_AGE_DAYS != PROJECT_SCOPE_MIN_AGE_DAYS or MIN_MARKET_AGE_DAYS != APPROVED_PRODUCTION_MIN_AGE_DAYS:
         rejected = []
-        for row in raw[:500]:
+        for row in raw:
             if not isinstance(row, dict):
                 continue
             rejected.append({
