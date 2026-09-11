@@ -28,7 +28,7 @@ def _row(status="VERIFIED_WATCH", pair="PairA"):
 def test_first_run_baselines_without_historical_spam(tmp_path, monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
-    _write(tmp_path, [_row("EVIDENCE_READY")])
+    _write(tmp_path, [_row("PAPER_BUY_CANDIDATE")])
     sent = []
     report = run(str(tmp_path), NOW, sender=lambda *args: sent.append(args))
     assert report["baseline_only"] is True
@@ -36,17 +36,31 @@ def test_first_run_baselines_without_historical_spam(tmp_path, monkeypatch):
     assert sent == []
 
 
-def test_watch_to_evidence_ready_sends_once(tmp_path, monkeypatch):
+def test_watch_to_evidence_ready_stays_silent(tmp_path, monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
     _write(tmp_path, [_row("VERIFIED_WATCH")])
     run(str(tmp_path), NOW, sender=lambda *args: (1, 1))
     _write(tmp_path, [_row("EVIDENCE_READY")])
+    report = run(str(tmp_path), NOW, sender=lambda *args: (_ for _ in ()).throw(AssertionError("orange alert must stay silent")))
+    assert report["eligible_count"] == 0
+    assert report["delivered_count"] == 0
+    assert report["policy"]["evidence_ready_notifications"] is False
+    assert report["policy"]["minimum_user_facing_stage"] == "PAPER_BUY_CANDIDATE"
+
+
+def test_evidence_ready_to_prebuy_sends_once(tmp_path, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+    _write(tmp_path, [_row("EVIDENCE_READY")])
+    run(str(tmp_path), NOW, sender=lambda *args: (1, 1))
+    _write(tmp_path, [_row("PAPER_BUY_CANDIDATE")])
     sent = []
     report = run(str(tmp_path), NOW, sender=lambda *args: (sent.append(args) or (55, 1)))
     assert report["eligible_count"] == 1
     assert report["delivered_count"] == 1
-    assert "RESEARCH → EVIDENCE_READY" in sent[0][2]
+    assert "EVIDENCE_READY → PAPER_BUY_CANDIDATE" in sent[0][2]
+    assert "PRE-BUY STAGE" in sent[0][2]
     report2 = run(str(tmp_path), NOW, sender=lambda *args: (_ for _ in ()).throw(AssertionError("duplicate")))
     assert report2["eligible_count"] == 0
 
@@ -61,25 +75,35 @@ def test_raw_research_changes_stay_silent(tmp_path, monkeypatch):
     assert report["eligible_count"] == 0
 
 
-def test_exact_pair_change_does_not_inherit_previous_stage(tmp_path, monkeypatch):
+def test_exact_pair_change_below_prebuy_stays_silent(tmp_path, monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
     _write(tmp_path, [_row("EVIDENCE_READY", "PairA")])
     run(str(tmp_path), NOW, sender=lambda *args: (1, 1))
     _write(tmp_path, [_row("EVIDENCE_READY", "PairB")])
+    report = run(str(tmp_path), NOW, sender=lambda *args: (_ for _ in ()).throw(AssertionError("new pair orange alert must stay silent")))
+    assert report["eligible_count"] == 0
+    assert report["delivered_count"] == 0
+
+
+def test_exact_pair_change_at_prebuy_is_user_facing(tmp_path, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+    _write(tmp_path, [_row("EVIDENCE_READY", "PairA")])
+    run(str(tmp_path), NOW, sender=lambda *args: (1, 1))
+    _write(tmp_path, [_row("PAPER_BUY_CANDIDATE", "PairB")])
     sent = []
     report = run(str(tmp_path), NOW, sender=lambda *args: (sent.append(args) or (2, 1)))
-    # PairB is a new identity and should be treated as a fresh stage advance, not as PairA continuation.
     assert report["eligible_count"] == 1
     assert report["delivered_count"] == 1
 
 
-def test_delivery_failure_does_not_consume_transition(tmp_path, monkeypatch):
+def test_delivery_failure_does_not_consume_prebuy_transition(tmp_path, monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
-    _write(tmp_path, [_row("VERIFIED_WATCH")])
-    run(str(tmp_path), NOW, sender=lambda *args: (1, 1))
     _write(tmp_path, [_row("EVIDENCE_READY")])
+    run(str(tmp_path), NOW, sender=lambda *args: (1, 1))
+    _write(tmp_path, [_row("PAPER_BUY_CANDIDATE")])
     report = run(str(tmp_path), NOW, sender=lambda *args: (_ for _ in ()).throw(RuntimeError("boom")))
     assert report["error_count"] == 1
     retry = run(str(tmp_path), NOW, sender=lambda *args: (99, 1))
