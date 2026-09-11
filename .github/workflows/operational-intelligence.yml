@@ -9,6 +9,7 @@ on:
     paths:
       - 'src/wallet500/operational_intelligence.py'
       - 'src/wallet500/prospective_benchmark.py'
+      - 'tests/test_operational_intelligence.py'
       - '.github/workflows/operational-intelligence.yml'
 
 permissions:
@@ -30,7 +31,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install
-        run: pip install -e .
+        run: pip install -e . pytest
+      - name: Unit tests
+        run: python -m pytest -q tests/test_operational_intelligence.py
       - name: Build fail-closed operational intelligence
         run: python -m wallet500.operational_intelligence
       - name: Update prospective no-hindsight benchmark
