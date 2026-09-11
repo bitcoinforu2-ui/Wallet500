@@ -53,7 +53,7 @@ def test_revival_dex_pair_fields_feed_verified_watch(tmp_path):
     assert row["signal_score"] == 70
     assert row["signal_leader"] == "REVIVAL_VERIFIED"
     assert row["confirmation_count"] == 1
-    assert row["confirmation_total"] == 5
+    assert row["confirmation_total"] == 7
     assert row["readiness_passed"] == 5
     assert row["readiness_total"] == 7
     assert row["radar_tier"] == "VERIFIED_WATCH"
