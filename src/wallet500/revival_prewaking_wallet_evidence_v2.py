@@ -2,21 +2,118 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 
 from . import cyberleek_wallet_flow as rpcbase
 from . import revival_prewaking_wallet_evidence as pre
 from . import revival_prewaking_wallet_retention as retention
 from . import revival_wallet_evidence as collector
 
+WALLET_INSIGHT = Path("data/wallet-insight-review.json")
+INSIGHT_PRIORITY_SLOTS = 8
+INSIGHT_ALLOWED_STATUSES = {"EVIDENCE_READY", "VERIFIED_WATCH"}
+INSIGHT_ALLOWED_CLASSIFICATIONS = {"DATA_PIPELINE_BOTTLENECK", "COVERAGE_TO_ACCUMULATION_GAP"}
+
+
+def _load_json(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        return {}
+
+
+def _insight_priority_candidates(previous: dict | None = None, *, slots: int = INSIGHT_PRIORITY_SLOTS) -> list[dict]:
+    """Select current exact-pair coverage gaps for forward-only deep wallet monitoring.
+
+    This is scheduling only. It cannot make wallet evidence positive, promote a token,
+    change a production threshold, or turn historical coverage into current evidence.
+    A candidate must already have a current verified exact-pair coverage probe and a
+    post-research candidate status. One-cycle rotation prevents a small hot set from
+    starving the larger verified-coverage backlog.
+    """
+    insight = _load_json(WALLET_INSIGHT)
+    if (
+        insight.get("version") != "WALLET500_WALLET_INSIGHT_REVIEW_V1"
+        or insight.get("mode") != "RESEARCH_ONLY_EXACT_PAIR_WALLET_BOTTLENECK_REVIEW"
+        or insight.get("production_effect") is not False
+        or insight.get("automatic_buy") is not False
+        or insight.get("no_hindsight") is not True
+    ):
+        return []
+
+    truth = insight.get("truth_contract") or {}
+    if (
+        truth.get("exact_pair_required") is not True
+        or truth.get("coverage_probe_never_counts_as_accumulation_alpha") is not True
+        or truth.get("historical_coverage_never_counts_as_current_positive") is not True
+        or truth.get("promotion_allowed") is not False
+    ):
+        return []
+
+    prior = {
+        str(row.get("token_address") or "")
+        for row in ((previous or {}).get("tokens") or [])
+        if isinstance(row, dict) and row.get("selection_lane") == "WALLET_COVERAGE_GAP_PRIORITY"
+    }
+    eligible: list[dict] = []
+    for row in insight.get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("candidate_status") not in INSIGHT_ALLOWED_STATUSES:
+            continue
+        if row.get("classification") not in INSIGHT_ALLOWED_CLASSIFICATIONS:
+            continue
+        metrics = row.get("metrics") or {}
+        if metrics.get("current_probe_verified") is not True or metrics.get("coverage_degraded") is True:
+            continue
+        parts = str(row.get("identity") or "").split("|")
+        if len(parts) != 3 or parts[0] != "solana" or not all(parts):
+            continue
+        _, mint, pair = parts
+        eligible.append({
+            "token_address": mint,
+            "symbol": row.get("symbol"),
+            "pair_address": pair,
+            "reason": "WALLET_INSIGHT_CURRENT_COVERAGE_PRIORITY",
+            "activity_tier": "CURRENT_EXACT_PAIR_COVERAGE_GAP",
+            "activity_rank": 3,
+            "exact_pair_liquidity_usd": 0.0,
+            "exact_pair_volume_24h_usd": 0.0,
+            "prewaking_rank_score": 1000.0 if row.get("candidate_status") == "EVIDENCE_READY" else 900.0,
+            "source_revival_generated_at": None,
+            "source_wallet_insight_generated_at": insight.get("generated_at"),
+            "selection_lane": "WALLET_COVERAGE_GAP_PRIORITY",
+            "scheduling_only": True,
+        })
+
+    # Prefer rows not selected in the immediately previous published cycle, then stable identity order.
+    eligible.sort(key=lambda r: (r["token_address"] in prior, -float(r["prewaking_rank_score"]), r["token_address"]))
+    return eligible[: max(0, int(slots))]
+
+
+def _install_insight_bridge() -> dict:
+    previous = collector._load(pre.LATEST, {})
+    original = pre._ranked_candidates
+    priority = _insight_priority_candidates(previous)
+
+    def bridged(revival: dict) -> list[dict]:
+        normal = original(revival)
+        priority_tokens = {row["token_address"] for row in priority}
+        # Priority rows are current exact-pair coverage gaps. Keep normal DEEP_WATCH
+        # rows behind them and never duplicate an identity in the same RPC budget.
+        return priority + [row for row in normal if row.get("token_address") not in priority_tokens]
+
+    pre._ranked_candidates = bridged
+    return {
+        "eligible_selected": len(priority),
+        "selected_tokens": [row["token_address"] for row in priority],
+        "source": str(WALLET_INSIGHT),
+    }
+
 
 def _fetch_transactions_resilient(rows: list[dict], mint: str) -> tuple[list[dict], int]:
-    """Resolve exact-mint signed-owner swaps without treating unrelated pair traffic as missing data.
-
-    A pair address can receive LP maintenance, routing, failed transactions and other
-    instructions that do not touch the target mint. Those rows are not swaps and must
-    not dilute the wallet-resolution denominator. A transaction is still unresolved
-    when it does touch the target mint but a signed token owner cannot be proven.
-    """
+    """Resolve exact-mint signed-owner swaps without treating unrelated pair traffic as missing data."""
     events: list[dict] = []
     unresolved = 0
     valid = [row for row in rows if row.get("signature")]
@@ -26,14 +123,7 @@ def _fetch_transactions_resilient(rows: list[dict], mint: str) -> tuple[list[dic
         try:
             tx = rpcbase._rpc(
                 "getTransaction",
-                [
-                    signature,
-                    {
-                        "encoding": "jsonParsed",
-                        "commitment": "confirmed",
-                        "maxSupportedTransactionVersion": 0,
-                    },
-                ],
+                [signature, {"encoding": "jsonParsed", "commitment": "confirmed", "maxSupportedTransactionVersion": 0}],
             )
         except Exception:
             tx = None
@@ -45,9 +135,7 @@ def _fetch_transactions_resilient(rows: list[dict], mint: str) -> tuple[list[dic
             pass
         else:
             deltas = rpcbase._mint_owner_deltas(tx, mint)
-            if not deltas:
-                pass
-            else:
+            if deltas:
                 event = collector._extract_trade(tx, signature, mint, row.get("blockTime"))
                 if event:
                     events.append(event)
@@ -64,12 +152,33 @@ def _fetch_transactions_resilient(rows: list[dict], mint: str) -> tuple[list[dic
 
 def run() -> dict:
     collector._fetch_transactions = _fetch_transactions_resilient
+    bridge = _install_insight_bridge()
     payload = pre.run()
     truth = payload.get("truth_contract") if isinstance(payload.get("truth_contract"), dict) else {}
     truth["pair_signatures_without_target_mint_delta_excluded_from_resolution_denominator"] = True
     truth["target_mint_touch_without_signed_owner_remains_unresolved"] = True
+    truth["wallet_insight_priority_is_scheduling_only"] = True
+    truth["wallet_insight_priority_requires_current_exact_pair_coverage"] = True
+    truth["wallet_insight_priority_never_counts_as_accumulation_alpha"] = True
+    truth["wallet_insight_priority_never_changes_production_thresholds"] = True
+    truth["wallet_insight_priority_uses_no_future_outcomes"] = True
     payload["truth_contract"] = truth
     payload["resolution_policy"] = "EXACT_MINT_TOUCH_DENOMINATOR_V2"
+    policy = payload.setdefault("selection_policy", {})
+    policy["wallet_insight_priority_bridge"] = {
+        "enabled": True,
+        "slots": INSIGHT_PRIORITY_SLOTS,
+        "eligible_selected": bridge["eligible_selected"],
+        "selected_tokens": bridge["selected_tokens"],
+        "allowed_candidate_statuses": sorted(INSIGHT_ALLOWED_STATUSES),
+        "allowed_classifications": sorted(INSIGHT_ALLOWED_CLASSIFICATIONS),
+        "current_exact_pair_coverage_required": True,
+        "one_cycle_rotation": True,
+        "scheduling_only": True,
+        "production_effect": False,
+        "automatic_buy": False,
+        "no_hindsight": True,
+    }
     collector._write(pre.LATEST, payload)
     payload = retention.retain_fresh_rotation_evidence(payload)
     return payload
