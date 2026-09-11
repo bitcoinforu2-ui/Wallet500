@@ -1,0 +1,72 @@
+name: Wallet500 Wallet Insight Review
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/wallet_insight_review.py'
+      - 'tests/test_wallet_insight_review.py'
+      - '.github/workflows/wallet-insight-review.yml'
+      - 'data/candidate-evidence-envelope.json'
+      - 'data/revival-prewaking-wallet-evidence.json'
+      - 'data/revival-wallet-coverage-probe.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-wallet-insight-review
+  cancel-in-progress: false
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Unit tests
+        run: python -m pytest -q tests/test_wallet_insight_review.py
+      - name: Build exact-pair wallet insight review
+        run: python -m wallet500.wallet_insight_review
+      - name: Validate research-only truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('data/wallet-insight-review.json').read_text())
+          if p.get('version')!='WALLET500_WALLET_INSIGHT_REVIEW_V1': raise SystemExit('WALLET_INSIGHT_VERSION_INVALID')
+          if p.get('mode')!='RESEARCH_ONLY_EXACT_PAIR_WALLET_BOTTLENECK_REVIEW': raise SystemExit('WALLET_INSIGHT_MODE_INVALID')
+          if p.get('production_effect') is not False or p.get('automatic_buy') is not False: raise SystemExit('WALLET_INSIGHT_PRODUCTION_LEAK')
+          if p.get('no_hindsight') is not True: raise SystemExit('WALLET_INSIGHT_HINDSIGHT_INVALID')
+          t=p.get('truth_contract') or {}
+          if t.get('exact_pair_required') is not True: raise SystemExit('WALLET_INSIGHT_PAIR_GUARD_MISSING')
+          if t.get('historical_coverage_never_counts_as_current_positive') is not True: raise SystemExit('WALLET_INSIGHT_HISTORY_LEAK')
+          if t.get('coverage_probe_never_counts_as_accumulation_alpha') is not True: raise SystemExit('WALLET_INSIGHT_COVERAGE_ALPHA_LEAK')
+          if t.get('promotion_allowed') is not False or t.get('production_threshold_change_allowed') is not False: raise SystemExit('WALLET_INSIGHT_PROMOTION_LEAK')
+          for row in p.get('rows') or []:
+              parts=str(row.get('identity') or '').split('|')
+              if len(parts)!=3 or not all(parts): raise SystemExit('WALLET_INSIGHT_EXACT_PAIR_IDENTITY_INVALID')
+              if row.get('production_effect') is not False or row.get('automatic_buy') is not False: raise SystemExit('WALLET_INSIGHT_ROW_PRODUCTION_LEAK')
+          print('WALLET_INSIGHT_REVIEW_OK', p.get('counts'), p.get('new_insights'))
+          PY
+      - name: Publish wallet insight snapshot atomically
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-wallet-insight-bot'
+          git config user.email 'wallet500-wallet-insight-bot@users.noreply.github.com'
+          BASE_SHA="$(git rev-parse HEAD)"
+          python scripts/atomic_publish.py \
+            --base "$BASE_SHA" \
+            --fail-on-newer \
+            --message 'data: refresh wallet insight review' \
+            data/wallet-insight-review.json
