@@ -89,10 +89,12 @@ jobs:
           ct=c.get('truth_contract') or {}
           if ct.get('candidate_never_disappears_when_it_leaves_live_radar') is not True: raise SystemExit('CANDIDATE_LIFECYCLE_PERSISTENCE_LOST')
           if ct.get('production_effect') is not False or ct.get('automatic_buy') is not False or ct.get('automatic_weight_mutation') is not False: raise SystemExit('CANDIDATE_LIFECYCLE_ACTION_LEAK')
-          allowed={'PROMOTED','LIVE_6_OF_7','LIVE_REGRESSED','LIVE_VERIFIED_WATCH','SHADOW_LEARNING'}
+          if ct.get('confirmation_loss_state_is_non_actionable') is not True: raise SystemExit('CONFIRMATION_LOSS_ACTION_LEAK')
+          if ct.get('confirmation_loss_does_not_preserve_real_alert') is not True: raise SystemExit('CONFIRMATION_LOSS_REAL_ALERT_LEAK')
+          allowed={'PROMOTED','LIVE_CONFIRMATION_LOST','LIVE_6_OF_7','LIVE_REGRESSED','LIVE_VERIFIED_WATCH','SHADOW_LEARNING'}
           for row in c.get('candidates') or []:
               if row.get('lifecycle_state') not in allowed: raise SystemExit('CANDIDATE_LIFECYCLE_STATE_INVALID')
-              if row.get('research_only') is not True or row.get('automatic_buy') is not False: raise SystemExit('CANDIDATE_LIFECYCLE_ROW_ACTION_LEAK')
+              if row.get('research_only') is not True or row.get('automatic_buy') is not False or row.get('actionable') is not False: raise SystemExit('CANDIDATE_LIFECYCLE_ROW_ACTION_LEAK')
           print('NEAR_ALERT_OBSERVATORY_OK', d.get('summary'))
           print('RESEARCH_SAMPLE_ACCELERATOR_OK', r.get('record_count'), r.get('verified_execution_record_count'), s.get('mature_24h_count'), s.get('usable_progress_pct'))
           print('CANDIDATE_LIFECYCLE_OK', c.get('candidate_count'), c.get('counts'))
