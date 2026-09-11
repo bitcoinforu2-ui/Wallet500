@@ -10,6 +10,7 @@ from .cex_spot_identity_fallback import resolve as resolve_dex_fallback
 
 DATA = Path("data")
 MAX_WATCH_CANDIDATES = 60
+MAX_PERSISTENT_PRIORITY_SLOTS = 30
 
 
 def _load(path: Path, default):
@@ -71,22 +72,27 @@ def _build_identity_queue(spot: dict, pending: dict) -> tuple[list[dict], dict]:
 
     This fixes the historical failure mode where a strong unresolved candidate could
     disappear from the current top-N watchlist before exact identity was obtained.
+    A bounded persistent reserve prevents the backlog from starving fresh watches.
     Only already-recorded evidence is used; later price/outcome data is not consulted.
     """
     current_rows = [x for x in (spot.get("watchlist") or []) if isinstance(x, dict)]
     pending_rows = [x for x in (pending.get("candidates") or []) if isinstance(x, dict)]
 
     merged: dict[str, dict] = {}
+    current_symbols: set[str] = set()
     for row in current_rows:
         symbol = _base_symbol(row.get("symbol"))
         if symbol:
             merged[symbol] = dict(row)
+            current_symbols.add(symbol)
 
     carried = 0
+    pending_symbols: set[str] = set()
     for row in pending_rows:
         symbol = _base_symbol(row.get("symbol"))
         if not symbol:
             continue
+        pending_symbols.add(symbol)
         if symbol in merged:
             # Preserve current market fields while adding immutable first-watch/alert evidence.
             combined = dict(row)
@@ -115,9 +121,28 @@ def _build_identity_queue(spot: dict, pending: dict) -> tuple[list[dict], dict]:
             carried += 1
 
     ordered = sorted(merged.values(), key=_identity_priority, reverse=True)
-    selected = ordered[:MAX_WATCH_CANDIDATES]
-    selected_symbols = {_base_symbol(x.get("symbol")) for x in selected}
-    pending_symbols = {_base_symbol(x.get("symbol")) for x in pending_rows}
+    pending_ordered = [row for row in ordered if _base_symbol(row.get("symbol")) in pending_symbols]
+    current_ordered = [row for row in ordered if _base_symbol(row.get("symbol")) in current_symbols]
+
+    selected: list[dict] = []
+    selected_symbols: set[str] = set()
+
+    def add_rows(rows: list[dict], limit: int) -> None:
+        for row in rows:
+            if len(selected) >= limit:
+                return
+            symbol = _base_symbol(row.get("symbol"))
+            if not symbol or symbol in selected_symbols:
+                continue
+            selected.append(row)
+            selected_symbols.add(symbol)
+
+    # First reserve bounded capacity for unresolved historical signals, then guarantee
+    # the remaining resolver capacity to fresh/current watches, then fill spare slots.
+    add_rows(pending_ordered, min(MAX_PERSISTENT_PRIORITY_SLOTS, MAX_WATCH_CANDIDATES))
+    add_rows(current_ordered, MAX_WATCH_CANDIDATES)
+    add_rows(ordered, MAX_WATCH_CANDIDATES)
+
     report = {
         "current_watch_count": len(current_rows),
         "persistent_pending_count": len(pending_rows),
@@ -125,7 +150,10 @@ def _build_identity_queue(spot: dict, pending: dict) -> tuple[list[dict], dict]:
         "merged_unique_count": len(ordered),
         "selected_count": len(selected),
         "selected_persistent_count": len(selected_symbols & pending_symbols),
+        "selected_current_count": len(selected_symbols & current_symbols),
         "limit": MAX_WATCH_CANDIDATES,
+        "persistent_priority_slot_cap": MAX_PERSISTENT_PRIORITY_SLOTS,
+        "fresh_watch_capacity_protected": True,
         "ordering_only": True,
         "production_effect": False,
         "no_hindsight": True,
@@ -261,6 +289,7 @@ def run(data_dir: Path = DATA) -> dict:
             "persistent_pending_priority_is_ordering_only": True,
             "persistent_pending_never_satisfies_identity": True,
             "priority_uses_only_preexisting_evidence": True,
+            "fresh_watch_capacity_protected": True,
             "no_hindsight": True,
         },
         "source_watch_count": len(watch),
