@@ -1,10 +1,11 @@
 {
-  "version": 11,
-  "updated_at": "2026-09-11T12:37:48.254781+00:00",
-  "updated_at_israel": "11/09/2026 15:37:48",
+  "version": 12,
+  "updated_at": "2026-09-11T12:38:30.062212+00:00",
+  "updated_at_israel": "11/09/2026 15:38:30",
   "configured": true,
   "candidate_count": 0,
   "real_alert_count": 0,
+  "pre_wave_alert_count": 0,
   "eligible_count": 0,
   "delivered_count": 0,
   "error_count": 0,
@@ -14,10 +15,24 @@
   "policy": {
     "source": "active-qualified-candidates.json",
     "real_alert_source": "real-alerts.json",
-    "lane": "PRODUCTION_REAL_ALERT_TELEGRAM",
+    "lane": "PRODUCTION_REAL_ALERT_PLUS_PRE_WAVE_TELEGRAM",
     "canonical_policy_source": "wallet500.policy",
-    "transition_rule": "send once when an exact-pair candidate ENTERS actionable REAL_ALERT; re-arm after it leaves actionable state",
-    "requires": [
+    "transition_rule": "send once when exact-pair candidate enters actionable REAL_ALERT or fail-closed PRE_WAVE manual-review state; re-arm after it leaves that state",
+    "research_only_notifications": "FORBIDDEN",
+    "pre_wave": {
+      "meaning": "earlier manual-review warning, separate from REAL_ALERT and never a buy instruction",
+      "requires": [
+        "status=PRE_WAVE_ALERT and user_alert_eligible=true",
+        "research_only=false and actionable_research_alert=false and automatic_buy=false",
+        "exact identity + exact pair + verified market age >=180d",
+        "verified execution liquidity>=50000",
+        "DEX volume_h1>=1000",
+        "CEX spot confirmations>=3 across >= 3 exchanges",
+        "multichain on-chain activity gate=true and risk clear"
+      ],
+      "format": "three fire symbols + explicit manual review / not a buy order"
+    },
+    "real_alert_requires": [
       "matching real-alerts.json row with status=REAL_ALERT and actionable_research_alert=true",
       "market_age_verified=true",
       "market_age_min_days>=180",
@@ -35,11 +50,11 @@
     ],
     "research_90d_15k_lane": "SEPARATE_NON_PRODUCTION_LANE; NEVER REDEFINES REAL_ALERT",
     "high_conviction": "score>=90, verified_execution_liquidity>=50000, volume_h1>=30000, risk=LOW",
-    "manual_execution": "Telegram is a review alert only; no automatic trade is executed",
-    "dedupe": "one alert per transition into actionable state for chain+token+exact_pair",
+    "manual_execution": "Telegram alerts are review alerts only; no automatic trade is executed",
+    "dedupe": "separate transition state for REAL_ALERT and PRE_WAVE per chain+token+exact_pair; later REAL_ALERT remains independently deliverable",
     "telegram_timestamp": "every delivered message includes explicit Asia/Jerusalem send date/time plus original signal T0",
     "delivery_retries": "up to 3 attempts on transient Telegram/network failures",
-    "audit_id": "each delivery has a stable alert_event_id derived from exact-pair key plus send timestamp",
+    "audit_id": "each delivery has a stable alert_event_id derived from exact-pair stage key plus send timestamp",
     "state_writer": "only configured production lanes may write Telegram state/report; unconfigured scan lanes are read-only no-ops"
   }
 }
