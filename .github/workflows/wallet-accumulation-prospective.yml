@@ -4,6 +4,11 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
+  pull_request:
+    paths:
+      - 'src/wallet500/wallet_accumulation_prospective.py'
+      - 'tests/test_wallet_accumulation_prospective.py'
+      - '.github/workflows/wallet-accumulation-prospective.yml'
   push:
     branches: [main]
     paths:
@@ -60,6 +65,7 @@ jobs:
           print('WALLET_ACCUMULATION_PROSPECTIVE_OK', report['phase'], report['cohort_size'])
           PY
       - name: Publish experiment state and report
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
