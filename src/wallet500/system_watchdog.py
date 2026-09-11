@@ -90,25 +90,31 @@ def _http_text(url: str, timeout: int = 15) -> str:
 
 
 def github_live_status(token: str | None = None) -> dict[str, Any]:
-    url = f"https://api.github.com/repos/{REPO}/actions/workflows/{LIVE_WORKFLOW}/runs?per_page=12"
+    url = f"https://api.github.com/repos/{REPO}/actions/workflows/{LIVE_WORKFLOW}/runs?per_page=50"
     headers = {"Accept": "application/vnd.github+json", "User-Agent": "Wallet500-Watchdog/1.0"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
         headers["X-GitHub-Api-Version"] = "2022-11-28"
     payload = _http_json(url, headers=headers)
     runs = list(payload.get("workflow_runs") or []) if isinstance(payload, dict) else []
-    latest = runs[0] if runs else {}
-    completed = [r for r in runs if r.get("status") == "completed"]
+
+    # Production health is defined by operational scans only. Push-triggered runs are
+    # CI/development validation and can be cancelled during normal code churn; they
+    # must never create a production Telegram incident. Scheduled and explicitly
+    # dispatched scans are the runs that prove the live scanner is operational.
+    operational_events = {"schedule", "workflow_dispatch"}
+    operational_runs = [r for r in runs if str(r.get("event") or "") in operational_events]
+    latest = operational_runs[0] if operational_runs else {}
+    completed = [r for r in operational_runs if r.get("status") == "completed"]
     successes = [r for r in completed if r.get("conclusion") == "success"]
     last_success = successes[0] if successes else {}
 
-    # A single cancelled dispatch is not equivalent to a scanner failure. GitHub can
-    # cancel/replace a queued dispatch before a job starts. Health is anchored to the
-    # last real success; cancellations are escalated only when they repeat or success
-    # itself becomes stale. Real execution failures are still reported immediately.
+    # A single cancelled operational dispatch is not equivalent to a scanner failure.
+    # Health is anchored to the last real operational success. Repeated operational
+    # cancellations are escalated; real execution failures are reported immediately.
     recent_after_success: list[dict[str, Any]] = []
     last_success_id = last_success.get("id")
-    for run in runs:
+    for run in operational_runs:
         if last_success_id is not None and run.get("id") == last_success_id:
             break
         recent_after_success.append(run)
@@ -127,6 +133,7 @@ def github_live_status(token: str | None = None) -> dict[str, Any]:
     return {
         "latest_status": latest.get("status"),
         "latest_conclusion": latest.get("conclusion"),
+        "latest_event": latest.get("event"),
         "latest_created_at": latest.get("created_at"),
         "latest_updated_at": latest.get("updated_at"),
         "latest_run_id": latest.get("id"),
@@ -137,6 +144,7 @@ def github_live_status(token: str | None = None) -> dict[str, Any]:
         "latest_hard_failure_conclusion": latest_hard_failure.get("conclusion"),
         "latest_hard_failure_run_id": latest_hard_failure.get("id"),
         "active_run_count": sum(1 for r in recent_after_success if r.get("status") in {"queued", "in_progress", "waiting", "pending"}),
+        "ignored_non_operational_run_count": len(runs) - len(operational_runs),
     }
 
 
@@ -279,6 +287,7 @@ def build_report(
             "CURRENT_REAL_ALERTS_ARE_BASELINED_ON_FIRST_WATCHDOG_RUN",
             "NEW_REAL_ALERT_TELEGRAM_GAPS_ARE_DETECTED_BY_EXACT_PAIR_TRANSITION",
             "SINGLE_LIVE_SCAN_CANCELLATION_IS_TRANSIENT_WHILE_LAST_SUCCESS_IS_FRESH",
+            "PUSH_TRIGGERED_LIVE_SCAN_RUNS_ARE_CI_NOT_PRODUCTION_HEALTH",
         ],
     }
     return report, next_state
