@@ -150,3 +150,17 @@ def test_5_truth_contract_keeps_production_gates_unchanged(monkeypatch, tmp_path
     assert truth["hard_liquidity_and_survival_gates_unchanged"] is True
     assert truth["no_hindsight"] is True
     assert truth["priority_uses_only_preexisting_evidence"] is True
+
+
+def test_6_previous_rejections_count_as_attempts_for_fair_rotation():
+    pending = {"candidates": _pending_rows(50)}
+    previous = {
+        "candidates": [],
+        "rejections": [{"symbol": f"OLD{i}USDT", "reason": "AGE_IDENTITY_AMBIGUOUS"} for i in range(30)],
+    }
+    selected, report = mod._build_identity_queue({"watchlist": []}, pending, previous)
+    selected_symbols = [mod._base_symbol(r.get("symbol")) for r in selected[:20]]
+    assert all(symbol not in {f"OLD{i}" for i in range(30)} for symbol in selected_symbols)
+    assert report["previous_attempted_symbol_count"] == 30
+    assert report["pending_not_attempted_previous_run"] == 20
+    assert report["one_cycle_backlog_rotation"] is True
