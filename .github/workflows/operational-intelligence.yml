@@ -13,6 +13,7 @@ on:
       - 'tests/test_operational_intelligence.py'
       - 'tests/test_engine_learning_review.py'
       - 'tests/test_provider_redundancy.py'
+      - 'tests/test_smart_money_learning.py'
       - '.github/workflows/operational-intelligence.yml'
   push:
     branches: [main]
@@ -24,6 +25,7 @@ on:
       - 'tests/test_operational_intelligence.py'
       - 'tests/test_engine_learning_review.py'
       - 'tests/test_provider_redundancy.py'
+      - 'tests/test_smart_money_learning.py'
       - '.github/workflows/operational-intelligence.yml'
 
 permissions:
@@ -47,7 +49,7 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Unit tests
-        run: python -m pytest -q tests/test_operational_intelligence.py tests/test_engine_learning_review.py tests/test_provider_redundancy.py
+        run: python -m pytest -q tests/test_operational_intelligence.py tests/test_engine_learning_review.py tests/test_provider_redundancy.py tests/test_smart_money_learning.py
       - name: Build fail-closed operational intelligence
         run: python -m wallet500.operational_intelligence
       - name: Update prospective no-hindsight benchmark
@@ -69,8 +71,10 @@ jobs:
           if bench.get('production_effect') is not False or bench.get('no_hindsight') is not True: raise SystemExit('BENCHMARK_TRUTH_INVALID')
           if learn.get('production_effect') is not False or learn.get('no_hindsight') is not True: raise SystemExit('ENGINE_LEARNING_TRUTH_INVALID')
           if redundancy.get('production_effect') is not False or redundancy.get('failed_provider_counts_as_positive_evidence') is not False: raise SystemExit('PROVIDER_REDUNDANCY_TRUTH_INVALID')
-          if (learn.get('truth_contract') or {}).get('production_threshold_changes')!='FORBIDDEN': raise SystemExit('ENGINE_LEARNING_THRESHOLD_GUARD_MISSING')
-          if (learn.get('truth_contract') or {}).get('retrospective_first_seen_backfill')!='FORBIDDEN': raise SystemExit('ENGINE_LEARNING_BACKFILL_GUARD_MISSING')
+          truth=learn.get('truth_contract') or {}
+          if truth.get('production_threshold_changes')!='FORBIDDEN': raise SystemExit('ENGINE_LEARNING_THRESHOLD_GUARD_MISSING')
+          if truth.get('retrospective_first_seen_backfill')!='FORBIDDEN': raise SystemExit('ENGINE_LEARNING_BACKFILL_GUARD_MISSING')
+          if truth.get('smart_money_queue_can_promote') is not False: raise SystemExit('SMART_MONEY_PROMOTION_GUARD_MISSING')
           for row in bench.get('progression') or []:
               parts=str(row.get('identity') or '').split('|')
               if len(parts)!=3 or not all(parts): raise SystemExit('EXACT_PAIR_IDENTITY_INVALID')
