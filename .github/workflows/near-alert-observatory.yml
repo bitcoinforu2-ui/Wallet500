@@ -26,8 +26,12 @@ on:
 permissions:
   contents: write
 
+# Serialize with the 6-of-7 war-room writer because both can publish
+# data/near-alert-observatory.json. This prevents fail-closed stale-snapshot
+# collisions without weakening any truth gate. Each run recomputes from newest
+# main, so replacing an older pending advisory refresh cannot overwrite truth.
 concurrency:
-  group: wallet500-near-alert-observatory
+  group: wallet500-live-scan-publisher
   cancel-in-progress: false
 
 jobs:
