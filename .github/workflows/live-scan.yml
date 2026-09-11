@@ -19,10 +19,12 @@ on:
 permissions:
   contents: write
 
-# Collection and validation only. Final verified state is handed to the
-# serialized snapshot publisher so research helpers cannot race production.
+# Collection and validation are serialized only against other Live Scan runs.
+# Do not share this concurrency group with advisory/research writers: GitHub keeps
+# at most one pending run per group and replaces an older pending run even when
+# cancel-in-progress is false. The verified publisher has its own serialization.
 concurrency:
-  group: wallet500-live-scan-publisher
+  group: wallet500-live-scan
   cancel-in-progress: false
 
 jobs:
