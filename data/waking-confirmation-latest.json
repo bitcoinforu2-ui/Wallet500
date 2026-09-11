@@ -18,8 +18,8 @@
     "waking_targets": 16,
     "confirmed": 0,
     "strong": 0,
-    "risk": 0,
-    "unconfirmed": 16
+    "risk": 9,
+    "unconfirmed": 7
   },
   "provider_status_counts": {
     "dexscreener_identity:OK": 16,
@@ -29,7 +29,10 @@
     "youtube:HTTP_429": 16,
     "reddit:HTTP_403": 16,
     "google_news_rss:OK": 16,
-    "coingecko_identity:HTTP_429": 11
+    "coingecko_identity:HTTP_429": 11,
+    "rugcheck:OK": 16,
+    "telegram_official:OK": 7,
+    "telegram_official:NO_OFFICIAL_PUBLIC_CHANNEL": 9
   },
   "targets": [
     {
@@ -39,7 +42,7 @@
       "name": "YZY",
       "base_watch_status": "WAKING_MARKET_ONLY",
       "revival_score_verified": 77.56,
-      "confirmation_status": "WAKING_UNCONFIRMED_RESEARCH",
+      "confirmation_status": "WAKING_RISK_RESEARCH",
       "confirmation_score": 0.0,
       "strong_families": [],
       "identity": {
@@ -56,10 +59,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_-0.066PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 56447,
+            "previous_holder_count": 56484,
+            "holder_change_pct": -0.0655
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -68,16 +85,22 @@
           "source": "NOT_CONNECTED"
         },
         "social": {
-          "available": false,
-          "verified": false,
-          "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "available": true,
+          "verified": true,
+          "source": "WAKING_SOCIAL_MULTI_SOURCE+OFFICIAL_TELEGRAM_V2",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "signals": [],
+          "signals": [
+            "SOCIAL_MENTIONS_0",
+            "SOCIAL_SOURCES_0",
+            "SOCIAL_AUTHORS_0",
+            "OFFICIAL_TELEGRAM_24H_POSTS_0"
+          ],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -98,7 +121,34 @@
           "events": []
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 65.0,
+        "anomaly_score": 35.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_27.00PCT",
+          "TOP10_TOKEN_ACCOUNTS_96.70PCT",
+          "TOP1_TOKEN_ACCOUNT_GE_20PCT",
+          "TOP10_TOKEN_ACCOUNTS_GE_60PCT"
+        ],
+        "metrics": {
+          "holder_count": 56447,
+          "top_holder_rows": 20,
+          "top1_pct": 27.0,
+          "top5_pct": 92.3856,
+          "top10_pct": 96.6983,
+          "top20_pct": 99.8166
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -128,9 +178,19 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 0
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "OK",
+          "count": 0
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     },
     {
       "network": "solana",
@@ -139,7 +199,7 @@
       "name": "Moonbirds",
       "base_watch_status": "WAKING_MARKET_ONLY",
       "revival_score_verified": 77.0,
-      "confirmation_status": "WAKING_UNCONFIRMED_RESEARCH",
+      "confirmation_status": "WAKING_RISK_RESEARCH",
       "confirmation_score": 0.0,
       "strong_families": [],
       "identity": {
@@ -156,10 +216,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_+0.000PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 76524,
+            "previous_holder_count": 76524,
+            "holder_change_pct": 0.0
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -171,13 +245,14 @@
           "available": false,
           "verified": false,
           "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
           "signals": [],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -198,7 +273,34 @@
           "events": []
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 65.0,
+        "anomaly_score": 35.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_25.00PCT",
+          "TOP10_TOKEN_ACCOUNTS_91.60PCT",
+          "TOP1_TOKEN_ACCOUNT_GE_20PCT",
+          "TOP10_TOKEN_ACCOUNTS_GE_60PCT"
+        ],
+        "metrics": {
+          "holder_count": 76524,
+          "top_holder_rows": 20,
+          "top1_pct": 25.0,
+          "top5_pct": 68.2102,
+          "top10_pct": 91.5987,
+          "top20_pct": 96.5363
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -228,9 +330,18 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 0
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "NO_OFFICIAL_PUBLIC_CHANNEL"
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     },
     {
       "network": "solana",
@@ -256,10 +367,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_+0.000PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 224222,
+            "previous_holder_count": 224222,
+            "holder_change_pct": 0.0
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -271,13 +396,14 @@
           "available": false,
           "verified": false,
           "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
           "signals": [],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -298,7 +424,34 @@
           "events": []
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 33.0,
+        "anomaly_score": 67.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_10.46PCT",
+          "TOP10_TOKEN_ACCOUNTS_55.35PCT",
+          "TOP1_TOKEN_ACCOUNT_GE_10PCT",
+          "TOP10_TOKEN_ACCOUNTS_GE_40PCT"
+        ],
+        "metrics": {
+          "holder_count": 224222,
+          "top_holder_rows": 20,
+          "top1_pct": 10.4589,
+          "top5_pct": 40.1191,
+          "top10_pct": 55.3463,
+          "top20_pct": 71.5994
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -328,9 +481,18 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 0
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "NO_OFFICIAL_PUBLIC_CHANNEL"
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     },
     {
       "network": "solana",
@@ -358,10 +520,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_+0.000PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 539366,
+            "previous_holder_count": 539366,
+            "holder_change_pct": 0.0
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -373,13 +549,14 @@
           "available": false,
           "verified": false,
           "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
           "signals": [],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -477,7 +654,33 @@
           ]
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 18.0,
+        "anomaly_score": 82.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_10.44PCT",
+          "TOP10_TOKEN_ACCOUNTS_36.99PCT",
+          "TOP1_TOKEN_ACCOUNT_GE_10PCT"
+        ],
+        "metrics": {
+          "holder_count": 539366,
+          "top_holder_rows": 20,
+          "top1_pct": 10.4351,
+          "top5_pct": 27.2835,
+          "top10_pct": 36.987,
+          "top20_pct": 48.6097
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -507,9 +710,18 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 9
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "NO_OFFICIAL_PUBLIC_CHANNEL"
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     },
     {
       "network": "solana",
@@ -518,7 +730,7 @@
       "name": "Alchemist AI",
       "base_watch_status": "WAKING_MARKET_ONLY",
       "revival_score_verified": 73.89,
-      "confirmation_status": "WAKING_UNCONFIRMED_RESEARCH",
+      "confirmation_status": "WAKING_RISK_RESEARCH",
       "confirmation_score": 0.0,
       "strong_families": [],
       "identity": {
@@ -535,10 +747,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_+0.000PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 132638,
+            "previous_holder_count": 132638,
+            "holder_change_pct": 0.0
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -550,13 +776,14 @@
           "available": false,
           "verified": false,
           "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
           "signals": [],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -577,7 +804,34 @@
           "events": []
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 65.0,
+        "anomaly_score": 35.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_23.73PCT",
+          "TOP10_TOKEN_ACCOUNTS_87.25PCT",
+          "TOP1_TOKEN_ACCOUNT_GE_20PCT",
+          "TOP10_TOKEN_ACCOUNTS_GE_60PCT"
+        ],
+        "metrics": {
+          "holder_count": 132638,
+          "top_holder_rows": 20,
+          "top1_pct": 23.7296,
+          "top5_pct": 72.933,
+          "top10_pct": 87.2469,
+          "top20_pct": 94.5523
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -607,9 +861,18 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 0
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "NO_OFFICIAL_PUBLIC_CHANNEL"
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     },
     {
       "network": "solana",
@@ -618,7 +881,7 @@
       "name": "GOHOME",
       "base_watch_status": "WAKING_MARKET_ONLY",
       "revival_score_verified": 71.33,
-      "confirmation_status": "WAKING_UNCONFIRMED_RESEARCH",
+      "confirmation_status": "WAKING_RISK_RESEARCH",
       "confirmation_score": 0.0,
       "strong_families": [],
       "identity": {
@@ -635,10 +898,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_-0.026PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 31172,
+            "previous_holder_count": 31180,
+            "holder_change_pct": -0.0257
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -647,16 +924,22 @@
           "source": "NOT_CONNECTED"
         },
         "social": {
-          "available": false,
-          "verified": false,
-          "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "available": true,
+          "verified": true,
+          "source": "WAKING_SOCIAL_MULTI_SOURCE+OFFICIAL_TELEGRAM_V2",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "signals": [],
+          "signals": [
+            "SOCIAL_MENTIONS_0",
+            "SOCIAL_SOURCES_0",
+            "SOCIAL_AUTHORS_0",
+            "OFFICIAL_TELEGRAM_24H_POSTS_0"
+          ],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -678,7 +961,34 @@
           "events": []
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 65.0,
+        "anomaly_score": 35.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_90.00PCT",
+          "TOP10_TOKEN_ACCOUNTS_96.12PCT",
+          "TOP1_TOKEN_ACCOUNT_GE_20PCT",
+          "TOP10_TOKEN_ACCOUNTS_GE_60PCT"
+        ],
+        "metrics": {
+          "holder_count": 31172,
+          "top_holder_rows": 20,
+          "top1_pct": 90.0034,
+          "top5_pct": 95.5032,
+          "top10_pct": 96.1166,
+          "top20_pct": 96.7926
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -708,9 +1018,19 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 0
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "OK",
+          "count": 0
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     },
     {
       "network": "solana",
@@ -719,7 +1039,7 @@
       "name": "HumidiFi",
       "base_watch_status": "WAKING_MARKET_ONLY",
       "revival_score_verified": 70.44,
-      "confirmation_status": "WAKING_UNCONFIRMED_RESEARCH",
+      "confirmation_status": "WAKING_RISK_RESEARCH",
       "confirmation_score": 0.0,
       "strong_families": [],
       "identity": {
@@ -736,10 +1056,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_-0.102PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 23529,
+            "previous_holder_count": 23553,
+            "holder_change_pct": -0.1019
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -751,13 +1085,14 @@
           "available": false,
           "verified": false,
           "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
           "signals": [],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -778,7 +1113,34 @@
           "events": []
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 65.0,
+        "anomaly_score": 35.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_32.00PCT",
+          "TOP10_TOKEN_ACCOUNTS_95.20PCT",
+          "TOP1_TOKEN_ACCOUNT_GE_20PCT",
+          "TOP10_TOKEN_ACCOUNTS_GE_60PCT"
+        ],
+        "metrics": {
+          "holder_count": 23529,
+          "top_holder_rows": 20,
+          "top1_pct": 32.0,
+          "top5_pct": 87.4096,
+          "top10_pct": 95.1957,
+          "top20_pct": 98.071
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -808,9 +1170,18 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 0
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "NO_OFFICIAL_PUBLIC_CHANNEL"
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     },
     {
       "network": "solana",
@@ -819,7 +1190,7 @@
       "name": "AI Rig Complex",
       "base_watch_status": "WAKING_MARKET_ONLY",
       "revival_score_verified": 70.33,
-      "confirmation_status": "WAKING_UNCONFIRMED_RESEARCH",
+      "confirmation_status": "WAKING_RISK_RESEARCH",
       "confirmation_score": 2.4,
       "strong_families": [],
       "identity": {
@@ -836,10 +1207,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_+0.000PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 180497,
+            "previous_holder_count": 180497,
+            "holder_change_pct": 0.0
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -848,16 +1233,22 @@
           "source": "NOT_CONNECTED"
         },
         "social": {
-          "available": false,
-          "verified": false,
-          "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "available": true,
+          "verified": true,
+          "source": "WAKING_SOCIAL_MULTI_SOURCE+OFFICIAL_TELEGRAM_V2",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "signals": [],
+          "signals": [
+            "SOCIAL_MENTIONS_0",
+            "SOCIAL_SOURCES_0",
+            "SOCIAL_AUTHORS_0",
+            "OFFICIAL_TELEGRAM_24H_POSTS_0"
+          ],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -888,7 +1279,34 @@
           ]
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 65.0,
+        "anomaly_score": 35.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_20.10PCT",
+          "TOP10_TOKEN_ACCOUNTS_80.38PCT",
+          "TOP1_TOKEN_ACCOUNT_GE_20PCT",
+          "TOP10_TOKEN_ACCOUNTS_GE_60PCT"
+        ],
+        "metrics": {
+          "holder_count": 180497,
+          "top_holder_rows": 20,
+          "top1_pct": 20.1041,
+          "top5_pct": 68.681,
+          "top10_pct": 80.378,
+          "top20_pct": 86.0259
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -918,9 +1336,19 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 1
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "OK",
+          "count": 0
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     },
     {
       "network": "solana",
@@ -946,10 +1374,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_+0.000PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 27804,
+            "previous_holder_count": 27804,
+            "holder_change_pct": 0.0
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -961,13 +1403,14 @@
           "available": false,
           "verified": false,
           "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
           "signals": [],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -988,7 +1431,32 @@
           "events": []
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 0.0,
+        "anomaly_score": 100.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_6.38PCT",
+          "TOP10_TOKEN_ACCOUNTS_23.78PCT"
+        ],
+        "metrics": {
+          "holder_count": 27804,
+          "top_holder_rows": 20,
+          "top1_pct": 6.375,
+          "top5_pct": 17.357,
+          "top10_pct": 23.7806,
+          "top20_pct": 33.4564
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -1018,9 +1486,18 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 0
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "NO_OFFICIAL_PUBLIC_CHANNEL"
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     },
     {
       "network": "solana",
@@ -1046,10 +1523,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_+0.000PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 15933,
+            "previous_holder_count": 15933,
+            "holder_change_pct": 0.0
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -1058,16 +1549,22 @@
           "source": "NOT_CONNECTED"
         },
         "social": {
-          "available": false,
-          "verified": false,
-          "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "available": true,
+          "verified": true,
+          "source": "WAKING_SOCIAL_MULTI_SOURCE+OFFICIAL_TELEGRAM_V2",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "signals": [],
+          "signals": [
+            "SOCIAL_MENTIONS_0",
+            "SOCIAL_SOURCES_0",
+            "SOCIAL_AUTHORS_0",
+            "OFFICIAL_TELEGRAM_24H_POSTS_0"
+          ],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -1088,7 +1585,32 @@
           "events": []
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 0.0,
+        "anomaly_score": 100.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_6.60PCT",
+          "TOP10_TOKEN_ACCOUNTS_23.19PCT"
+        ],
+        "metrics": {
+          "holder_count": 15933,
+          "top_holder_rows": 20,
+          "top1_pct": 6.5957,
+          "top5_pct": 17.5234,
+          "top10_pct": 23.1877,
+          "top20_pct": 30.5466
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -1118,9 +1640,19 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 0
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "OK",
+          "count": 0
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     },
     {
       "network": "solana",
@@ -1146,10 +1678,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_+0.000PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 11611,
+            "previous_holder_count": 11611,
+            "holder_change_pct": 0.0
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -1158,16 +1704,22 @@
           "source": "NOT_CONNECTED"
         },
         "social": {
-          "available": false,
-          "verified": false,
-          "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "available": true,
+          "verified": true,
+          "source": "WAKING_SOCIAL_MULTI_SOURCE+OFFICIAL_TELEGRAM_V2",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "signals": [],
+          "signals": [
+            "SOCIAL_MENTIONS_0",
+            "SOCIAL_SOURCES_0",
+            "SOCIAL_AUTHORS_0",
+            "OFFICIAL_TELEGRAM_24H_POSTS_0"
+          ],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -1188,7 +1740,33 @@
           "events": []
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 18.0,
+        "anomaly_score": 82.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_16.30PCT",
+          "TOP10_TOKEN_ACCOUNTS_25.31PCT",
+          "TOP1_TOKEN_ACCOUNT_GE_10PCT"
+        ],
+        "metrics": {
+          "holder_count": 11611,
+          "top_holder_rows": 20,
+          "top1_pct": 16.2958,
+          "top5_pct": 22.7006,
+          "top10_pct": 25.3112,
+          "top20_pct": 29.3043
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -1218,9 +1796,19 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 0
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "OK",
+          "count": 0
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     },
     {
       "network": "solana",
@@ -1229,7 +1817,7 @@
       "name": "Raydium",
       "base_watch_status": "WAKING_MARKET_ONLY",
       "revival_score_verified": 67.22,
-      "confirmation_status": "WAKING_UNCONFIRMED_RESEARCH",
+      "confirmation_status": "WAKING_RISK_RESEARCH",
       "confirmation_score": 13.5,
       "strong_families": [
         "news"
@@ -1248,10 +1836,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_+0.000PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 1113623,
+            "previous_holder_count": 1113623,
+            "holder_change_pct": 0.0
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -1263,13 +1865,14 @@
           "available": false,
           "verified": false,
           "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
           "signals": [],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -1424,7 +2027,34 @@
           ]
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 65.0,
+        "anomaly_score": 35.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_24.97PCT",
+          "TOP10_TOKEN_ACCOUNTS_75.45PCT",
+          "TOP1_TOKEN_ACCOUNT_GE_20PCT",
+          "TOP10_TOKEN_ACCOUNTS_GE_60PCT"
+        ],
+        "metrics": {
+          "holder_count": 1113623,
+          "top_holder_rows": 20,
+          "top1_pct": 24.9715,
+          "top5_pct": 65.2567,
+          "top10_pct": 75.4519,
+          "top20_pct": 82.7686
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -1454,9 +2084,18 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 16
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "NO_OFFICIAL_PUBLIC_CHANNEL"
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     },
     {
       "network": "solana",
@@ -1465,7 +2104,7 @@
       "name": "Kamino",
       "base_watch_status": "WAKING_MARKET_ONLY",
       "revival_score_verified": 67.22,
-      "confirmation_status": "WAKING_UNCONFIRMED_RESEARCH",
+      "confirmation_status": "WAKING_RISK_RESEARCH",
       "confirmation_score": 2.4,
       "strong_families": [],
       "identity": {
@@ -1482,10 +2121,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_+0.000PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 278328,
+            "previous_holder_count": 278328,
+            "holder_change_pct": 0.0
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -1497,13 +2150,14 @@
           "available": false,
           "verified": false,
           "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
           "signals": [],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -1534,7 +2188,34 @@
           ]
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 50.0,
+        "anomaly_score": 50.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_20.65PCT",
+          "TOP10_TOKEN_ACCOUNTS_53.97PCT",
+          "TOP1_TOKEN_ACCOUNT_GE_20PCT",
+          "TOP10_TOKEN_ACCOUNTS_GE_40PCT"
+        ],
+        "metrics": {
+          "holder_count": 278328,
+          "top_holder_rows": 20,
+          "top1_pct": 20.6451,
+          "top5_pct": 40.1374,
+          "top10_pct": 53.9722,
+          "top20_pct": 67.6102
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -1564,9 +2245,18 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 1
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "NO_OFFICIAL_PUBLIC_CHANNEL"
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     },
     {
       "network": "solana",
@@ -1575,7 +2265,7 @@
       "name": "Jelly-My-Jelly",
       "base_watch_status": "WAKING_MARKET_ONLY",
       "revival_score_verified": 67.22,
-      "confirmation_status": "WAKING_UNCONFIRMED_RESEARCH",
+      "confirmation_status": "WAKING_RISK_RESEARCH",
       "confirmation_score": 2.4,
       "strong_families": [],
       "identity": {
@@ -1592,10 +2282,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_+0.005PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 145032,
+            "previous_holder_count": 145025,
+            "holder_change_pct": 0.0048
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -1607,13 +2311,14 @@
           "available": false,
           "verified": false,
           "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
           "signals": [],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -1644,7 +2349,34 @@
           ]
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 65.0,
+        "anomaly_score": 35.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_35.47PCT",
+          "TOP10_TOKEN_ACCOUNTS_74.33PCT",
+          "TOP1_TOKEN_ACCOUNT_GE_20PCT",
+          "TOP10_TOKEN_ACCOUNTS_GE_60PCT"
+        ],
+        "metrics": {
+          "holder_count": 145032,
+          "top_holder_rows": 20,
+          "top1_pct": 35.4711,
+          "top5_pct": 55.3782,
+          "top10_pct": 74.3346,
+          "top20_pct": 91.7332
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -1674,9 +2406,18 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 1
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "NO_OFFICIAL_PUBLIC_CHANNEL"
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     },
     {
       "network": "solana",
@@ -1702,10 +2443,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_+0.000PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 206976,
+            "previous_holder_count": 206976,
+            "holder_change_pct": 0.0
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -1714,16 +2469,22 @@
           "source": "NOT_CONNECTED"
         },
         "social": {
-          "available": false,
-          "verified": false,
-          "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "available": true,
+          "verified": true,
+          "source": "WAKING_SOCIAL_MULTI_SOURCE+OFFICIAL_TELEGRAM_V2",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "signals": [],
+          "signals": [
+            "SOCIAL_MENTIONS_0",
+            "SOCIAL_SOURCES_0",
+            "SOCIAL_AUTHORS_0",
+            "OFFICIAL_TELEGRAM_24H_POSTS_0"
+          ],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -1770,7 +2531,32 @@
           ]
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 0.0,
+        "anomaly_score": 100.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_5.27PCT",
+          "TOP10_TOKEN_ACCOUNTS_26.56PCT"
+        ],
+        "metrics": {
+          "holder_count": 206976,
+          "top_holder_rows": 20,
+          "top1_pct": 5.2713,
+          "top5_pct": 18.7992,
+          "top10_pct": 26.5607,
+          "top20_pct": 34.8783
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -1800,9 +2586,19 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 3
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "OK",
+          "count": 0
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     },
     {
       "network": "solana",
@@ -1828,10 +2624,24 @@
       },
       "channels": {
         "holders": {
-          "available": false,
-          "verified": false,
+          "available": true,
+          "verified": true,
+          "source": "RUGCHECK_EXACT_MINT_PUBLIC_REPORT",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "source": "NOT_CONNECTED"
+          "signals": [
+            "HOLDER_CHANGE_+0.000PCT",
+            "RUGCHECK_HOLDER_COUNT_THIRD_PARTY_CACHE_POSSIBLE"
+          ],
+          "metrics": {
+            "holder_count": 16456,
+            "previous_holder_count": 16456,
+            "holder_change_pct": 0.0
+          },
+          "limitations": [
+            "third-party holder count may be cached and is used as confirmation research only",
+            "first observation is baseline learning and receives no growth score"
+          ]
         },
         "wallets": {
           "available": false,
@@ -1840,16 +2650,22 @@
           "source": "NOT_CONNECTED"
         },
         "social": {
-          "available": false,
-          "verified": false,
-          "source": "NOT_CONNECTED",
-          "observed_at": "2026-09-11T14:43:55.126520+00:00",
+          "available": true,
+          "verified": true,
+          "source": "WAKING_SOCIAL_MULTI_SOURCE+OFFICIAL_TELEGRAM_V2",
+          "observed_at": "2026-09-11T14:44:48.149398+00:00",
           "score": 0.0,
-          "signals": [],
+          "signals": [
+            "SOCIAL_MENTIONS_0",
+            "SOCIAL_SOURCES_0",
+            "SOCIAL_AUTHORS_0",
+            "OFFICIAL_TELEGRAM_24H_POSTS_0"
+          ],
           "metrics": {
             "mentions": 0,
             "sources": 0,
-            "authors": 0
+            "authors": 0,
+            "official_telegram_24h_posts": 0
           },
           "events": []
         },
@@ -1870,7 +2686,34 @@
           "events": []
         }
       },
-      "distribution_evidence": null,
+      "distribution_evidence": {
+        "verified": true,
+        "contract_match": true,
+        "source": "RUGCHECK_EXACT_MINT_TOP_TOKEN_ACCOUNTS",
+        "observed_at": "2026-09-11T14:44:48.149398+00:00",
+        "risk_score": 33.0,
+        "anomaly_score": 67.0,
+        "score_semantics": "CONCENTRATION_RISK_ONLY_NOT_INDEPENDENT_POSITIVE_FAMILY",
+        "signals": [
+          "TOP1_TOKEN_ACCOUNT_19.50PCT",
+          "TOP10_TOKEN_ACCOUNTS_46.28PCT",
+          "TOP1_TOKEN_ACCOUNT_GE_10PCT",
+          "TOP10_TOKEN_ACCOUNTS_GE_40PCT"
+        ],
+        "metrics": {
+          "holder_count": 16456,
+          "top_holder_rows": 20,
+          "top1_pct": 19.5018,
+          "top5_pct": 38.4739,
+          "top10_pct": 46.2792,
+          "top20_pct": 56.4459
+        },
+        "limitations": [
+          "top-holder rows are token-account concentration, not verified owner-cluster concentration",
+          "LP/burn/infrastructure exclusions are not independently verified here",
+          "therefore RugCheck concentration can add risk but never supplies an independent positive family"
+        ]
+      },
       "provider_status": [
         {
           "provider": "dexscreener_identity",
@@ -1900,9 +2743,27 @@
           "provider": "google_news_rss",
           "status": "OK",
           "count": 0
+        },
+        {
+          "provider": "rugcheck",
+          "status": "OK"
+        },
+        {
+          "provider": "telegram_official",
+          "status": "OK",
+          "count": 0
         }
       ],
-      "production_portfolio_impact": "NONE"
+      "production_portfolio_impact": "NONE",
+      "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00"
     }
-  ]
+  ],
+  "fallback_enriched_at": "2026-09-11T14:44:48.149398+00:00",
+  "fallback_contract": {
+    "version": "WAKING_NO_KEY_FALLBACKS_V1",
+    "rugcheck": "EXACT_MINT_HOLDER_COUNT_AND_TOKEN_ACCOUNT_CONCENTRATION_RESEARCH_ONLY",
+    "telegram": "OFFICIAL_PUBLIC_CHANNEL_FROM_IDENTITY_PACK_LAST_24H_ONLY",
+    "rugcheck_distribution_positive_double_count": "FORBIDDEN",
+    "production_portfolio_impact": "NONE"
+  }
 }
