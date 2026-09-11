@@ -164,3 +164,31 @@ def test_6_previous_rejections_count_as_attempts_for_fair_rotation():
     assert report["previous_attempted_symbol_count"] == 30
     assert report["pending_not_attempted_previous_run"] == 20
     assert report["one_cycle_backlog_rotation"] is True
+
+
+def test_7_current_pending_overlap_is_deduplicated_and_immutable_signal_evidence_wins():
+    spot = {"watchlist": [{
+        "symbol": "STORJUSDT",
+        "spot_revival_score": 38,
+        "coherent_confirmations": 3,
+        "current_marker": "fresh-market-fields",
+        "first_alert_observed_at": "2099-01-01T00:00:00+00:00",
+    }]}
+    pending = {"candidates": [{
+        "symbol": "STORJUSDT",
+        "persistent_until_exact_identity_resolution": True,
+        "timing_quality": "EARLY_BREAKOUT_EVIDENCE",
+        "first_alert_score": 35,
+        "first_alert_coherent_confirmations": 2,
+        "first_alert_observed_at": "2026-09-06T09:41:49+00:00",
+        "first_alert_reference_price": 0.03035,
+    }]}
+    selected, report = mod._build_identity_queue(spot, pending, {})
+    rows = [r for r in selected if mod._base_symbol(r.get("symbol")) == "STORJ"]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["current_marker"] == "fresh-market-fields"
+    assert row["spot_revival_score"] == 38
+    assert row["first_alert_observed_at"] == "2026-09-06T09:41:49+00:00"
+    assert row["first_alert_reference_price"] == 0.03035
+    assert report["merged_unique_count"] == 1
