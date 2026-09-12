@@ -29,9 +29,10 @@ permissions:
   contents: write
 
 concurrency:
-  # GitHub keeps only one pending run per concurrency group. Isolate event types so
-  # a scheduled capture cannot cancel a push validation before it starts.
-  group: wallet500-revival-pre-t0-evidence-v3-${{ github.event_name }}-${{ github.ref }}
+  # Single writer for the canonical PRE-T0/Waking snapshot across schedule,
+  # workflow_dispatch and push events. This removes self-contention while
+  # preserving fail-on-newer truth protection during publication.
+  group: wallet500-revival-pre-t0-evidence-single-writer-v4
   cancel-in-progress: false
 
 jobs:
