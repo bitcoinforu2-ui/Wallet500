@@ -101,11 +101,14 @@ jobs:
         run: python -m wallet500.telegram_alerts
       - name: Persist Telegram dedupe state and delivery report atomically
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
           python scripts/atomic_publish.py \
+            --github-api-cas \
             --message 'telegram: persist production alert delivery state' \
             data/telegram-alert-state.json \
             data/telegram-alert-report.json
@@ -113,11 +116,14 @@ jobs:
         run: python -m wallet500.real_alert_10usd_tracker
       - name: Persist $10 tracker state atomically
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
           python scripts/atomic_publish.py \
+            --github-api-cas \
             --message 'data: mark new REAL ALERT $10 paper cohort' \
             data/real-alert-10usd-ledger.json \
             data/real-alert-10usd-summary.json
