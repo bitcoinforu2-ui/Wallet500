@@ -4,8 +4,6 @@ on:
   workflow_dispatch:
   schedule:
     # Keep the 5-minute cadence but avoid the repo-wide */5 publisher burst.
-    # This coherent immutable snapshot must win one clean main ref update; shifting
-    # by two minutes reduces branch-head races without weakening any truth gate.
     - cron: '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
   pull_request:
     paths:
@@ -31,9 +29,8 @@ permissions:
   contents: write
 
 concurrency:
-  # Keep scheduled captures serialized, but do not let a scheduled pending run
-  # cancel a push validation before it even gets a job. GitHub concurrency keeps
-  # only one pending run per group, so event isolation removes that starvation.
+  # GitHub keeps only one pending run per concurrency group. Isolate event types so
+  # a scheduled capture cannot cancel a push validation before it starts.
   group: wallet500-revival-pre-t0-evidence-v3-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
@@ -50,6 +47,15 @@ jobs:
         run: |
           git fetch --depth=1 origin main
           git reset --hard origin/main
+      - name: Materialize immutable ledger from compressed canonical storage
+        run: |
+          set -euo pipefail
+          JSON=data/revival-pre-t0-evidence-ledger.json
+          GZ=data/revival-pre-t0-evidence-ledger.json.gz
+          if [ ! -s "$JSON" ] && [ -s "$GZ" ]; then
+            gzip -dc "$GZ" > "$JSON"
+          fi
+          test -s "$JSON"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -99,6 +105,17 @@ jobs:
           if wt.get('uses_only_immutable_pre_waking_binding') is not True or wt.get('retroactive_backfill')!='FORBIDDEN' or wt.get('existing_waking_confirmation_mutated') is not False or wt.get('shadow_only_until_prospective_validation') is not True: raise SystemExit('WAKING_PRE_T0_TRUTH_INVALID')
           print('PRE_T0_COHERENT_SNAPSHOT_OK', latest.get('counts'), waking.get('counts'))
           PY
+      - name: Compress immutable ledger for canonical storage
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          JSON=data/revival-pre-t0-evidence-ledger.json
+          GZ=data/revival-pre-t0-evidence-ledger.json.gz
+          gzip -n -9 -c "$JSON" > "$GZ"
+          gzip -t "$GZ"
+          rm "$JSON"
+          test -s "$GZ"
+          ls -lh "$GZ"
       - name: Publish PRE-T0 evidence as one coherent atomic snapshot
         if: github.event_name != 'pull_request'
         env:
@@ -114,5 +131,6 @@ jobs:
             --hybrid-cas \
             --message 'data: capture coherent immutable Revival PRE-T0 evidence' \
             data/revival-pre-t0-evidence-ledger.json \
+            data/revival-pre-t0-evidence-ledger.json.gz \
             data/revival-pre-t0-evidence.json \
             data/waking-pre-t0-confirmation.json
