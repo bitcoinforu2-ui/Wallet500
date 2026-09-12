@@ -83,7 +83,7 @@ jobs:
           if int(r.get('error_count') or 0)>0: raise SystemExit(f"STAGE_TELEGRAM_ERRORS={r.get('error_count')}")
           p=r.get('policy') or {}
           if p.get('raw_research_notifications') is not False: raise SystemExit('STAGE_RESEARCH_SPAM_GUARD_DRIFT')
-          if p.get('minimum_user_facing_stage')!='EVIDENCE_READY': raise SystemExit('STAGE_MINIMUM_DRIFT')
+          if p.get('minimum_user_facing_stage')!='PAPER_BUY_CANDIDATE': raise SystemExit('STAGE_MINIMUM_DRIFT')
           if p.get('exact_pair_scoped_state') is not True: raise SystemExit('STAGE_EXACT_PAIR_DRIFT')
           if p.get('automatic_buy') is not False: raise SystemExit('STAGE_AUTO_BUY_DRIFT')
           if p.get('real_alert_pipeline_unchanged') is not True: raise SystemExit('STAGE_REAL_ALERT_ISOLATION_DRIFT')
