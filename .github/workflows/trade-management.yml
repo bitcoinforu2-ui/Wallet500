@@ -16,8 +16,11 @@ on:
 permissions:
   contents: write
 
+# This workflow writes only data/trade-management.json, so it must not share the
+# high-frequency live publisher queue. A dedicated group prevents starvation
+# while still serializing Trade Manager refreshes with each other.
 concurrency:
-  group: wallet500-live-scan-publisher
+  group: wallet500-trade-manager
   cancel-in-progress: false
 
 jobs:
