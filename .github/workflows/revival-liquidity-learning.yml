@@ -164,33 +164,81 @@ jobs:
           print('REVIVAL_FORENSICS_V2_1_OK', f.get('counts'), f.get('wallet500_bridge'))
           PY
       - name: Publish learning, wallet evidence and forensics state
+        env:
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
+          if [ -z "${SOLANA_RPC_URL:-}" ]; then
+            export SOLANA_RPC_URL='https://solana-rpc.publicnode.com'
+            echo 'Using verified public Solana RPC fallback for conflict recompute'
+          fi
 
-          tmp="$(mktemp -d)"
-          cp data/revival-liquidity-learning.json "$tmp/revival-liquidity-learning.json"
-          cp data/revival-liquidity-learning-state.json "$tmp/revival-liquidity-learning-state.json"
-          cp data/revival-wallet-evidence.json "$tmp/revival-wallet-evidence.json"
-          cp data/revival-wallet-evidence-state.json "$tmp/revival-wallet-evidence-state.json"
-          cp data/revival-forensics-latest.json "$tmp/revival-forensics-latest.json"
-          cp data/revival-forensics-state.json "$tmp/revival-forensics-state.json"
-          cp data/revival-forensics-dashboard.json "$tmp/revival-forensics-dashboard.json"
-          cp data/revival-feature-analysis.json "$tmp/revival-feature-analysis.json"
+          validate_outputs() {
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('data/revival-liquidity-learning.json').read_text())
+          w=json.loads(Path('data/revival-wallet-evidence.json').read_text())
+          f=json.loads(Path('data/revival-forensics-latest.json').read_text())
+          if d.get('mode')!='RESEARCH_ONLY_REVIVAL_LIQUIDITY_LEARNING_V1' or d.get('production_impact')!='NONE' or d.get('no_hindsight') is not True:
+              raise SystemExit('REVIVAL_RECOMPUTE_LIQUIDITY_TRUTH_INVALID')
+          if (d.get('truth_contract') or {}).get('pair_identity')!='EXACT_REVIVAL_VERIFIED_PAIR_ONLY':
+              raise SystemExit('REVIVAL_RECOMPUTE_PAIR_IDENTITY_INVALID')
+          if w.get('mode')!='RESEARCH_ONLY_EXACT_PAIR_WALLET_EVIDENCE' or w.get('automatic_buy') is not False or w.get('production_portfolio_impact')!='NONE':
+              raise SystemExit('REVIVAL_RECOMPUTE_WALLET_TRUTH_INVALID')
+          wt=w.get('truth_contract') or {}
+          if wt.get('exact_pair_only') is not True or wt.get('forward_only') is not True or wt.get('unresolved_not_guessed') is not True:
+              raise SystemExit('REVIVAL_RECOMPUTE_WALLET_GUARD_INVALID')
+          if f.get('mode')!='RESEARCH_ONLY_REVIVAL_FORENSICS_V2' or f.get('revision')!='2.1' or f.get('no_hindsight') is not True or f.get('automatic_buy') is not False or f.get('production_portfolio_impact')!='NONE':
+              raise SystemExit('REVIVAL_RECOMPUTE_FORENSICS_TRUTH_INVALID')
+          if 'NEVER_SWITCH' not in str(f.get('pair_identity_rule')):
+              raise SystemExit('REVIVAL_RECOMPUTE_PAIR_LOCK_MISSING')
+          for event in f.get('events') or []:
+              t0=event.get('t0') or {}
+              if not t0.get('pair_address') or t0.get('waking_t0')!=t0.get('price_source_generated_at'):
+                  raise SystemExit('REVIVAL_RECOMPUTE_T0_IDENTITY_INVALID')
+              for horizon in (event.get('horizons') or {}).values():
+                  if horizon.get('available') is True and horizon.get('pair_identity')!='STRICT_MATCH':
+                      raise SystemExit('REVIVAL_RECOMPUTE_HORIZON_PAIR_INVALID')
+              we=event.get('wallet500_evidence') or {}
+              if we.get('connected') is True and we.get('exact_pair')!=t0.get('pair_address'):
+                  raise SystemExit('REVIVAL_RECOMPUTE_WALLET_PAIR_MISMATCH')
+          PY
+          }
 
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
+          # Never replay a snapshot computed from an older main. If another writer
+          # advances main, reset to that exact tip, recompute every derived Revival
+          # output from its current sources, revalidate truth invariants, then use
+          # atomic fail-on-newer publication. This closes the stale-snapshot race.
+          for attempt in 1 2 3 4 5 6 7 8; do
+            echo "REVIVAL_FORENSICS_PUBLISH_ATTEMPT attempt=$attempt"
+            git fetch --depth=1 origin main
             git reset --hard origin/main
-            cp "$tmp/revival-liquidity-learning.json" data/revival-liquidity-learning.json
-            cp "$tmp/revival-liquidity-learning-state.json" data/revival-liquidity-learning-state.json
-            cp "$tmp/revival-wallet-evidence.json" data/revival-wallet-evidence.json
-            cp "$tmp/revival-wallet-evidence-state.json" data/revival-wallet-evidence-state.json
-            cp "$tmp/revival-forensics-latest.json" data/revival-forensics-latest.json
-            cp "$tmp/revival-forensics-state.json" data/revival-forensics-state.json
-            cp "$tmp/revival-forensics-dashboard.json" data/revival-forensics-dashboard.json
-            cp "$tmp/revival-feature-analysis.json" data/revival-feature-analysis.json
-            git add \
+            base="$(git rev-parse HEAD)"
+
+            python - <<'PY'
+          import json
+          import wallet500.revival_liquidity_learning as learning
+          source=json.loads(learning.REVIVAL.read_text())
+          if source.get('mode')!='RESEARCH_ONLY_REVIVAL_SOLANA_EXPANDED_V6': raise SystemExit('REVIVAL_TRUTH_CONTRACT_UNAVAILABLE')
+          if source.get('network')!=learning.NETWORK: raise SystemExit('REVIVAL_NETWORK_NOT_SOLANA')
+          if source.get('production_portfolio_impact')!='NONE': raise SystemExit('REVIVAL_PRODUCTION_IMPACT_NOT_NONE')
+          if source.get('no_hindsight') is not True: raise SystemExit('REVIVAL_NO_HINDSIGHT_VIOLATION')
+          learning.load_revival=lambda: source
+          learning.main()
+          PY
+            python -m wallet500.revival_wallet_evidence
+            python -m wallet500.revival_forensics_runner
+            python -m wallet500.revival_forensics_wallet_bridge
+            validate_outputs
+
+            set +e
+            python scripts/atomic_publish.py \
+              --base "$base" \
+              --fail-on-newer \
+              --message 'data: refresh Revival liquidity wallet evidence and forensics' \
               data/revival-liquidity-learning.json \
               data/revival-liquidity-learning-state.json \
               data/revival-wallet-evidence.json \
@@ -199,21 +247,20 @@ jobs:
               data/revival-forensics-state.json \
               data/revival-forensics-dashboard.json \
               data/revival-feature-analysis.json
-
-            if git diff --cached --quiet; then
-              echo 'REVIVAL_FORENSICS_NO_DATA_CHANGE'
-              exit 0
-            fi
-
-            git commit -m 'data: refresh Revival liquidity wallet evidence and forensics'
-            if git push origin HEAD:main; then
+            rc=$?
+            set -e
+            if [ "$rc" -eq 0 ]; then
               echo 'REVIVAL_FORENSICS_PUBLISH_OK'
               exit 0
             fi
-
-            echo "REVIVAL_FORENSICS_PUBLISH_RETRY attempt=$attempt"
-            sleep 3
+            if [ "$rc" -eq 75 ]; then
+              delay=$(( attempt * attempt + (RANDOM % 5) ))
+              echo "REVIVAL_FORENSICS_RECOMPUTE_REQUIRED attempt=$attempt backoff=${delay}s"
+              sleep "$delay"
+              continue
+            fi
+            exit "$rc"
           done
 
-          echo '::error::REVIVAL_FORENSICS_PUBLISH_RACE_EXHAUSTED'
+          echo '::error::REVIVAL_FORENSICS_PUBLISH_RECOMPUTE_EXHAUSTED'
           exit 1
