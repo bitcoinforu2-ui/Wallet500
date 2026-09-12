@@ -8,8 +8,10 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/precision_pre_wave.py'
+      - 'src/wallet500/precision_pre_wave_v2.py'
       - 'src/wallet500/precision_pre_wave_telegram.py'
       - 'tests/test_precision_pre_wave.py'
+      - 'tests/test_precision_pre_wave_v2.py'
       - '.github/workflows/precision-pre-wave.yml'
 
 permissions:
@@ -34,8 +36,8 @@ jobs:
       - name: Install and test precision PRE-WAVE
         run: |
           pip install -e . pytest
-          python -m pytest -q tests/test_precision_pre_wave.py
-      - name: Recompute from newest main truth and deliver eligible alerts
+          python -m pytest -q tests/test_precision_pre_wave.py tests/test_precision_pre_wave_v2.py
+      - name: Preserve forward-only early signals, recompute, and deliver eligible alerts
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -49,28 +51,32 @@ jobs:
           git fetch --no-tags --depth=1 origin main
           git reset --hard origin/main
           source_sha="$(git rev-parse HEAD)"
-          python -m wallet500.precision_pre_wave
+          python -m wallet500.precision_pre_wave_v2
           python - <<'PY'
           import json
           from pathlib import Path
           d=json.loads(Path('data/precision-pre-wave.json').read_text())
-          if d.get('mode')!='MANUAL_REVIEW_PRECISION_PRE_WAVE_6OF7_V1': raise SystemExit('PRECISION_PREWAVE_MODE_DRIFT')
+          if d.get('mode')!='MANUAL_REVIEW_PRECISION_PRE_WAVE_6OF7_V2_PERSISTENT_EARLY_SIGNAL': raise SystemExit('PRECISION_PREWAVE_MODE_DRIFT')
           t=d.get('truth_contract') or {}
           if t.get('real_alert_gate_unchanged') is not True or t.get('real_alert_still_requires_7_of_7') is not True: raise SystemExit('PRECISION_PREWAVE_REAL_GATE_LEAK')
           if t.get('only_missing_gate')!='STRONG_DECISION_LANE' or t.get('only_allowed_blocker')!='NO_STRONG_DECISION_LANE': raise SystemExit('PRECISION_PREWAVE_SCOPE_DRIFT')
           if t.get('late_candidates_never_user_alert') is not True or t.get('no_automatic_buy') is not True or t.get('no_automatic_trade') is not True: raise SystemExit('PRECISION_PREWAVE_ACTION_LEAK')
+          if t.get('persistent_early_signal_ledger_required') is not True or t.get('early_signal_survives_watchlist_exit') is not True or t.get('no_hindsight') is not True: raise SystemExit('EARLY_SIGNAL_LEDGER_CONTRACT_DRIFT')
+          ledger=json.loads(Path('data/precision-pre-wave-early-signal-ledger.json').read_text())
+          lt=ledger.get('truth_contract') or {}
+          if lt.get('earliest_first_alert_never_overwritten_by_later_signal') is not True or lt.get('no_hindsight') is not True: raise SystemExit('EARLY_SIGNAL_LEDGER_TRUTH_LEAK')
           for row in d.get('candidates') or []:
               if row.get('readiness')!='6/7' or row.get('manual_review_only') is not True: raise SystemExit('PRECISION_PREWAVE_ROW_SCOPE_LEAK')
               if row.get('automatic_buy') is not False or row.get('automatic_trade') is not False: raise SystemExit('PRECISION_PREWAVE_ROW_ACTION_LEAK')
               if row.get('timing')=='LATE_DO_NOT_CHASE' and row.get('user_alert_eligible') is not False: raise SystemExit('PRECISION_PREWAVE_LATE_ALERT_LEAK')
-          print('PRECISION_PREWAVE_OK', d.get('candidate_count'), d.get('user_alert_eligible_count'))
+          print('PRECISION_PREWAVE_V2_OK', d.get('candidate_count'), d.get('user_alert_eligible_count'), ledger.get('symbol_count'))
           PY
           python -m wallet500.precision_pre_wave_telegram
-          files=(data/precision-pre-wave.json)
+          files=(data/precision-pre-wave.json data/precision-pre-wave-early-signal-ledger.json)
           if [ -f data/precision-pre-wave-telegram-state.json ]; then files+=(data/precision-pre-wave-telegram-state.json); fi
           if [ -f data/precision-pre-wave-telegram-report.json ]; then files+=(data/precision-pre-wave-telegram-report.json); fi
           python scripts/atomic_publish.py \
             --github-api-cas \
             --base "$source_sha" \
-            --message 'alerts: refresh precision pre-wave' \
+            --message 'alerts: refresh precision pre-wave v2' \
             "${files[@]}"
