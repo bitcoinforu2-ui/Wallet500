@@ -53,11 +53,13 @@ jobs:
           python -m pytest -q tests/test_near_alert_observatory.py tests/test_research_sample_accelerator.py tests/test_candidate_lifecycle.py
       - name: Recompute observatory, forward learning sample, and lifecycle from newest main truth
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name "wallet500-research-bot"
           git config user.email "wallet500-research-bot@users.noreply.github.com"
-          git fetch origin main
+          git fetch --no-tags --depth=1 origin main
           git reset --hard origin/main
           source_sha="$(git rev-parse HEAD)"
           python -m wallet500.near_alert_observatory
@@ -102,6 +104,7 @@ jobs:
           print('CANDIDATE_LIFECYCLE_OK', c.get('candidate_count'), c.get('counts'))
           PY
           python scripts/atomic_publish.py \
+            --github-api-cas \
             --base "$source_sha" \
             --message 'research: refresh near-alert forward learning and lifecycle' \
             data/near-alert-observatory.json \
