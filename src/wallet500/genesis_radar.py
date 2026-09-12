@@ -5,6 +5,12 @@ from typing import Any, Dict, Iterable, List, Optional
 
 PAPER_ENTRY_USD = 5.0
 
+ALERT_STAGE_WATCH = "WATCH"
+ALERT_STAGE_HOT_WATCH = "HOT_WATCH"
+ALERT_STAGE_REAL_ALERT = "REAL_ALERT"
+ACTIONABLE_STATUSES = {"PAPER_BUY_CANDIDATE", "STRONG_GENESIS", "EXCEPTIONAL_GENESIS"}
+ACTIVE_AGE_BANDS = {"EARLY_WATCH", "PRIME_GENESIS_WINDOW", "LATE_GENESIS_WINDOW"}
+
 
 @dataclass(frozen=True)
 class GenesisThresholds:
@@ -88,6 +94,61 @@ def age_band(age_minutes: float) -> str:
     if age_minutes <= 10080:
         return "POST_GENESIS_SURVIVAL"
     return "OUTSIDE_GENESIS"
+
+
+def source_catalyst(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    """Score trusted discovery-source evidence without bypassing safety gates.
+
+    Moonshot direct views are intentionally weighted by timing: a new/finalized
+    appearance is more useful than retrospective trending/top placement.
+    """
+    raw_sources = candidate.get("sources") or [candidate.get("source")]
+    sources = [str(x or "").strip().lower() for x in raw_sources if str(x or "").strip()]
+    confirmations = max(
+        int(_num(candidate.get("source_confirmations"), len(sources) or 1)),
+        len(set(sources)) or 1,
+    )
+
+    moonshot_views = sorted({
+        source.split("moonshot:", 1)[1]
+        for source in sources
+        if source.startswith("moonshot:") and ":" in source
+    })
+
+    reasons: List[str] = []
+    base = 0.0
+    if "finalized" in moonshot_views:
+        base = 10.0
+        reasons.append("MOONSHOT_FINALIZED")
+    elif "new" in moonshot_views:
+        base = 8.0
+        reasons.append("MOONSHOT_NEW")
+    elif "rising" in moonshot_views:
+        base = 7.0
+        reasons.append("MOONSHOT_RISING")
+    elif any(view in {"trending", "top"} for view in moonshot_views):
+        base = 4.0
+        reasons.append("MOONSHOT_MOMENTUM_VIEW")
+
+    if any(source == "birdeye:new_listing" for source in sources):
+        base = max(base, 3.0)
+        reasons.append("BIRDEYE_NEW_LISTING")
+    if any("token-boosts" in source for source in sources):
+        base = max(base, 2.0)
+        reasons.append("DEXSCREENER_BOOST")
+
+    cross_source_bonus = min(4.0, max(0, confirmations - 1) * 2.0)
+    if cross_source_bonus:
+        reasons.append("CROSS_SOURCE_CONFIRMATION")
+
+    score = min(10.0, base + cross_source_bonus)
+    return {
+        "score": round(score, 1),
+        "moonshot_confirmed": bool(moonshot_views),
+        "moonshot_views": moonshot_views,
+        "source_confirmations": confirmations,
+        "reasons": reasons,
+    }
 
 
 def safety_gate(candidate: Dict[str, Any], t: GenesisThresholds = THRESHOLDS) -> Dict[str, Any]:
@@ -196,9 +257,35 @@ def acceleration_signals(candidate: Dict[str, Any], t: GenesisThresholds = THRES
     }
 
 
+def _alert_stage(
+    status: str,
+    score: float,
+    safety: Dict[str, Any],
+    accel: Dict[str, Any],
+    catalyst: Dict[str, Any],
+    age: str,
+    ext: str,
+) -> str:
+    if safety.get("passed") is True and accel.get("passed") is True and status in ACTIONABLE_STATUSES:
+        return ALERT_STAGE_REAL_ALERT
+
+    if safety.get("hard_blocks"):
+        return ALERT_STAGE_WATCH
+
+    hot_evidence = (
+        score >= 65.0
+        or int(_num(accel.get("count"))) >= 2
+        or _num(catalyst.get("score")) >= 6.0
+    )
+    if age in ACTIVE_AGE_BANDS and ext not in {"VERY_EXTENDED", "LATE_NO_CHASE"} and hot_evidence:
+        return ALERT_STAGE_HOT_WATCH
+    return ALERT_STAGE_WATCH
+
+
 def genesis_score(candidate: Dict[str, Any], t: GenesisThresholds = THRESHOLDS) -> Dict[str, Any]:
     safety = safety_gate(candidate, t)
     accel = acceleration_signals(candidate, t)
+    catalyst = source_catalyst(candidate)
 
     liquidity = _maybe_num(candidate.get("liquidity_usd"))
     holders = _maybe_num(candidate.get("holders"))
@@ -270,7 +357,17 @@ def genesis_score(candidate: Dict[str, Any], t: GenesisThresholds = THRESHOLDS) 
         wallet_points = 5.0
 
     social_points = 5.0 if social else 0.0
-    score = round(safety_points + acceleration_points + holder_points + liquidity_points + wallet_points + social_points, 1)
+    catalyst_points = _num(catalyst.get("score"))
+    score = round(min(
+        100.0,
+        safety_points
+        + acceleration_points
+        + holder_points
+        + liquidity_points
+        + wallet_points
+        + social_points
+        + catalyst_points,
+    ), 1)
 
     ext = extension_band(_num(candidate.get("gain_from_baseline_pct")))
     age = age_band(_num(candidate.get("pair_age_minutes")))
@@ -291,13 +388,27 @@ def genesis_score(candidate: Dict[str, Any], t: GenesisThresholds = THRESHOLDS) 
     elif ext == "EXTENDED" and score < 85 and status in {"PAPER_BUY_CANDIDATE", "STRONG_GENESIS", "EXCEPTIONAL_GENESIS"}:
         status = "EXTENDED_WATCH"
 
+    decision_signals = list(accel["signals"])
+    if social:
+        decision_signals.append("SOCIAL_NARRATIVE")
+    if catalyst_points > 0:
+        decision_signals.append("SOURCE_CATALYST")
+    stage = _alert_stage(status, score, safety, accel, catalyst, age, ext)
+
     return {
         "genesis_score": score,
         "status": status,
+        "alert_stage": stage,
         "age_band": age,
         "extension_band": ext,
         "safety": safety,
         "acceleration": accel,
+        "source_catalyst": catalyst,
+        "signal_summary": {
+            "signals": decision_signals,
+            "passed": len(decision_signals),
+            "total": 7,
+        },
         "subscores": {
             "safety_tradability": round(safety_points, 1),
             "organic_acceleration": round(acceleration_points, 1),
@@ -305,6 +416,7 @@ def genesis_score(candidate: Dict[str, Any], t: GenesisThresholds = THRESHOLDS) 
             "liquidity_survival": round(liquidity_points, 1),
             "smart_wallet": round(wallet_points, 1),
             "social_narrative": round(social_points, 1),
+            "source_catalyst": round(catalyst_points, 1),
         },
         "paper_entry_usd": PAPER_ENTRY_USD,
         "thresholds": asdict(t),
@@ -317,4 +429,16 @@ def rank_candidates(candidates: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]
         row = dict(candidate)
         row.update(genesis_score(candidate))
         ranked.append(row)
-    return sorted(ranked, key=lambda x: _num(x.get("genesis_score")), reverse=True)
+    stage_priority = {
+        ALERT_STAGE_REAL_ALERT: 2,
+        ALERT_STAGE_HOT_WATCH: 1,
+        ALERT_STAGE_WATCH: 0,
+    }
+    return sorted(
+        ranked,
+        key=lambda x: (
+            stage_priority.get(str(x.get("alert_stage")), 0),
+            _num(x.get("genesis_score")),
+        ),
+        reverse=True,
+    )
