@@ -85,7 +85,11 @@ def main() -> int:
 
     ensure_git_identity()
     base = args.base or git("rev-parse", "HEAD").stdout.strip()
-    git("fetch", "--no-tags", "origin", base, check=False)
+    # Keep the runner shallow. Repeated unbounded fetches on this high-churn data
+    # repository can spend several seconds deepening history on every CAS retry,
+    # making it nearly impossible to win a clean main ref update. Tree-to-tree
+    # freshness checks only require the two endpoint commits, not their ancestry.
+    git("fetch", "--no-tags", "--depth=1", "origin", base, check=False)
 
     blobs: dict[str, str | None] = {}
     for rel in paths:
@@ -98,7 +102,7 @@ def main() -> int:
             raise RuntimeError(f"refusing non-file publish path: {rel}")
 
     for attempt in range(1, max(1, args.attempts) + 1):
-        git("fetch", "origin", "main")
+        git("fetch", "--no-tags", "--depth=1", "origin", "main")
         parent = git("rev-parse", "origin/main").stdout.strip()
 
         newer = [rel for rel in paths if changed_since(base, parent, rel)]
