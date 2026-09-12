@@ -60,15 +60,6 @@ jobs:
           print("symbols=" + ",".join(str(x.get('symbol') or '?') for x in rows))
           PY
 
-      - name: Refresh fast listing and promotion intelligence
-        if: steps.detect.outputs.count != '0'
-        continue-on-error: true
-        env:
-          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
-        run: |
-          python -m wallet500.moonshot_verification_watch
-          python -m wallet500.moonshot_future_listing_watch
-
       - name: Refresh current 6-of-7 snapshot and deep-search when active
         env:
           SOCIAL_SCAN_BUDGET: '8'
@@ -112,12 +103,6 @@ jobs:
           print('SIX_OF_SEVEN_CURRENT_SNAPSHOT_OK', count, deep.get('snapshot_status'))
           PY
 
-      - name: Recompute organic acceleration and social intelligence
-        if: steps.detect.outputs.count != '0'
-        run: |
-          python -m wallet500.social_organic_acceleration
-          python -m wallet500.social_intelligence_v2
-
       - name: Build explainable EDGE SCORE and immutable micro-event ledger
         if: steps.detect.outputs.count != '0'
         run: python -m wallet500.deep_intelligence_edge
@@ -125,17 +110,6 @@ jobs:
       - name: Build forward-only pre-catalyst fingerprints
         if: steps.detect.outputs.count != '0'
         run: python -m wallet500.pre_catalyst_fingerprint
-
-      - name: Rebuild evidence and alert decision after deep live intelligence
-        if: steps.detect.outputs.count != '0'
-        run: |
-          python -m wallet500.candidate_evidence_envelope
-          python -m wallet500.signal_intelligence
-          python -m wallet500.real_alerts
-          python -m wallet500.signal_alert_guard
-          python -m wallet500.revival_funnel_diagnostics
-          python -m wallet500.near_alert_observatory
-          python -m wallet500.research_decision_engine
 
       - name: Assert war room cannot bypass hard truth gates
         if: steps.detect.outputs.count != '0'
@@ -186,7 +160,7 @@ jobs:
             --message "data: refresh empty 6-of-7 intelligence snapshot" \
             data/six-of-seven-live-intelligence.json
 
-      - name: Publish coherent active war-room snapshot atomically
+      - name: Publish owned coherent active war-room snapshot atomically
         if: steps.detect.outputs.count != '0'
         run: |
           set -euo pipefail
@@ -201,16 +175,4 @@ jobs:
             data/deep-intelligence-edge.json \
             data/deep-intelligence-event-ledger.json \
             data/pre-catalyst-fingerprints.json \
-            data/pre-catalyst-fingerprint-registry.json \
-            data/social-source-scan.json \
-            data/social-catalyst-ledger.json \
-            data/social-identity-cache.json \
-            data/social-organic-acceleration.json \
-            data/social-intelligence-v2.json \
-            data/moonshot-verification-latest.json \
-            data/moonshot-verification-ledger.json \
-            data/moonshot-future-listing-latest.json \
-            data/moonshot-future-listing-ledger.json \
-            data/signal-intelligence.json \
-            data/near-alert-observatory.json \
-            data/research-decision-engine.json
+            data/pre-catalyst-fingerprint-registry.json
