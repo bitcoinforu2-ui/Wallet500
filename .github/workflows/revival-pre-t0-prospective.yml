@@ -11,6 +11,7 @@ on:
       - 'tests/test_revival_pre_t0_prospective.py'
       - '.github/workflows/revival-pre-t0-prospective.yml'
       - 'data/revival-pre-t0-evidence-ledger.json'
+      - 'data/revival-pre-t0-evidence-ledger.json.gz'
       - 'data/revival-forensics-latest.json'
 
 permissions:
@@ -35,6 +36,15 @@ jobs:
         run: pip install -e . pytest
       - name: Unit tests
         run: python -m pytest -q tests/test_revival_pre_t0_prospective.py
+      - name: Materialize immutable PRE-T0 ledger
+        run: |
+          set -euo pipefail
+          JSON=data/revival-pre-t0-evidence-ledger.json
+          GZ=data/revival-pre-t0-evidence-ledger.json.gz
+          if [ ! -s "$JSON" ] && [ -s "$GZ" ]; then
+            gzip -dc "$GZ" > "$JSON"
+          fi
+          test -s "$JSON"
       - name: Build prospective PRE-T0 outcome join
         run: python -m wallet500.revival_pre_t0_prospective
       - name: Validate prospective truth contract
