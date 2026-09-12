@@ -7,9 +7,14 @@ Actions writers can opt into --github-api-cas, which performs the same
 non-force compare-and-swap through the GitHub Git Data API and avoids repeated
 multi-second shallow fetches on this large repository.
 
-It never rebases a generated-data commit and never force-pushes. If a requested
-path changed on main after this run's base commit, the default is to preserve
-the newer main copy. Coherent multi-file publishers can opt into
+Large coherent snapshots can use --hybrid-cas: blobs are uploaded once through
+git to a temporary staging ref, then the canonical main ref is updated through
+a short GitHub API compare-and-swap loop. The staging ref never replaces main
+and is removed on exit.
+
+It never rebases a generated-data commit and never force-pushes main. If a
+requested path changed on main after this run's base commit, the default is to
+preserve the newer main copy. Coherent multi-file publishers can opt into
 --fail-on-newer and recompute their whole snapshot instead.
 """
 from __future__ import annotations
@@ -160,35 +165,16 @@ def api_tree_state(token: str, repo: str, commit_sha: str, wanted: set[str]) -> 
     return tree_sha, found
 
 
-def github_api_publish(args: argparse.Namespace, paths: list[str], base: str) -> int:
-    token = os.environ.get("GITHUB_TOKEN", "").strip()
-    repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
-    if not token or not repo or "/" not in repo:
-        raise RuntimeError("--github-api-cas requires GITHUB_TOKEN and GITHUB_REPOSITORY")
-
+def api_cas_commit(
+    args: argparse.Namespace,
+    paths: list[str],
+    base_state: dict[str, str | None],
+    blobs: dict[str, str | None],
+    token: str,
+    repo: str,
+    transport: str,
+) -> int:
     wanted = set(paths)
-    _, base_state = api_tree_state(token, repo, base, wanted)
-
-    blobs: dict[str, str | None] = {}
-    for rel in paths:
-        p = Path(rel)
-        if p.is_file():
-            _, blob = api_request(
-                token,
-                repo,
-                "POST",
-                "/git/blobs",
-                {"content": p.read_text(encoding="utf-8"), "encoding": "utf-8"},
-            )
-            sha = str(blob.get("sha") or "")
-            if not sha:
-                raise RuntimeError(f"GitHub API blob upload returned no SHA for {rel}")
-            blobs[rel] = sha
-        elif not p.exists():
-            blobs[rel] = None
-        else:
-            raise RuntimeError(f"refusing non-file publish path: {rel}")
-
     for attempt in range(1, max(1, args.attempts) + 1):
         parent = api_ref_sha(token, repo)
         parent_tree, parent_state = api_tree_state(token, repo, parent, wanted)
@@ -204,8 +190,7 @@ def github_api_publish(args: argparse.Namespace, paths: list[str], base: str) ->
             if not args.allow_newer_overwrite and rel in newer:
                 preserved.append(rel)
                 continue
-            blob_sha = blobs[rel]
-            entries.append({"path": rel, "mode": "100644", "type": "blob", "sha": blob_sha})
+            entries.append({"path": rel, "mode": "100644", "type": "blob", "sha": blobs[rel]})
             applied.append(rel)
 
         if preserved:
@@ -242,15 +227,105 @@ def github_api_publish(args: argparse.Namespace, paths: list[str], base: str) ->
             allowed=(200, 422),
         )
         if status == 200:
-            print(f"ATOMIC_PUBLISH_OK commit={commit_sha} applied={len(applied)} preserved={len(preserved)} transport=github-api-cas")
+            print(f"ATOMIC_PUBLISH_OK commit={commit_sha} applied={len(applied)} preserved={len(preserved)} transport={transport}")
             return 0
 
         sleep_s = min(0.55, 0.035 * attempt) + random.uniform(0.01, 0.06)
-        print(f"ATOMIC_PUBLISH_RETRY attempt={attempt} sleep={sleep_s:.2f} transport=github-api-cas", flush=True)
+        print(f"ATOMIC_PUBLISH_RETRY attempt={attempt} sleep={sleep_s:.2f} transport={transport}", flush=True)
         time.sleep(sleep_s)
 
-    print(f"ATOMIC_PUBLISH_EXHAUSTED attempts={args.attempts} transport=github-api-cas", file=sys.stderr)
+    print(f"ATOMIC_PUBLISH_EXHAUSTED attempts={args.attempts} transport={transport}", file=sys.stderr)
     return 1
+
+
+def github_api_publish(args: argparse.Namespace, paths: list[str], base: str) -> int:
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    if not token or not repo or "/" not in repo:
+        raise RuntimeError("--github-api-cas requires GITHUB_TOKEN and GITHUB_REPOSITORY")
+
+    wanted = set(paths)
+    _, base_state = api_tree_state(token, repo, base, wanted)
+
+    blobs: dict[str, str | None] = {}
+    for rel in paths:
+        p = Path(rel)
+        if p.is_file():
+            _, blob = api_request(
+                token,
+                repo,
+                "POST",
+                "/git/blobs",
+                {"content": p.read_text(encoding="utf-8"), "encoding": "utf-8"},
+            )
+            sha = str(blob.get("sha") or "")
+            if not sha:
+                raise RuntimeError(f"GitHub API blob upload returned no SHA for {rel}")
+            blobs[rel] = sha
+        elif not p.exists():
+            blobs[rel] = None
+        else:
+            raise RuntimeError(f"refusing non-file publish path: {rel}")
+
+    return api_cas_commit(args, paths, base_state, blobs, token, repo, "github-api-cas")
+
+
+def hybrid_publish(args: argparse.Namespace, paths: list[str], base: str) -> int:
+    """Upload large blobs once via git, then CAS main through the Git Data API."""
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    if not token or not repo or "/" not in repo:
+        raise RuntimeError("--hybrid-cas requires GITHUB_TOKEN and GITHUB_REPOSITORY")
+
+    ensure_git_identity()
+    wanted = set(paths)
+    _, base_state = api_tree_state(token, repo, base, wanted)
+
+    blobs: dict[str, str | None] = {}
+    for rel in paths:
+        p = Path(rel)
+        if p.is_file():
+            blobs[rel] = git("hash-object", "-w", str(p)).stdout.strip()
+        elif not p.exists():
+            blobs[rel] = None
+        else:
+            raise RuntimeError(f"refusing non-file publish path: {rel}")
+
+    # Build one staging commit solely to transfer local blob objects to GitHub.
+    index_path = Path(tempfile.gettempdir()) / f"wallet500-stage-{os.getpid()}.index"
+    try:
+        index_path.unlink(missing_ok=True)
+        env = os.environ.copy()
+        env["GIT_INDEX_FILE"] = str(index_path)
+        git("read-tree", base, env=env)
+        for rel in paths:
+            blob = blobs[rel]
+            if blob is None:
+                git("update-index", "--force-remove", "--", rel, env=env, check=False)
+            else:
+                git("update-index", "--add", "--cacheinfo", f"100644,{blob},{rel}", env=env)
+        stage_tree = git("write-tree", env=env).stdout.strip()
+    finally:
+        index_path.unlink(missing_ok=True)
+
+    stage_commit = git("commit-tree", stage_tree, "-p", base, input_text="wallet500 temporary atomic staging\n").stdout.strip()
+    run_id = "".join(ch for ch in os.environ.get("GITHUB_RUN_ID", "local") if ch.isalnum() or ch in "-_") or "local"
+    run_attempt = "".join(ch for ch in os.environ.get("GITHUB_RUN_ATTEMPT", "1") if ch.isalnum() or ch in "-_") or "1"
+    stage_ref = f"refs/wallet500-staging/{run_id}-{run_attempt}-{os.getpid()}"
+
+    pushed = git("push", "origin", f"{stage_commit}:{stage_ref}", check=False)
+    if pushed.returncode != 0:
+        raise RuntimeError(f"unable to upload staging objects: {pushed.stderr.strip()}")
+    print(f"ATOMIC_STAGE_OK ref={stage_ref} paths={len(paths)}", flush=True)
+
+    try:
+        return api_cas_commit(args, paths, base_state, blobs, token, repo, "hybrid-cas")
+    finally:
+        cleanup = git("push", "origin", f":{stage_ref}", check=False)
+        if cleanup.returncode == 0:
+            print(f"ATOMIC_STAGE_CLEANUP_OK ref={stage_ref}", flush=True)
+        else:
+            print(f"ATOMIC_STAGE_CLEANUP_WARN ref={stage_ref} error={cleanup.stderr.strip()[:300]}", file=sys.stderr)
 
 
 def git_publish(args: argparse.Namespace, paths: list[str], base: str) -> int:
@@ -329,8 +404,11 @@ def main() -> int:
                     help="allow a local path to overwrite a path changed on main since base")
     ap.add_argument("--fail-on-newer", action="store_true",
                     help=f"return {STALE_RECOMPUTE_EXIT} if any requested path changed since base")
-    ap.add_argument("--github-api-cas", action="store_true",
-                    help="use fast non-force GitHub Git Data API CAS instead of repeated git fetch/push")
+    transport = ap.add_mutually_exclusive_group()
+    transport.add_argument("--github-api-cas", action="store_true",
+                           help="use fast non-force GitHub Git Data API CAS instead of repeated git fetch/push")
+    transport.add_argument("--hybrid-cas", action="store_true",
+                           help="upload blobs once via staging ref, then use fast non-force GitHub API CAS")
     args = ap.parse_args()
 
     if args.allow_newer_overwrite and args.fail_on_newer:
@@ -351,6 +429,8 @@ def main() -> int:
     base = args.base or git("rev-parse", "HEAD").stdout.strip()
     if args.github_api_cas:
         return github_api_publish(args, paths, base)
+    if args.hybrid_cas:
+        return hybrid_publish(args, paths, base)
     return git_publish(args, paths, base)
 
 
