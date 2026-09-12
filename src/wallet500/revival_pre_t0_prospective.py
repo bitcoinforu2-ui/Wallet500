@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -21,6 +22,28 @@ def _load(path: Path, default: Any) -> Any:
         return json.loads(path.read_text(encoding="utf-8")) if path.exists() else default
     except Exception:
         return default
+
+
+def _load_gzip(path: Path, default: Any) -> Any:
+    try:
+        if not path.exists():
+            return default
+        with gzip.open(path, "rt", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return default
+
+
+def _load_pre_t0_ledger(data: Path) -> dict:
+    compressed = data / "revival-pre-t0-evidence-ledger.json.gz"
+    legacy = data / "revival-pre-t0-evidence-ledger.json"
+    # The lossless gzip ledger is canonical after the GitHub 100 MB migration.
+    # Legacy JSON remains read-only fallback for older/bootstrap checkouts.
+    if compressed.exists():
+        payload = _load_gzip(compressed, {})
+    else:
+        payload = _load(legacy, {})
+    return payload if isinstance(payload, dict) else {}
 
 
 def _write(path: Path, payload: Any) -> None:
@@ -167,7 +190,7 @@ def _summary(rows: list[dict]) -> dict:
 
 def run(data_dir: str | Path = "data") -> dict:
     data = Path(data_dir)
-    ledger = _load(data / "revival-pre-t0-evidence-ledger.json", {})
+    ledger = _load_pre_t0_ledger(data)
     forensics = _load(data / "revival-forensics-latest.json", {})
     if ledger.get("mode") != PRE_MODE or ledger.get("no_hindsight") is not True:
         raise RuntimeError("PRE_T0_PROSPECTIVE_LEDGER_TRUTH_INVALID")
