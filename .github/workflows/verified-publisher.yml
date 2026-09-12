@@ -117,7 +117,9 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          for attempt in 1 2 3 4 5; do
+          # Recompute manifests from the newest main on every conflict. Backoff is
+          # deliberately bounded and jittered to avoid synchronized writer storms.
+          for attempt in 1 2 3 4 5 6 7 8; do
             git fetch origin main
             git reset --hard origin/main
             base="$(git rev-parse HEAD)"
@@ -141,8 +143,9 @@ jobs:
               exit 0
             fi
             if [ "$rc" -eq 75 ]; then
-              echo "GENERATION_BIND_RETRY attempt=$attempt"
-              sleep $attempt
+              delay=$(( attempt * attempt + (RANDOM % 5) ))
+              echo "GENERATION_BIND_RETRY attempt=$attempt backoff=${delay}s"
+              sleep "$delay"
               continue
             fi
             exit "$rc"
