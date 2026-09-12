@@ -31,9 +31,10 @@ permissions:
   contents: write
 
 concurrency:
-  # v2 intentionally retires a stale pre-v2 concurrency lock that left a push
-  # run pending before any job was created. New PRE-T0 runs remain serialized.
-  group: wallet500-revival-pre-t0-evidence-v2-${{ github.ref }}
+  # Keep scheduled captures serialized, but do not let a scheduled pending run
+  # cancel a push validation before it even gets a job. GitHub concurrency keeps
+  # only one pending run per group, so event isolation removes that starvation.
+  group: wallet500-revival-pre-t0-evidence-v3-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
