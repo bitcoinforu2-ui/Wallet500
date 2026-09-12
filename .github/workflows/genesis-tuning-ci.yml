@@ -1,0 +1,26 @@
+name: Wallet500 Genesis Tuning CI
+
+on:
+  push:
+    branches:
+      - tune/genesis-moonshot-hotwatch
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  genesis-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python -m pip install -e . pytest
+      - name: Compile changed Genesis modules
+        run: python -m py_compile src/wallet500/genesis_radar.py src/wallet500/genesis_live.py src/wallet500/genesis_telegram.py src/wallet500/rugcheck_safety.py
+      - name: Run Genesis contracts
+        run: python -m pytest -q tests/test_genesis_radar.py tests/test_genesis_live.py tests/test_genesis_telegram.py tests/test_rugcheck_safety.py
