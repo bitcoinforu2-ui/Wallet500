@@ -49,12 +49,14 @@ jobs:
             tests/test_policy_contract.py
       - name: Build and atomically publish Confluence Matrix
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name 'wallet500-confluence-bot'
           git config user.email 'wallet500-confluence-bot@users.noreply.github.com'
           for attempt in 1 2 3 4 5; do
-            git fetch origin main
+            git fetch --no-tags --depth=1 origin main
             git reset --hard origin/main
             source_sha="$(git rev-parse HEAD)"
             python -m wallet500.confluence_matrix
@@ -76,6 +78,7 @@ jobs:
           PY
             set +e
             python scripts/atomic_publish.py \
+              --github-api-cas \
               --base "$source_sha" \
               --fail-on-newer \
               --message 'data: refresh weighted confluence matrix' \
