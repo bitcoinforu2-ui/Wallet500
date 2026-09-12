@@ -13,6 +13,7 @@ on:
       - '.github/workflows/verified-publisher.yml'
       - 'scripts/publish_verified_snapshot.py'
       - 'src/wallet500/decision_generation.py'
+      - 'src/wallet500/decision_snapshot_guard.py'
       - 'src/wallet500/truth_input_preflight.py'
       - 'src/wallet500/truth_contract.py'
       - 'src/wallet500/safe_json.py'
@@ -117,8 +118,9 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Recompute manifests from the newest main on every conflict. Backoff is
-          # deliberately bounded and jittered to avoid synchronized writer storms.
+          # Recompute the decision snapshot guard and manifests from the newest
+          # canonical main on every conflict. The guard is part of the generation:
+          # a two-day-old PASS must never be treated as evidence for a fresh feed.
           for attempt in 1 2 3 4 5 6 7 8; do
             git fetch origin main
             git reset --hard origin/main
@@ -126,6 +128,7 @@ jobs:
             export SOURCE_SHA="$LIVE_SOURCE_SHA"
             export GITHUB_RUN_ID="$LIVE_SOURCE_RUN"
             python -m wallet500.truth_input_preflight
+            python -m wallet500.decision_snapshot_guard
             python scripts/pipeline_integrity_audit.py
             python -m wallet500.decision_generation
             set +e
@@ -133,6 +136,8 @@ jobs:
               --base "$base" \
               --fail-on-newer \
               --message 'data: bind coherent Wallet500 decision generation' \
+              data/real-alerts.json \
+              data/decision-snapshot-integrity.json \
               data/truth-input-health.json \
               data/pipeline-integrity-audit.json \
               data/decision-generation.json
