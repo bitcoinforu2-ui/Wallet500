@@ -38,9 +38,13 @@ permissions:
   pages: write
   id-token: write
 
+# Serialize the deploy *and* public verification as one critical section.
+# GitHub keeps at most one pending run for a concurrency group, so this avoids
+# stale deployment backlogs while preventing a newer Pages run from replacing
+# the public build underneath an older run's exact-SHA/hash verification.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
