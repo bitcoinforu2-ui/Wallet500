@@ -65,11 +65,14 @@ jobs:
         run: python -m wallet500.stage_transition_telegram
       - name: Persist stage dedupe state and report atomically
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
           python scripts/atomic_publish.py \
+            --github-api-cas \
             --message 'telegram: persist post-research stage transitions' \
             data/stage-transition-telegram-state.json \
             data/stage-transition-telegram-report.json
