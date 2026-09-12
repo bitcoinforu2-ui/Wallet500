@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +13,14 @@ DATA = ROOT / "data"
 
 
 def load(name: str) -> dict:
-    return json.loads((DATA / name).read_text(encoding="utf-8"))
+    path = DATA / name
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+    gz_path = DATA / f"{name}.gz"
+    if gz_path.exists():
+        with gzip.open(gz_path, "rt", encoding="utf-8") as fh:
+            return json.load(fh)
+    raise FileNotFoundError(f"missing required data file: {path} (and compressed fallback {gz_path})")
 
 
 def dt(value: object) -> datetime | None:
