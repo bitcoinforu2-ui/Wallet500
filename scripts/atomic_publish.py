@@ -32,6 +32,8 @@ STALE_RECOMPUTE_EXIT = 75
 DEFAULT_GIT_NAME = "wallet500-atomic-publisher"
 DEFAULT_GIT_EMAIL = "wallet500-atomic-publisher@users.noreply.github.com"
 API_VERSION = "2022-11-28"
+TRANSIENT_API_STATUSES = {429, 500, 502, 503, 504}
+API_REQUEST_ATTEMPTS = 5
 
 
 def git(*args: str, env: dict[str, str] | None = None, input_text: str | None = None,
@@ -77,29 +79,61 @@ def api_request(
 ) -> tuple[int, dict[str, Any]]:
     url = f"https://api.github.com/repos/{repo}{path}"
     body = None if payload is None else json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    req = urllib.request.Request(url, data=body, method=method)
-    req.add_header("Accept", "application/vnd.github+json")
-    req.add_header("Authorization", f"Bearer {token}")
-    req.add_header("X-GitHub-Api-Version", API_VERSION)
-    req.add_header("User-Agent", "wallet500-atomic-publisher")
-    if body is not None:
-        req.add_header("Content-Type", "application/json")
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            raw = resp.read()
-            data = json.loads(raw.decode("utf-8")) if raw else {}
-            status = int(resp.status)
-    except urllib.error.HTTPError as exc:
-        raw = exc.read()
+
+    for attempt in range(1, API_REQUEST_ATTEMPTS + 1):
+        req = urllib.request.Request(url, data=body, method=method)
+        req.add_header("Accept", "application/vnd.github+json")
+        req.add_header("Authorization", f"Bearer {token}")
+        req.add_header("X-GitHub-Api-Version", API_VERSION)
+        req.add_header("User-Agent", "wallet500-atomic-publisher")
+        if body is not None:
+            req.add_header("Content-Type", "application/json")
+
+        status = 0
+        data: dict[str, Any] = {}
+        retry_after: float | None = None
         try:
-            data = json.loads(raw.decode("utf-8")) if raw else {}
-        except Exception:
-            data = {"message": raw.decode("utf-8", errors="replace")[:500]}
-        status = int(exc.code)
-    if status not in allowed:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                raw = resp.read()
+                data = json.loads(raw.decode("utf-8")) if raw else {}
+                status = int(resp.status)
+        except urllib.error.HTTPError as exc:
+            raw = exc.read()
+            try:
+                data = json.loads(raw.decode("utf-8")) if raw else {}
+            except Exception:
+                data = {"message": raw.decode("utf-8", errors="replace")[:500]}
+            status = int(exc.code)
+            retry_header = exc.headers.get("Retry-After") if exc.headers else None
+            if retry_header:
+                try:
+                    retry_after = max(0.0, min(float(retry_header), 30.0))
+                except ValueError:
+                    retry_after = None
+        except (urllib.error.URLError, TimeoutError) as exc:
+            data = {"message": str(exc)[:500]}
+            status = 0
+
+        if status in allowed:
+            return status, data
+
+        transient = status == 0 or status in TRANSIENT_API_STATUSES
+        if transient and attempt < API_REQUEST_ATTEMPTS:
+            delay = retry_after if retry_after is not None else min(4.0, 0.35 * (2 ** (attempt - 1)))
+            delay += random.uniform(0.03, 0.20)
+            label = status if status else "network"
+            print(
+                f"ATOMIC_API_RETRY method={method} path={path} status={label} "
+                f"attempt={attempt}/{API_REQUEST_ATTEMPTS} sleep={delay:.2f}",
+                flush=True,
+            )
+            time.sleep(delay)
+            continue
+
         msg = str(data.get("message") or "unknown GitHub API error")[:500]
-        raise RuntimeError(f"GitHub API {method} {path} failed status={status}: {msg}")
-    return status, data
+        raise RuntimeError(f"GitHub API {method} {path} failed status={status or 'network'}: {msg}")
+
+    raise RuntimeError(f"GitHub API {method} {path} exhausted retries")
 
 
 def api_ref_sha(token: str, repo: str) -> str:
