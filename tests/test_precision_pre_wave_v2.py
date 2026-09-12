@@ -25,7 +25,7 @@ def test_earliest_signal_is_immutable_when_later_alert_arrives():
     assert row["first_alert_reference_price"] == 0.03035
 
 
-def test_signal_survives_watchlist_exit_and_feeds_precision_lane(tmp_path: Path):
+def test_signal_survives_pending_exit_and_feeds_precision_lane_with_fresh_timing(tmp_path: Path):
     data = tmp_path
     now1 = "2026-09-12T09:30:00+00:00"
     early = {
@@ -50,7 +50,9 @@ def test_signal_survives_watchlist_exit_and_feeds_precision_lane(tmp_path: Path)
     ledger = json.loads((data / "precision-pre-wave-early-signal-ledger.json").read_text())
     assert ledger["symbols"]["STORJ"]["first_alert_reference_price"] == 0.03035
 
-    # STORJ leaves the early/pending feed after exact identity resolves.
+    # STORJ leaves the early/pending feed after exact identity resolves; immutable
+    # first-alert evidence remains in the ledger while current timing must still
+    # be supplied by a fresh exact-identity source (no stale/hindsight promotion).
     (data / "cex-early-revival-pending.json").write_text(json.dumps({"candidates": []}))
     near = {"near_alert_leaderboard": [{
         "symbol": "STORJ",
@@ -77,6 +79,7 @@ def test_signal_survives_watchlist_exit_and_feeds_precision_lane(tmp_path: Path)
         "symbol": "STORJUSDT",
         "pair_address": "0xaef16913b6c50ebcf627a394921f306985fc8604",
         "coherent_confirmations": 2,
+        "current_change_24h_max_pct": 8.0,
     }]}
     (data / "near-alert-observatory.json").write_text(json.dumps(near))
     (data / "cex-spot-identity-radar.json").write_text(json.dumps(identity))
