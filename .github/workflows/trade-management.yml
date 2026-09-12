@@ -41,6 +41,9 @@ jobs:
           python -m pytest -q tests/test_trade_management_engine.py
       - name: Recompute 7of7 trade management from newest main truth
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           git config user.name "wallet500-trade-manager"
