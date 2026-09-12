@@ -29,8 +29,11 @@ on:
 permissions:
   contents: write
 
+# Keep this advisory/research writer isolated. Sharing a concurrency group with
+# Live Scan or canonical publishers can evict an older pending run even when
+# cancel-in-progress is false.
 concurrency:
-  group: wallet500-live-scan-publisher
+  group: wallet500-cross-source-correlation
   cancel-in-progress: false
 
 jobs:
@@ -108,7 +111,9 @@ jobs:
           PY
           }
 
-          for attempt in 1 2 3 4 5; do
+          # Recompute from the newest main on every conflict. This prevents a stale
+          # research snapshot from being replayed over newer source ledgers.
+          for attempt in 1 2 3 4 5 6 7 8; do
             echo "publish attempt ${attempt}"
             git fetch --depth=1 origin main
             git reset --hard origin/main
@@ -127,8 +132,9 @@ jobs:
             set -e
             if [ "$rc" -eq 0 ]; then exit 0; fi
             if [ "$rc" -eq 75 ]; then
-              echo "CROSS_SOURCE_RECOMPUTE_REQUIRED attempt=$attempt"
-              sleep 1
+              delay=$(( attempt * attempt + (RANDOM % 4) ))
+              echo "CROSS_SOURCE_RECOMPUTE_REQUIRED attempt=$attempt backoff=${delay}s"
+              sleep "$delay"
               continue
             fi
             exit "$rc"
