@@ -1,6 +1,7 @@
 from wallet500.revival_absorption_signal import (
     apply_absorption_layer,
     compute_absorption_proxy,
+    evaluate_active_display_gate,
     exact_pair_for_coin,
 )
 
@@ -67,6 +68,56 @@ def test_exact_pair_resolution_never_switches_to_other_pool():
     assert found is wanted
 
 
+def test_active_display_gate_accepts_real_activity_even_if_not_absorption():
+    flow = {
+        "signal_type": "NONE",
+        "buys_h24": 35,
+        "sells_h24": 25,
+        "liquidity_usd": 100000,
+        "volume_24h_usd": 20000,
+    }
+    gate = evaluate_active_display_gate(flow)
+    assert gate["pass"] is True
+    assert gate["metrics"]["txns_h24"] == 60
+    assert gate["metrics"]["volume_to_liquidity"] == 0.2
+
+
+def test_vault_like_dead_pair_is_hidden_from_active_dashboard():
+    gate = evaluate_active_display_gate({
+        "signal_type": "NONE",
+        "buys_h24": 2,
+        "sells_h24": 8,
+        "liquidity_usd": 74000,
+        "volume_24h_usd": 311,
+    })
+    assert gate["pass"] is False
+    assert "txns_24h_ge_40" in gate["blockers"]
+    assert "buys_h24_ge_10" in gate["blockers"]
+    assert "volume_24h_ge_10k" in gate["blockers"]
+    assert "volume_to_liquidity_ge_10pct" in gate["blockers"]
+
+
+def test_dupe_like_dead_pair_is_hidden_from_active_dashboard():
+    gate = evaluate_active_display_gate({
+        "signal_type": "NONE",
+        "buys_h24": 7,
+        "sells_h24": 6,
+        "liquidity_usd": 124000,
+        "volume_24h_usd": 854,
+    })
+    assert gate["pass"] is False
+    assert "txns_24h_ge_40" in gate["blockers"]
+    assert "buys_h24_ge_10" in gate["blockers"]
+    assert "volume_24h_ge_10k" in gate["blockers"]
+    assert "volume_to_liquidity_ge_10pct" in gate["blockers"]
+
+
+def test_missing_activity_data_fails_closed():
+    gate = evaluate_active_display_gate(None)
+    assert gate["pass"] is False
+    assert "activity_data_available" in gate["blockers"]
+
+
 def test_apply_layer_adds_watch_only_without_score_or_pre_alpha_promotion():
     coin, pair = whitewhale_shape()
     payload = {
@@ -83,6 +134,11 @@ def test_apply_layer_adds_watch_only_without_score_or_pre_alpha_promotion():
     assert out["research_watch_eligible"] is True
     assert out["pre_alpha_eligible"] is False
     assert out["revival_score_verified"] == original_score
+    assert out["active_display_gate"]["pass"] is True
+    assert enriched["counts"]["active_display_gate_pass"] == 1
     assert enriched["counts"]["absorption_proxy_watch"] == 1
     assert enriched["counts"]["absorption_proxy_outside_core"] == 1
     assert enriched["order_flow_absorption_contract"]["pre_alpha_promotion"] == "FORBIDDEN"
+    assert enriched["active_display_gate_contract"]["minimum_buys_h24"] == 10
+    assert enriched["active_display_gate_contract"]["minimum_sells_h24"] == 5
+    assert enriched["active_display_gate_contract"]["minimum_volume_to_liquidity"] == 0.10
