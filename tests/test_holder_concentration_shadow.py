@@ -79,7 +79,7 @@ def test_distribution_rejects_unverified_or_wrong_source():
     assert sanitize_distribution({"verified": True, "contract_match": True, "source": "OTHER", "metrics": {"top1_pct": 1, "top10_pct": 2}}) is None
 
 
-def test_holder_count_shadow_is_explicitly_non_scoring():
+def test_holder_count_shadow_is_explicitly_non_scoring_and_namespaced():
     holders = {
         "available": True,
         "verified": True,
@@ -96,7 +96,8 @@ def test_holder_count_shadow_is_explicitly_non_scoring():
     assert out["holder_count_shadow"] == 18000
     assert out["growth_signal_eligible"] is False
     assert out["hybrid_score_impact"] == "NONE"
-    assert out["semantics"] == "THIRD_PARTY_CACHED_HOLDER_COUNT_SHADOW_NOT_TRUSTED_GROWTH"
+    assert out["holder_shadow_semantics"] == "THIRD_PARTY_CACHED_HOLDER_COUNT_SHADOW_NOT_TRUSTED_GROWTH"
+    assert "semantics" not in out
 
 
 def test_holder_shadow_rejects_wrong_source():
