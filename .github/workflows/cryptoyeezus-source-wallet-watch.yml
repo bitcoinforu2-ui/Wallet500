@@ -9,12 +9,14 @@ on:
       - 'src/wallet500/cryptoyeezus_source_wallet_watch.py'
       - 'tests/test_cryptoyeezus_source_wallet_watch.py'
       - '.github/workflows/cryptoyeezus-source-wallet-watch.yml'
+      - 'scripts/serialized_publish.py'
   push:
     branches: [main]
     paths:
       - 'src/wallet500/cryptoyeezus_source_wallet_watch.py'
       - 'tests/test_cryptoyeezus_source_wallet_watch.py'
       - '.github/workflows/cryptoyeezus-source-wallet-watch.yml'
+      - 'scripts/serialized_publish.py'
 
 permissions:
   contents: write
@@ -41,9 +43,6 @@ jobs:
       - name: Run forward-only verified swap watcher
         if: github.event_name != 'pull_request'
         env:
-          # Use the canonical public endpoint for this single-wallet watcher.
-          # The prior fallback could return an empty signature page and silently
-          # re-bootstrap forever, which meant real challenge-wallet swaps were missed.
           SOLANA_RPC_URL: https://api.mainnet-beta.solana.com
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -67,33 +66,17 @@ jobs:
           PY
       - name: Publish forward-only source-wallet state
         if: github.event_name != 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-source-wallet-bot'
-          git config user.email 'wallet500-source-wallet-bot@users.noreply.github.com'
           git restore --worktree -- src/wallet500.egg-info || true
-          git add data/cryptoyeezus-source-wallet-state.json data/cryptoyeezus-source-wallet-latest.json data/cryptoyeezus-source-wallet-events.json
-          if git diff --cached --quiet; then
-            echo 'SOURCE_WALLET_NO_STATE_CHANGE'
-            exit 0
-          fi
-          git commit -m 'data: update CryptoYeezus source wallet state'
-          git reset --hard HEAD
-          git clean -fd
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            if ! git rebase origin/main; then
-              git rebase --abort || true
-              [ "$attempt" -eq 5 ] && exit 1
-              sleep $((attempt * 2))
-              continue
-            fi
-            if git push origin HEAD:main; then
-              echo 'SOURCE_WALLET_PUBLISH_OK'
-              exit 0
-            fi
-            sleep $((attempt * 2))
-          done
-          echo 'SOURCE_WALLET_PUBLISH_RACE_EXHAUSTED' >&2
-          exit 1
+          python scripts/serialized_publish.py \
+            --github-api-cas \
+            --attempts 80 \
+            --message 'data: update CryptoYeezus source wallet state' \
+            data/cryptoyeezus-source-wallet-state.json \
+            data/cryptoyeezus-source-wallet-latest.json \
+            data/cryptoyeezus-source-wallet-events.json
+          echo 'SOURCE_WALLET_PUBLISH_OK'
