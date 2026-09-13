@@ -20,6 +20,8 @@ on:
       - 'src/wallet500/quality_shadow.py'
       - 'src/wallet500/hot_healthy_radar.py'
       - 'src/wallet500/address_quality_audit.py'
+      - 'src/wallet500/candidate_evidence_envelope.py'
+      - 'src/wallet500/learning_loop.py'
       - 'scripts/compact_outcome_history.py'
       - 'scripts/serialized_publish.py'
       - 'tests/test_lifecycle_strategy.py'
@@ -27,6 +29,7 @@ on:
       - 'tests/test_research_integrity_v2.py'
       - 'tests/test_revival_historical_dna.py'
       - 'tests/test_compact_outcome_history.py'
+      - 'tests/test_learning_loop.py'
       - '.github/workflows/performance-tracker.yml'
 
 permissions:
@@ -52,7 +55,7 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Run lifecycle strategy and research integrity tests
-        run: python -m pytest -q tests/test_lifecycle_strategy.py tests/test_experiment_v1.py tests/test_research_integrity_v2.py tests/test_revival_historical_dna.py tests/test_compact_outcome_history.py
+        run: python -m pytest -q tests/test_lifecycle_strategy.py tests/test_experiment_v1.py tests/test_research_integrity_v2.py tests/test_revival_historical_dna.py tests/test_compact_outcome_history.py tests/test_learning_loop.py
       - name: Rebuild immutable Performance Since Discovery
         run: python -m wallet500.performance_tracker
       - name: Update forward lifecycle strategy ledger
@@ -75,6 +78,10 @@ jobs:
         run: python -m wallet500.revival_historical_dna
       - name: Run measurable-vs-rest bias study
         run: python -m wallet500.measurable_bias_experiment
+      - name: Rebuild research-only candidate evidence envelope
+        run: python -m wallet500.candidate_evidence_envelope
+      - name: Close prospective evidence-to-outcome learning loop
+        run: python -m wallet500.learning_loop
       - name: Verify executable cash quotes
         env:
           ZEROX_API_KEY: ${{ secrets.ZEROX_API_KEY }}
@@ -91,10 +98,10 @@ jobs:
           import json
           from datetime import datetime
           from pathlib import Path
-          paths=[Path('data/outcome-tracker.json'),Path('data/realizable-performance.json'),Path('data/first-eligible-paper-ledger.json'),Path('data/cohort-research.json'),Path('data/experiment-v1-ledger.json'),Path('data/experiment-v1-scoreboard.json'),Path('data/winner-dna-study.json'),Path('data/revival-historical-dna.json'),Path('data/measurable-vs-rest-experiment.json'),Path('data/quality-shadow-summary.json'),Path('data/hot-healthy-radar.json'),Path('data/address-quality-audit.json')]
+          paths=[Path('data/outcome-tracker.json'),Path('data/realizable-performance.json'),Path('data/first-eligible-paper-ledger.json'),Path('data/cohort-research.json'),Path('data/experiment-v1-ledger.json'),Path('data/experiment-v1-scoreboard.json'),Path('data/winner-dna-study.json'),Path('data/revival-historical-dna.json'),Path('data/measurable-vs-rest-experiment.json'),Path('data/quality-shadow-summary.json'),Path('data/hot-healthy-radar.json'),Path('data/address-quality-audit.json'),Path('data/candidate-evidence-envelope.json'),Path('data/learning-observations.json'),Path('data/feature-attribution.json'),Path('data/weight-update-candidates.json'),Path('data/learning-ranked-candidates.json')]
           for x in paths:
               if not x.exists() or x.stat().st_size == 0: raise SystemExit('FATAL: empty measurement output: '+str(x))
-          d,rp,pl,cr,ev,es,wd,rh,mv,qs,hh,aq=[json.loads(x.read_text()) for x in paths]
+          d,rp,pl,cr,ev,es,wd,rh,mv,qs,hh,aq,ce,lo,fa,wc,lr=[json.loads(x.read_text()) for x in paths]
           total=int(d.get('tracked_tokens') or len((d.get('tokens') or {}))); entries=pl.get('entries') if isinstance(pl.get('entries'),list) else []
           if total<=0: raise SystemExit('FATAL: tracker attempted to publish zero tracked tokens')
           storage=d.get('history_storage') or {}
@@ -123,7 +130,7 @@ jobs:
               elif not meets_current_gate:
                   legacy_pre_gate+=1
           if int((cr.get('baseline') or {}).get('n') or 0)!=len(entries): raise SystemExit('FATAL: cohort research baseline differs from ledger')
-          if any(x.get('production_change') is not False for x in (ev,es,wd,mv,qs,hh,aq)): raise SystemExit('FATAL: research mutated production policy')
+          if any(x.get('production_change') is not False for x in (ev,es,wd,mv,qs,hh,aq,ce,lo,fa,wc,lr)): raise SystemExit('FATAL: research mutated production policy')
           if es.get('method')!='PROSPECTIVE_EXPERIMENT_V1': raise SystemExit('FATAL: experiment v1 method mismatch')
           if wd.get('method')!='WINNER_DNA_SHADOW_V2': raise SystemExit('FATAL: winner DNA method mismatch')
           if rh.get('mode')!='RESEARCH_ONLY_REVIVAL_HISTORICAL_DNA_V1' or rh.get('network')!='solana' or rh.get('production_impact')!='NONE' or rh.get('no_hindsight') is not True: raise SystemExit('FATAL: revival historical DNA truth contract mismatch')
@@ -136,9 +143,25 @@ jobs:
           if int(aq.get('total_records_audited') or 0)<=0: raise SystemExit('FATAL: address audit has no records')
           if aq.get('method')!='ADDRESS_QUALITY_AUDIT_V2': raise SystemExit('FATAL: address audit method mismatch')
           if d.get('exact_pair_index_mode')!='CHAIN_TOKEN_PAIR_CASE_SAFE': raise SystemExit('FATAL: performance tracker is not using case-safe chain+token+pair indexing')
+          if ce.get('production_change') is not False or (ce.get('truth_contract') or {}).get('no_hindsight') is not True: raise SystemExit('FATAL: candidate evidence contract invalid')
+          if lo.get('mode')!='IMMUTABLE_FIRST_DECISION_EVIDENCE_V1' or lo.get('no_hindsight') is not True or lo.get('exact_pair_required') is not True: raise SystemExit('FATAL: learning observation truth contract invalid')
+          seen=set()
+          for o in lo.get('observations') or []:
+              if not all(o.get(k) for k in ('observation_id','chain','token_address','pair_address','exact_pair_key','feature_hash')): raise SystemExit('FATAL: incomplete immutable learning observation')
+              if o['observation_id'] in seen: raise SystemExit('FATAL: duplicate immutable learning observation id')
+              seen.add(o['observation_id'])
+              if (o.get('truth') or {}).get('exact_pair') is not True or (o.get('truth') or {}).get('no_hindsight') is not True or (o.get('truth') or {}).get('research_only') is not True: raise SystemExit('FATAL: learning observation truth flags invalid')
+          if fa.get('mode')!='EXACT_PAIR_FORWARD_OUTCOME_ATTRIBUTION_V1' or fa.get('no_hindsight') is not True: raise SystemExit('FATAL: attribution contract invalid')
+          if wc.get('mode')!='RESEARCH_ONLY_BOUNDED_RANK_WEIGHT_CANDIDATES_V1' or wc.get('automatic_promotion') is not False: raise SystemExit('FATAL: weight candidate contract invalid')
+          if any(int(x.get('recommended_rank_delta') or 0) not in {-1,0,1} for x in wc.get('recommendations') or []): raise SystemExit('FATAL: unbounded learning weight recommendation')
+          if lr.get('mode')!='RESEARCH_ONLY_PROSPECTIVE_LEARNING_RANK_V1' or lr.get('automatic_promotion') is not False or lr.get('status_and_tier_unchanged') is not True: raise SystemExit('FATAL: learning ranked output contract invalid')
+          for c in lr.get('candidates') or []:
+              rank=c.get('learning_rank') or {}
+              if abs(int(rank.get('rank_adjustment') or 0))>3 or rank.get('may_change_status_or_tier') is not False or rank.get('may_bypass_truth_gate') is not False: raise SystemExit('FATAL: learning rank escaped bounded research contract')
           print('INTEGRITY PASS')
           print('LEGACY_PRE_50K_POLICY_ROWS', legacy_pre_gate)
           print('STORAGE', storage)
+          print('LEARNING', {'observations':len(lo.get('observations') or []),'recommendations':len(wc.get('recommendations') or []),'ranked':len(lr.get('candidates') or [])})
           print('RESEARCH', {'experiment_v1':len(ev.get('records') or []),'winner_dna_status':wd.get('status'),'winner_dna':wd.get('winner_n'),'winner_controls':wd.get('control_n'),'solana_winner_dna':(wd.get('solana_study') or {}).get('status'),'revival_historical_dna':rh.get('counts'),'measured_vs_rest':[mv.get('measured_now_n'),mv.get('rest_n')]})
           PY
       - name: Publish measurement data
@@ -150,7 +173,7 @@ jobs:
           python scripts/serialized_publish.py \
             --hybrid-cas \
             --attempts 80 \
-            --message 'data: refresh performance and research lab outputs' \
+            --message 'data: refresh performance, learning and research outputs' \
             data/outcome-tracker.json \
             data/signal-outcomes.json \
             data/outcome-archive \
@@ -175,4 +198,9 @@ jobs:
             data/quality-shadow-ledger.json \
             data/quality-shadow-summary.json \
             data/hot-healthy-radar.json \
-            data/address-quality-audit.json
+            data/address-quality-audit.json \
+            data/candidate-evidence-envelope.json \
+            data/learning-observations.json \
+            data/feature-attribution.json \
+            data/weight-update-candidates.json \
+            data/learning-ranked-candidates.json
