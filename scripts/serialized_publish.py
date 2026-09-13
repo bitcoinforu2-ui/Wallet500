@@ -10,10 +10,13 @@ The lease is fail-closed, owner-verified on release, and can recover a stale
 lease left behind by a cancelled runner. It never force-updates main.
 
 GitHub's Git Data API can reject large blob request bodies even when the file is
-valid for the repository. Callers may keep requesting --github-api-cas; this
-wrapper transparently upgrades only large local payloads to --hybrid-cas, which
-uploads blob objects once through git and still performs the final main update
-with the same non-force CAS semantics.
+valid for the repository. Temporary staging refs can also be rejected by the
+GitHub Actions token when their ancestry contains workflow changes. Under the
+repository-wide lease, large or explicitly hybrid publications therefore use
+the atomic publisher's direct git CAS path: it rebuilds the generated-data tree
+on the newest origin/main and performs a normal non-force push to main. This
+keeps large blobs out of the Git Data API and avoids staging refs while retaining
+freshness checks and fast-forward-only publication.
 
 Directory payloads are expanded deterministically into regular files before the
 underlying atomic publisher runs. This preserves archive shards without asking
@@ -212,9 +215,7 @@ def _expand_directory_payloads() -> None:
         sys.argv[:] = expanded
 
 
-def _route_large_payload_to_hybrid() -> None:
-    if "--github-api-cas" not in sys.argv or "--hybrid-cas" in sys.argv:
-        return
+def _route_unsafe_large_transports_to_direct_git() -> None:
     large: list[tuple[str, int]] = []
     for i in _payload_indexes(sys.argv):
         raw = sys.argv[i]
@@ -226,21 +227,31 @@ def _route_large_payload_to_hybrid() -> None:
                     large.append((raw, size))
         except OSError:
             continue
-    if not large:
+
+    if "--hybrid-cas" in sys.argv:
+        sys.argv.remove("--hybrid-cas")
+        print(
+            "SERIALIZED_PUBLISH_TRANSPORT_ROUTE hybrid-cas->direct-git-cas "
+            "reason=staging-ref-workflow-permission-risk",
+            flush=True,
+        )
         return
-    idx = sys.argv.index("--github-api-cas")
-    sys.argv[idx] = "--hybrid-cas"
+
+    if "--github-api-cas" not in sys.argv or not large:
+        return
+
+    sys.argv.remove("--github-api-cas")
     summary = ",".join(f"{path}:{size}" for path, size in large[:8])
     print(
-        "SERIALIZED_PUBLISH_TRANSPORT_UPGRADE "
-        f"github-api-cas->hybrid-cas reason=large-payload files={summary}",
+        "SERIALIZED_PUBLISH_TRANSPORT_ROUTE "
+        f"github-api-cas->direct-git-cas reason=large-payload files={summary}",
         flush=True,
     )
 
 
 def main() -> int:
     _expand_directory_payloads()
-    _route_large_payload_to_hybrid()
+    _route_unsafe_large_transports_to_direct_git()
     token, repo, lock_sha = acquire_lock()
     try:
         return atomic_publish.main()
