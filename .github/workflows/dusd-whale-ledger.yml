@@ -59,7 +59,7 @@ jobs:
                   for attempt in range(1,4):
                       try:
                           b=json.dumps({'jsonrpc':'2.0','id':1,'method':method,'params':params}).encode()
-                          q=urllib.request.Request(rpc,data=b,headers={'content-type':'application/json','user-agent':'wallet500-dusd-ledger/3'},method='POST')
+                          q=urllib.request.Request(rpc,data=b,headers={'content-type':'application/json','user-agent':'wallet500-dusd-ledger/4'},method='POST')
                           with urllib.request.urlopen(q,timeout=45) as r:
                               o=json.load(r)
                           if o.get('error'):
@@ -76,27 +76,29 @@ jobs:
           supply=int(sv.get('amount') or 0); decimals=int(sv.get('decimals') or 0)
           if supply<=0: raise SystemExit('Fail closed: invalid DUSD supply')
           accts=call('getProgramAccounts',['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',{'commitment':'confirmed','encoding':'jsonParsed','filters':[{'dataSize':165},{'memcmp':{'offset':0,'bytes':mint}}]}]) or []
-          positive_accounts=0
+          token_accounts=[]
           for a in accts:
               try:
-                  amt=int(a['account']['data']['parsed']['info']['tokenAmount']['amount'])
-                  if amt>0: positive_accounts+=1
+                  raw=int(a['account']['data']['parsed']['info']['tokenAmount']['amount'])
+                  if raw>0:
+                      token_accounts.append({'token_account':a.get('pubkey'),'raw_balance':raw})
               except Exception:
                   pass
+          positive_accounts=len(token_accounts)
           if positive_accounts<=0: raise SystemExit('Fail closed: DUSD positive token-account count unavailable')
-          largest=(call('getTokenLargestAccounts',[mint,{'commitment':'confirmed'}]) or {}).get('value') or []
-          threshold=supply*0.001; whales=[]
-          for a in largest:
-              raw=int(a.get('amount') or 0)
-              if raw>=threshold: whales.append({'token_account':a.get('address'),'raw_balance':str(raw),'balance':raw/(10**decimals),'supply_pct':round(raw/supply*100,6)})
-          whales.sort(key=lambda x:int(x['raw_balance']),reverse=True)
+          threshold=supply*0.001
+          whales=[]
+          for a in sorted(token_accounts,key=lambda x:x['raw_balance'],reverse=True)[:20]:
+              raw=int(a['raw_balance'])
+              if raw>=threshold:
+                  whales.append({'token_account':a.get('token_account'),'raw_balance':str(raw),'balance':raw/(10**decimals),'supply_pct':round(raw/supply*100,6)})
           now=datetime.now(timezone.utc).isoformat(); hist=Path('data/dusd-whale-ledger.json')
-          ledger={'version':3,'mode':'RESEARCH_ONLY_DUSD_ONCHAIN_FORWARD_LEDGER_V1','mint':mint,'threshold_supply_pct':0.1,'snapshots':[],'no_hindsight':True,'production_portfolio_impact':'NONE'}
+          ledger={'version':4,'mode':'RESEARCH_ONLY_DUSD_ONCHAIN_FORWARD_LEDGER_V1','mint':mint,'threshold_supply_pct':0.1,'snapshots':[],'no_hindsight':True,'production_portfolio_impact':'NONE'}
           if hist.exists():
               try:ledger=json.loads(hist.read_text())
               except Exception:pass
           snaps=ledger.get('snapshots') if isinstance(ledger.get('snapshots'),list) else []
-          current={'observed_at':now,'mint':mint,'positive_token_accounts':positive_accounts,'supply_raw':str(supply),'supply_tokens':supply/(10**decimals),'decimals':decimals,'threshold_supply_pct':0.1,'whales':whales,'coverage':'SOLANA_RPC_CONFIRMED_ONCHAIN','holder_semantics':'POSITIVE_TOKEN_ACCOUNTS_NOT_UNIQUE_HUMANS','rpc_source':rpc_source_used,'rpc_policy':'SECRET_PREFERRED_MULTI_PUBLIC_FAILOVER_FAIL_CLOSED'}
+          current={'observed_at':now,'mint':mint,'positive_token_accounts':positive_accounts,'supply_raw':str(supply),'supply_tokens':supply/(10**decimals),'decimals':decimals,'threshold_supply_pct':0.1,'whales':whales,'coverage':'SOLANA_RPC_CONFIRMED_ONCHAIN','holder_semantics':'POSITIVE_TOKEN_ACCOUNTS_NOT_UNIQUE_HUMANS','whale_method':'DERIVED_FROM_COMPLETE_POSITIVE_TOKEN_ACCOUNT_SCAN','rpc_source':rpc_source_used,'rpc_policy':'SECRET_PREFERRED_MULTI_PUBLIC_FAILOVER_FAIL_CLOSED'}
           from datetime import datetime as DT
           def dt(s):
               try:return DT.fromisoformat(s.replace('Z','+00:00'))
@@ -126,7 +128,7 @@ jobs:
                   if d: flows.append({'token_account':acct,'delta_tokens':d/(10**decimals),'delta_supply_pct':round(d/supply*100,6),'direction':'BUY_OR_INFLOW' if d>0 else 'SELL_OR_OUTFLOW'})
           current['flows_vs_previous_hour']=sorted(flows,key=lambda x:abs(x['delta_supply_pct']),reverse=True)
           snaps.append(current); snaps=snaps[-168:]
-          ledger.update({'version':3,'mode':'RESEARCH_ONLY_DUSD_ONCHAIN_FORWARD_LEDGER_V1','updated_at':now,'mint':mint,'threshold_supply_pct':0.1,'no_hindsight':True,'production_portfolio_impact':'NONE','rpc_policy':'SECRET_PREFERRED_MULTI_PUBLIC_FAILOVER_FAIL_CLOSED','snapshots':snaps})
+          ledger.update({'version':4,'mode':'RESEARCH_ONLY_DUSD_ONCHAIN_FORWARD_LEDGER_V1','updated_at':now,'mint':mint,'threshold_supply_pct':0.1,'no_hindsight':True,'production_portfolio_impact':'NONE','rpc_policy':'SECRET_PREFERRED_MULTI_PUBLIC_FAILOVER_FAIL_CLOSED','whale_method':'DERIVED_FROM_COMPLETE_POSITIVE_TOKEN_ACCOUNT_SCAN','snapshots':snaps})
           Path('data').mkdir(exist_ok=True); hist.write_text(json.dumps(ledger,ensure_ascii=False,indent=2)+'\n')
           Path('data/dusd-whale-current.json').write_text(json.dumps(current,ensure_ascii=False,indent=2)+'\n')
           print(f'positive_accounts={positive_accounts} whales>=0.1%={len(whales)} supply={current["supply_tokens"]} rpc_source={rpc_source_used}')
@@ -141,6 +143,7 @@ jobs:
           assert l['mode']=='RESEARCH_ONLY_DUSD_ONCHAIN_FORWARD_LEDGER_V1'
           assert l['no_hindsight'] is True and l['production_portfolio_impact']=='NONE'
           assert c['positive_token_accounts']>0 and float(c['supply_tokens'])>0
+          assert c['whale_method']=='DERIVED_FROM_COMPLETE_POSITIVE_TOKEN_ACCOUNT_SCAN'
           assert c['rpc_source'] in {'SECRET_RPC','SOLANA_MAINNET_PUBLIC','SOLANA_MAINNET_BETA_PUBLIC','PUBLICNODE_FALLBACK'}
           PY
       - name: Publish DUSD onchain ledger safely
