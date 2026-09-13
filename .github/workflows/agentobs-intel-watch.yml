@@ -68,33 +68,16 @@ jobs:
 
       - name: Persist forward-only intelligence state
         if: github.event_name != 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-bot'
-          git config user.email 'wallet500-bot@users.noreply.github.com'
           git restore --worktree -- src/wallet500.egg-info || true
-          git add data/agentobs-intel-state.json data/agentobs-intel-events.json data/agentobs-intel-latest.json
-          if git diff --cached --quiet; then
-            echo 'No Agent OBS state change to commit'
-            exit 0
-          fi
-          git commit -m 'Update Agent OBS intelligence state'
-          git reset --hard HEAD
-          git clean -fd
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            if ! git rebase origin/main; then
-              git rebase --abort || true
-              echo "Agent OBS rebase contention attempt=${attempt}"
-              [ "$attempt" -eq 5 ] && exit 1
-              sleep $((attempt * 2))
-              continue
-            fi
-            if git push origin HEAD:main; then
-              echo 'AGENTOBS_STATE_PUBLISH_OK'
-              exit 0
-            fi
-            sleep $((attempt * 2))
-          done
-          echo 'Failed to publish Agent OBS state after retries' >&2
-          exit 1
+          python scripts/atomic_publish.py \
+            --github-api-cas \
+            --attempts 80 \
+            --message 'Update Agent OBS intelligence state' \
+            data/agentobs-intel-state.json \
+            data/agentobs-intel-events.json \
+            data/agentobs-intel-latest.json
+          echo 'AGENTOBS_STATE_PUBLISH_OK'
