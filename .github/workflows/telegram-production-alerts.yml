@@ -6,23 +6,15 @@ on:
     workflows:
       - "Wallet500 Verified Snapshot Publisher"
     types: [completed]
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/telegram-production-alerts.yml'
-      - 'src/wallet500/telegram_alerts.py'
-      - 'src/wallet500/real_alert_10usd_tracker.py'
-      - 'scripts/atomic_publish.py'
-      - 'tests/test_telegram_exact_pair.py'
-      - 'tests/test_real_alert_10usd_tracker.py'
 
 permissions:
   contents: write
 
 # User-facing delivery must run only after the sole canonical publisher has
 # completed. Candidate Evidence and Pending Confirmation can legitimately finish
-# after merely delegating a new Live Scan, so listening to them creates a race
-# where Telegram sees the previous decision generation.
+# after merely delegating a new Live Scan, and arbitrary source pushes do not
+# guarantee a fresh decision generation. Both cases could otherwise wake
+# Telegram against the previous snapshot.
 concurrency:
   group: wallet500-production-telegram-alerts
   cancel-in-progress: false
