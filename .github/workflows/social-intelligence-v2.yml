@@ -80,7 +80,7 @@ permissions:
 
 concurrency:
   group: wallet500-social-intelligence-v2-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   social:
@@ -304,13 +304,23 @@ jobs:
       - name: Publish social intelligence snapshot
         if: github.event_name != 'pull_request'
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-social-bot'
-          git config user.email 'wallet500-social-bot@users.noreply.github.com'
           tmp="$(mktemp -d)"
           for f in social-source-scan.json social-identity-cache.json social-catalyst-ledger.json social-organic-acceleration.json social-intelligence-v2.json cross-signal-fusion-v2.json; do cp "data/$f" "$tmp/$f"; done
-          for attempt in 1 2 3 4 5; do
+          paths=(
+            data/social-source-scan.json
+            data/social-identity-cache.json
+            data/social-source-health-history.json
+            data/social-provider-budget-advisor.json
+            data/social-catalyst-ledger.json
+            data/social-organic-acceleration.json
+            data/social-intelligence-v2.json
+            data/cross-signal-fusion-v2.json
+          )
+          for outer in 1 2 3 4 5 6 7 8; do
             git fetch origin main
             git reset --hard origin/main
             for f in social-source-scan.json social-identity-cache.json social-catalyst-ledger.json social-organic-acceleration.json social-intelligence-v2.json cross-signal-fusion-v2.json; do cp "$tmp/$f" "data/$f"; done
@@ -321,12 +331,19 @@ jobs:
             python -m wallet500.social_mesh_intelligence_enrichment
             python -m wallet500.social_mesh_index_intelligence_enrichment
             python -m wallet500.cross_signal_fusion_v2
-            git add data/social-source-scan.json data/social-identity-cache.json data/social-source-health-history.json data/social-provider-budget-advisor.json data/social-catalyst-ledger.json data/social-organic-acceleration.json data/social-intelligence-v2.json data/cross-signal-fusion-v2.json
-            if git diff --cached --quiet; then echo 'SOCIAL_V11_NO_DATA_CHANGE'; exit 0; fi
-            git commit -m 'data: refresh social resilience and provider health v11'
-            if git push origin HEAD:main; then echo 'SOCIAL_MESH_V11_PUBLISH_OK'; exit 0; fi
-            echo "SOCIAL_MESH_V11_RETRY attempt=$attempt"
-            sleep 3
+            set +e
+            python scripts/atomic_publish.py \
+              --github-api-cas \
+              --fail-on-newer \
+              --attempts 80 \
+              --message 'data: refresh social resilience and provider health v11' \
+              "${paths[@]}"
+            rc=$?
+            set -e
+            if [ "$rc" -eq 0 ]; then echo 'SOCIAL_MESH_V11_PUBLISH_OK'; exit 0; fi
+            if [ "$rc" -ne 75 ]; then exit "$rc"; fi
+            echo "SOCIAL_MESH_V11_RECOMPUTE outer=$outer"
+            sleep $((outer * 2))
           done
-          echo '::error::SOCIAL_MESH_V11_PUBLISH_RACE_EXHAUSTED'
+          echo '::error::SOCIAL_MESH_V11_RECOMPUTE_EXHAUSTED'
           exit 1
