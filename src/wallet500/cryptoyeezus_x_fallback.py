@@ -5,7 +5,6 @@ import json
 import re
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from pathlib import Path
 from urllib.request import Request, urlopen
 
 from .cryptoyeezus_live_watch import (
@@ -20,7 +19,10 @@ from .cryptoyeezus_live_watch import (
     _write,
 )
 
-SYNDICATION_URL = f"https://syndication.twitter.com/srv/timeline-profile/screen-name/{X_HANDLE}"
+SYNDICATION_URLS = [
+    f"https://syndication.x.com/srv/timeline-profile/screen-name/{X_HANDLE}",
+    f"https://syndication.twitter.com/srv/timeline-profile/screen-name/{X_HANDLE}",
+]
 NEXT_DATA_RE = re.compile(
     r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
     re.I | re.S,
@@ -107,33 +109,47 @@ def extract_syndication_rows(payload: dict) -> list[dict]:
 
 
 def fetch_syndication() -> tuple[list[dict], dict]:
-    try:
-        req = Request(
-            SYNDICATION_URL,
-            headers={
-                "Accept": "text/html,application/xhtml+xml",
-                "User-Agent": "Mozilla/5.0 Wallet500-XFallback/1.0",
-            },
-        )
-        with urlopen(req, timeout=20) as response:
-            body = response.read().decode("utf-8", errors="replace")
-        match = NEXT_DATA_RE.search(body)
-        if not match:
-            return [], {"provider": "x_syndication_public", "status": "NO_NEXT_DATA"}
-        payload = json.loads(html_lib.unescape(match.group(1)))
-        rows = extract_syndication_rows(payload)
-        return rows, {
-            "provider": "x_syndication_public",
-            "status": "OK_SYNDICATION" if rows else "EMPTY_SYNDICATION",
-            "count": len(rows),
-            "url": SYNDICATION_URL,
-        }
-    except Exception as exc:
-        return [], {
-            "provider": "x_syndication_public",
-            "status": f"{type(exc).__name__}:{str(exc)[:120]}",
-            "url": SYNDICATION_URL,
-        }
+    attempts = []
+    for url in SYNDICATION_URLS:
+        try:
+            req = Request(
+                url,
+                headers={
+                    "Accept": "text/html,application/xhtml+xml",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Cache-Control": "no-cache",
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140.0 Wallet500-XFallback/2.0",
+                },
+            )
+            with urlopen(req, timeout=20) as response:
+                body = response.read().decode("utf-8", errors="replace")
+            match = NEXT_DATA_RE.search(body)
+            if not match:
+                attempts.append({"url": url, "status": "NO_NEXT_DATA", "bytes": len(body)})
+                continue
+            payload = json.loads(html_lib.unescape(match.group(1)))
+            rows = extract_syndication_rows(payload)
+            if not rows:
+                attempts.append({"url": url, "status": "EMPTY_SYNDICATION", "bytes": len(body)})
+                continue
+            return rows, {
+                "provider": "x_syndication_public",
+                "status": "OK_SYNDICATION",
+                "count": len(rows),
+                "url": url,
+                "attempts": attempts,
+            }
+        except Exception as exc:
+            attempts.append({
+                "url": url,
+                "status": f"{type(exc).__name__}:{str(exc)[:120]}",
+            })
+
+    return [], {
+        "provider": "x_syndication_public",
+        "status": "ALL_SYNDICATION_ENDPOINTS_FAILED",
+        "attempts": attempts,
+    }
 
 
 def run() -> dict:
@@ -150,12 +166,13 @@ def run() -> dict:
     latest["x_fallback"] = fallback_status
     providers = latest.setdefault("providers", {})
     x_status = providers.setdefault("x", {})
-    if str(fallback_status.get("status") or "").startswith("OK"):
+    if fallback_status.get("status") == "OK_SYNDICATION":
         x_status["redundancy_status"] = "OK_SYNDICATION"
         x_status["effective_status"] = "OK_WITH_PUBLIC_FALLBACK"
     else:
         x_status["redundancy_status"] = fallback_status.get("status")
-        x_status["effective_status"] = direct_status or fallback_status.get("status")
+        x_status["effective_status"] = "DEGRADED_NO_X_REDUNDANCY"
+    _write(LATEST_PATH, latest)
 
     state = _load(STATE_PATH, {
         "version": 1,
@@ -164,18 +181,18 @@ def run() -> dict:
         "seen_posts": [],
         "tokens": {},
     })
+    state.setdefault("provider_status", {})["x_fallback"] = fallback_status
+    state["x_syndication_last_run_at"] = observed_at
     seen = {str(x) for x in state.get("seen_posts") or []}
 
     if not state.get("x_syndication_bootstrapped"):
-        if str(fallback_status.get("status") or "").startswith("OK"):
+        if fallback_status.get("status") == "OK_SYNDICATION":
             for row in rows:
                 seen.add(_post_key(row))
             state["x_syndication_bootstrapped"] = True
             state["x_syndication_baseline_at"] = observed_at
             state["seen_posts"] = list(seen)[-1500:]
-            state.setdefault("provider_status", {})["x_fallback"] = fallback_status
-            _write(STATE_PATH, state)
-            _write(LATEST_PATH, latest)
+        _write(STATE_PATH, state)
         return {
             "status": "BASELINE_BOOTSTRAPPED" if state.get("x_syndication_bootstrapped") else "FALLBACK_UNAVAILABLE",
             "provider": fallback_status,
@@ -219,8 +236,6 @@ def run() -> dict:
         new_events.append(event)
 
     state["seen_posts"] = list(seen)[-1500:]
-    state.setdefault("provider_status", {})["x_fallback"] = fallback_status
-    state["x_syndication_last_run_at"] = observed_at
     calls_doc["events"] = events[-2000:]
     calls_doc["updated_at"] = observed_at
     calls_doc["event_count"] = len(calls_doc["events"])
