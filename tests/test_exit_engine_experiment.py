@@ -77,8 +77,10 @@ def test_legacy_replay_uses_only_persisted_chronological_points():
         "current_price_usd":1.15,
     }]}
     out = reconcile(config, ledger, now="2026-09-13T00:01:00+00:00")
-    p = next(iter(out["positions"].values()))
+    p = next(iter(out["positions_by_token"].values()))
     assert p["status"] == "CLOSED"
     assert p["exit_price_usd"] == 1.16
     assert p["exit_reason"] == "TRAILING_STOP"
-    assert p["historical_replay_basis"] == "PERSISTED_CHECKPOINTS_ONLY"
+    assert p["historical_replay_basis"] == "PERSISTED_TIMESTAMPED_MARKS_ONLY"
+    assert isinstance(out["positions"], list)
+    assert out["positions_total"] == 1
