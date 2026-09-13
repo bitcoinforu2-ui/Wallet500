@@ -12,6 +12,7 @@ on:
       - 'src/wallet500/revival_forensics_runner.py'
       - 'src/wallet500/revival_wallet_evidence.py'
       - 'src/wallet500/revival_forensics_wallet_bridge.py'
+      - 'scripts/serialized_publish.py'
       - 'tests/test_revival_liquidity_learning.py'
       - 'tests/test_revival_forensics_v2.py'
       - 'tests/test_revival_wallet_evidence.py'
@@ -166,10 +167,9 @@ jobs:
       - name: Publish learning, wallet evidence and forensics state
         env:
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-truth-bot'
-          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
           if [ -z "${SOLANA_RPC_URL:-}" ]; then
             export SOLANA_RPC_URL='https://solana-rpc.publicnode.com'
             echo 'Using verified public Solana RPC fallback for conflict recompute'
@@ -208,10 +208,10 @@ jobs:
           PY
           }
 
-          # Never replay a snapshot computed from an older main. If another writer
-          # advances main, reset to that exact tip, recompute every derived Revival
-          # output from its current sources, revalidate truth invariants, then use
-          # atomic fail-on-newer publication. This closes the stale-snapshot race.
+          # Compute may run in parallel, but every main mutation now takes the
+          # repository-wide Wallet500 publish lease. If a legacy writer changes a
+          # relevant input despite the lease, fail-on-newer still forces a full
+          # recompute from the new tip; truth guards are never weakened.
           for attempt in 1 2 3 4 5 6 7 8; do
             echo "REVIVAL_FORENSICS_PUBLISH_ATTEMPT attempt=$attempt"
             git fetch --depth=1 origin main
@@ -235,9 +235,10 @@ jobs:
             validate_outputs
 
             set +e
-            python scripts/atomic_publish.py \
+            python scripts/serialized_publish.py \
               --base "$base" \
               --fail-on-newer \
+              --hybrid-cas \
               --message 'data: refresh Revival liquidity wallet evidence and forensics' \
               data/revival-liquidity-learning.json \
               data/revival-liquidity-learning-state.json \
