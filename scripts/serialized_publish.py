@@ -14,6 +14,10 @@ valid for the repository. Callers may keep requesting --github-api-cas; this
 wrapper transparently upgrades only large local payloads to --hybrid-cas, which
 uploads blob objects once through git and still performs the final main update
 with the same non-force CAS semantics.
+
+Directory payloads are expanded deterministically into regular files before the
+underlying atomic publisher runs. This preserves archive shards without asking
+the lower-level publisher to guess directory semantics.
 """
 from __future__ import annotations
 
@@ -32,10 +36,9 @@ LOCK_API_REF = "/git/ref/heads/wallet500-publish-lock"
 LOCK_API_DELETE = "/git/refs/heads/wallet500-publish-lock"
 LOCK_TTL_SECONDS = 300
 LOCK_WAIT_SECONDS = 210
-# Keep comfortably below request-body limits. Hybrid CAS is also cheaper than
-# JSON/base64 Git Data API upload for state files of this size.
 GITHUB_API_BLOB_SOFT_LIMIT = 8 * 1024 * 1024
 _LOCK_RE = re.compile(r"\bcreated_epoch=(\d+)\b")
+_VALUE_OPTIONS = {"--base", "--message", "--attempts"}
 
 
 def _identity() -> tuple[str, str, str, str]:
@@ -51,10 +54,7 @@ def _identity() -> tuple[str, str, str, str]:
 def _new_lock_commit(token: str, repo: str, run_id: str, run_attempt: str) -> tuple[str, int]:
     parent = atomic_publish.api_ref_sha(token, repo)
     _, parent_commit = atomic_publish.api_request(
-        token,
-        repo,
-        "GET",
-        f"/git/commits/{urllib.parse.quote(parent, safe='')}",
+        token, repo, "GET", f"/git/commits/{urllib.parse.quote(parent, safe='')}"
     )
     tree_sha = str((parent_commit.get("tree") or {}).get("sha") or "")
     if not tree_sha:
@@ -82,11 +82,7 @@ def _new_lock_commit(token: str, repo: str, run_id: str, run_attempt: str) -> tu
 
 def _current_lock(token: str, repo: str) -> tuple[str, int | None] | None:
     status, ref = atomic_publish.api_request(
-        token,
-        repo,
-        "GET",
-        LOCK_API_REF,
-        allowed=(200, 404),
+        token, repo, "GET", LOCK_API_REF, allowed=(200, 404)
     )
     if status == 404:
         return None
@@ -94,10 +90,7 @@ def _current_lock(token: str, repo: str) -> tuple[str, int | None] | None:
     if not sha:
         raise RuntimeError("SERIALIZED_PUBLISH_LOCK_REF_SHA_MISSING")
     _, commit = atomic_publish.api_request(
-        token,
-        repo,
-        "GET",
-        f"/git/commits/{urllib.parse.quote(sha, safe='')}",
+        token, repo, "GET", f"/git/commits/{urllib.parse.quote(sha, safe='')}"
     )
     message = str(commit.get("message") or "")
     if not message.startswith("WALLET500_PUBLISH_LOCK "):
@@ -119,11 +112,7 @@ def _delete_if_same(token: str, repo: str, expected_sha: str, label: str) -> boo
         )
         return False
     atomic_publish.api_request(
-        token,
-        repo,
-        "DELETE",
-        LOCK_API_DELETE,
-        allowed=(204, 404),
+        token, repo, "DELETE", LOCK_API_DELETE, allowed=(204, 404)
     )
     print(f"SERIALIZED_PUBLISH_{label}_OK sha={expected_sha}", flush=True)
     return True
@@ -176,19 +165,59 @@ def acquire_lock() -> tuple[str, str, str]:
     raise RuntimeError(f"SERIALIZED_PUBLISH_LOCK_TIMEOUT wait_seconds={LOCK_WAIT_SECONDS}")
 
 
-def _route_large_payload_to_hybrid() -> None:
-    """Upgrade GitHub-API CAS to hybrid CAS when a local payload is large.
+def _payload_indexes(argv: list[str]) -> list[int]:
+    indexes: list[int] = []
+    skip_value = False
+    for i in range(1, len(argv)):
+        raw = argv[i]
+        if skip_value:
+            skip_value = False
+            continue
+        if raw in _VALUE_OPTIONS:
+            skip_value = True
+            continue
+        if raw.startswith("-"):
+            continue
+        indexes.append(i)
+    return indexes
 
-    We intentionally inspect only argv entries that resolve to regular files;
-    values belonging to --message/--base/--attempts therefore cannot be mistaken
-    for payloads. Explicit --hybrid-cas callers are left untouched.
-    """
+
+def _expand_directory_payloads() -> None:
+    original = list(sys.argv)
+    payload_indexes = set(_payload_indexes(original))
+    expanded: list[str] = [original[0]]
+    total_expanded = 0
+    for i, raw in enumerate(original[1:], start=1):
+        if i not in payload_indexes:
+            expanded.append(raw)
+            continue
+        p = Path(raw)
+        if not p.is_dir():
+            expanded.append(raw)
+            continue
+        files = sorted(
+            str(child.as_posix())
+            for child in p.rglob("*")
+            if child.is_file()
+        )
+        if not files:
+            raise RuntimeError(f"SERIALIZED_PUBLISH_EMPTY_DIRECTORY {raw}")
+        expanded.extend(files)
+        total_expanded += len(files)
+        print(
+            f"SERIALIZED_PUBLISH_DIRECTORY_EXPANDED path={raw} files={len(files)}",
+            flush=True,
+        )
+    if total_expanded:
+        sys.argv[:] = expanded
+
+
+def _route_large_payload_to_hybrid() -> None:
     if "--github-api-cas" not in sys.argv or "--hybrid-cas" in sys.argv:
         return
     large: list[tuple[str, int]] = []
-    for raw in sys.argv[1:]:
-        if raw.startswith("-"):
-            continue
+    for i in _payload_indexes(sys.argv):
+        raw = sys.argv[i]
         p = Path(raw)
         try:
             if p.is_file():
@@ -210,11 +239,10 @@ def _route_large_payload_to_hybrid() -> None:
 
 
 def main() -> int:
+    _expand_directory_payloads()
     _route_large_payload_to_hybrid()
     token, repo, lock_sha = acquire_lock()
     try:
-        # atomic_publish.main() consumes the (possibly transport-upgraded) argv,
-        # preserving caller freshness, fail-on-newer, message and path options.
         return atomic_publish.main()
     finally:
         _delete_if_same(token, repo, lock_sha, "LOCK_RELEASE")
