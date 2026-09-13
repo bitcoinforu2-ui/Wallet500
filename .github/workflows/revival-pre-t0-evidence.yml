@@ -11,6 +11,7 @@ on:
       - 'src/wallet500/revival_pre_t0_evidence_v2.py'
       - 'src/wallet500/waking_pre_t0_confirmation.py'
       - 'scripts/atomic_publish.py'
+      - 'scripts/serialized_publish.py'
       - 'tests/test_revival_pre_t0_evidence.py'
       - 'tests/test_revival_pre_t0_evidence_v2.py'
       - '.github/workflows/revival-pre-t0-evidence.yml'
@@ -21,6 +22,7 @@ on:
       - 'src/wallet500/revival_pre_t0_evidence_v2.py'
       - 'src/wallet500/waking_pre_t0_confirmation.py'
       - 'scripts/atomic_publish.py'
+      - 'scripts/serialized_publish.py'
       - 'tests/test_revival_pre_t0_evidence.py'
       - 'tests/test_revival_pre_t0_evidence_v2.py'
       - '.github/workflows/revival-pre-t0-evidence.yml'
@@ -29,9 +31,6 @@ permissions:
   contents: write
 
 concurrency:
-  # Single writer for the canonical PRE-T0/Waking snapshot across schedule,
-  # workflow_dispatch and push events. This removes self-contention while
-  # preserving fail-on-newer truth protection during publication.
   group: wallet500-revival-pre-t0-evidence-single-writer-v4
   cancel-in-progress: false
 
@@ -123,10 +122,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-truth-bot'
-          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
           BASE_SHA="$(git rev-parse HEAD)"
-          python scripts/atomic_publish.py \
+          python scripts/serialized_publish.py \
             --base "$BASE_SHA" \
             --fail-on-newer \
             --hybrid-cas \
