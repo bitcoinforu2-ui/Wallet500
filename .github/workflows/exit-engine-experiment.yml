@@ -1,0 +1,57 @@
+name: Wallet500 Exit Engine Experiment
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '16,46 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-exit-engine-experiment
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Test exit experiment contracts
+        run: python -m pytest -q tests/test_exit_engine_experiment.py
+      - name: Reconcile exit experiment
+        run: python -m wallet500.exit_engine_experiment
+      - name: Validate live experiment output
+        run: |
+          python -m json.tool data/exit-engine-experiment-live.json >/dev/null
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('data/exit-engine-experiment-live.json').read_text())
+          if d.get('mode')!='PAPER_ONLY_NO_REAL_MONEY': raise SystemExit('EXIT_EXPERIMENT_MODE_DRIFT')
+          if d.get('truth_rule')!='NO_HINDSIGHT_FIRST_OBSERVED_MARK_ONLY': raise SystemExit('EXIT_EXPERIMENT_HINDSIGHT_DRIFT')
+          s=d.get('strategy') or {}
+          if float(s.get('hard_stop_pct')) != -8.0: raise SystemExit('EXIT_HARD_STOP_DRIFT')
+          if float(s.get('trailing_activation_gain_pct')) != 25.0: raise SystemExit('EXIT_ACTIVATION_DRIFT')
+          if float(s.get('trailing_stop_from_peak_pct')) != 10.0: raise SystemExit('EXIT_TRAIL_DRIFT')
+          if int(d.get('positions_total') or 0) < 1: raise SystemExit('EXIT_EXPERIMENT_EMPTY')
+          print('EXIT_ENGINE_EXPERIMENT_VALID', {'positions':d.get('positions_total'),'equity':d.get('strategy_equity_usd'),'roi':d.get('strategy_roi_pct')})
+          PY
+      - name: Publish experiment state atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python scripts/atomic_publish.py \
+            --message 'data: update exit engine paper experiment' \
+            data/exit-engine-experiment-live.json
