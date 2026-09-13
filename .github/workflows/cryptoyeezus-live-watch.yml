@@ -9,9 +9,11 @@ on:
     paths:
       - 'src/wallet500/cryptoyeezus_live_watch.py'
       - 'src/wallet500/cryptoyeezus_x_fallback.py'
+      - 'src/wallet500/cryptoyeezus_identity_guard.py'
       - 'src/wallet500/cryptoyeezus_priority_alerts.py'
       - 'tests/test_cryptoyeezus_live_watch.py'
       - 'tests/test_cryptoyeezus_x_fallback.py'
+      - 'tests/test_cryptoyeezus_identity_guard.py'
       - 'tests/test_cryptoyeezus_priority_alerts.py'
       - '.github/workflows/cryptoyeezus-live-watch.yml'
       - 'scripts/serialized_publish.py'
@@ -44,6 +46,7 @@ jobs:
           python -m pytest -q \
             tests/test_cryptoyeezus_live_watch.py \
             tests/test_cryptoyeezus_x_fallback.py \
+            tests/test_cryptoyeezus_identity_guard.py \
             tests/test_cryptoyeezus_priority_alerts.py
 
       - name: Poll canonical Telegram and direct X on every run
@@ -54,6 +57,9 @@ jobs:
 
       - name: Recover X through public redundancy when direct API is degraded
         run: python -m wallet500.cryptoyeezus_x_fallback
+
+      - name: Quarantine false exact identities before priority delivery
+        run: python -m wallet500.cryptoyeezus_identity_guard
 
       - name: Deliver dedicated CryptoYeezus priority alerts
         env:
@@ -124,5 +130,6 @@ jobs:
             data/cryptoyeezus-live-state.json \
             data/cryptoyeezus-calls.json \
             data/cryptoyeezus-live-latest.json \
-            data/cryptoyeezus-priority-state.json
+            data/cryptoyeezus-priority-state.json \
+            data/cryptoyeezus-identity-corrections.json
           echo 'CRYPTOYEEZUS_STATE_PUBLISH_OK'
