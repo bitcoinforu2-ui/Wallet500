@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
@@ -13,6 +15,11 @@ MIN_LIQ = 15000.0
 MIN_VOL = 15000.0
 MIN_TX = 50
 MIN_MARKET_AGE_DAYS = 90
+# DexScreener live verification is network-bound. Keep concurrency deliberately
+# small so we reduce wall-clock time without turning provider pressure/rate-limit
+# failures into false zeroes. Every candidate still receives the same retries,
+# exact-pair checks and fail-closed outcome as the serial implementation.
+LIVE_VERIFY_WORKERS = max(1, min(6, int(os.getenv('WALLET500_HOT_HEALTHY_WORKERS', '4'))))
 EVM_CHAINS = {'ethereum', 'eth', 'bsc', 'bnb', 'base', 'arbitrum', 'polygon', 'optimism', 'avalanche'}
 
 
@@ -306,36 +313,42 @@ def _score(r, live):
     }
 
 
+def _evaluate_live_candidate(r):
+    """Network-bound evaluation unit; returns data only and never mutates state."""
+    live, reason = _live_exact_pair_truth(r)
+    if not live:
+        return None, reason
+    scored = _score(r, live)
+    return scored, None if scored else 'LIVE_SCORE_REJECTED'
+
+
 def run():
     tracker = _load(DATA / 'outcome-tracker.json', {})
     records = tracker.get('tokens') if isinstance(tracker, dict) else {}
     rows = []
     quarantine = []
-    preeligible = 0
+    candidates = []
     if isinstance(records, dict):
-        for r in records.values():
-            if not isinstance(r, dict) or _is_stable_or_wrapped(r) or not _preeligible(r):
-                continue
-            preeligible += 1
-            live, reason = _live_exact_pair_truth(r)
-            if not live:
-                quarantine.append({
-                    'chain': r.get('chain'),
-                    'token': r.get('token'),
-                    'pair_address': r.get('entry_pair_address'),
-                    'reason': reason,
-                })
-                continue
-            z = _score(r, live)
-            if z:
-                rows.append(z)
-            else:
-                quarantine.append({
-                    'chain': r.get('chain'),
-                    'token': r.get('token'),
-                    'pair_address': r.get('entry_pair_address'),
-                    'reason': 'LIVE_SCORE_REJECTED',
-                })
+        candidates = [
+            r for r in records.values()
+            if isinstance(r, dict) and not _is_stable_or_wrapped(r) and _preeligible(r)
+        ]
+
+    # executor.map preserves input order, so the persisted quarantine/evidence
+    # ordering remains deterministic while independent provider calls overlap.
+    if candidates:
+        with ThreadPoolExecutor(max_workers=LIVE_VERIFY_WORKERS, thread_name_prefix='hot-healthy') as pool:
+            results = pool.map(_evaluate_live_candidate, candidates)
+            for r, (scored, reason) in zip(candidates, results):
+                if scored:
+                    rows.append(scored)
+                else:
+                    quarantine.append({
+                        'chain': r.get('chain'),
+                        'token': r.get('token'),
+                        'pair_address': r.get('entry_pair_address'),
+                        'reason': reason,
+                    })
 
     rows.sort(key=lambda x: (x['score'], x['liquidity_retention'], x['buy_share']), reverse=True)
     hot = [x for x in rows if x['label'] == 'HOT_HEALTHY']
@@ -354,6 +367,11 @@ def run():
             'veteran_market_age_min_days': MIN_MARKET_AGE_DAYS,
             'solana_address_case_sensitive': True,
         },
+        'runtime': {
+            'live_verify_workers': LIVE_VERIFY_WORKERS,
+            'provider_semantics': 'SAME_RETRIES_EXACT_PAIR_FAIL_CLOSED',
+            'deterministic_persist_order': True,
+        },
         'hot_healthy_rules': {
             'min_score': 78,
             'min_exact_pair_marks_including_live': 2,
@@ -362,7 +380,7 @@ def run():
             'min_buy_share': 0.50,
             'max_turnover_h1': 2.0,
         },
-        'historical_preeligible_candidates': preeligible,
+        'historical_preeligible_candidates': len(candidates),
         'scored_live_verified_candidates': len(rows),
         'quarantined_fail_closed_count': len(quarantine),
         'hot_healthy_count': len(hot),
