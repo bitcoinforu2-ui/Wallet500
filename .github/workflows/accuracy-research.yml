@@ -1,0 +1,75 @@
+name: Wallet500 Accuracy Research
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/accuracy_research.py'
+      - 'tests/test_accuracy_research.py'
+      - '.github/workflows/accuracy-research.yml'
+      - 'data/research-sample-report.json'
+      - 'data/research-sample-ledger.json'
+      - 'data/real-alert-10usd-ledger.json'
+      - 'data/decision-only-shadow.json'
+  workflow_run:
+    workflows:
+      - "Wallet500 Near Alert Observatory"
+      - "Wallet500 New REAL ALERT $10 Paper Tracker Repair"
+    types: [completed]
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-accuracy-research
+  cancel-in-progress: true
+
+jobs:
+  research:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install and test Accuracy Lab contract
+        run: |
+          pip install -e . pytest
+          python -m pytest -q tests/test_accuracy_research.py
+      - name: Build forward-only accuracy research
+        run: python -m wallet500.accuracy_research
+      - name: Validate research-only output
+        run: |
+          python -m json.tool data/accuracy-research.json >/dev/null
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('data/accuracy-research.json').read_text())
+          if d.get('mode')!='RESEARCH_ONLY_ACCURACY_LAB_V1': raise SystemExit('ACCURACY_MODE_DRIFT')
+          if d.get('research_only') is not True: raise SystemExit('ACCURACY_NOT_RESEARCH_ONLY')
+          if d.get('production_effect') is not False: raise SystemExit('ACCURACY_PRODUCTION_LEAK')
+          if d.get('automatic_buy') is not False: raise SystemExit('ACCURACY_AUTO_BUY_LEAK')
+          if d.get('production_thresholds_modified') is not False: raise SystemExit('ACCURACY_THRESHOLD_LEAK')
+          g=d.get('guardrails') or {}
+          if g.get('real_alert_gate_changed') is not False: raise SystemExit('REAL_ALERT_GATE_LEAK')
+          if g.get('no_hindsight_threshold_tuning') is not True: raise SystemExit('NO_HINDSIGHT_GUARD_LOST')
+          if (d.get('barrier_probabilities') or {}).get('probabilities_publishable') is not False: raise SystemExit('UNORDERED_PATH_PROBABILITY_LEAK')
+          print('ACCURACY_RESEARCH_VALID', d.get('sample'), d.get('headline'))
+          PY
+      - name: Publish Accuracy Lab snapshot atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "wallet500-research-bot"
+          git config user.email "wallet500-research-bot@users.noreply.github.com"
+          python scripts/atomic_publish.py \
+            --message 'research: refresh accuracy lab' \
+            data/accuracy-research.json
