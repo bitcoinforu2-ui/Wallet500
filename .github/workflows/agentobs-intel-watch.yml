@@ -9,12 +9,14 @@ on:
       - 'src/wallet500/agentobs_intel_watch.py'
       - 'tests/test_agentobs_intel_watch.py'
       - '.github/workflows/agentobs-intel-watch.yml'
+      - 'scripts/serialized_publish.py'
   push:
     branches: [main]
     paths:
       - 'src/wallet500/agentobs_intel_watch.py'
       - 'tests/test_agentobs_intel_watch.py'
       - '.github/workflows/agentobs-intel-watch.yml'
+      - 'scripts/serialized_publish.py'
 
 permissions:
   contents: write
@@ -73,7 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           git restore --worktree -- src/wallet500.egg-info || true
-          python scripts/atomic_publish.py \
+          python scripts/serialized_publish.py \
             --github-api-cas \
             --attempts 80 \
             --message 'Update Agent OBS intelligence state' \
