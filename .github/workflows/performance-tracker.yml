@@ -46,7 +46,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0
+          # Compute uses only the current canonical tree. Avoid downloading the
+          # repository's entire history/other refs; publisher deepens main only
+          # when it actually needs ancestry for a fail-closed rebase.
+          fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -134,7 +137,10 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m 'data: refresh performance and research lab outputs'
             for attempt in 1 2 3 4 5; do
-              git fetch origin main
+              # The compute checkout is intentionally shallow. Fetch only the
+              # canonical main ancestry needed for rebase instead of every ref
+              # and the repository's full historical object graph.
+              git fetch --no-tags --deepen=512 origin main
               if ! git rebase origin/main; then
                 git rebase --abort || true
                 echo 'FATAL: performance publisher rebase conflict; refusing automatic conflict resolution'
