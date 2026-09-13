@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "experiment_id": "EXIT_ENGINE_V1_2026-09-13",
+  "mode": "PAPER_ONLY_NO_REAL_MONEY",
+  "status": "ACTIVE",
+  "started_at": "2026-09-13T00:14:00Z",
+  "position_size_usd": 10.0,
+  "scope": {
+    "entry_rule": "FIRST_REAL_ALERT_PER_TOKEN_ONLY",
+    "dedupe_rule": "ONE_POSITION_PER_TOKEN_ACROSS_PAIRS",
+    "include_existing_positions": true,
+    "existing_position_eligibility": "Include the original 17-token cohort only where the recorded historical marks are sufficient to determine whether the exit rule could have fired without hindsight; otherwise keep the position in HOLD_BASELINE_ONLY until a forward-valid mark exists.",
+    "future_positions": "Every new FIRST REAL ALERT with exact token identity enters the experiment automatically at the observed alert price, subject to existing Wallet500 safety gates."
+  },
+  "strategy": {
+    "hard_stop_pct": -8.0,
+    "trailing_activation_gain_pct": 25.0,
+    "trailing_stop_from_peak_pct": 10.0,
+    "take_profit_fixed": false,
+    "runner_pct": 100.0,
+    "exit_rule": "Before +25% peak gain: exit if observed exact-pair mark <= -8% from entry. After peak gain reaches +25%: activate a trailing stop 10% below the highest subsequently observed exact-pair price. Exit only on the first observed mark at or below the active stop. No retrospective peak selling.",
+    "truth_rule": "NO_HINDSIGHT_FIRST_OBSERVED_MARK_ONLY"
+  },
+  "baseline": {
+    "cohort_size_tokens": 17,
+    "initial_capital_usd": 170.0,
+    "hold_snapshot_value_usd": 197.89,
+    "hold_snapshot_return_pct": 16.41,
+    "snapshot_at": "2026-09-12T23:58:06.780250Z",
+    "note": "Reference baseline from the existing paper ledger; future dashboard values must be computed from persisted forward-valid marks."
+  },
+  "dashboard": {
+    "title": "Exit Engine Experiment",
+    "show_initial_capital": true,
+    "show_current_equity": true,
+    "show_realized_pnl": true,
+    "show_unrealized_pnl": true,
+    "show_total_return_pct": true,
+    "show_open_positions": true,
+    "show_closed_positions": true,
+    "show_hold_baseline": true,
+    "show_strategy_vs_hold_delta": true,
+    "show_per_token_entry_peak_stop_status_value": true
+  },
+  "cohort": [
+    {"symbol":"龙虾","status":"ACTIVE_TRACKING"},
+    {"symbol":"STORJ","status":"ACTIVE_TRACKING"},
+    {"symbol":"LSK","status":"ACTIVE_TRACKING"},
+    {"symbol":"USELESS","status":"ACTIVE_TRACKING"},
+    {"symbol":"VELVET","status":"ACTIVE_TRACKING"},
+    {"symbol":"MUBARAK","status":"ACTIVE_TRACKING"},
+    {"symbol":"GRIFFAIN","status":"ACTIVE_TRACKING"},
+    {"symbol":"4","status":"ACTIVE_TRACKING"},
+    {"symbol":"ETHFI","status":"ACTIVE_TRACKING"},
+    {"symbol":"TA","status":"ACTIVE_TRACKING"},
+    {"symbol":"KAVA","status":"ACTIVE_TRACKING"},
+    {"symbol":"FLOCK","status":"ACTIVE_TRACKING","dedupe":"FIRST_TOKEN_POSITION_ONLY"},
+    {"symbol":"WLFI","status":"ACTIVE_TRACKING"},
+    {"symbol":"VINE","status":"ACTIVE_TRACKING"},
+    {"symbol":"REZ","status":"ACTIVE_TRACKING"},
+    {"symbol":"KOMA","status":"ACTIVE_TRACKING"},
+    {"symbol":"PUFFER","status":"ACTIVE_TRACKING"}
+  ]
+}
