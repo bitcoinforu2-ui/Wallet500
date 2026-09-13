@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections import Counter
 from pathlib import Path
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -13,14 +14,19 @@ LATEST = DATA / "revival-1000-latest.json"
 NETWORK = "solana"
 DEX_BATCH_SIZE = 30
 
-# Research-only gate. It is deliberately conservative and never promotes a coin
-# to PRE-ALPHA/production. DexScreener exposes buy/sell transaction counts but
-# not verified buy-vs-sell USD notional, so this is explicitly a proxy signal.
+# Research-only absorption gate.
 MIN_LIQUIDITY_USD = 15_000.0
 MIN_VOLUME_24H_USD = 10_000.0
 MIN_TXNS_24H = 40
 MIN_VOLUME_TO_LIQUIDITY = 0.05
 MAX_SELL_BUY_COUNT_RATIO = 2.0
+
+# Active dashboard gate. Quiet veteran coins stay in the research universe but
+# are not presented as active Revival candidates until exact-pair activity is real.
+ACTIVE_MIN_BUYS_H24 = 10
+ACTIVE_MIN_SELLS_H24 = 5
+ACTIVE_MIN_VOLUME_TO_LIQUIDITY = 0.10
+ACTIVE_DISPLAY_CONTRACT = "REVIVAL_ACTIVE_DISPLAY_GATE_V1"
 
 
 def n(value, default: float = 0.0) -> float:
@@ -143,6 +149,7 @@ def compute_absorption_proxy(coin: dict, pair: dict | None) -> dict:
         "sells_h6": sells_h6,
         "buys_h1": buys_h1,
         "sells_h1": sells_h1,
+        "txns_h24": txns_h24,
         "sell_buy_count_ratio_h24": None if sell_buy_ratio is None else round(sell_buy_ratio, 4),
         "liquidity_usd": round(liquidity_usd, 2),
         "volume_24h_usd": round(volume_24h_usd, 2),
@@ -155,6 +162,48 @@ def compute_absorption_proxy(coin: dict, pair: dict | None) -> dict:
         "buy_volume_24h_usd": None,
         "sell_volume_24h_usd": None,
         "notional_volume_note": "DIRECTIONAL_USD_NOTIONAL_NOT_EXPOSED_BY_CURRENT_DEXSCREENER_PAIR_FEED",
+    }
+
+
+def evaluate_active_display_gate(flow: dict | None) -> dict:
+    """Fail closed when exact-pair activity is missing or too weak."""
+    flow = flow or {}
+    data_ready = (
+        flow.get("signal_type") not in (None, "", "DATA_UNAVAILABLE")
+        and flow.get("buys_h24") is not None
+        and flow.get("sells_h24") is not None
+        and flow.get("volume_24h_usd") is not None
+        and flow.get("liquidity_usd") is not None
+    )
+    buys = int(n(flow.get("buys_h24")))
+    sells = int(n(flow.get("sells_h24")))
+    txns = buys + sells
+    volume = max(n(flow.get("volume_24h_usd")), 0.0)
+    liquidity = max(n(flow.get("liquidity_usd")), 0.0)
+    turnover = volume / liquidity if liquidity > 0 else 0.0
+    criteria = {
+        "activity_data_available": data_ready,
+        "liquidity_ge_15k": liquidity >= MIN_LIQUIDITY_USD,
+        "volume_24h_ge_10k": volume >= MIN_VOLUME_24H_USD,
+        "txns_24h_ge_40": txns >= MIN_TXNS_24H,
+        "buys_h24_ge_10": buys >= ACTIVE_MIN_BUYS_H24,
+        "sells_h24_ge_5": sells >= ACTIVE_MIN_SELLS_H24,
+        "volume_to_liquidity_ge_10pct": turnover >= ACTIVE_MIN_VOLUME_TO_LIQUIDITY,
+    }
+    blockers = [key for key, passed in criteria.items() if passed is not True]
+    return {
+        "pass": len(blockers) == 0,
+        "research_only": True,
+        "criteria": criteria,
+        "blockers": blockers,
+        "metrics": {
+            "buys_h24": buys if data_ready else None,
+            "sells_h24": sells if data_ready else None,
+            "txns_h24": txns if data_ready else None,
+            "volume_24h_usd": round(volume, 2) if data_ready else None,
+            "liquidity_usd": round(liquidity, 2) if data_ready else None,
+            "volume_to_liquidity": round(turnover, 6) if data_ready else None,
+        },
     }
 
 
@@ -201,12 +250,20 @@ def apply_absorption_layer(payload: dict, pair_map: dict[str, dict], failures: l
     signal_count = 0
     outside_core_count = 0
     unavailable_count = 0
+    active_count = 0
+    activity_blockers: Counter[str] = Counter()
 
     for coin in coins:
         pair_key = str(coin.get("dex_pair_address") or "").strip().lower()
         pair = pair_map.get(pair_key)
         signal = compute_absorption_proxy(coin, pair)
         coin["order_flow_absorption"] = signal
+        gate = evaluate_active_display_gate(signal)
+        coin["active_display_gate"] = gate
+        if gate["pass"]:
+            active_count += 1
+        else:
+            activity_blockers.update(gate["blockers"])
 
         triggers = list(coin.get("watch_triggers") or [])
         if signal.get("signal") is True:
@@ -230,6 +287,9 @@ def apply_absorption_layer(payload: dict, pair_map: dict[str, dict], failures: l
     counts["absorption_proxy_watch"] = signal_count
     counts["absorption_proxy_outside_core"] = outside_core_count
     counts["absorption_pair_data_unavailable"] = unavailable_count
+    counts["active_display_gate_pass"] = active_count
+    counts["active_display_gate_blocked"] = len(coins) - active_count
+    counts["active_display_gate_blockers"] = dict(sorted(activity_blockers.items()))
 
     payload["order_flow_absorption_contract"] = {
         "version": "SELL_COUNT_ABSORPTION_PROXY_V1",
@@ -247,6 +307,23 @@ def apply_absorption_layer(payload: dict, pair_map: dict[str, dict], failures: l
         "pre_alpha_promotion": "FORBIDDEN",
         "revival_score_mutation": "NONE",
     }
+    payload["active_display_gate_contract"] = {
+        "version": ACTIVE_DISPLAY_CONTRACT,
+        "research_only": True,
+        "production_portfolio_impact": "NONE",
+        "automatic_buy": False,
+        "source": "DEXSCREENER_VERIFIED_EXACT_PAIR_ACTIVITY",
+        "minimum_liquidity_usd": MIN_LIQUIDITY_USD,
+        "minimum_volume_24h_usd": MIN_VOLUME_24H_USD,
+        "minimum_txns_24h": MIN_TXNS_24H,
+        "minimum_buys_h24": ACTIVE_MIN_BUYS_H24,
+        "minimum_sells_h24": ACTIVE_MIN_SELLS_H24,
+        "minimum_volume_to_liquidity": ACTIVE_MIN_VOLUME_TO_LIQUIDITY,
+        "missing_activity_data": "FAIL_CLOSED",
+        "quiet_coin_policy": "RETAIN_IN_RESEARCH_UNIVERSE_HIDE_FROM_ACTIVE_DASHBOARD",
+        "unique_buyer_seller_wallet_counts": "NOT_AVAILABLE_FROM_CURRENT_DEXSCREENER_PAIR_FEED; TRANSACTION COUNTS USED",
+        "directional_usd_notional": "NOT_CLAIMED_WITHOUT_VERIFIED_SOURCE",
+    }
     if failures:
         payload.setdefault("failures", []).append({
             "failure_code": "ABSORPTION_PROXY_PARTIAL_PAIR_REFRESH_FAILURE",
@@ -254,7 +331,7 @@ def apply_absorption_layer(payload: dict, pair_map: dict[str, dict], failures: l
             "blocks_production": False,
             "batches": failures,
         })
-    payload["source"] = str(payload.get("source") or "") + "+dexscreener_sell_count_absorption_proxy"
+    payload["source"] = str(payload.get("source") or "") + "+dexscreener_sell_count_absorption_proxy+active_display_gate"
     return payload
 
 
@@ -274,7 +351,8 @@ def main() -> None:
     counts = payload.get("counts") or {}
     print(json.dumps({
         "absorption_proxy_watch": counts.get("absorption_proxy_watch", 0),
-        "absorption_proxy_outside_core": counts.get("absorption_proxy_outside_core", 0),
+        "active_display_gate_pass": counts.get("active_display_gate_pass", 0),
+        "active_display_gate_blocked": counts.get("active_display_gate_blocked", 0),
         "pair_data_unavailable": counts.get("absorption_pair_data_unavailable", 0),
         "batch_failures": len(failures),
     }))
