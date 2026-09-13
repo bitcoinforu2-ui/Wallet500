@@ -21,6 +21,7 @@ on:
       - 'src/wallet500/hot_healthy_radar.py'
       - 'src/wallet500/address_quality_audit.py'
       - 'scripts/compact_outcome_history.py'
+      - 'scripts/serialized_publish.py'
       - 'tests/test_lifecycle_strategy.py'
       - 'tests/test_experiment_v1.py'
       - 'tests/test_research_integrity_v2.py'
@@ -31,8 +32,6 @@ on:
 permissions:
   contents: write
 
-# Truth-critical measurement must not starve behind high-frequency data publishers.
-# Keep this workflow serial in its own queue; publish still fetches/rebases and fails closed on conflicts.
 concurrency:
   group: wallet500-performance-publisher
   cancel-in-progress: false
@@ -46,9 +45,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-          # Compute uses only the current canonical tree. Avoid downloading the
-          # repository's entire history/other refs; publisher deepens main only
-          # when it actually needs ancestry for a fail-closed rebase.
           fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
@@ -108,13 +104,6 @@ jobs:
           for p in (Path('data/outcome-tracker.json'),Path('data/signal-outcomes.json')):
               if p.stat().st_size>ceiling: raise SystemExit('FATAL: live outcome file exceeds 70MiB publish ceiling: '+str(p))
           if int(rp.get('paper_entries_count') or 0)!=len(entries): raise SystemExit('FATAL: paper entry count differs from persistent ledger')
-
-          # The $50K/50-txn truth gate became canonical prospectively in commit
-          # db0acf9428cc468c20cf37aea42591838ac95fb8 at 2026-09-13T10:33:01Z.
-          # Immutable entries created before that activation are historical truth:
-          # preserve them, never rewrite them, and never pretend they satisfied a
-          # policy that did not yet exist. Every entry at/after activation must
-          # satisfy the current gate fail-closed.
           production_gate_activated_at=datetime.fromisoformat('2026-09-13T10:33:01+00:00')
           legacy_pre_gate=0
           for p in entries:
@@ -153,25 +142,37 @@ jobs:
           print('RESEARCH', {'experiment_v1':len(ev.get('records') or []),'winner_dna_status':wd.get('status'),'winner_dna':wd.get('winner_n'),'winner_controls':wd.get('control_n'),'solana_winner_dna':(wd.get('solana_study') or {}).get('status'),'revival_historical_dna':rh.get('counts'),'measured_vs_rest':[mv.get('measured_now_n'),mv.get('rest_n')]})
           PY
       - name: Publish measurement data
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-bot'
-          git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/outcome-tracker.json data/signal-outcomes.json data/outcome-archive data/performance-measurement-report.json data/performance-leaderboard.json data/lifecycle-strategy-ledger.json data/lifecycle-strategy-summary.json data/realizable-performance.json data/realizable-performance-summary.json data/cash-verified-performance.json data/cash-verified-summary.json data/first-eligible-paper-ledger.json data/cohort-research.json data/cohort-research.md data/experiment-v1-ledger.json data/experiment-v1-scoreboard.json data/experiment-v1-report.md data/winner-dna-study.json data/revival-historical-dna.json data/measurable-vs-rest-experiment.json data/measurable-vs-rest-experiment.md data/quality-shadow-ledger.json data/quality-shadow-summary.json data/hot-healthy-radar.json data/address-quality-audit.json
-          if ! git diff --cached --quiet; then
-            git commit -m 'data: refresh performance and research lab outputs'
-            for attempt in 1 2 3 4 5; do
-              # The compute checkout is intentionally shallow. Fetch only the
-              # canonical main ancestry needed for rebase instead of every ref
-              # and the repository's full historical object graph.
-              git fetch --no-tags --deepen=512 origin main
-              if ! git rebase origin/main; then
-                git rebase --abort || true
-                echo 'FATAL: performance publisher rebase conflict; refusing automatic conflict resolution'
-                exit 1
-              fi
-              if git push origin HEAD:main; then break; fi
-              sleep 3
-              if [ "$attempt" = 5 ]; then exit 1; fi
-            done
-          fi
+          git restore --worktree -- src/wallet500.egg-info || true
+          python scripts/serialized_publish.py \
+            --hybrid-cas \
+            --attempts 80 \
+            --message 'data: refresh performance and research lab outputs' \
+            data/outcome-tracker.json \
+            data/signal-outcomes.json \
+            data/outcome-archive \
+            data/performance-measurement-report.json \
+            data/performance-leaderboard.json \
+            data/lifecycle-strategy-ledger.json \
+            data/lifecycle-strategy-summary.json \
+            data/realizable-performance.json \
+            data/realizable-performance-summary.json \
+            data/cash-verified-performance.json \
+            data/cash-verified-summary.json \
+            data/first-eligible-paper-ledger.json \
+            data/cohort-research.json \
+            data/cohort-research.md \
+            data/experiment-v1-ledger.json \
+            data/experiment-v1-scoreboard.json \
+            data/experiment-v1-report.md \
+            data/winner-dna-study.json \
+            data/revival-historical-dna.json \
+            data/measurable-vs-rest-experiment.json \
+            data/measurable-vs-rest-experiment.md \
+            data/quality-shadow-ledger.json \
+            data/quality-shadow-summary.json \
+            data/hot-healthy-radar.json \
+            data/address-quality-audit.json
