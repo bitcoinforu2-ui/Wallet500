@@ -40,6 +40,58 @@ jobs:
           pip install -e . pytest
           python -m pytest -q tests/test_system_watchdog.py
 
+      - name: Verify production orchestration and satellite freshness
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          telegram = Path('.github/workflows/telegram-production-alerts.yml').read_text()
+          required = 'Wallet500 Verified Snapshot Publisher'
+          forbidden = ('Wallet500 Pending Confirmation Refresh', 'Wallet500 Candidate Evidence Envelope')
+          if required not in telegram or any(x in telegram for x in forbidden):
+              raise SystemExit('TELEGRAM_TRIGGER_BINDING_DRIFT')
+
+          def parse(v):
+              s=str(v or '').strip()
+              if not s: return None
+              if s.endswith('Z'): s=s[:-1]+'+00:00'
+              try:
+                  d=datetime.fromisoformat(s)
+                  return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+              except Exception:
+                  return None
+
+          now=datetime.now(timezone.utc)
+          generation=json.loads(Path('data/decision-generation.json').read_text())
+          gdt=parse(generation.get('created_at'))
+          if generation.get('status')!='COHERENT_READY' or not gdt:
+              raise SystemExit('DECISION_GENERATION_NOT_COHERENT')
+          gage=(now-gdt.astimezone(timezone.utc)).total_seconds()
+          if gage > 45*60:
+              raise SystemExit(f'DECISION_GENERATION_STALE age={gage:.0f}s')
+
+          for filename, field, max_age in (
+              ('data/doge1-whale-current.json','observed_at',2*3600),
+              ('data/dusd-whale-current.json','observed_at',2*3600),
+          ):
+              p=Path(filename)
+              if not p.exists():
+                  print(f'::warning::SATELLITE_LEDGER_MISSING {filename}')
+                  continue
+              payload=json.loads(p.read_text())
+              ts=parse(payload.get(field))
+              age=None if not ts else (now-ts.astimezone(timezone.utc)).total_seconds()
+              if age is None or age > max_age:
+                  print(f'::warning::SATELLITE_LEDGER_STALE {filename} age={age}')
+              elif payload.get('coverage')!='SOLANA_RPC_CONFIRMED_ONCHAIN':
+                  print(f'::warning::SATELLITE_LEDGER_COVERAGE_DEGRADED {filename}')
+              else:
+                  print('SATELLITE_LEDGER_OK', filename, round(age,1), payload.get('rpc_source'))
+          print('ORCHESTRATION_BINDING_OK', required)
+          PY
+
       - name: Probe Wallet500 from outside the production decision path
         env:
           GITHUB_TOKEN: ${{ github.token }}
