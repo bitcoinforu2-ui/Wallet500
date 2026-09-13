@@ -5,6 +5,7 @@ import json
 import re
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from .cryptoyeezus_live_watch import (
@@ -23,6 +24,7 @@ SYNDICATION_URLS = [
     f"https://syndication.x.com/srv/timeline-profile/screen-name/{X_HANDLE}",
     f"https://syndication.twitter.com/srv/timeline-profile/screen-name/{X_HANDLE}",
 ]
+FXTWITTER_URL = f"https://api.fxtwitter.com/2/profile/{quote(X_HANDLE)}/statuses?count=20"
 NEXT_DATA_RE = re.compile(
     r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
     re.I | re.S,
@@ -108,6 +110,89 @@ def extract_syndication_rows(payload: dict) -> list[dict]:
     return sorted(rows.values(), key=lambda row: str(row.get("published_at") or ""))
 
 
+def extract_fxtwitter_rows(payload: dict) -> list[dict]:
+    rows: dict[str, dict] = {}
+    wanted = X_HANDLE.lower()
+    for item in payload.get("results") or []:
+        if not isinstance(item, dict):
+            continue
+        tweet_id = str(item.get("id") or "").strip()
+        text = str(item.get("text") or "").strip()
+        author = item.get("author") or {}
+        screen_name = str(
+            author.get("screen_name")
+            or author.get("username")
+            or item.get("screen_name")
+            or ""
+        ).strip().lstrip("@").lower()
+        if not tweet_id.isdigit() or not text or screen_name != wanted:
+            continue
+        if text.startswith("RT @"):
+            continue
+        published_at = _iso_created_at(item.get("created_at"))
+        if not published_at:
+            timestamp = item.get("created_timestamp")
+            try:
+                published_at = datetime.fromtimestamp(float(timestamp), tz=timezone.utc).isoformat()
+            except Exception:
+                published_at = None
+        if not published_at:
+            continue
+        rows[tweet_id] = {
+            "source": "x",
+            "id": tweet_id,
+            "author": X_HANDLE,
+            "published_at": published_at,
+            "text": text[:1500],
+            "url": str(item.get("url") or f"https://x.com/{X_HANDLE}/status/{tweet_id}"),
+            "direct_provider": False,
+            "provider": "x_fxtwitter_public",
+        }
+    return sorted(rows.values(), key=lambda row: str(row.get("published_at") or ""))
+
+
+def _fetch_fxtwitter() -> tuple[list[dict], dict]:
+    try:
+        req = Request(
+            FXTWITTER_URL,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "Wallet500/1.0 (+https://github.com/bitcoinforu2-ui/Wallet500)",
+            },
+        )
+        with urlopen(req, timeout=20) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+            status_code = int(response.status)
+        if status_code == 204 or not raw.strip():
+            return [], {"provider": "x_fxtwitter_public", "status": "EMPTY_FXTWITTER", "url": FXTWITTER_URL}
+        payload = json.loads(raw)
+        rows = extract_fxtwitter_rows(payload)
+        if not rows:
+            return [], {
+                "provider": "x_fxtwitter_public",
+                "status": "EMPTY_FXTWITTER",
+                "url": FXTWITTER_URL,
+                "code": payload.get("code"),
+            }
+        return rows, {
+            "provider": "x_fxtwitter_public",
+            "status": "OK_FXTWITTER_PUBLIC",
+            "count": len(rows),
+            "url": FXTWITTER_URL,
+            "code": payload.get("code"),
+        }
+    except Exception as exc:
+        return [], {
+            "provider": "x_fxtwitter_public",
+            "status": f"{type(exc).__name__}:{str(exc)[:120]}",
+            "url": FXTWITTER_URL,
+        }
+
+
+def _fallback_ok(status: dict) -> bool:
+    return str(status.get("status") or "").startswith("OK_")
+
+
 def fetch_syndication() -> tuple[list[dict], dict]:
     attempts = []
     for url in SYNDICATION_URLS:
@@ -145,10 +230,15 @@ def fetch_syndication() -> tuple[list[dict], dict]:
                 "status": f"{type(exc).__name__}:{str(exc)[:120]}",
             })
 
+    fx_rows, fx_status = _fetch_fxtwitter()
+    fx_status["syndication_attempts"] = attempts
+    if _fallback_ok(fx_status):
+        return fx_rows, fx_status
     return [], {
-        "provider": "x_syndication_public",
-        "status": "ALL_SYNDICATION_ENDPOINTS_FAILED",
-        "attempts": attempts,
+        "provider": "x_public_redundancy",
+        "status": "ALL_X_FALLBACKS_FAILED",
+        "syndication_attempts": attempts,
+        "fxtwitter": fx_status,
     }
 
 
@@ -166,11 +256,13 @@ def run() -> dict:
     latest["x_fallback"] = fallback_status
     providers = latest.setdefault("providers", {})
     x_status = providers.setdefault("x", {})
-    if fallback_status.get("status") == "OK_SYNDICATION":
-        x_status["redundancy_status"] = "OK_SYNDICATION"
+    if _fallback_ok(fallback_status):
+        x_status["redundancy_status"] = fallback_status.get("status")
+        x_status["redundancy_provider"] = fallback_status.get("provider")
         x_status["effective_status"] = "OK_WITH_PUBLIC_FALLBACK"
     else:
         x_status["redundancy_status"] = fallback_status.get("status")
+        x_status["redundancy_provider"] = fallback_status.get("provider")
         x_status["effective_status"] = "DEGRADED_NO_X_REDUNDANCY"
     _write(LATEST_PATH, latest)
 
@@ -182,19 +274,19 @@ def run() -> dict:
         "tokens": {},
     })
     state.setdefault("provider_status", {})["x_fallback"] = fallback_status
-    state["x_syndication_last_run_at"] = observed_at
+    state["x_fallback_last_run_at"] = observed_at
     seen = {str(x) for x in state.get("seen_posts") or []}
 
-    if not state.get("x_syndication_bootstrapped"):
-        if fallback_status.get("status") == "OK_SYNDICATION":
+    if not state.get("x_fallback_bootstrapped"):
+        if _fallback_ok(fallback_status):
             for row in rows:
                 seen.add(_post_key(row))
-            state["x_syndication_bootstrapped"] = True
-            state["x_syndication_baseline_at"] = observed_at
+            state["x_fallback_bootstrapped"] = True
+            state["x_fallback_baseline_at"] = observed_at
             state["seen_posts"] = list(seen)[-1500:]
         _write(STATE_PATH, state)
         return {
-            "status": "BASELINE_BOOTSTRAPPED" if state.get("x_syndication_bootstrapped") else "FALLBACK_UNAVAILABLE",
+            "status": "BASELINE_BOOTSTRAPPED" if state.get("x_fallback_bootstrapped") else "FALLBACK_UNAVAILABLE",
             "provider": fallback_status,
             "new_call_events": 0,
         }
@@ -203,6 +295,7 @@ def run() -> dict:
     calls_doc = _load(CALLS_PATH, {"events": []})
     events = calls_doc.setdefault("events", [])
     new_events = []
+    provider_name = str(fallback_status.get("provider") or "x_public_fallback")
 
     for row in new_rows:
         seen.add(_post_key(row))
@@ -223,7 +316,7 @@ def run() -> dict:
                 "published_at": event.get("published_at"),
                 "url": event.get("url"),
                 "source_post_id": event.get("source_post_id"),
-                "provider": "x_syndication_public",
+                "provider": provider_name,
             })
         else:
             event["alert"] = {
@@ -231,7 +324,7 @@ def run() -> dict:
                 "sent": False,
                 "reason": "DEFERRED_TO_CRYPTOYEEZUS_PRIORITY_V2",
             }
-        event["source_provider"] = "x_syndication_public"
+        event["source_provider"] = provider_name
         events.append(event)
         new_events.append(event)
 
@@ -252,6 +345,7 @@ def run() -> dict:
     _write(LATEST_PATH, latest)
     return {
         "status": fallback_status.get("status"),
+        "provider": provider_name,
         "new_posts": len(new_rows),
         "new_call_events": len(new_events),
     }
