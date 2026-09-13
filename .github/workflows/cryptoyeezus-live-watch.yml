@@ -8,7 +8,9 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/cryptoyeezus_live_watch.py'
+      - 'src/wallet500/cryptoyeezus_priority_alerts.py'
       - 'tests/test_cryptoyeezus_live_watch.py'
+      - 'tests/test_cryptoyeezus_priority_alerts.py'
       - '.github/workflows/cryptoyeezus-live-watch.yml'
 
 permissions:
@@ -35,21 +37,30 @@ jobs:
         run: pip install -e . pytest
 
       - name: Unit tests
-        run: python -m pytest -q tests/test_cryptoyeezus_live_watch.py
+        run: |
+          python -m pytest -q \
+            tests/test_cryptoyeezus_live_watch.py \
+            tests/test_cryptoyeezus_priority_alerts.py
 
       - name: Poll canonical Telegram and X on every run
         env:
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           YEEZUS_X_POLL_EVERY_CYCLES: '1'
         run: python -m wallet500.cryptoyeezus_live_watch
 
-      - name: Validate source-check freshness contract
+      - name: Deliver dedicated CryptoYeezus priority alerts
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          YEEZUS_PERSISTENCE_ALERT_MINUTES: '120'
+        run: python -m wallet500.cryptoyeezus_priority_alerts
+
+      - name: Validate source-check and priority-delivery contracts
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
+
           p=json.loads(Path('data/cryptoyeezus-live-latest.json').read_text())
           src=p.get('providers') or {}
           x=src.get('x') or {}
@@ -60,7 +71,30 @@ jobs:
               raise SystemExit('YEEZUS_X_STATUS_MISSING')
           if not str(tg.get('status') or ''):
               raise SystemExit('YEEZUS_TELEGRAM_STATUS_MISSING')
-          print('YEEZUS_SOURCE_CHECK_OK', tg.get('status'), x.get('status'))
+          if str(tg.get('status') or '') != 'OK':
+              raise SystemExit('YEEZUS_TELEGRAM_CANONICAL_SOURCE_UNHEALTHY')
+
+          priority=p.get('priority_delivery') or {}
+          if priority.get('policy') != 'CRYPTOYEEZUS_PRIORITY_V2':
+              raise SystemExit('YEEZUS_PRIORITY_POLICY_MISSING')
+          if int(priority.get('persistence_alert_minutes') or 0) < 30:
+              raise SystemExit('YEEZUS_PRIORITY_COOLDOWN_TOO_SHORT')
+
+          state=json.loads(Path('data/cryptoyeezus-priority-state.json').read_text())
+          truth=state.get('truth_contract') or {}
+          if truth.get('forward_only') is not True or truth.get('no_hindsight') is not True:
+              raise SystemExit('YEEZUS_PRIORITY_FORWARD_ONLY_GUARD_MISSING')
+          if truth.get('inherited_identity_requires_prior_exact_pair_lock') is not True:
+              raise SystemExit('YEEZUS_PRIORITY_IDENTITY_GUARD_MISSING')
+          if truth.get('fresh_market_metrics_require_same_exact_pair_and_token') is not True:
+              raise SystemExit('YEEZUS_PRIORITY_PAIR_GUARD_MISSING')
+          if truth.get('automatic_buy') is not False:
+              raise SystemExit('YEEZUS_PRIORITY_AUTO_BUY_INVALID')
+
+          x_status=str(x.get('status') or '')
+          if not x_status.startswith('OK'):
+              print(f'::warning::CryptoYeezus X direct source degraded: {x_status}; canonical Telegram watch remains active every 5 minutes')
+          print('YEEZUS_SOURCE_AND_PRIORITY_OK', tg.get('status'), x_status, priority)
           PY
 
       - name: Persist forward-only state
@@ -70,7 +104,11 @@ jobs:
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
           git restore --worktree -- src/wallet500.egg-info || true
-          git add data/cryptoyeezus-live-state.json data/cryptoyeezus-calls.json data/cryptoyeezus-live-latest.json
+          git add \
+            data/cryptoyeezus-live-state.json \
+            data/cryptoyeezus-calls.json \
+            data/cryptoyeezus-live-latest.json \
+            data/cryptoyeezus-priority-state.json
           if git diff --cached --quiet; then
             echo 'No state change to commit'
             exit 0
