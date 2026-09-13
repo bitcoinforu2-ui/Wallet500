@@ -1,56 +1,217 @@
 {
-  "version": 1,
-  "mode": "RESEARCH_ONLY_DECISION_REPLAY_V1",
-  "updated_at": "2026-09-13T22:46:08.170421+00:00",
-  "research_only": true,
-  "production_effect": false,
-  "production_thresholds_modified": false,
-  "sample": {
-    "records": 128,
-    "matured_24h": 108
-  },
   "classification_24h": {
-    "INSUFFICIENT_COVERAGE": 128
-  },
-  "source_integrity": {
-    "source_ledger": "research-sample-ledger.json",
-    "source_key_includes_first_decision_timestamp": false,
-    "replay_key_includes_first_decision_timestamp": true,
-    "integrity_events": []
-  },
-  "policies": {
-    "A_CURRENT_PRODUCTION": {
-      "status": "BASELINE_ONLY",
-      "note": "No production semantics inferred when actionable is absent."
-    },
-    "B_ACCELERATION_TURNOVER": {
-      "status": "SHADOW_ONLY_INSUFFICIENT_COVERAGE"
-    },
-    "C_LIQUIDITY_SURVIVAL": {
-      "status": "SHADOW_ONLY_INSUFFICIENT_COVERAGE"
-    },
-    "D_WALLET_CAPITAL_SOCIAL": {
-      "status": "SHADOW_ONLY_INSUFFICIENT_COVERAGE"
-    },
-    "E_WINNER_DNA_PERSISTENCE": {
-      "status": "SHADOW_ONLY_INSUFFICIENT_COVERAGE"
-    }
-  },
-  "promotion_gate": {
-    "minimum_matured_decisions": 30,
-    "requires_two_non_overlapping_windows": true,
-    "requires_no_material_drawdown_or_liquidity_survival_regression": true,
-    "requires_no_leakage_or_exact_pair_contamination": true,
-    "status": "NOT_READY_FOR_REVIEW",
-    "reason": "SHADOW_POLICY_FEATURE_COVERAGE_NOT_YET_SUFFICIENT_FOR_VALID_WALK_FORWARD_COMPARISON"
+    "INSUFFICIENT_COVERAGE": 180
   },
   "guardrails": {
-    "no_hindsight_t0_backfill": true,
+    "automatic_buy": false,
     "exact_pair_required": true,
+    "first_observation_at_or_after_horizon_required": true,
+    "minimum_matured_decisions_for_review": 30,
+    "minimum_validation_windows_for_review": 2,
+    "no_hindsight_t0_backfill": true,
+    "production_changes": false,
     "symbol_only_identity_forbidden": true,
     "t0_mutation_forbidden": true,
-    "production_changes": false,
     "telegram_changes": false,
-    "automatic_buy": false
+    "walk_forward_future_label_leakage_forbidden": true
+  },
+  "mode": "RESEARCH_ONLY_DECISION_REPLAY_V1",
+  "policies": {
+    "A_CURRENT_PRODUCTION": {
+      "coverage_ratio": 0.0,
+      "evaluated": 0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "mean_7d_return_pct_when_positive": null,
+      "mean_observed_drawdown_pct_when_positive": null,
+      "precision": null,
+      "predicted_positive": 0,
+      "recall": null,
+      "true_negative": 0,
+      "true_positive": 0,
+      "validation_records": 0
+    },
+    "B_ACCELERATION_TURNOVER": {
+      "coverage_ratio": 0.0,
+      "evaluated": 0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "mean_7d_return_pct_when_positive": null,
+      "mean_observed_drawdown_pct_when_positive": null,
+      "precision": null,
+      "predicted_positive": 0,
+      "recall": null,
+      "true_negative": 0,
+      "true_positive": 0,
+      "validation_records": 0
+    },
+    "C_LIQUIDITY_SURVIVAL": {
+      "coverage_ratio": 0.0,
+      "evaluated": 0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "mean_7d_return_pct_when_positive": null,
+      "mean_observed_drawdown_pct_when_positive": null,
+      "precision": null,
+      "predicted_positive": 0,
+      "recall": null,
+      "true_negative": 0,
+      "true_positive": 0,
+      "validation_records": 0
+    },
+    "D_WALLET_CAPITAL_SOCIAL": {
+      "coverage_ratio": 0.0,
+      "evaluated": 0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "mean_7d_return_pct_when_positive": null,
+      "mean_observed_drawdown_pct_when_positive": null,
+      "precision": null,
+      "predicted_positive": 0,
+      "recall": null,
+      "true_negative": 0,
+      "true_positive": 0,
+      "validation_records": 0
+    },
+    "E_WINNER_DNA_PERSISTENCE": {
+      "coverage_ratio": 0.0,
+      "evaluated": 0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "mean_7d_return_pct_when_positive": null,
+      "mean_observed_drawdown_pct_when_positive": null,
+      "precision": null,
+      "predicted_positive": 0,
+      "recall": null,
+      "true_negative": 0,
+      "true_positive": 0,
+      "validation_records": 0
+    }
+  },
+  "policy_contract": {
+    "A_CURRENT_PRODUCTION": "Frozen T0 actionable boolean only; shadow evaluation never rewrites it.",
+    "B_ACCELERATION_TURNOVER": "T0 turnover >= 0.50 and readiness >= 6/7.",
+    "C_LIQUIDITY_SURVIVAL": "T0 verified tradable and exact-pair execution liquidity >= 15,000 USD.",
+    "D_WALLET_CAPITAL_SOCIAL": "T0 buy flow > sell flow, >=2 source lanes and >=1 positive evidence lane.",
+    "E_WINNER_DNA_PERSISTENCE": "T0 score >=70, readiness >=6/7, >=2 positive evidence lanes and exact-pair liquidity >=50,000 USD."
+  },
+  "production_effect": false,
+  "production_thresholds_modified": false,
+  "promotion_gate": {
+    "clearing_shadow_policies": [],
+    "hard_prerequisites": {
+      "baseline_policy_a_unchanged": true,
+      "exact_pair_integrity_clean": true,
+      "immutable_t0_integrity_clean": true,
+      "matured_decisions_gte_30": false,
+      "valid_non_overlapping_validation_windows_gte_2": false,
+      "walk_forward_leakage_free": true
+    },
+    "minimum_matured_decisions": 30,
+    "minimum_valid_non_overlapping_validation_windows": 2,
+    "promotion_scope": "RESEARCH_REVIEW_ONLY_NEVER_AUTOMATIC_PRODUCTION_PROMOTION",
+    "reason": "HARD_PREREQUISITES_NOT_MET:matured_decisions_gte_30,valid_non_overlapping_validation_windows_gte_2",
+    "requires_no_leakage_or_exact_pair_contamination": true,
+    "requires_no_material_drawdown_or_liquidity_survival_regression": true,
+    "requires_two_non_overlapping_windows": true,
+    "status": "NOT_READY_FOR_REVIEW"
+  },
+  "research_only": true,
+  "sample": {
+    "matured_24h": 151,
+    "matured_terminal_7d": 0,
+    "records": 180
+  },
+  "source_integrity": {
+    "integrity_events": [],
+    "material_integrity_events": 0,
+    "replay_key_includes_first_decision_timestamp": true,
+    "source_key_includes_first_decision_timestamp": false,
+    "source_ledger": "research-sample-ledger.json"
+  },
+  "updated_at": "2026-09-13T23:07:24.899070+00:00",
+  "version": 2,
+  "walk_forward": {
+    "candidate_windows": 0,
+    "matured_decisions": 0,
+    "minimum_reference_decisions": 10,
+    "non_overlapping_validation_windows": [],
+    "policy_metrics": {
+      "A_CURRENT_PRODUCTION": {
+        "coverage_ratio": 0.0,
+        "evaluated": 0,
+        "false_negative": 0,
+        "false_positive": 0,
+        "mean_7d_return_pct_when_positive": null,
+        "mean_observed_drawdown_pct_when_positive": null,
+        "precision": null,
+        "predicted_positive": 0,
+        "recall": null,
+        "true_negative": 0,
+        "true_positive": 0,
+        "validation_records": 0
+      },
+      "B_ACCELERATION_TURNOVER": {
+        "coverage_ratio": 0.0,
+        "evaluated": 0,
+        "false_negative": 0,
+        "false_positive": 0,
+        "mean_7d_return_pct_when_positive": null,
+        "mean_observed_drawdown_pct_when_positive": null,
+        "precision": null,
+        "predicted_positive": 0,
+        "recall": null,
+        "true_negative": 0,
+        "true_positive": 0,
+        "validation_records": 0
+      },
+      "C_LIQUIDITY_SURVIVAL": {
+        "coverage_ratio": 0.0,
+        "evaluated": 0,
+        "false_negative": 0,
+        "false_positive": 0,
+        "mean_7d_return_pct_when_positive": null,
+        "mean_observed_drawdown_pct_when_positive": null,
+        "precision": null,
+        "predicted_positive": 0,
+        "recall": null,
+        "true_negative": 0,
+        "true_positive": 0,
+        "validation_records": 0
+      },
+      "D_WALLET_CAPITAL_SOCIAL": {
+        "coverage_ratio": 0.0,
+        "evaluated": 0,
+        "false_negative": 0,
+        "false_positive": 0,
+        "mean_7d_return_pct_when_positive": null,
+        "mean_observed_drawdown_pct_when_positive": null,
+        "precision": null,
+        "predicted_positive": 0,
+        "recall": null,
+        "true_negative": 0,
+        "true_positive": 0,
+        "validation_records": 0
+      },
+      "E_WINNER_DNA_PERSISTENCE": {
+        "coverage_ratio": 0.0,
+        "evaluated": 0,
+        "false_negative": 0,
+        "false_positive": 0,
+        "mean_7d_return_pct_when_positive": null,
+        "mean_observed_drawdown_pct_when_positive": null,
+        "precision": null,
+        "predicted_positive": 0,
+        "recall": null,
+        "true_negative": 0,
+        "true_positive": 0,
+        "validation_records": 0
+      }
+    },
+    "terminal_horizon": "7d",
+    "terminal_winner_threshold_pct": 20.0,
+    "valid_validation_windows": 0,
+    "validation_records_evaluated": 0,
+    "validation_window_size": 10
   }
 }
