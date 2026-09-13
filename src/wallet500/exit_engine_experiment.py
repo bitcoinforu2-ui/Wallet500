@@ -10,7 +10,6 @@ CONFIG_PATH = DATA / "exit-engine-experiment.json"
 LEDGER_PATH = DATA / "real-alert-10usd-ledger.json"
 LIVE_PATH = DATA / "exit-engine-experiment-live.json"
 EVM = {"ethereum", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche"}
-
 DEFAULT_STRATEGY = {
     "hard_stop_pct": -8.0,
     "trailing_activation_gain_pct": 25.0,
@@ -99,7 +98,9 @@ def _initial_position(source: dict[str, Any], experiment_started_at: str) -> dic
     entry = _float(source.get("entry_price_usd"))
     cost = _float(source.get("cost_usd"), 10.0) or 10.0
     quantity = _float(source.get("quantity")) or (cost / entry if entry > 0 else 0.0)
-    legacy = bool(_parse_ts(source.get("entry_time")) and _parse_ts(experiment_started_at) and _parse_ts(source.get("entry_time")) < _parse_ts(experiment_started_at))
+    entry_ts = _parse_ts(source.get("entry_time"))
+    start_ts = _parse_ts(experiment_started_at)
+    legacy = bool(entry_ts and start_ts and entry_ts < start_ts)
     return {
         "token_id": _token_id(source),
         "source_key": source.get("key"),
@@ -114,7 +115,7 @@ def _initial_position(source: dict[str, Any], experiment_started_at: str) -> dic
         "quantity": quantity,
         "status": "OPEN",
         "legacy_cohort": legacy,
-        "historical_replay_basis": "PERSISTED_CHECKPOINTS_ONLY" if legacy else "FORWARD_MARKS_ONLY",
+        "historical_replay_basis": "PERSISTED_TIMESTAMPED_MARKS_ONLY" if legacy else "FORWARD_MARKS_ONLY",
         "truth_rule": "NO_HINDSIGHT_FIRST_OBSERVED_MARK_ONLY",
         "observed_peak_price_usd": entry,
         "observed_peak_return_pct": 0.0,
@@ -134,7 +135,7 @@ def _initial_position(source: dict[str, Any], experiment_started_at: str) -> dic
 
 
 def apply_observation(position: dict[str, Any], at: object, price: object, strategy: dict[str, float]) -> dict[str, Any]:
-    """Apply one chronological observed mark. Never uses an unknown intraperiod high/low."""
+    """Apply one chronological exact-pair mark. Unknown intraperiod prices are never inferred."""
     if position.get("status") != "OPEN":
         return position
     entry = _float(position.get("entry_price_usd"))
@@ -146,7 +147,7 @@ def apply_observation(position: dict[str, Any], at: object, price: object, strat
     at_text = str(at or "")
     previous_ts = _parse_ts(position.get("last_observed_at"))
     this_ts = _parse_ts(at_text)
-    if previous_ts and this_ts and this_ts <= previous_ts:
+    if not this_ts or (previous_ts and this_ts <= previous_ts):
         return position
 
     peak = max(_float(position.get("observed_peak_price_usd"), entry), px)
@@ -195,6 +196,7 @@ def apply_observation(position: dict[str, Any], at: object, price: object, strat
 
 
 def _bootstrap_observations(source: dict[str, Any]) -> list[tuple[str, float]]:
+    """Legacy replay uses only persisted timestamped marks, never un-timestamped peak/trough fields."""
     points: list[tuple[str, float]] = []
     for cp in (source.get("checkpoints") or {}).values():
         if not isinstance(cp, dict):
@@ -217,8 +219,8 @@ def _bootstrap_observations(source: dict[str, Any]) -> list[tuple[str, float]]:
     return out
 
 
-def _summary(state: dict[str, Any], sources: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    positions = list((state.get("positions") or {}).values())
+def _summary(positions_by_token: dict[str, dict[str, Any]], sources: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    positions = list(positions_by_token.values())
     strategy_equity = 0.0
     hold_equity = 0.0
     open_count = 0
@@ -275,7 +277,8 @@ def reconcile(config: dict[str, Any], ledger: dict[str, Any], state: dict[str, A
     source_rows, excluded = _earliest_per_token(list(ledger.get("positions") or []))
     sources = {_token_id(row): row for row in source_rows}
 
-    if not isinstance(state, dict) or state.get("experiment_id") != config.get("experiment_id"):
+    fresh = not isinstance(state, dict) or state.get("experiment_id") != config.get("experiment_id")
+    if fresh:
         state = {
             "version": 1,
             "experiment_id": config.get("experiment_id") or "EXIT_ENGINE_V1",
@@ -284,26 +287,32 @@ def reconcile(config: dict[str, Any], ledger: dict[str, Any], state: dict[str, A
             "started_at": started_at,
             "updated_at": ts,
             "strategy": strategy,
-            "positions": {},
+            "positions_by_token": {},
             "events": [],
         }
-    positions = dict(state.get("positions") or {})
+    assert isinstance(state, dict)
+    # Migration-safe: early development builds stored the durable map under `positions`.
+    prior_map = state.get("positions_by_token")
+    if not isinstance(prior_map, dict):
+        prior_positions = state.get("positions")
+        prior_map = prior_positions if isinstance(prior_positions, dict) else {}
+    positions_by_token: dict[str, dict[str, Any]] = dict(prior_map)
     events = list(state.get("events") or [])
 
     for token_id, source in sources.items():
-        if token_id not in positions:
+        if token_id not in positions_by_token:
             p = _initial_position(source, started_at)
-            positions[token_id] = p
+            positions_by_token[token_id] = p
             events.append({"at": ts, "type": "POSITION_ADDED", "token_id": token_id, "source_key": source.get("key"), "legacy_cohort": p.get("legacy_cohort")})
             if p.get("legacy_cohort"):
                 for at, price in _bootstrap_observations(source):
                     before = p.get("status")
                     apply_observation(p, at, price, strategy)
                     if before == "OPEN" and p.get("status") == "CLOSED":
-                        events.append({"at": p.get("exit_time"), "type": "PAPER_EXIT_REPLAY", "token_id": token_id, "reason": p.get("exit_reason"), "price_usd": p.get("exit_price_usd"), "basis": "PERSISTED_CHECKPOINT_FIRST_OBSERVED"})
+                        events.append({"at": p.get("exit_time"), "type": "PAPER_EXIT_REPLAY", "token_id": token_id, "reason": p.get("exit_reason"), "price_usd": p.get("exit_price_usd"), "basis": "PERSISTED_TIMESTAMPED_FIRST_OBSERVED"})
                         break
         else:
-            p = positions[token_id]
+            p = positions_by_token[token_id]
             if p.get("status") == "OPEN":
                 mark_at = str(source.get("last_mark_at") or "")
                 mark_price = _float(source.get("current_price_usd"))
@@ -319,12 +328,12 @@ def reconcile(config: dict[str, Any], ledger: dict[str, Any], state: dict[str, A
         "updated_at": ts,
         "strategy": strategy,
         "truth_rule": "NO_HINDSIGHT_FIRST_OBSERVED_MARK_ONLY",
-        "positions": positions,
+        "positions_by_token": positions_by_token,
         "events": events[-1000:],
         "duplicates_excluded": excluded,
-        "historical_replay_note": "Legacy positions are replayed only from timestamped persisted checkpoints plus the last recorded mark. Unknown intraperiod paths are never invented; this is intentionally conservative.",
+        "historical_replay_note": "Legacy positions are replayed only from timestamped persisted checkpoints plus the last recorded exact-pair mark. Unknown intraperiod paths and un-timestamped peak/trough fields are never invented.",
     })
-    state.update(_summary(state, sources))
+    state.update(_summary(positions_by_token, sources))
     return state
 
 
