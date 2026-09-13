@@ -143,7 +143,7 @@ def sanitize_holder_shadow(holders: dict | None) -> dict | None:
         "holder_count_shadow": int(count),
         "previous_holder_count_shadow": metrics.get("previous_holder_count"),
         "holder_change_since_previous_scan_pct_shadow": metrics.get("holder_change_pct"),
-        "semantics": "THIRD_PARTY_CACHED_HOLDER_COUNT_SHADOW_NOT_TRUSTED_GROWTH",
+        "holder_shadow_semantics": "THIRD_PARTY_CACHED_HOLDER_COUNT_SHADOW_NOT_TRUSTED_GROWTH",
         "growth_signal_eligible": False,
         "hybrid_score_impact": "NONE",
         "limitations": list(holders.get("limitations") or []),
@@ -225,6 +225,16 @@ def build() -> dict:
             verified_this_run += 1
             base.update(safe)
             base["retained_from_previous_verified_observation"] = False
+        elif (
+            base.get("verified") is True
+            and base.get("contract_match") is True
+            and base.get("top1_pct") is not None
+            and base.get("top10_pct") is not None
+        ):
+            # Holder-count shadow refreshes must not overwrite the semantics of a
+            # previously verified concentration observation. Repair only rows whose
+            # verified concentration evidence already exists; no promotion/inference.
+            base["semantics"] = "TOP_TOKEN_ACCOUNT_CONCENTRATION_NOT_OWNER_CLUSTER_CONCENTRATION"
         rows[mint] = base
 
     active_mints = {str(p.get("token_address") or "") for p in (hybrid.get("profiles") or [])}
