@@ -93,6 +93,7 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          from datetime import datetime
           from pathlib import Path
           paths=[Path('data/outcome-tracker.json'),Path('data/realizable-performance.json'),Path('data/first-eligible-paper-ledger.json'),Path('data/cohort-research.json'),Path('data/experiment-v1-ledger.json'),Path('data/experiment-v1-scoreboard.json'),Path('data/winner-dna-study.json'),Path('data/revival-historical-dna.json'),Path('data/measurable-vs-rest-experiment.json'),Path('data/quality-shadow-summary.json'),Path('data/hot-healthy-radar.json'),Path('data/address-quality-audit.json')]
           for x in paths:
@@ -107,9 +108,31 @@ jobs:
           for p in (Path('data/outcome-tracker.json'),Path('data/signal-outcomes.json')):
               if p.stat().st_size>ceiling: raise SystemExit('FATAL: live outcome file exceeds 70MiB publish ceiling: '+str(p))
           if int(rp.get('paper_entries_count') or 0)!=len(entries): raise SystemExit('FATAL: paper entry count differs from persistent ledger')
+
+          # The $50K/50-txn truth gate became canonical prospectively in commit
+          # db0acf9428cc468c20cf37aea42591838ac95fb8 at 2026-09-13T10:33:01Z.
+          # Immutable entries created before that activation are historical truth:
+          # preserve them, never rewrite them, and never pretend they satisfied a
+          # policy that did not yet exist. Every entry at/after activation must
+          # satisfy the current gate fail-closed.
+          production_gate_activated_at=datetime.fromisoformat('2026-09-13T10:33:01+00:00')
+          legacy_pre_gate=0
           for p in entries:
               if not p.get('entry_at') or not p.get('pair_address') or float(p.get('entry_price_usd') or 0)<=0: raise SystemExit('FATAL: paper entry lacks immutable time/pair/price')
-              if float(p.get('entry_liquidity_usd') or 0)<50000: raise SystemExit('FATAL: paper entry below $50K liquidity')
+              try:
+                  entry_at=datetime.fromisoformat(str(p.get('entry_at')).replace('Z','+00:00'))
+                  entry_liq=float(p.get('entry_liquidity_usd') or 0)
+                  entry_vol=float(p.get('entry_volume_h1') or 0)
+                  entry_txns=int(p.get('entry_txns_h1') or 0)
+              except (TypeError,ValueError):
+                  raise SystemExit('FATAL: paper entry has invalid immutable gate evidence')
+              meets_current_gate=entry_liq>=50000 and entry_vol>=15000 and entry_txns>=50
+              if entry_at >= production_gate_activated_at:
+                  if not meets_current_gate: raise SystemExit('FATAL: post-activation paper entry violates $50K/$15K-volume/50-txn production gate')
+                  if p.get('entry_quality_policy')!='ANTI_CHASE_V1': raise SystemExit('FATAL: post-activation paper entry lacks ANTI_CHASE_V1 prospective policy')
+                  if p.get('price_identity_contract_version')!=2: raise SystemExit('FATAL: post-activation paper entry lacks price identity contract v2')
+              elif not meets_current_gate:
+                  legacy_pre_gate+=1
           if int((cr.get('baseline') or {}).get('n') or 0)!=len(entries): raise SystemExit('FATAL: cohort research baseline differs from ledger')
           if any(x.get('production_change') is not False for x in (ev,es,wd,mv,qs,hh,aq)): raise SystemExit('FATAL: research mutated production policy')
           if es.get('method')!='PROSPECTIVE_EXPERIMENT_V1': raise SystemExit('FATAL: experiment v1 method mismatch')
@@ -125,6 +148,7 @@ jobs:
           if aq.get('method')!='ADDRESS_QUALITY_AUDIT_V2': raise SystemExit('FATAL: address audit method mismatch')
           if d.get('exact_pair_index_mode')!='CHAIN_TOKEN_PAIR_CASE_SAFE': raise SystemExit('FATAL: performance tracker is not using case-safe chain+token+pair indexing')
           print('INTEGRITY PASS')
+          print('LEGACY_PRE_50K_POLICY_ROWS', legacy_pre_gate)
           print('STORAGE', storage)
           print('RESEARCH', {'experiment_v1':len(ev.get('records') or []),'winner_dna_status':wd.get('status'),'winner_dna':wd.get('winner_n'),'winner_controls':wd.get('control_n'),'solana_winner_dna':(wd.get('solana_study') or {}).get('status'),'revival_historical_dna':rh.get('counts'),'measured_vs_rest':[mv.get('measured_now_n'),mv.get('rest_n')]})
           PY
