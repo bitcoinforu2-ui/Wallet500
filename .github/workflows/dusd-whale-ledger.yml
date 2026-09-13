@@ -32,17 +32,42 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json, os, urllib.request
+          import json, os, time, urllib.request
           from datetime import datetime, timezone
           from pathlib import Path
-          rpc=os.environ.get('SOLANA_RPC_URL','').strip(); mint=os.environ['CA']
-          if not rpc: raise SystemExit('Fail closed: SOLANA_RPC_URL secret required')
+
+          mint=os.environ['CA']
+          secret_rpc=os.environ.get('SOLANA_RPC_URL','').strip()
+          public_rpc='https://solana-rpc.publicnode.com'
+          rpc_candidates=[]
+          if secret_rpc:
+              rpc_candidates.append(('SECRET_RPC', secret_rpc))
+          if public_rpc != secret_rpc:
+              rpc_candidates.append(('PUBLICNODE_FALLBACK', public_rpc))
+          if not rpc_candidates:
+              raise SystemExit('Fail closed: no Solana RPC endpoint available')
+
+          rpc_source_used=None
           def call(method,params):
-              b=json.dumps({'jsonrpc':'2.0','id':1,'method':method,'params':params}).encode()
-              q=urllib.request.Request(rpc,data=b,headers={'content-type':'application/json'},method='POST')
-              with urllib.request.urlopen(q,timeout=45) as r:o=json.load(r)
-              if o.get('error'): raise SystemExit(f'RPC {method}: {o["error"]}')
-              return o.get('result')
+              global rpc_source_used
+              errors=[]
+              for source,rpc in rpc_candidates:
+                  for attempt in range(1,4):
+                      try:
+                          b=json.dumps({'jsonrpc':'2.0','id':1,'method':method,'params':params}).encode()
+                          q=urllib.request.Request(rpc,data=b,headers={'content-type':'application/json','user-agent':'wallet500-dusd-ledger/2'},method='POST')
+                          with urllib.request.urlopen(q,timeout=45) as r:
+                              o=json.load(r)
+                          if o.get('error'):
+                              raise RuntimeError(f'RPC error code={o["error"].get("code")}')
+                          rpc_source_used=source
+                          return o.get('result')
+                      except Exception as exc:
+                          errors.append(f'{source}:{method}:attempt{attempt}:{type(exc).__name__}')
+                          if attempt < 3:
+                              time.sleep(attempt)
+              raise SystemExit(f'Fail closed: RPC {method} unavailable after retries; sources={errors}')
+
           sv=(call('getTokenSupply',[mint,{'commitment':'confirmed'}]) or {}).get('value') or {}
           supply=int(sv.get('amount') or 0); decimals=int(sv.get('decimals') or 0)
           if supply<=0: raise SystemExit('Fail closed: invalid DUSD supply')
@@ -52,7 +77,8 @@ jobs:
               try:
                   amt=int(a['account']['data']['parsed']['info']['tokenAmount']['amount'])
                   if amt>0: positive_accounts+=1
-              except: pass
+              except Exception:
+                  pass
           if positive_accounts<=0: raise SystemExit('Fail closed: DUSD positive token-account count unavailable')
           largest=(call('getTokenLargestAccounts',[mint,{'commitment':'confirmed'}]) or {}).get('value') or []
           threshold=supply*0.001; whales=[]
@@ -61,16 +87,16 @@ jobs:
               if raw>=threshold: whales.append({'token_account':a.get('address'),'raw_balance':str(raw),'balance':raw/(10**decimals),'supply_pct':round(raw/supply*100,6)})
           whales.sort(key=lambda x:int(x['raw_balance']),reverse=True)
           now=datetime.now(timezone.utc).isoformat(); hist=Path('data/dusd-whale-ledger.json')
-          ledger={'version':1,'mode':'RESEARCH_ONLY_DUSD_ONCHAIN_FORWARD_LEDGER_V1','mint':mint,'threshold_supply_pct':0.1,'snapshots':[],'no_hindsight':True,'production_portfolio_impact':'NONE'}
+          ledger={'version':2,'mode':'RESEARCH_ONLY_DUSD_ONCHAIN_FORWARD_LEDGER_V1','mint':mint,'threshold_supply_pct':0.1,'snapshots':[],'no_hindsight':True,'production_portfolio_impact':'NONE'}
           if hist.exists():
               try:ledger=json.loads(hist.read_text())
-              except:pass
+              except Exception:pass
           snaps=ledger.get('snapshots') if isinstance(ledger.get('snapshots'),list) else []
-          current={'observed_at':now,'mint':mint,'positive_token_accounts':positive_accounts,'supply_raw':str(supply),'supply_tokens':supply/(10**decimals),'decimals':decimals,'threshold_supply_pct':0.1,'whales':whales,'coverage':'SOLANA_RPC_CONFIRMED_ONCHAIN','holder_semantics':'POSITIVE_TOKEN_ACCOUNTS_NOT_UNIQUE_HUMANS'}
+          current={'observed_at':now,'mint':mint,'positive_token_accounts':positive_accounts,'supply_raw':str(supply),'supply_tokens':supply/(10**decimals),'decimals':decimals,'threshold_supply_pct':0.1,'whales':whales,'coverage':'SOLANA_RPC_CONFIRMED_ONCHAIN','holder_semantics':'POSITIVE_TOKEN_ACCOUNTS_NOT_UNIQUE_HUMANS','rpc_source':rpc_source_used,'rpc_policy':'SECRET_PREFERRED_PUBLICNODE_FAILOVER_FAIL_CLOSED'}
           from datetime import datetime as DT
           def dt(s):
               try:return DT.fromisoformat(s.replace('Z','+00:00'))
-              except:return None
+              except Exception:return None
           nowdt=dt(now)
           def account_delta(hours):
               target=nowdt.timestamp()-hours*3600; best=None
@@ -96,10 +122,10 @@ jobs:
                   if d: flows.append({'token_account':acct,'delta_tokens':d/(10**decimals),'delta_supply_pct':round(d/supply*100,6),'direction':'BUY_OR_INFLOW' if d>0 else 'SELL_OR_OUTFLOW'})
           current['flows_vs_previous_hour']=sorted(flows,key=lambda x:abs(x['delta_supply_pct']),reverse=True)
           snaps.append(current); snaps=snaps[-168:]
-          ledger.update({'version':1,'mode':'RESEARCH_ONLY_DUSD_ONCHAIN_FORWARD_LEDGER_V1','updated_at':now,'mint':mint,'threshold_supply_pct':0.1,'no_hindsight':True,'production_portfolio_impact':'NONE','snapshots':snaps})
+          ledger.update({'version':2,'mode':'RESEARCH_ONLY_DUSD_ONCHAIN_FORWARD_LEDGER_V1','updated_at':now,'mint':mint,'threshold_supply_pct':0.1,'no_hindsight':True,'production_portfolio_impact':'NONE','rpc_policy':'SECRET_PREFERRED_PUBLICNODE_FAILOVER_FAIL_CLOSED','snapshots':snaps})
           Path('data').mkdir(exist_ok=True); hist.write_text(json.dumps(ledger,ensure_ascii=False,indent=2)+'\n')
           Path('data/dusd-whale-current.json').write_text(json.dumps(current,ensure_ascii=False,indent=2)+'\n')
-          print(f'positive_accounts={positive_accounts} whales>=0.1%={len(whales)} supply={current["supply_tokens"]}')
+          print(f'positive_accounts={positive_accounts} whales>=0.1%={len(whales)} supply={current["supply_tokens"]} rpc_source={rpc_source_used}')
           PY
       - name: Validate DUSD identity and truth contract
         run: |
@@ -111,6 +137,7 @@ jobs:
           assert l['mode']=='RESEARCH_ONLY_DUSD_ONCHAIN_FORWARD_LEDGER_V1'
           assert l['no_hindsight'] is True and l['production_portfolio_impact']=='NONE'
           assert c['positive_token_accounts']>0 and float(c['supply_tokens'])>0
+          assert c['rpc_source'] in {'SECRET_RPC','PUBLICNODE_FALLBACK'}
           PY
       - name: Publish DUSD onchain ledger safely
         run: |
