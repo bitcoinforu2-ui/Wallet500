@@ -8,6 +8,12 @@ CAS, fail-on-newer, exact-pair and no-hindsight behavior stays unchanged.
 
 The lease is fail-closed, owner-verified on release, and can recover a stale
 lease left behind by a cancelled runner. It never force-updates main.
+
+GitHub's Git Data API can reject large blob request bodies even when the file is
+valid for the repository. Callers may keep requesting --github-api-cas; this
+wrapper transparently upgrades only large local payloads to --hybrid-cas, which
+uploads blob objects once through git and still performs the final main update
+with the same non-force CAS semantics.
 """
 from __future__ import annotations
 
@@ -17,6 +23,7 @@ import re
 import sys
 import time
 import urllib.parse
+from pathlib import Path
 
 import atomic_publish
 
@@ -25,6 +32,9 @@ LOCK_API_REF = "/git/ref/heads/wallet500-publish-lock"
 LOCK_API_DELETE = "/git/refs/heads/wallet500-publish-lock"
 LOCK_TTL_SECONDS = 300
 LOCK_WAIT_SECONDS = 210
+# Keep comfortably below request-body limits. Hybrid CAS is also cheaper than
+# JSON/base64 Git Data API upload for state files of this size.
+GITHUB_API_BLOB_SOFT_LIMIT = 8 * 1024 * 1024
 _LOCK_RE = re.compile(r"\bcreated_epoch=(\d+)\b")
 
 
@@ -166,11 +176,45 @@ def acquire_lock() -> tuple[str, str, str]:
     raise RuntimeError(f"SERIALIZED_PUBLISH_LOCK_TIMEOUT wait_seconds={LOCK_WAIT_SECONDS}")
 
 
+def _route_large_payload_to_hybrid() -> None:
+    """Upgrade GitHub-API CAS to hybrid CAS when a local payload is large.
+
+    We intentionally inspect only argv entries that resolve to regular files;
+    values belonging to --message/--base/--attempts therefore cannot be mistaken
+    for payloads. Explicit --hybrid-cas callers are left untouched.
+    """
+    if "--github-api-cas" not in sys.argv or "--hybrid-cas" in sys.argv:
+        return
+    large: list[tuple[str, int]] = []
+    for raw in sys.argv[1:]:
+        if raw.startswith("-"):
+            continue
+        p = Path(raw)
+        try:
+            if p.is_file():
+                size = p.stat().st_size
+                if size >= GITHUB_API_BLOB_SOFT_LIMIT:
+                    large.append((raw, size))
+        except OSError:
+            continue
+    if not large:
+        return
+    idx = sys.argv.index("--github-api-cas")
+    sys.argv[idx] = "--hybrid-cas"
+    summary = ",".join(f"{path}:{size}" for path, size in large[:8])
+    print(
+        "SERIALIZED_PUBLISH_TRANSPORT_UPGRADE "
+        f"github-api-cas->hybrid-cas reason=large-payload files={summary}",
+        flush=True,
+    )
+
+
 def main() -> int:
+    _route_large_payload_to_hybrid()
     token, repo, lock_sha = acquire_lock()
     try:
-        # atomic_publish.main() consumes the original argv, preserving every
-        # caller option (CAS transport, fail-on-newer, attempts, message, paths).
+        # atomic_publish.main() consumes the (possibly transport-upgraded) argv,
+        # preserving caller freshness, fail-on-newer, message and path options.
         return atomic_publish.main()
     finally:
         _delete_if_same(token, repo, lock_sha, "LOCK_RELEASE")
