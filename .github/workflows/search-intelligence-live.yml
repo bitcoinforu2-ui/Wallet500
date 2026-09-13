@@ -1,0 +1,92 @@
+name: Search Intelligence Live
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/10 * * * *"
+  push:
+    paths:
+      - "src/wallet500/search_intelligence.py"
+      - "tests/test_search_intelligence.py"
+      - ".github/workflows/search-intelligence-live.yml"
+  pull_request:
+    paths:
+      - "src/wallet500/search_intelligence.py"
+      - "tests/test_search_intelligence.py"
+      - ".github/workflows/search-intelligence-live.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: search-intelligence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test-and-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Unit tests
+        run: PYTHONPATH=src python -m unittest tests.test_search_intelligence -v
+
+      - name: Live provider smoke test
+        env:
+          CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/wallet500-search-intel
+          mkdir -p /tmp/wallet500-search-intel
+          PYTHONPATH=src python -m wallet500.search_intelligence \
+            --state /tmp/wallet500-search-intel/state.json \
+            --latest /tmp/wallet500-search-intel/latest.json \
+            --require-live
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = json.loads(Path('/tmp/wallet500-search-intel/latest.json').read_text())
+          cg = p['collection']['providers'].get('coingecko', {})
+          assert cg.get('status') == 'ok', cg
+          assert cg.get('asset_count', 0) > 0, cg
+          assert p['decision_mode'] == 'shadow'
+          assert p['changes_real_alert_gate'] is False
+          print(
+              'LIVE_SEARCH_INTEL_PASS',
+              f"coingecko_assets={cg['asset_count']}",
+              f"total_assets={p['summary']['asset_count']}",
+              f"mode={p['decision_mode']}",
+          )
+          PY
+
+      - name: Persist production snapshot
+        if: >-
+          github.ref == 'refs/heads/main' &&
+          (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          CMC_API_KEY: ${{ secrets.CMC_API_KEY }}
+        run: |
+          set -euo pipefail
+          git pull --rebase origin main
+          PYTHONPATH=src python -m wallet500.search_intelligence \
+            --state data/search-intelligence-state.json \
+            --latest data/search-intelligence-latest.json \
+            --require-live
+          git config user.name "wallet500-search-intel[bot]"
+          git config user.email "wallet500-search-intel[bot]@users.noreply.github.com"
+          git add data/search-intelligence-state.json data/search-intelligence-latest.json
+          if git diff --cached --quiet; then
+            echo "No search-intelligence data change to commit."
+          else
+            git commit -m "data: update search intelligence snapshot [skip ci]"
+            git push origin HEAD:main
+          fi
