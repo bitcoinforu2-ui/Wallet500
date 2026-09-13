@@ -219,7 +219,7 @@ def build(data_dir: Path = DATA, now: datetime | None = None) -> dict:
         if not fr["revival"]["fresh"]: blockers.append("REVIVAL_SOURCE_STALE")
         if not exact_id: blockers.append("EXACT_IDENTITY_REQUIRED")
         if not exact_pair: blockers.append("EXACT_PAIR_REQUIRED")
-        if not age_ok: blockers.append("MARKET_AGE_180D_REQUIRED")
+        if not age_ok: blockers.append(f"MARKET_AGE_{MIN_MARKET_AGE_DAYS}D_REQUIRED")
         if not liq_ok: blockers.append("EXECUTION_LIQUIDITY_LT_15K")
         blockers+=risk
         pending=[]
