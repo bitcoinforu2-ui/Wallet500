@@ -36,6 +36,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # Scheduled/manual recovery must establish ancestry without GitHub's Compare
+      # API. On this high-churn repository that endpoint can return 422 while
+      # generating a large diff even when both commits are valid. A bounded local
+      # history lets git answer the ancestry question directly and fail closed.
+      - name: Checkout canonical history for source resolution
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1000
+
       - name: Resolve immutable successful Live Scan source run
         id: source
         env:
@@ -55,67 +65,57 @@ jobs:
             # Live Scan whose event head is still an ancestor of canonical main.
             api="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/live-scan.yml/runs?status=success&per_page=20"
             candidates="$RUNNER_TEMP/wallet500-live-scan-successes.json"
+            pairs="$RUNNER_TEMP/wallet500-live-scan-successes.tsv"
             curl --fail --silent --show-error \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               "$api" > "$candidates"
-            read -r run_id event_sha < <(
-              CANDIDATES="$candidates" GH_TOKEN="$GH_TOKEN" GITHUB_REPOSITORY="$GITHUB_REPOSITORY" GITHUB_API_URL="$GITHUB_API_URL" python - <<'PY'
-          import json, os, sys, urllib.error, urllib.parse, urllib.request
+            CANDIDATES="$candidates" PAIRS="$pairs" python - <<'PY'
+          import json, os, re
           from pathlib import Path
 
-          p=json.loads(Path(os.environ['CANDIDATES']).read_text(encoding='utf-8'))
-          runs=p.get('workflow_runs') or []
-          if not runs:
+          payload=json.loads(Path(os.environ['CANDIDATES']).read_text(encoding='utf-8'))
+          rows=[]
+          for run in payload.get('workflow_runs') or []:
+              if run.get('conclusion') != 'success':
+                  continue
+              run_id=run.get('id')
+              sha=str(run.get('head_sha') or '').strip().lower()
+              if run_id and re.fullmatch(r'[0-9a-f]{40}', sha):
+                  rows.append(f'{run_id}\t{sha}')
+          if not rows:
               raise SystemExit('No successful Live Scan run available for verified publishing')
-
-          token=os.environ['GH_TOKEN']
-          repo=os.environ['GITHUB_REPOSITORY']
-          api_root=os.environ['GITHUB_API_URL'].rstrip('/')
-          headers={
-              'Authorization': f'Bearer {token}',
-              'Accept': 'application/vnd.github+json',
-              'X-GitHub-Api-Version': '2022-11-28',
-              'User-Agent': 'wallet500-verified-publisher',
-          }
-
-          checked=0
-          for r in runs:
-              if r.get('conclusion') != 'success':
-                  continue
-              sha=str(r.get('head_sha') or '').strip().lower()
-              run_id=r.get('id')
-              if not run_id or len(sha) != 40:
-                  continue
-              checked += 1
-              # candidate...main is ahead/identical exactly when canonical main
-              # contains the candidate event head. Diverged/behind is rejected.
-              url=f"{api_root}/repos/{repo}/compare/{urllib.parse.quote(sha, safe='')}...main"
-              req=urllib.request.Request(url, headers=headers)
-              try:
-                  with urllib.request.urlopen(req, timeout=20) as resp:
-                      cmp=json.load(resp)
-              except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
-                  print(
-                      f'::warning::LIVE_SCAN_CANONICALITY_CHECK_FAILED run={run_id} sha={sha} error={exc}',
-                      file=sys.stderr,
-                  )
-                  continue
-              status=str(cmp.get('status') or '')
-              if status in {'ahead','identical'}:
-                  print(f'{run_id} {sha}')
-                  raise SystemExit(0)
-              print(
-                  f'::notice::SKIP_DISCONNECTED_SUCCESSFUL_LIVE_SCAN run={run_id} sha={sha} compare_status={status}',
-                  file=sys.stderr,
-              )
-
-          raise SystemExit(
-              f'No successful Live Scan on canonical main history in newest window; checked={checked}'
-          )
+          Path(os.environ['PAIRS']).write_text('\n'.join(rows) + '\n', encoding='utf-8')
           PY
-            )
+
+            run_id=""
+            event_sha=""
+            checked=0
+            while IFS=$'\t' read -r candidate_run candidate_sha; do
+              [ -n "$candidate_run" ] || continue
+              checked=$((checked + 1))
+              # The initial checkout contains the recent canonical main history.
+              # If a candidate object is absent, fetch only that object; ancestry
+              # still fails closed when the bounded main history cannot prove it.
+              if ! git cat-file -e "$candidate_sha^{commit}" 2>/dev/null; then
+                git fetch --no-tags --depth=1 origin "$candidate_sha" >/dev/null 2>&1 || {
+                  echo "::warning::LIVE_SCAN_COMMIT_FETCH_FAILED run=$candidate_run sha=$candidate_sha"
+                  continue
+                }
+              fi
+              if git merge-base --is-ancestor "$candidate_sha" HEAD 2>/dev/null; then
+                run_id="$candidate_run"
+                event_sha="$candidate_sha"
+                break
+              fi
+              echo "::notice::SKIP_DISCONNECTED_SUCCESSFUL_LIVE_SCAN run=$candidate_run sha=$candidate_sha"
+            done < "$pairs"
+
+            if [ -z "$run_id" ]; then
+              echo "::error::No successful Live Scan on canonical main history in newest window; checked=$checked"
+              exit 1
+            fi
           fi
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
           echo "event_sha=$event_sha" >> "$GITHUB_OUTPUT"
