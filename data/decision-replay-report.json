@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "mode": "RESEARCH_ONLY_DECISION_REPLAY_V1",
+  "updated_at": "2026-09-13T22:46:08.170421+00:00",
+  "research_only": true,
+  "production_effect": false,
+  "production_thresholds_modified": false,
+  "sample": {
+    "records": 128,
+    "matured_24h": 108
+  },
+  "classification_24h": {
+    "INSUFFICIENT_COVERAGE": 128
+  },
+  "source_integrity": {
+    "source_ledger": "research-sample-ledger.json",
+    "source_key_includes_first_decision_timestamp": false,
+    "replay_key_includes_first_decision_timestamp": true,
+    "integrity_events": []
+  },
+  "policies": {
+    "A_CURRENT_PRODUCTION": {
+      "status": "BASELINE_ONLY",
+      "note": "No production semantics inferred when actionable is absent."
+    },
+    "B_ACCELERATION_TURNOVER": {
+      "status": "SHADOW_ONLY_INSUFFICIENT_COVERAGE"
+    },
+    "C_LIQUIDITY_SURVIVAL": {
+      "status": "SHADOW_ONLY_INSUFFICIENT_COVERAGE"
+    },
+    "D_WALLET_CAPITAL_SOCIAL": {
+      "status": "SHADOW_ONLY_INSUFFICIENT_COVERAGE"
+    },
+    "E_WINNER_DNA_PERSISTENCE": {
+      "status": "SHADOW_ONLY_INSUFFICIENT_COVERAGE"
+    }
+  },
+  "promotion_gate": {
+    "minimum_matured_decisions": 30,
+    "requires_two_non_overlapping_windows": true,
+    "requires_no_material_drawdown_or_liquidity_survival_regression": true,
+    "requires_no_leakage_or_exact_pair_contamination": true,
+    "status": "NOT_READY_FOR_REVIEW",
+    "reason": "SHADOW_POLICY_FEATURE_COVERAGE_NOT_YET_SUFFICIENT_FOR_VALID_WALK_FORWARD_COMPARISON"
+  },
+  "guardrails": {
+    "no_hindsight_t0_backfill": true,
+    "exact_pair_required": true,
+    "symbol_only_identity_forbidden": true,
+    "t0_mutation_forbidden": true,
+    "production_changes": false,
+    "telegram_changes": false,
+    "automatic_buy": false
+  }
+}
