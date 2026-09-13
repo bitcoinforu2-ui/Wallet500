@@ -8,8 +8,10 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/cryptoyeezus_live_watch.py'
+      - 'src/wallet500/cryptoyeezus_x_fallback.py'
       - 'src/wallet500/cryptoyeezus_priority_alerts.py'
       - 'tests/test_cryptoyeezus_live_watch.py'
+      - 'tests/test_cryptoyeezus_x_fallback.py'
       - 'tests/test_cryptoyeezus_priority_alerts.py'
       - '.github/workflows/cryptoyeezus-live-watch.yml'
 
@@ -40,13 +42,17 @@ jobs:
         run: |
           python -m pytest -q \
             tests/test_cryptoyeezus_live_watch.py \
+            tests/test_cryptoyeezus_x_fallback.py \
             tests/test_cryptoyeezus_priority_alerts.py
 
-      - name: Poll canonical Telegram and X on every run
+      - name: Poll canonical Telegram and direct X on every run
         env:
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
           YEEZUS_X_POLL_EVERY_CYCLES: '1'
         run: python -m wallet500.cryptoyeezus_live_watch
+
+      - name: Recover X through public syndication when direct API is degraded
+        run: python -m wallet500.cryptoyeezus_x_fallback
 
       - name: Deliver dedicated CryptoYeezus priority alerts
         env:
@@ -74,6 +80,11 @@ jobs:
           if str(tg.get('status') or '') != 'OK':
               raise SystemExit('YEEZUS_TELEGRAM_CANONICAL_SOURCE_UNHEALTHY')
 
+          direct_ok=str(x.get('status') or '').startswith('OK')
+          effective=str(x.get('effective_status') or '')
+          if not direct_ok and effective != 'OK_WITH_PUBLIC_FALLBACK':
+              raise SystemExit(f'YEEZUS_X_NO_REDUNDANCY direct={x.get("status")} fallback={x.get("redundancy_status")}')
+
           priority=p.get('priority_delivery') or {}
           if priority.get('policy') != 'CRYPTOYEEZUS_PRIORITY_V2':
               raise SystemExit('YEEZUS_PRIORITY_POLICY_MISSING')
@@ -91,10 +102,7 @@ jobs:
           if truth.get('automatic_buy') is not False:
               raise SystemExit('YEEZUS_PRIORITY_AUTO_BUY_INVALID')
 
-          x_status=str(x.get('status') or '')
-          if not x_status.startswith('OK'):
-              print(f'::warning::CryptoYeezus X direct source degraded: {x_status}; canonical Telegram watch remains active every 5 minutes')
-          print('YEEZUS_SOURCE_AND_PRIORITY_OK', tg.get('status'), x_status, priority)
+          print('YEEZUS_SOURCE_AND_PRIORITY_OK', tg.get('status'), x.get('status'), effective or 'DIRECT_OK', priority)
           PY
 
       - name: Persist forward-only state
