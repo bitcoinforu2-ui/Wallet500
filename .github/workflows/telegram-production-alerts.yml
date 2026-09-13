@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
   workflow_run:
     workflows:
-      - "Wallet500 Candidate Evidence Envelope"
-      - "Wallet500 Pending Confirmation Refresh"
+      - "Wallet500 Verified Snapshot Publisher"
     types: [completed]
   push:
     branches: [main]
@@ -20,6 +19,10 @@ on:
 permissions:
   contents: write
 
+# User-facing delivery must run only after the sole canonical publisher has
+# completed. Candidate Evidence and Pending Confirmation can legitimately finish
+# after merely delegating a new Live Scan, so listening to them creates a race
+# where Telegram sees the previous decision generation.
 concurrency:
   group: wallet500-production-telegram-alerts
   cancel-in-progress: false
