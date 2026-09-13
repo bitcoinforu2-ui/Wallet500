@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from . import revival_prewaking_wallet_retention as retention
 from . import revival_wallet_evidence as collector
 
 WALLET_INSIGHT = Path("data/wallet-insight-review.json")
-INSIGHT_PRIORITY_SLOTS = 8
+INSIGHT_PRIORITY_SLOTS = int(os.environ.get("REVIVAL_PREWAKING_INSIGHT_PRIORITY_SLOTS", "20"))
 INSIGHT_ALLOWED_STATUSES = {"EVIDENCE_READY", "VERIFIED_WATCH"}
 INSIGHT_ALLOWED_CLASSIFICATIONS = {"DATA_PIPELINE_BOTTLENECK", "COVERAGE_TO_ACCUMULATION_GAP"}
 
