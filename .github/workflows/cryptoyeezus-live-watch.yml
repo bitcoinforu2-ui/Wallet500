@@ -14,6 +14,7 @@ on:
       - 'tests/test_cryptoyeezus_x_fallback.py'
       - 'tests/test_cryptoyeezus_priority_alerts.py'
       - '.github/workflows/cryptoyeezus-live-watch.yml'
+      - 'scripts/serialized_publish.py'
 
 permissions:
   contents: write
@@ -111,37 +112,17 @@ jobs:
 
       - name: Persist forward-only state
         if: github.event_name != 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-bot'
-          git config user.email 'wallet500-bot@users.noreply.github.com'
           git restore --worktree -- src/wallet500.egg-info || true
-          git add \
+          python scripts/serialized_publish.py \
+            --github-api-cas \
+            --attempts 80 \
+            --message 'Update CryptoYeezus forward social state' \
             data/cryptoyeezus-live-state.json \
             data/cryptoyeezus-calls.json \
             data/cryptoyeezus-live-latest.json \
             data/cryptoyeezus-priority-state.json
-          if git diff --cached --quiet; then
-            echo 'No state change to commit'
-            exit 0
-          fi
-          git commit -m 'Update CryptoYeezus forward social state'
-          git reset --hard HEAD
-          git clean -fd
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            if ! git rebase origin/main; then
-              git rebase --abort || true
-              echo "CryptoYeezus rebase contention attempt=${attempt}"
-              [ "$attempt" -eq 5 ] && exit 1
-              sleep $((attempt * 2))
-              continue
-            fi
-            if git push origin HEAD:main; then
-              echo 'CRYPTOYEEZUS_STATE_PUBLISH_OK'
-              exit 0
-            fi
-            sleep $((attempt * 2))
-          done
-          echo 'Failed to publish CryptoYeezus state after 5 contention-safe retries' >&2
-          exit 1
+          echo 'CRYPTOYEEZUS_STATE_PUBLISH_OK'
