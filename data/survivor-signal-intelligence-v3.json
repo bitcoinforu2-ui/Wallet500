@@ -1,25 +1,26 @@
 {
   "version": 3,
-  "generated_at": "2026-09-13T22:28:02.910835+00:00",
+  "generated_at": "2026-09-13T23:26:23.009318+00:00",
   "research_only": true,
   "production_gates_changed": false,
   "stage_counts": {
-    "LOW_PRIORITY": 6,
-    "WATCH": 5,
-    "PRE_HIGH_PRIORITY": 2
+    "WATCH": 4,
+    "PRE_HIGH_PRIORITY": 3,
+    "LOW_PRIORITY": 6
   },
   "tokens": [
     {
       "chain": "solana",
-      "token": "MukLDtJ8Cx9DxLbeyLRSWPSposTMWuwHANbuaudpump",
-      "pair_address": "DA4pM4xSDY4M9V4CgAKKBVH1pw1yscTQQa5nEkGHuKpt",
-      "net_opportunity_score": 31,
-      "net_opportunity_stage": "LOW_PRIORITY",
+      "token": "6GmAFSYs4gk3FDao5FzzySQpPZaWsa4rUJHacpMpUNgx",
+      "pair_address": "48M3tRdbVYmEbf5rCTFVAgqCCaZdChVmeg3VPBrmgT8m",
+      "net_opportunity_score": 41,
+      "net_opportunity_stage": "WATCH",
       "intelligence_v3": {
         "buy_quality": {
-          "score": 15,
+          "score": 30,
           "status": "PARTIAL_COUNT_BASED_ONLY",
           "reasons": [
+            "MILD_BUY_COUNT_PRESSURE",
             "MEANINGFUL_TX_SAMPLE"
           ],
           "coverage": {
@@ -31,27 +32,29 @@
           "warning": "No buy/sell USD or unique-buyer source is currently available; count pressure is not treated as capital flow."
         },
         "relative_anomaly": {
-          "status": "NORMAL_RANGE",
-          "score": 20,
+          "status": "RELATIVE_ANOMALY",
+          "score": 70,
           "history_n": 5,
-          "turnover_vs_median": 1.463,
-          "volume_vs_median": 1.525,
-          "buy_ratio_vs_median": 0.87,
+          "turnover_vs_median": 2.765,
+          "volume_vs_median": 2.531,
+          "buy_ratio_vs_median": 0.829,
           "reasons": [
-            "VOLUME_1_5X_BASELINE"
+            "TURNOVER_2X_BASELINE",
+            "VOLUME_2X_BASELINE"
           ]
         },
         "failure_anti_dna": {
-          "score": 0,
+          "score": 20,
           "status": "FAILURE_DNA_LOW",
-          "reasons": []
+          "reasons": [
+            "SHARP_H1_DECLINE"
+          ]
         },
         "exitability": {
-          "score": 90,
-          "status": "EXITABILITY_PROXY_STRONG",
+          "score": 65,
+          "status": "EXITABILITY_PROXY_OK",
           "reasons": [
             "DEEP_LIQUIDITY",
-            "LIQUIDITY_STABLE",
             "ACTIVE_BUT_NOT_EXTREME_TURNOVER"
           ],
           "simulated_slippage": "INSUFFICIENT_COVERAGE",
@@ -82,9 +85,187 @@
           "warning": "Listing credibility remains ungraded unless source-level provenance is available."
         },
         "net_opportunity": {
-          "score": 31,
-          "stage": "LOW_PRIORITY",
-          "positive_component": 31.1,
+          "score": 41,
+          "stage": "WATCH",
+          "positive_component": 52.0,
+          "anti_dna_penalty": 11.0
+        },
+        "pre_wave_probability": {
+          "status": "INSUFFICIENT_SAMPLE",
+          "probability": null
+        },
+        "time_to_wave": {
+          "status": "INSUFFICIENT_SAMPLE",
+          "bucket": null
+        }
+      }
+    },
+    {
+      "chain": "solana",
+      "token": "EEpng77ZPn9FbgbT4xsRjwuxNCcMBYq3HTwEscyTpump",
+      "pair_address": "6QyYdc6jgeKnfP1FWhiexMYq3JQ3sidSYoubjWUTo3rm",
+      "net_opportunity_score": 55,
+      "net_opportunity_stage": "PRE_HIGH_PRIORITY",
+      "intelligence_v3": {
+        "buy_quality": {
+          "score": 45,
+          "status": "PARTIAL_COUNT_BASED_ONLY",
+          "reasons": [
+            "STRONG_BUY_COUNT_PRESSURE"
+          ],
+          "coverage": {
+            "buy_sell_count": "VERIFIED_AGGREGATE",
+            "buy_sell_usd": "INSUFFICIENT_COVERAGE",
+            "unique_buyers": "INSUFFICIENT_COVERAGE",
+            "median_trade_size": "INSUFFICIENT_COVERAGE"
+          },
+          "warning": "No buy/sell USD or unique-buyer source is currently available; count pressure is not treated as capital flow."
+        },
+        "relative_anomaly": {
+          "status": "RELATIVE_ANOMALY",
+          "score": 90,
+          "history_n": 5,
+          "turnover_vs_median": 3.55,
+          "volume_vs_median": 3.338,
+          "buy_ratio_vs_median": 6.469,
+          "reasons": [
+            "TURNOVER_2X_BASELINE",
+            "VOLUME_2X_BASELINE",
+            "BUY_PRESSURE_ABOVE_BASELINE"
+          ]
+        },
+        "failure_anti_dna": {
+          "score": 0,
+          "status": "FAILURE_DNA_LOW",
+          "reasons": []
+        },
+        "exitability": {
+          "score": 35,
+          "status": "EXITABILITY_PROXY_WEAK",
+          "reasons": [
+            "MINIMUM_SURVIVAL_LIQUIDITY",
+            "ACTIVE_BUT_NOT_EXTREME_TURNOVER"
+          ],
+          "simulated_slippage": "INSUFFICIENT_COVERAGE",
+          "note": "Proxy only; no order-book/route slippage simulation source connected."
+        },
+        "volume_authenticity": {
+          "status": "AGGREGATE_ONLY_REVIEW",
+          "score": 60,
+          "reasons": [
+            "DIRECTIONAL_IMBALANCE_PRESENT"
+          ],
+          "coverage": "INSUFFICIENT_FOR_WASH_TRADING_PROOF",
+          "warning": "Cannot certify organic volume without transaction-level wallet graph and repeated-size analysis."
+        },
+        "whale_cluster_quality": {
+          "status": "INSUFFICIENT_COVERAGE",
+          "whale_intent": "INSUFFICIENT_COVERAGE",
+          "independent_buyer_clusters": "INSUFFICIENT_COVERAGE",
+          "holder_delta": null,
+          "organic_acceleration_score": 0.0,
+          "kol_independent_groups": null,
+          "note": "No timestamp-safe wallet-flow/cluster source is connected to this hourly survivor feed."
+        },
+        "catalyst_quality": {
+          "score": 0,
+          "status": "INSUFFICIENT_COVERAGE",
+          "reasons": [],
+          "warning": "Listing credibility remains ungraded unless source-level provenance is available."
+        },
+        "net_opportunity": {
+          "score": 55,
+          "stage": "PRE_HIGH_PRIORITY",
+          "positive_component": 55.2,
+          "anti_dna_penalty": 0.0
+        },
+        "pre_wave_probability": {
+          "status": "INSUFFICIENT_SAMPLE",
+          "probability": null
+        },
+        "time_to_wave": {
+          "status": "INSUFFICIENT_SAMPLE",
+          "bucket": null
+        }
+      }
+    },
+    {
+      "chain": "bsc",
+      "token": "0x198dba421a7db566a90da5de7901abe3443b4444",
+      "pair_address": "0x8672a5d410C567C1b54703bfedDd7699Ffdb1b3f",
+      "net_opportunity_score": 60,
+      "net_opportunity_stage": "PRE_HIGH_PRIORITY",
+      "intelligence_v3": {
+        "buy_quality": {
+          "score": 45,
+          "status": "PARTIAL_COUNT_BASED_ONLY",
+          "reasons": [
+            "STRONG_BUY_COUNT_PRESSURE"
+          ],
+          "coverage": {
+            "buy_sell_count": "VERIFIED_AGGREGATE",
+            "buy_sell_usd": "INSUFFICIENT_COVERAGE",
+            "unique_buyers": "INSUFFICIENT_COVERAGE",
+            "median_trade_size": "INSUFFICIENT_COVERAGE"
+          },
+          "warning": "No buy/sell USD or unique-buyer source is currently available; count pressure is not treated as capital flow."
+        },
+        "relative_anomaly": {
+          "status": "RELATIVE_ANOMALY",
+          "score": 90,
+          "history_n": 5,
+          "turnover_vs_median": 2.576,
+          "volume_vs_median": 2.523,
+          "buy_ratio_vs_median": 1.221,
+          "reasons": [
+            "TURNOVER_2X_BASELINE",
+            "VOLUME_2X_BASELINE",
+            "BUY_PRESSURE_ABOVE_BASELINE"
+          ]
+        },
+        "failure_anti_dna": {
+          "score": 0,
+          "status": "FAILURE_DNA_LOW",
+          "reasons": []
+        },
+        "exitability": {
+          "score": 65,
+          "status": "EXITABILITY_PROXY_OK",
+          "reasons": [
+            "DEEP_LIQUIDITY",
+            "ACTIVE_BUT_NOT_EXTREME_TURNOVER"
+          ],
+          "simulated_slippage": "INSUFFICIENT_COVERAGE",
+          "note": "Proxy only; no order-book/route slippage simulation source connected."
+        },
+        "volume_authenticity": {
+          "status": "AGGREGATE_ONLY_REVIEW",
+          "score": 60,
+          "reasons": [
+            "DIRECTIONAL_IMBALANCE_PRESENT"
+          ],
+          "coverage": "INSUFFICIENT_FOR_WASH_TRADING_PROOF",
+          "warning": "Cannot certify organic volume without transaction-level wallet graph and repeated-size analysis."
+        },
+        "whale_cluster_quality": {
+          "status": "INSUFFICIENT_COVERAGE",
+          "whale_intent": "INSUFFICIENT_COVERAGE",
+          "independent_buyer_clusters": "INSUFFICIENT_COVERAGE",
+          "holder_delta": null,
+          "organic_acceleration_score": null,
+          "kol_independent_groups": null,
+          "note": "No timestamp-safe wallet-flow/cluster source is connected to this hourly survivor feed."
+        },
+        "catalyst_quality": {
+          "score": 0,
+          "status": "INSUFFICIENT_COVERAGE",
+          "reasons": [],
+          "warning": "Listing credibility remains ungraded unless source-level provenance is available."
+        },
+        "net_opportunity": {
+          "score": 60,
+          "stage": "PRE_HIGH_PRIORITY",
+          "positive_component": 59.7,
           "anti_dna_penalty": 0.0
         },
         "pre_wave_probability": {
@@ -101,14 +282,14 @@
       "chain": "bsc",
       "token": "0x87ae267002cd1ea0ec86bf3601d4a8ad76a47777",
       "pair_address": "0xd4ae7DD719ec71594f13d0e3B17E65E9085f1Ca1",
-      "net_opportunity_score": 39,
+      "net_opportunity_score": 36,
       "net_opportunity_stage": "WATCH",
       "intelligence_v3": {
         "buy_quality": {
-          "score": 35,
+          "score": 45,
           "status": "PARTIAL_COUNT_BASED_ONLY",
           "reasons": [
-            "BUY_COUNT_PRESSURE"
+            "STRONG_BUY_COUNT_PRESSURE"
           ],
           "coverage": {
             "buy_sell_count": "VERIFIED_AGGREGATE",
@@ -122,9 +303,9 @@
           "status": "NORMAL_RANGE",
           "score": 0,
           "history_n": 5,
-          "turnover_vs_median": 1.363,
-          "volume_vs_median": 1.382,
-          "buy_ratio_vs_median": 0.643,
+          "turnover_vs_median": 1.031,
+          "volume_vs_median": 1.043,
+          "buy_ratio_vs_median": 0.846,
           "reasons": []
         },
         "failure_anti_dna": {
@@ -167,9 +348,101 @@
           "warning": "Listing credibility remains ungraded unless source-level provenance is available."
         },
         "net_opportunity": {
-          "score": 39,
+          "score": 36,
           "stage": "WATCH",
-          "positive_component": 39.5,
+          "positive_component": 36.0,
+          "anti_dna_penalty": 0.0
+        },
+        "pre_wave_probability": {
+          "status": "INSUFFICIENT_SAMPLE",
+          "probability": null
+        },
+        "time_to_wave": {
+          "status": "INSUFFICIENT_SAMPLE",
+          "bucket": null
+        }
+      }
+    },
+    {
+      "chain": "solana",
+      "token": "CTPoyCwkjMvoJwU4xvZZqoD8tiYk6yDchySiN5gGpump",
+      "pair_address": "3dcwhqJp6JBTJPq8ga335HWgSQVS7uQmdmeX7iGjMNpj",
+      "net_opportunity_score": 68,
+      "net_opportunity_stage": "PRE_HIGH_PRIORITY",
+      "intelligence_v3": {
+        "buy_quality": {
+          "score": 60,
+          "status": "PARTIAL_COUNT_BASED_ONLY",
+          "reasons": [
+            "STRONG_BUY_COUNT_PRESSURE",
+            "MEANINGFUL_TX_SAMPLE"
+          ],
+          "coverage": {
+            "buy_sell_count": "VERIFIED_AGGREGATE",
+            "buy_sell_usd": "INSUFFICIENT_COVERAGE",
+            "unique_buyers": "INSUFFICIENT_COVERAGE",
+            "median_trade_size": "INSUFFICIENT_COVERAGE"
+          },
+          "warning": "No buy/sell USD or unique-buyer source is currently available; count pressure is not treated as capital flow."
+        },
+        "relative_anomaly": {
+          "status": "RELATIVE_ANOMALY",
+          "score": 90,
+          "history_n": 5,
+          "turnover_vs_median": 2.775,
+          "volume_vs_median": 2.589,
+          "buy_ratio_vs_median": 3.416,
+          "reasons": [
+            "TURNOVER_2X_BASELINE",
+            "VOLUME_2X_BASELINE",
+            "BUY_PRESSURE_ABOVE_BASELINE"
+          ]
+        },
+        "failure_anti_dna": {
+          "score": 0,
+          "status": "FAILURE_DNA_LOW",
+          "reasons": []
+        },
+        "exitability": {
+          "score": 90,
+          "status": "EXITABILITY_PROXY_STRONG",
+          "reasons": [
+            "DEEP_LIQUIDITY",
+            "LIQUIDITY_STABLE",
+            "ACTIVE_BUT_NOT_EXTREME_TURNOVER"
+          ],
+          "simulated_slippage": "INSUFFICIENT_COVERAGE",
+          "note": "Proxy only; no order-book/route slippage simulation source connected."
+        },
+        "volume_authenticity": {
+          "status": "AGGREGATE_ONLY_REVIEW",
+          "score": 70,
+          "reasons": [
+            "BROAD_TX_COUNT",
+            "DIRECTIONAL_IMBALANCE_PRESENT"
+          ],
+          "coverage": "INSUFFICIENT_FOR_WASH_TRADING_PROOF",
+          "warning": "Cannot certify organic volume without transaction-level wallet graph and repeated-size analysis."
+        },
+        "whale_cluster_quality": {
+          "status": "INSUFFICIENT_COVERAGE",
+          "whale_intent": "INSUFFICIENT_COVERAGE",
+          "independent_buyer_clusters": "INSUFFICIENT_COVERAGE",
+          "holder_delta": null,
+          "organic_acceleration_score": null,
+          "kol_independent_groups": null,
+          "note": "No timestamp-safe wallet-flow/cluster source is connected to this hourly survivor feed."
+        },
+        "catalyst_quality": {
+          "score": 0,
+          "status": "INSUFFICIENT_COVERAGE",
+          "reasons": [],
+          "warning": "Listing credibility remains ungraded unless source-level provenance is available."
+        },
+        "net_opportunity": {
+          "score": 68,
+          "stage": "PRE_HIGH_PRIORITY",
+          "positive_component": 68.0,
           "anti_dna_penalty": 0.0
         },
         "pre_wave_probability": {
@@ -186,14 +459,14 @@
       "chain": "solana",
       "token": "Hos282xmdMJHwMjhni91fNqdjDsgWjgSckxuGc1Bpump",
       "pair_address": "7ManjzDS3TfcGnht9ZHRdaTgYu6sQxGrAMHrzRRtpLXj",
-      "net_opportunity_score": 59,
-      "net_opportunity_stage": "PRE_HIGH_PRIORITY",
+      "net_opportunity_score": 29,
+      "net_opportunity_stage": "LOW_PRIORITY",
       "intelligence_v3": {
         "buy_quality": {
-          "score": 45,
+          "score": 35,
           "status": "PARTIAL_COUNT_BASED_ONLY",
           "reasons": [
-            "STRONG_BUY_COUNT_PRESSURE"
+            "BUY_COUNT_PRESSURE"
           ],
           "coverage": {
             "buy_sell_count": "VERIFIED_AGGREGATE",
@@ -204,17 +477,13 @@
           "warning": "No buy/sell USD or unique-buyer source is currently available; count pressure is not treated as capital flow."
         },
         "relative_anomaly": {
-          "status": "RELATIVE_ANOMALY",
-          "score": 90,
+          "status": "NORMAL_RANGE",
+          "score": 0,
           "history_n": 5,
-          "turnover_vs_median": 5.676,
-          "volume_vs_median": 5.485,
-          "buy_ratio_vs_median": 4.571,
-          "reasons": [
-            "TURNOVER_2X_BASELINE",
-            "VOLUME_2X_BASELINE",
-            "BUY_PRESSURE_ABOVE_BASELINE"
-          ]
+          "turnover_vs_median": 0.34,
+          "volume_vs_median": 0.332,
+          "buy_ratio_vs_median": 0.99,
+          "reasons": []
         },
         "failure_anti_dna": {
           "score": 0,
@@ -256,9 +525,9 @@
           "warning": "Listing credibility remains ungraded unless source-level provenance is available."
         },
         "net_opportunity": {
-          "score": 59,
-          "stage": "PRE_HIGH_PRIORITY",
-          "positive_component": 59.0,
+          "score": 29,
+          "stage": "LOW_PRIORITY",
+          "positive_component": 28.7,
           "anti_dna_penalty": 0.0
         },
         "pre_wave_probability": {
@@ -296,9 +565,9 @@
           "status": "NORMAL_RANGE",
           "score": 20,
           "history_n": 5,
-          "turnover_vs_median": 0.167,
-          "volume_vs_median": 0.163,
-          "buy_ratio_vs_median": 3.0,
+          "turnover_vs_median": 0.025,
+          "volume_vs_median": 0.025,
+          "buy_ratio_vs_median": 1.333,
           "reasons": [
             "BUY_PRESSURE_ABOVE_BASELINE"
           ]
@@ -359,280 +628,17 @@
       }
     },
     {
-      "chain": "bsc",
-      "token": "0xfe189e97832da1573e4e4ff034f4ffc3a15c7777",
-      "pair_address": "0x94F3ed36706c746ad59fAdCAF271b7431AB1D8F1",
-      "net_opportunity_score": 62,
-      "net_opportunity_stage": "PRE_HIGH_PRIORITY",
-      "intelligence_v3": {
-        "buy_quality": {
-          "score": 45,
-          "status": "PARTIAL_COUNT_BASED_ONLY",
-          "reasons": [
-            "STRONG_BUY_COUNT_PRESSURE"
-          ],
-          "coverage": {
-            "buy_sell_count": "VERIFIED_AGGREGATE",
-            "buy_sell_usd": "INSUFFICIENT_COVERAGE",
-            "unique_buyers": "INSUFFICIENT_COVERAGE",
-            "median_trade_size": "INSUFFICIENT_COVERAGE"
-          },
-          "warning": "No buy/sell USD or unique-buyer source is currently available; count pressure is not treated as capital flow."
-        },
-        "relative_anomaly": {
-          "status": "RELATIVE_ANOMALY",
-          "score": 90,
-          "history_n": 5,
-          "turnover_vs_median": 3.038,
-          "volume_vs_median": 3.006,
-          "buy_ratio_vs_median": 1.361,
-          "reasons": [
-            "TURNOVER_2X_BASELINE",
-            "VOLUME_2X_BASELINE",
-            "BUY_PRESSURE_ABOVE_BASELINE"
-          ]
-        },
-        "failure_anti_dna": {
-          "score": 0,
-          "status": "FAILURE_DNA_LOW",
-          "reasons": []
-        },
-        "exitability": {
-          "score": 75,
-          "status": "EXITABILITY_PROXY_STRONG",
-          "reasons": [
-            "DEEP_LIQUIDITY",
-            "LIQUIDITY_STABLE"
-          ],
-          "simulated_slippage": "INSUFFICIENT_COVERAGE",
-          "note": "Proxy only; no order-book/route slippage simulation source connected."
-        },
-        "volume_authenticity": {
-          "status": "AGGREGATE_ONLY_REVIEW",
-          "score": 60,
-          "reasons": [
-            "DIRECTIONAL_IMBALANCE_PRESENT"
-          ],
-          "coverage": "INSUFFICIENT_FOR_WASH_TRADING_PROOF",
-          "warning": "Cannot certify organic volume without transaction-level wallet graph and repeated-size analysis."
-        },
-        "whale_cluster_quality": {
-          "status": "INSUFFICIENT_COVERAGE",
-          "whale_intent": "INSUFFICIENT_COVERAGE",
-          "independent_buyer_clusters": "INSUFFICIENT_COVERAGE",
-          "holder_delta": null,
-          "organic_acceleration_score": null,
-          "kol_independent_groups": null,
-          "note": "No timestamp-safe wallet-flow/cluster source is connected to this hourly survivor feed."
-        },
-        "catalyst_quality": {
-          "score": 0,
-          "status": "INSUFFICIENT_COVERAGE",
-          "reasons": [],
-          "warning": "Listing credibility remains ungraded unless source-level provenance is available."
-        },
-        "net_opportunity": {
-          "score": 62,
-          "stage": "PRE_HIGH_PRIORITY",
-          "positive_component": 62.1,
-          "anti_dna_penalty": 0.0
-        },
-        "pre_wave_probability": {
-          "status": "INSUFFICIENT_SAMPLE",
-          "probability": null
-        },
-        "time_to_wave": {
-          "status": "INSUFFICIENT_SAMPLE",
-          "bucket": null
-        }
-      }
-    },
-    {
-      "chain": "bsc",
-      "token": "0x198dba421a7db566a90da5de7901abe3443b4444",
-      "pair_address": "0x8672a5d410C567C1b54703bfedDd7699Ffdb1b3f",
-      "net_opportunity_score": 40,
-      "net_opportunity_stage": "WATCH",
-      "intelligence_v3": {
-        "buy_quality": {
-          "score": 15,
-          "status": "PARTIAL_COUNT_BASED_ONLY",
-          "reasons": [
-            "MILD_BUY_COUNT_PRESSURE"
-          ],
-          "coverage": {
-            "buy_sell_count": "VERIFIED_AGGREGATE",
-            "buy_sell_usd": "INSUFFICIENT_COVERAGE",
-            "unique_buyers": "INSUFFICIENT_COVERAGE",
-            "median_trade_size": "INSUFFICIENT_COVERAGE"
-          },
-          "warning": "No buy/sell USD or unique-buyer source is currently available; count pressure is not treated as capital flow."
-        },
-        "relative_anomaly": {
-          "status": "NORMAL_RANGE",
-          "score": 45,
-          "history_n": 5,
-          "turnover_vs_median": 1.701,
-          "volume_vs_median": 1.771,
-          "buy_ratio_vs_median": 1.14,
-          "reasons": [
-            "TURNOVER_1_5X_BASELINE",
-            "VOLUME_1_5X_BASELINE"
-          ]
-        },
-        "failure_anti_dna": {
-          "score": 0,
-          "status": "FAILURE_DNA_LOW",
-          "reasons": []
-        },
-        "exitability": {
-          "score": 90,
-          "status": "EXITABILITY_PROXY_STRONG",
-          "reasons": [
-            "DEEP_LIQUIDITY",
-            "LIQUIDITY_STABLE",
-            "ACTIVE_BUT_NOT_EXTREME_TURNOVER"
-          ],
-          "simulated_slippage": "INSUFFICIENT_COVERAGE",
-          "note": "Proxy only; no order-book/route slippage simulation source connected."
-        },
-        "volume_authenticity": {
-          "status": "AGGREGATE_ONLY_REVIEW",
-          "score": 50,
-          "reasons": [],
-          "coverage": "INSUFFICIENT_FOR_WASH_TRADING_PROOF",
-          "warning": "Cannot certify organic volume without transaction-level wallet graph and repeated-size analysis."
-        },
-        "whale_cluster_quality": {
-          "status": "INSUFFICIENT_COVERAGE",
-          "whale_intent": "INSUFFICIENT_COVERAGE",
-          "independent_buyer_clusters": "INSUFFICIENT_COVERAGE",
-          "holder_delta": null,
-          "organic_acceleration_score": null,
-          "kol_independent_groups": null,
-          "note": "No timestamp-safe wallet-flow/cluster source is connected to this hourly survivor feed."
-        },
-        "catalyst_quality": {
-          "score": 0,
-          "status": "INSUFFICIENT_COVERAGE",
-          "reasons": [],
-          "warning": "Listing credibility remains ungraded unless source-level provenance is available."
-        },
-        "net_opportunity": {
-          "score": 40,
-          "stage": "WATCH",
-          "positive_component": 39.6,
-          "anti_dna_penalty": 0.0
-        },
-        "pre_wave_probability": {
-          "status": "INSUFFICIENT_SAMPLE",
-          "probability": null
-        },
-        "time_to_wave": {
-          "status": "INSUFFICIENT_SAMPLE",
-          "bucket": null
-        }
-      }
-    },
-    {
       "chain": "solana",
-      "token": "EEpng77ZPn9FbgbT4xsRjwuxNCcMBYq3HTwEscyTpump",
-      "pair_address": "6QyYdc6jgeKnfP1FWhiexMYq3JQ3sidSYoubjWUTo3rm",
-      "net_opportunity_score": 0,
+      "token": "MukLDtJ8Cx9DxLbeyLRSWPSposTMWuwHANbuaudpump",
+      "pair_address": "DA4pM4xSDY4M9V4CgAKKBVH1pw1yscTQQa5nEkGHuKpt",
+      "net_opportunity_score": 20,
       "net_opportunity_stage": "LOW_PRIORITY",
       "intelligence_v3": {
         "buy_quality": {
-          "score": 0,
+          "score": 30,
           "status": "PARTIAL_COUNT_BASED_ONLY",
           "reasons": [
-            "SELL_COUNT_PRESSURE"
-          ],
-          "coverage": {
-            "buy_sell_count": "VERIFIED_AGGREGATE",
-            "buy_sell_usd": "INSUFFICIENT_COVERAGE",
-            "unique_buyers": "INSUFFICIENT_COVERAGE",
-            "median_trade_size": "INSUFFICIENT_COVERAGE"
-          },
-          "warning": "No buy/sell USD or unique-buyer source is currently available; count pressure is not treated as capital flow."
-        },
-        "relative_anomaly": {
-          "status": "NORMAL_RANGE",
-          "score": 0,
-          "history_n": 5,
-          "turnover_vs_median": 0.282,
-          "volume_vs_median": 0.273,
-          "buy_ratio_vs_median": 0.451,
-          "reasons": []
-        },
-        "failure_anti_dna": {
-          "score": 25,
-          "status": "FAILURE_DNA_LOW",
-          "reasons": [
-            "SELL_PRESSURE"
-          ]
-        },
-        "exitability": {
-          "score": 45,
-          "status": "EXITABILITY_PROXY_OK",
-          "reasons": [
-            "MINIMUM_SURVIVAL_LIQUIDITY",
-            "LIQUIDITY_STABLE"
-          ],
-          "simulated_slippage": "INSUFFICIENT_COVERAGE",
-          "note": "Proxy only; no order-book/route slippage simulation source connected."
-        },
-        "volume_authenticity": {
-          "status": "AGGREGATE_ONLY_REVIEW",
-          "score": 60,
-          "reasons": [
-            "DIRECTIONAL_IMBALANCE_PRESENT"
-          ],
-          "coverage": "INSUFFICIENT_FOR_WASH_TRADING_PROOF",
-          "warning": "Cannot certify organic volume without transaction-level wallet graph and repeated-size analysis."
-        },
-        "whale_cluster_quality": {
-          "status": "INSUFFICIENT_COVERAGE",
-          "whale_intent": "INSUFFICIENT_COVERAGE",
-          "independent_buyer_clusters": "INSUFFICIENT_COVERAGE",
-          "holder_delta": null,
-          "organic_acceleration_score": 0.0,
-          "kol_independent_groups": null,
-          "note": "No timestamp-safe wallet-flow/cluster source is connected to this hourly survivor feed."
-        },
-        "catalyst_quality": {
-          "score": 0,
-          "status": "INSUFFICIENT_COVERAGE",
-          "reasons": [],
-          "warning": "Listing credibility remains ungraded unless source-level provenance is available."
-        },
-        "net_opportunity": {
-          "score": 0,
-          "stage": "LOW_PRIORITY",
-          "positive_component": 10.8,
-          "anti_dna_penalty": 13.8
-        },
-        "pre_wave_probability": {
-          "status": "INSUFFICIENT_SAMPLE",
-          "probability": null
-        },
-        "time_to_wave": {
-          "status": "INSUFFICIENT_SAMPLE",
-          "bucket": null
-        }
-      }
-    },
-    {
-      "chain": "solana",
-      "token": "CTPoyCwkjMvoJwU4xvZZqoD8tiYk6yDchySiN5gGpump",
-      "pair_address": "3dcwhqJp6JBTJPq8ga335HWgSQVS7uQmdmeX7iGjMNpj",
-      "net_opportunity_score": 17,
-      "net_opportunity_stage": "LOW_PRIORITY",
-      "intelligence_v3": {
-        "buy_quality": {
-          "score": 0,
-          "status": "PARTIAL_COUNT_BASED_ONLY",
-          "reasons": [
-            "SELL_COUNT_PRESSURE",
+            "MILD_BUY_COUNT_PRESSURE",
             "MEANINGFUL_TX_SAMPLE"
           ],
           "coverage": {
@@ -645,22 +651,17 @@
         },
         "relative_anomaly": {
           "status": "NORMAL_RANGE",
-          "score": 45,
+          "score": 0,
           "history_n": 5,
-          "turnover_vs_median": 1.553,
-          "volume_vs_median": 1.523,
-          "buy_ratio_vs_median": 0.866,
-          "reasons": [
-            "TURNOVER_1_5X_BASELINE",
-            "VOLUME_1_5X_BASELINE"
-          ]
+          "turnover_vs_median": 0.477,
+          "volume_vs_median": 0.492,
+          "buy_ratio_vs_median": 0.945,
+          "reasons": []
         },
         "failure_anti_dna": {
-          "score": 25,
+          "score": 0,
           "status": "FAILURE_DNA_LOW",
-          "reasons": [
-            "SELL_PRESSURE"
-          ]
+          "reasons": []
         },
         "exitability": {
           "score": 75,
@@ -697,10 +698,10 @@
           "warning": "Listing credibility remains ungraded unless source-level provenance is available."
         },
         "net_opportunity": {
-          "score": 17,
+          "score": 20,
           "stage": "LOW_PRIORITY",
-          "positive_component": 30.6,
-          "anti_dna_penalty": 13.8
+          "positive_component": 19.8,
+          "anti_dna_penalty": 0.0
         },
         "pre_wave_probability": {
           "status": "INSUFFICIENT_SAMPLE",
@@ -716,13 +717,15 @@
       "chain": "solana",
       "token": "HsprHxBRgiVaQdRf3TnKNuZZtaX9JUSPgMFdAkk6pump",
       "pair_address": "5E3dXLXGwmTDCokA51WYYaKttjFZBwqCoyUHBUi5gt2m",
-      "net_opportunity_score": 40,
+      "net_opportunity_score": 45,
       "net_opportunity_stage": "WATCH",
       "intelligence_v3": {
         "buy_quality": {
-          "score": 0,
+          "score": 15,
           "status": "PARTIAL_COUNT_BASED_ONLY",
-          "reasons": [],
+          "reasons": [
+            "MILD_BUY_COUNT_PRESSURE"
+          ],
           "coverage": {
             "buy_sell_count": "VERIFIED_AGGREGATE",
             "buy_sell_usd": "INSUFFICIENT_COVERAGE",
@@ -735,9 +738,9 @@
           "status": "RELATIVE_ANOMALY",
           "score": 90,
           "history_n": 5,
-          "turnover_vs_median": 6.03,
-          "volume_vs_median": 6.302,
-          "buy_ratio_vs_median": 1.867,
+          "turnover_vs_median": 3.629,
+          "volume_vs_median": 3.717,
+          "buy_ratio_vs_median": 1.8,
           "reasons": [
             "TURNOVER_2X_BASELINE",
             "VOLUME_2X_BASELINE",
@@ -782,9 +785,9 @@
           "warning": "Listing credibility remains ungraded unless source-level provenance is available."
         },
         "net_opportunity": {
-          "score": 40,
+          "score": 45,
           "stage": "WATCH",
-          "positive_component": 40.2,
+          "positive_component": 45.1,
           "anti_dna_penalty": 0.0
         },
         "pre_wave_probability": {
@@ -801,14 +804,14 @@
       "chain": "bsc",
       "token": "0xeccbb861c0dda7efd964010085488b69317e4444",
       "pair_address": "0x22af7297243c4eEF12E2D5A4f888b92E56BF127C",
-      "net_opportunity_score": 17,
+      "net_opportunity_score": 32,
       "net_opportunity_stage": "LOW_PRIORITY",
       "intelligence_v3": {
         "buy_quality": {
-          "score": 0,
+          "score": 30,
           "status": "PARTIAL_COUNT_BASED_ONLY",
           "reasons": [
-            "SELL_COUNT_PRESSURE",
+            "MILD_BUY_COUNT_PRESSURE",
             "MEANINGFUL_TX_SAMPLE"
           ],
           "coverage": {
@@ -821,22 +824,19 @@
         },
         "relative_anomaly": {
           "status": "NORMAL_RANGE",
-          "score": 45,
+          "score": 20,
           "history_n": 5,
-          "turnover_vs_median": 1.782,
-          "volume_vs_median": 1.756,
-          "buy_ratio_vs_median": 0.849,
+          "turnover_vs_median": 1.314,
+          "volume_vs_median": 1.302,
+          "buy_ratio_vs_median": 1.512,
           "reasons": [
-            "TURNOVER_1_5X_BASELINE",
-            "VOLUME_1_5X_BASELINE"
+            "BUY_PRESSURE_ABOVE_BASELINE"
           ]
         },
         "failure_anti_dna": {
-          "score": 25,
+          "score": 0,
           "status": "FAILURE_DNA_LOW",
-          "reasons": [
-            "SELL_PRESSURE"
-          ]
+          "reasons": []
         },
         "exitability": {
           "score": 75,
@@ -850,10 +850,9 @@
         },
         "volume_authenticity": {
           "status": "AGGREGATE_ONLY_REVIEW",
-          "score": 70,
+          "score": 60,
           "reasons": [
-            "BROAD_TX_COUNT",
-            "DIRECTIONAL_IMBALANCE_PRESENT"
+            "BROAD_TX_COUNT"
           ],
           "coverage": "INSUFFICIENT_FOR_WASH_TRADING_PROOF",
           "warning": "Cannot certify organic volume without transaction-level wallet graph and repeated-size analysis."
@@ -874,10 +873,10 @@
           "warning": "Listing credibility remains ungraded unless source-level provenance is available."
         },
         "net_opportunity": {
-          "score": 17,
+          "score": 32,
           "stage": "LOW_PRIORITY",
-          "positive_component": 31.1,
-          "anti_dna_penalty": 13.8
+          "positive_component": 32.0,
+          "anti_dna_penalty": 0.0
         },
         "pre_wave_probability": {
           "status": "INSUFFICIENT_SAMPLE",
@@ -890,17 +889,105 @@
       }
     },
     {
-      "chain": "solana",
-      "token": "6GmAFSYs4gk3FDao5FzzySQpPZaWsa4rUJHacpMpUNgx",
-      "pair_address": "48M3tRdbVYmEbf5rCTFVAgqCCaZdChVmeg3VPBrmgT8m",
-      "net_opportunity_score": 43,
-      "net_opportunity_stage": "WATCH",
+      "chain": "bsc",
+      "token": "0x5ffd0eadc186af9512542d0d5e5eafc65d5afc5b",
+      "pair_address": "0x1b54cd932B6B751803C996cBeF36280b53795f81",
+      "net_opportunity_score": 30,
+      "net_opportunity_stage": "LOW_PRIORITY",
       "intelligence_v3": {
         "buy_quality": {
           "score": 15,
           "status": "PARTIAL_COUNT_BASED_ONLY",
           "reasons": [
-            "MILD_BUY_COUNT_PRESSURE"
+            "MEANINGFUL_TX_SAMPLE"
+          ],
+          "coverage": {
+            "buy_sell_count": "VERIFIED_AGGREGATE",
+            "buy_sell_usd": "INSUFFICIENT_COVERAGE",
+            "unique_buyers": "INSUFFICIENT_COVERAGE",
+            "median_trade_size": "INSUFFICIENT_COVERAGE"
+          },
+          "warning": "No buy/sell USD or unique-buyer source is currently available; count pressure is not treated as capital flow."
+        },
+        "relative_anomaly": {
+          "status": "NORMAL_RANGE",
+          "score": 45,
+          "history_n": 5,
+          "turnover_vs_median": 1.535,
+          "volume_vs_median": 1.516,
+          "buy_ratio_vs_median": 1.036,
+          "reasons": [
+            "TURNOVER_1_5X_BASELINE",
+            "VOLUME_1_5X_BASELINE"
+          ]
+        },
+        "failure_anti_dna": {
+          "score": 0,
+          "status": "FAILURE_DNA_LOW",
+          "reasons": []
+        },
+        "exitability": {
+          "score": 75,
+          "status": "EXITABILITY_PROXY_STRONG",
+          "reasons": [
+            "DEEP_LIQUIDITY",
+            "LIQUIDITY_STABLE"
+          ],
+          "simulated_slippage": "INSUFFICIENT_COVERAGE",
+          "note": "Proxy only; no order-book/route slippage simulation source connected."
+        },
+        "volume_authenticity": {
+          "status": "AGGREGATE_ONLY_REVIEW",
+          "score": 60,
+          "reasons": [
+            "BROAD_TX_COUNT"
+          ],
+          "coverage": "INSUFFICIENT_FOR_WASH_TRADING_PROOF",
+          "warning": "Cannot certify organic volume without transaction-level wallet graph and repeated-size analysis."
+        },
+        "whale_cluster_quality": {
+          "status": "INSUFFICIENT_COVERAGE",
+          "whale_intent": "INSUFFICIENT_COVERAGE",
+          "independent_buyer_clusters": "INSUFFICIENT_COVERAGE",
+          "holder_delta": null,
+          "organic_acceleration_score": null,
+          "kol_independent_groups": null,
+          "note": "No timestamp-safe wallet-flow/cluster source is connected to this hourly survivor feed."
+        },
+        "catalyst_quality": {
+          "score": 0,
+          "status": "INSUFFICIENT_COVERAGE",
+          "reasons": [],
+          "warning": "Listing credibility remains ungraded unless source-level provenance is available."
+        },
+        "net_opportunity": {
+          "score": 30,
+          "stage": "LOW_PRIORITY",
+          "positive_component": 30.1,
+          "anti_dna_penalty": 0.0
+        },
+        "pre_wave_probability": {
+          "status": "INSUFFICIENT_SAMPLE",
+          "probability": null
+        },
+        "time_to_wave": {
+          "status": "INSUFFICIENT_SAMPLE",
+          "bucket": null
+        }
+      }
+    },
+    {
+      "chain": "bsc",
+      "token": "0xfe189e97832da1573e4e4ff034f4ffc3a15c7777",
+      "pair_address": "0x94F3ed36706c746ad59fAdCAF271b7431AB1D8F1",
+      "net_opportunity_score": 24,
+      "net_opportunity_stage": "LOW_PRIORITY",
+      "intelligence_v3": {
+        "buy_quality": {
+          "score": 0,
+          "status": "PARTIAL_COUNT_BASED_ONLY",
+          "reasons": [
+            "SELL_COUNT_PRESSURE"
           ],
           "coverage": {
             "buy_sell_count": "VERIFIED_AGGREGATE",
@@ -914,25 +1001,27 @@
           "status": "RELATIVE_ANOMALY",
           "score": 70,
           "history_n": 5,
-          "turnover_vs_median": 2.66,
-          "volume_vs_median": 2.559,
-          "buy_ratio_vs_median": 0.725,
+          "turnover_vs_median": 6.316,
+          "volume_vs_median": 6.183,
+          "buy_ratio_vs_median": 0.5,
           "reasons": [
             "TURNOVER_2X_BASELINE",
             "VOLUME_2X_BASELINE"
           ]
         },
         "failure_anti_dna": {
-          "score": 0,
+          "score": 25,
           "status": "FAILURE_DNA_LOW",
-          "reasons": []
+          "reasons": [
+            "SELL_PRESSURE"
+          ]
         },
         "exitability": {
-          "score": 65,
-          "status": "EXITABILITY_PROXY_OK",
+          "score": 75,
+          "status": "EXITABILITY_PROXY_STRONG",
           "reasons": [
             "DEEP_LIQUIDITY",
-            "ACTIVE_BUT_NOT_EXTREME_TURNOVER"
+            "LIQUIDITY_STABLE"
           ],
           "simulated_slippage": "INSUFFICIENT_COVERAGE",
           "note": "Proxy only; no order-book/route slippage simulation source connected."
@@ -960,102 +1049,9 @@
           "warning": "Listing credibility remains ungraded unless source-level provenance is available."
         },
         "net_opportunity": {
-          "score": 43,
-          "stage": "WATCH",
-          "positive_component": 43.0,
-          "anti_dna_penalty": 0.0
-        },
-        "pre_wave_probability": {
-          "status": "INSUFFICIENT_SAMPLE",
-          "probability": null
-        },
-        "time_to_wave": {
-          "status": "INSUFFICIENT_SAMPLE",
-          "bucket": null
-        }
-      }
-    },
-    {
-      "chain": "bsc",
-      "token": "0x5ffd0eadc186af9512542d0d5e5eafc65d5afc5b",
-      "pair_address": "0x1b54cd932B6B751803C996cBeF36280b53795f81",
-      "net_opportunity_score": 21,
-      "net_opportunity_stage": "LOW_PRIORITY",
-      "intelligence_v3": {
-        "buy_quality": {
-          "score": 0,
-          "status": "PARTIAL_COUNT_BASED_ONLY",
-          "reasons": [
-            "SELL_COUNT_PRESSURE",
-            "MEANINGFUL_TX_SAMPLE"
-          ],
-          "coverage": {
-            "buy_sell_count": "VERIFIED_AGGREGATE",
-            "buy_sell_usd": "INSUFFICIENT_COVERAGE",
-            "unique_buyers": "INSUFFICIENT_COVERAGE",
-            "median_trade_size": "INSUFFICIENT_COVERAGE"
-          },
-          "warning": "No buy/sell USD or unique-buyer source is currently available; count pressure is not treated as capital flow."
-        },
-        "relative_anomaly": {
-          "status": "RELATIVE_ANOMALY",
-          "score": 70,
-          "history_n": 5,
-          "turnover_vs_median": 2.454,
-          "volume_vs_median": 2.44,
-          "buy_ratio_vs_median": 0.848,
-          "reasons": [
-            "TURNOVER_2X_BASELINE",
-            "VOLUME_2X_BASELINE"
-          ]
-        },
-        "failure_anti_dna": {
-          "score": 25,
-          "status": "FAILURE_DNA_LOW",
-          "reasons": [
-            "SELL_PRESSURE"
-          ]
-        },
-        "exitability": {
-          "score": 90,
-          "status": "EXITABILITY_PROXY_STRONG",
-          "reasons": [
-            "DEEP_LIQUIDITY",
-            "LIQUIDITY_STABLE",
-            "ACTIVE_BUT_NOT_EXTREME_TURNOVER"
-          ],
-          "simulated_slippage": "INSUFFICIENT_COVERAGE",
-          "note": "Proxy only; no order-book/route slippage simulation source connected."
-        },
-        "volume_authenticity": {
-          "status": "AGGREGATE_ONLY_REVIEW",
-          "score": 70,
-          "reasons": [
-            "BROAD_TX_COUNT",
-            "DIRECTIONAL_IMBALANCE_PRESENT"
-          ],
-          "coverage": "INSUFFICIENT_FOR_WASH_TRADING_PROOF",
-          "warning": "Cannot certify organic volume without transaction-level wallet graph and repeated-size analysis."
-        },
-        "whale_cluster_quality": {
-          "status": "INSUFFICIENT_COVERAGE",
-          "whale_intent": "INSUFFICIENT_COVERAGE",
-          "independent_buyer_clusters": "INSUFFICIENT_COVERAGE",
-          "holder_delta": null,
-          "organic_acceleration_score": null,
-          "kol_independent_groups": null,
-          "note": "No timestamp-safe wallet-flow/cluster source is connected to this hourly survivor feed."
-        },
-        "catalyst_quality": {
-          "score": 0,
-          "status": "INSUFFICIENT_COVERAGE",
-          "reasons": [],
-          "warning": "Listing credibility remains ungraded unless source-level provenance is available."
-        },
-        "net_opportunity": {
-          "score": 21,
+          "score": 24,
           "stage": "LOW_PRIORITY",
-          "positive_component": 35.0,
+          "positive_component": 37.3,
           "anti_dna_penalty": 13.8
         },
         "pre_wave_probability": {
@@ -1093,8 +1089,8 @@
           "status": "NORMAL_RANGE",
           "score": 0,
           "history_n": 5,
-          "turnover_vs_median": 0.376,
-          "volume_vs_median": 0.373,
+          "turnover_vs_median": 0.138,
+          "volume_vs_median": 0.138,
           "buy_ratio_vs_median": 0.0,
           "reasons": []
         },
