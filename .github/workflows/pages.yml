@@ -38,10 +38,8 @@ permissions:
   pages: write
   id-token: write
 
-# Serialize the deploy *and* public verification as one critical section.
-# GitHub keeps at most one pending run for a concurrency group, so this avoids
-# stale deployment backlogs while preventing a newer Pages run from replacing
-# the public build underneath an older run's exact-SHA/hash verification.
+# Deploy and public verification are one serialized critical section. A newer
+# Pages run must not replace the site while the active run verifies exact bytes.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -98,9 +96,6 @@ jobs:
               s=re.sub(r'<style id="w500-rubric-style">.*?</style>', '', s, flags=re.S|re.I)
               s=re.sub(r'<nav id="w500-experiment-rubric"[^>]*>.*?</nav>', '', s, flags=re.S|re.I)
               if page.as_posix() in {'_site/index.html', '_site/live/index.html'}:
-                  # The public dashboard must read the data bundle deployed with the
-                  # same Pages build, never a moving raw/main target. This prevents
-                  # cross-generation reads while main changes during a browser load.
                   if raw_root not in s:
                       raise SystemExit(f'DASHBOARD_RAW_ROOT_MARKER_MISSING {page}')
                   s=s.replace(raw_root,deployed_root,1)
@@ -112,14 +107,20 @@ jobs:
                   else:
                       s=live_nav+'\n'+s
                   if moonshot_tag not in s:
-                      if re.search(r'</body\s*>', s, flags=re.I): s=re.sub(r'</body\s*>', moonshot_tag+'\n</body>', s, count=1, flags=re.I)
-                      else: s=s+'\n'+moonshot_tag
+                      if re.search(r'</body\s*>', s, flags=re.I):
+                          s=re.sub(r'</body\s*>', moonshot_tag+'\n</body>', s, count=1, flags=re.I)
+                      else:
+                          s=s+'\n'+moonshot_tag
                   if watchdog_tag not in s:
-                      if re.search(r'</head\s*>', s, flags=re.I): s=re.sub(r'</head\s*>', watchdog_tag+'\n</head>', s, count=1, flags=re.I)
-                      else: s=watchdog_tag+'\n'+s
+                      if re.search(r'</head\s*>', s, flags=re.I):
+                          s=re.sub(r'</head\s*>', watchdog_tag+'\n</head>', s, count=1, flags=re.I)
+                      else:
+                          s=watchdog_tag+'\n'+s
               if auth_tag not in s:
-                  if re.search(r'</head\s*>', s, flags=re.I): s=re.sub(r'</head\s*>', auth_tag+'\n</head>', s, count=1, flags=re.I)
-                  else: s=auth_tag+'\n'+s
+                  if re.search(r'</head\s*>', s, flags=re.I):
+                      s=re.sub(r'</head\s*>', auth_tag+'\n</head>', s, count=1, flags=re.I)
+                  else:
+                      s=auth_tag+'\n'+s
               page.write_text(s,encoding='utf-8')
           PY
 
@@ -203,27 +204,59 @@ jobs:
           local_real_sha="$(sha256sum _site/data/real-alerts.json | awk '{print $1}')"
           local_gen_sha="$(sha256sum _site/data/decision-generation.json | awk '{print $1}')"
           local_guard_sha="$(sha256sum _site/data/decision-snapshot-integrity.json | awk '{print $1}')"
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
           ok=0
           for attempt in $(seq 1 30); do
-            build="$(curl -fsSL --max-time 20 "${BASE}build.txt?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            root="$(curl -fsSL --max-time 20 "${BASE}?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            status="$(curl -fsSL --max-time 20 "${BASE}status/?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            social="$(curl -fsSL --max-time 20 "${BASE}social/?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            catalyst="$(curl -fsSL --max-time 20 "${BASE}catalyst/?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            research="$(curl -fsSL --max-time 20 "${BASE}research/?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            auth="$(curl -fsSL --max-time 20 "${BASE}wallet500-auth.js?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            moonshot="$(curl -fsSL --max-time 20 "${BASE}dashboard-moonshot-overlay.js?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            feed="$(curl -fsSL --max-time 20 "${BASE}data/real-alerts.json?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            generation="$(curl -fsSL --max-time 20 "${BASE}data/decision-generation.json?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            guard="$(curl -fsSL --max-time 20 "${BASE}data/decision-snapshot-integrity.json?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            cfeed="$(curl -fsSL --max-time 20 "${BASE}data/catalyst-wire-live.json?v=${GITHUB_SHA}" 2>/dev/null || true)"
-            remote_real_sha="$(printf '%s' "$feed" | sha256sum | awk '{print $1}')"
-            remote_gen_sha="$(printf '%s' "$generation" | sha256sum | awk '{print $1}')"
-            remote_guard_sha="$(printf '%s' "$guard" | sha256sum | awk '{print $1}')"
-            if [ "$build" = "$GITHUB_SHA" ] && grep -Fq 'WALLET500 · INTELLIGENCE COMMAND CENTER' <<<"$root" && grep -Fq "ROOT='/Wallet500/data/'" <<<"$root" && ! grep -Fq "ROOT='https://raw.githubusercontent.com/bitcoinforu2-ui/Wallet500/main/data/'" <<<"$root" && grep -Fq 'WALLET500 WATCHDOG MARKER: LIVE RADAR' <<<"$root" && grep -Fq '/Wallet500/catalyst/' <<<"$root" && grep -Fq '/Wallet500/research/' <<<"$root" && grep -Fq 'dashboard-moonshot-overlay.js' <<<"$root" && grep -Fq 'MOONSHOT FUTURE LISTING' <<<"$moonshot" && grep -Fq 'WALLET500 · DECISION RADAR' <<<"$status" && grep -Fq 'google.accounts.id.initialize' <<<"$auth" && grep -Fq 'SOCIAL INTELLIGENCE V2' <<<"$social" && grep -Fq 'WALLET500 · CATALYST FOCUS' <<<"$catalyst" && grep -Fq 'WALLET500 — LEARNING LAB' <<<"$research" && python -c 'import json,sys; json.load(sys.stdin)' <<<"$feed" >/dev/null 2>&1 && python -c 'import json,sys; json.load(sys.stdin)' <<<"$generation" >/dev/null 2>&1 && python -c 'import json,sys; json.load(sys.stdin)' <<<"$guard" >/dev/null 2>&1 && python -c 'import json,sys; json.load(sys.stdin)' <<<"$cfeed" >/dev/null 2>&1 && [ "$remote_real_sha" = "$local_real_sha" ] && [ "$remote_gen_sha" = "$local_gen_sha" ] && [ "$remote_guard_sha" = "$local_guard_sha" ]; then ok=1; break; fi
+            rm -f "$tmp"/*
+            fetch(){ curl -fsSL --max-time 20 "$1" -o "$2" 2>/dev/null; }
+            if ! fetch "${BASE}build.txt?v=${GITHUB_SHA}" "$tmp/build.txt" || \
+               ! fetch "${BASE}?v=${GITHUB_SHA}" "$tmp/root.html" || \
+               ! fetch "${BASE}status/?v=${GITHUB_SHA}" "$tmp/status.html" || \
+               ! fetch "${BASE}social/?v=${GITHUB_SHA}" "$tmp/social.html" || \
+               ! fetch "${BASE}catalyst/?v=${GITHUB_SHA}" "$tmp/catalyst.html" || \
+               ! fetch "${BASE}research/?v=${GITHUB_SHA}" "$tmp/research.html" || \
+               ! fetch "${BASE}wallet500-auth.js?v=${GITHUB_SHA}" "$tmp/auth.js" || \
+               ! fetch "${BASE}dashboard-moonshot-overlay.js?v=${GITHUB_SHA}" "$tmp/moonshot.js" || \
+               ! fetch "${BASE}data/real-alerts.json?v=${GITHUB_SHA}" "$tmp/real-alerts.json" || \
+               ! fetch "${BASE}data/decision-generation.json?v=${GITHUB_SHA}" "$tmp/decision-generation.json" || \
+               ! fetch "${BASE}data/decision-snapshot-integrity.json?v=${GITHUB_SHA}" "$tmp/decision-snapshot-integrity.json" || \
+               ! fetch "${BASE}data/catalyst-wire-live.json?v=${GITHUB_SHA}" "$tmp/catalyst-wire-live.json"; then
+              sleep 10
+              continue
+            fi
+
+            build="$(tr -d '\r\n' < "$tmp/build.txt")"
+            remote_real_sha="$(sha256sum "$tmp/real-alerts.json" | awk '{print $1}')"
+            remote_gen_sha="$(sha256sum "$tmp/decision-generation.json" | awk '{print $1}')"
+            remote_guard_sha="$(sha256sum "$tmp/decision-snapshot-integrity.json" | awk '{print $1}')"
+
+            if [ "$build" = "$GITHUB_SHA" ] && \
+               grep -Fq 'WALLET500 · INTELLIGENCE COMMAND CENTER' "$tmp/root.html" && \
+               grep -Fq "ROOT='/Wallet500/data/'" "$tmp/root.html" && \
+               ! grep -Fq "ROOT='https://raw.githubusercontent.com/bitcoinforu2-ui/Wallet500/main/data/'" "$tmp/root.html" && \
+               grep -Fq 'WALLET500 WATCHDOG MARKER: LIVE RADAR' "$tmp/root.html" && \
+               grep -Fq '/Wallet500/catalyst/' "$tmp/root.html" && \
+               grep -Fq '/Wallet500/research/' "$tmp/root.html" && \
+               grep -Fq 'dashboard-moonshot-overlay.js' "$tmp/root.html" && \
+               grep -Fq 'MOONSHOT FUTURE LISTING' "$tmp/moonshot.js" && \
+               grep -Fq 'WALLET500 · DECISION RADAR' "$tmp/status.html" && \
+               grep -Fq 'google.accounts.id.initialize' "$tmp/auth.js" && \
+               grep -Fq 'SOCIAL INTELLIGENCE V2' "$tmp/social.html" && \
+               grep -Fq 'WALLET500 · CATALYST FOCUS' "$tmp/catalyst.html" && \
+               grep -Fq 'WALLET500 — LEARNING LAB' "$tmp/research.html" && \
+               python -m json.tool "$tmp/real-alerts.json" >/dev/null 2>&1 && \
+               python -m json.tool "$tmp/decision-generation.json" >/dev/null 2>&1 && \
+               python -m json.tool "$tmp/decision-snapshot-integrity.json" >/dev/null 2>&1 && \
+               python -m json.tool "$tmp/catalyst-wire-live.json" >/dev/null 2>&1 && \
+               [ "$remote_real_sha" = "$local_real_sha" ] && \
+               [ "$remote_gen_sha" = "$local_gen_sha" ] && \
+               [ "$remote_guard_sha" = "$local_guard_sha" ]; then
+              ok=1
+              break
+            fi
+            echo "verify attempt=$attempt build=$build real=$remote_real_sha/$local_real_sha generation=$remote_gen_sha/$local_gen_sha guard=$remote_guard_sha/$local_guard_sha"
             sleep 10
           done
           [ "$ok" -eq 1 ] || { echo 'Public Wallet500 verification failed'; exit 1; }
           echo "PUBLIC_VERIFY_OK ${BASE} build=${GITHUB_SHA} real=${local_real_sha} generation=${local_gen_sha} guard=${local_guard_sha}"
-
-# Manual redeploy trigger: 2026-09-10T20:39+03:00
