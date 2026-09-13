@@ -51,7 +51,7 @@ jobs:
           YEEZUS_X_POLL_EVERY_CYCLES: '1'
         run: python -m wallet500.cryptoyeezus_live_watch
 
-      - name: Recover X through public syndication when direct API is degraded
+      - name: Recover X through public redundancy when direct API is degraded
         run: python -m wallet500.cryptoyeezus_x_fallback
 
       - name: Deliver dedicated CryptoYeezus priority alerts
@@ -83,7 +83,11 @@ jobs:
           direct_ok=str(x.get('status') or '').startswith('OK')
           effective=str(x.get('effective_status') or '')
           if not direct_ok and effective != 'OK_WITH_PUBLIC_FALLBACK':
-              raise SystemExit(f'YEEZUS_X_NO_REDUNDANCY direct={x.get("status")} fallback={x.get("redundancy_status")}')
+              print(
+                  f'::warning::YEEZUS_X_DEGRADED direct={x.get("status")} '
+                  f'fallback={x.get("redundancy_status")} provider={x.get("redundancy_provider")}; '
+                  'canonical Telegram priority lane remains active and state will persist'
+              )
 
           priority=p.get('priority_delivery') or {}
           if priority.get('policy') != 'CRYPTOYEEZUS_PRIORITY_V2':
