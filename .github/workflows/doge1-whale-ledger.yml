@@ -58,7 +58,7 @@ jobs:
                   for attempt in range(1,4):
                       try:
                           b=json.dumps({'jsonrpc':'2.0','id':1,'method':method,'params':params}).encode()
-                          q=urllib.request.Request(rpc,data=b,headers={'content-type':'application/json','user-agent':'wallet500-doge1-ledger/4'},method='POST')
+                          q=urllib.request.Request(rpc,data=b,headers={'content-type':'application/json','user-agent':'wallet500-doge1-ledger/5'},method='POST')
                           with urllib.request.urlopen(q,timeout=45) as r:
                               o=json.load(r)
                           if o.get('error'):
@@ -75,28 +75,32 @@ jobs:
           supply=int(sv.get('amount') or 0); decimals=int(sv.get('decimals') or 0)
           if supply<=0: raise SystemExit('Fail closed: invalid supply')
           accts=call('getProgramAccounts',['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',{'commitment':'confirmed','encoding':'jsonParsed','filters':[{'dataSize':165},{'memcmp':{'offset':0,'bytes':mint}}]}]) or []
-          holder_count=0
+          token_accounts=[]
           for a in accts:
               try:
-                  amt=int(a['account']['data']['parsed']['info']['tokenAmount']['amount'])
-                  if amt>0: holder_count+=1
+                  raw=int(a['account']['data']['parsed']['info']['tokenAmount']['amount'])
+                  if raw>0:
+                      token_accounts.append({'token_account':a.get('pubkey'),'raw_balance':raw})
               except Exception:
                   pass
+          holder_count=len(token_accounts)
           if holder_count<=0: raise SystemExit('Fail closed: holder count unavailable')
-          largest=(call('getTokenLargestAccounts',[mint,{'commitment':'confirmed'}]) or {}).get('value') or []
-          threshold=supply*0.001; whales=[]
-          for a in largest:
-              raw=int(a.get('amount') or 0)
+          # Derive whale balances from the same verified complete token-account scan.
+          # This avoids a second rate-limited getTokenLargestAccounts dependency and
+          # keeps holder/whale truth on one coherent on-chain snapshot.
+          threshold=supply*0.001
+          whales=[]
+          for a in sorted(token_accounts,key=lambda x:x['raw_balance'],reverse=True)[:20]:
+              raw=int(a['raw_balance'])
               if raw>=threshold:
-                  whales.append({'token_account':a.get('address'),'raw_balance':str(raw),'balance':raw/(10**decimals),'supply_pct':round(raw/supply*100,6)})
-          whales.sort(key=lambda x:int(x['raw_balance']),reverse=True)
+                  whales.append({'token_account':a.get('token_account'),'raw_balance':str(raw),'balance':raw/(10**decimals),'supply_pct':round(raw/supply*100,6)})
           now=datetime.now(timezone.utc).isoformat(); hist=Path('data/doge1-whale-ledger.json')
-          ledger={'version':4,'mint':mint,'threshold_supply_pct':0.1,'snapshots':[]}
+          ledger={'version':5,'mint':mint,'threshold_supply_pct':0.1,'snapshots':[]}
           if hist.exists():
               try: ledger=json.loads(hist.read_text())
               except Exception: pass
           snaps=ledger.get('snapshots') if isinstance(ledger.get('snapshots'),list) else []
-          current={'observed_at':now,'mint':mint,'holders':holder_count,'supply_raw':str(supply),'decimals':decimals,'threshold_supply_pct':0.1,'whales':whales,'coverage':'SOLANA_RPC_CONFIRMED_ONCHAIN','rpc_source':rpc_source_used,'rpc_policy':'SECRET_PREFERRED_MULTI_PUBLIC_FAILOVER_FAIL_CLOSED'}
+          current={'observed_at':now,'mint':mint,'holders':holder_count,'supply_raw':str(supply),'decimals':decimals,'threshold_supply_pct':0.1,'whales':whales,'coverage':'SOLANA_RPC_CONFIRMED_ONCHAIN','whale_method':'DERIVED_FROM_COMPLETE_POSITIVE_TOKEN_ACCOUNT_SCAN','rpc_source':rpc_source_used,'rpc_policy':'SECRET_PREFERRED_MULTI_PUBLIC_FAILOVER_FAIL_CLOSED'}
           from datetime import datetime as DT
           def dt(s):
               try:return DT.fromisoformat(s.replace('Z','+00:00'))
@@ -118,7 +122,7 @@ jobs:
                   if d: flows.append({'token_account':acct,'delta_tokens':d/(10**decimals),'delta_supply_pct':round(d/supply*100,6),'direction':'BUY_OR_INFLOW' if d>0 else 'SELL_OR_OUTFLOW'})
           current['flows_vs_previous_hour']=sorted(flows,key=lambda x:abs(x['delta_supply_pct']),reverse=True)
           snaps.append(current); snaps=snaps[-168:]
-          ledger.update({'version':4,'updated_at':now,'rpc_policy':'SECRET_PREFERRED_MULTI_PUBLIC_FAILOVER_FAIL_CLOSED','snapshots':snaps})
+          ledger.update({'version':5,'updated_at':now,'rpc_policy':'SECRET_PREFERRED_MULTI_PUBLIC_FAILOVER_FAIL_CLOSED','whale_method':'DERIVED_FROM_COMPLETE_POSITIVE_TOKEN_ACCOUNT_SCAN','snapshots':snaps})
           Path('data').mkdir(exist_ok=True)
           hist.write_text(json.dumps(ledger,ensure_ascii=False,indent=2)+'\n')
           Path('data/doge1-whale-current.json').write_text(json.dumps(current,ensure_ascii=False,indent=2)+'\n')
@@ -132,6 +136,7 @@ jobs:
           assert c['mint']=='DpBzjtgGLF7QA9Ug3eUVGbnqa6j3jvYBn1XuQuktvfhm'
           assert int(c['holders'])>0 and int(c['supply_raw'])>0
           assert c['coverage']=='SOLANA_RPC_CONFIRMED_ONCHAIN'
+          assert c['whale_method']=='DERIVED_FROM_COMPLETE_POSITIVE_TOKEN_ACCOUNT_SCAN'
           assert c['rpc_source'] in {'SECRET_RPC','SOLANA_MAINNET_PUBLIC','SOLANA_MAINNET_BETA_PUBLIC','PUBLICNODE_FALLBACK'}
           PY
       - name: Publish ledger safely
