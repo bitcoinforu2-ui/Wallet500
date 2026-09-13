@@ -31,9 +31,14 @@ on:
 permissions:
   contents: read
 
+# workflow_run can be emitted by four upstream workflows. Keep one validation
+# lane per upstream source and let a newer event supersede stale validation
+# work from the same source. This workflow is validation-only and never owns
+# the canonical decision snapshot, so cancelling stale validation does not
+# discard production state or weaken any truth gate.
 concurrency:
-  group: wallet500-revival-funnel-diagnostics-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  group: wallet500-revival-funnel-diagnostics-${{ github.event.workflow_run.name || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   diagnose:
