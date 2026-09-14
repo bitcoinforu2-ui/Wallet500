@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 CRITICAL_TESTS = (
     "tests/test_accuracy_contracts.py",
+    "tests/test_social_precursor.py",
     "tests/test_price_identity_contract.py",
     "tests/test_signal_alert_guard.py",
     "tests/test_safe_json.py",
@@ -75,7 +76,7 @@ def main() -> int:
         ],
     )
     _run(
-        "Critical truth/alert/replay/provider/accuracy contracts",
+        "Critical truth/alert/replay/provider/accuracy/social contracts",
         [sys.executable, "-m", "pytest", "-q", *CRITICAL_TESTS],
     )
 
