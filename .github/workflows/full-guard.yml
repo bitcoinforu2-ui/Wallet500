@@ -1,0 +1,60 @@
+name: Wallet500 Full Guard
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-guard-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: '1'
+
+jobs:
+  full-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install guard runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest ruff
+
+      - name: Run Wallet500 Full Guard
+        run: python scripts/full_guard.py
+
+      - name: Publish guard contract summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '# Wallet500 Full Guard'
+            echo
+            echo 'Fail-closed checks:'
+            echo '- Python syntax/import compilation'
+            echo '- Fatal static defects (E9/F63/F7/F82)'
+            echo '- Discovery-price / price-identity contract'
+            echo '- Alert gating and data-degraded fail-closed behavior'
+            echo '- Safe JSON handling'
+            echo '- Decision snapshot and replay integrity'
+            echo '- Timestamp / no-future-data truth'
+            echo '- Provider redundancy and fallback behavior'
+            echo '- Production risk and system-integrity contracts'
+            echo
+            echo 'This guard does not change trading thresholds or auto-promote research candidates.'
+          } >> "$GITHUB_STEP_SUMMARY"
