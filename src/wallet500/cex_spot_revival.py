@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import gzip
 import json
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-UA = {"User-Agent": "Wallet500/1.6", "Accept": "application/json"}
+UA = {"User-Agent": "Wallet500/1.7", "Accept": "application/json"}
 WATCH_SCORE = 25
 ALERT_SCORE = 35
 LEVERAGED_SUFFIXES = ("2L", "2S", "3L", "3S", "4L", "4S", "5L", "5S", "BULL", "BEAR", "UP", "DOWN")
+REGIONAL_EXCHANGES = {"upbit"}
 
 
 def _get(url: str, timeout: int = 12):
@@ -36,6 +38,17 @@ def _pct(cur, prev):
         return 0.0
 
 
+def _multiple(cur, prev):
+    try:
+        cur = float(cur)
+        prev = float(prev)
+        if prev <= 0:
+            return 0.0
+        return cur / prev
+    except Exception:
+        return 0.0
+
+
 def _norm_symbol(symbol: str) -> str:
     return (symbol or "").upper().strip().replace("-", "").replace("_", "").replace("/", "")
 
@@ -50,7 +63,18 @@ def _is_leveraged_product(symbol: str) -> bool:
     return any(base.endswith(suffix) and len(base) > len(suffix) for suffix in LEVERAGED_SUFFIXES)
 
 
-def _row(exchange: str, symbol: str, price=0, change=0, volume=0, market_id=None):
+def _row(
+    exchange: str,
+    symbol: str,
+    price=0,
+    change=0,
+    volume=0,
+    market_id=None,
+    *,
+    quote_symbol: str = "USDT",
+    volume_comparable: bool = True,
+    regional_market: bool = False,
+):
     return {
         "exchange": exchange,
         "market_type": "spot",
@@ -59,17 +83,42 @@ def _row(exchange: str, symbol: str, price=0, change=0, volume=0, market_id=None
         "price": _f(price),
         "change_24h_pct": _f(change),
         "volume_24h": _f(volume),
+        "quote_symbol": quote_symbol,
+        "volume_comparable_usd_like": bool(volume_comparable),
+        "regional_market": bool(regional_market),
     }
 
 
 def gate_spot():
     rows = _get("https://api.gateio.ws/api/v4/spot/tickers")
-    return [_row("gate", x.get("currency_pair", ""), x.get("last"), x.get("change_percentage"), x.get("quote_volume"), x.get("currency_pair")) for x in rows if str(x.get("currency_pair", "")).endswith("_USDT")]
+    return [
+        _row(
+            "gate",
+            x.get("currency_pair", ""),
+            x.get("last"),
+            x.get("change_percentage"),
+            x.get("quote_volume"),
+            x.get("currency_pair"),
+        )
+        for x in rows
+        if str(x.get("currency_pair", "")).endswith("_USDT")
+    ]
 
 
 def bybit_spot():
     rows = ((_get("https://api.bybit.com/v5/market/tickers?category=spot").get("result") or {}).get("list") or [])
-    return [_row("bybit", x.get("symbol", ""), x.get("lastPrice"), _f(x.get("price24hPcnt")) * 100.0, x.get("turnover24h"), x.get("symbol")) for x in rows if str(x.get("symbol", "")).endswith("USDT")]
+    return [
+        _row(
+            "bybit",
+            x.get("symbol", ""),
+            x.get("lastPrice"),
+            _f(x.get("price24hPcnt")) * 100.0,
+            x.get("turnover24h"),
+            x.get("symbol"),
+        )
+        for x in rows
+        if str(x.get("symbol", "")).endswith("USDT")
+    ]
 
 
 def okx_spot():
@@ -79,7 +128,8 @@ def okx_spot():
         market = str(x.get("instId", ""))
         if not market.endswith("-USDT"):
             continue
-        last = _f(x.get("last")); open24h = _f(x.get("open24h"))
+        last = _f(x.get("last"))
+        open24h = _f(x.get("open24h"))
         change = (last / open24h - 1.0) * 100.0 if last and open24h else 0.0
         out.append(_row("okx", market, last, change, x.get("volCcy24h"), market))
     return out
@@ -87,107 +137,550 @@ def okx_spot():
 
 def mexc_spot():
     rows = _get("https://api.mexc.com/api/v3/ticker/24hr")
-    if isinstance(rows, dict): rows = [rows]
-    return [_row("mexc", x.get("symbol", ""), x.get("lastPrice"), x.get("priceChangePercent"), x.get("quoteVolume"), x.get("symbol")) for x in rows if str(x.get("symbol", "")).endswith("USDT")]
+    if isinstance(rows, dict):
+        rows = [rows]
+    return [
+        _row(
+            "mexc",
+            x.get("symbol", ""),
+            x.get("lastPrice"),
+            x.get("priceChangePercent"),
+            x.get("quoteVolume"),
+            x.get("symbol"),
+        )
+        for x in rows
+        if str(x.get("symbol", "")).endswith("USDT")
+    ]
 
 
 def kucoin_spot():
     rows = ((_get("https://api.kucoin.com/api/v1/market/allTickers").get("data") or {}).get("ticker") or [])
-    return [_row("kucoin", x.get("symbol", ""), x.get("last"), _f(x.get("changeRate")) * 100.0, x.get("volValue"), x.get("symbol")) for x in rows if str(x.get("symbol", "")).endswith("-USDT")]
+    return [
+        _row(
+            "kucoin",
+            x.get("symbol", ""),
+            x.get("last"),
+            _f(x.get("changeRate")) * 100.0,
+            x.get("volValue"),
+            x.get("symbol"),
+        )
+        for x in rows
+        if str(x.get("symbol", "")).endswith("-USDT")
+    ]
 
 
-SPOT_SOURCES = [("gate", gate_spot), ("bybit", bybit_spot), ("okx", okx_spot), ("mexc", mexc_spot), ("kucoin", kucoin_spot)]
+def binance_spot():
+    rows = _get("https://api.binance.com/api/v3/ticker/24hr")
+    if isinstance(rows, dict):
+        rows = [rows]
+    return [
+        _row(
+            "binance",
+            x.get("symbol", ""),
+            x.get("lastPrice"),
+            x.get("priceChangePercent"),
+            x.get("quoteVolume"),
+            x.get("symbol"),
+        )
+        for x in rows
+        if str(x.get("symbol", "")).endswith("USDT")
+    ]
+
+
+def upbit_spot():
+    markets = _get("https://api.upbit.com/v1/market/all?is_details=false")
+    krw_markets = [str(x.get("market", "")) for x in markets if str(x.get("market", "")).startswith("KRW-")]
+    out = []
+    for start in range(0, len(krw_markets), 100):
+        batch = krw_markets[start : start + 100]
+        if not batch:
+            continue
+        query = urllib.parse.urlencode({"markets": ",".join(batch)})
+        rows = _get(f"https://api.upbit.com/v1/ticker?{query}")
+        for x in rows:
+            market = str(x.get("market", ""))
+            if not market.startswith("KRW-"):
+                continue
+            base = market.split("-", 1)[1].upper()
+            # Canonical symbol is base+USDT so regional KRW evidence joins the
+            # same veteran-token research group without pretending the KRW price
+            # or turnover is USD-denominated.
+            out.append(
+                _row(
+                    "upbit",
+                    f"{base}USDT",
+                    x.get("trade_price"),
+                    _f(x.get("signed_change_rate")) * 100.0,
+                    x.get("acc_trade_price_24h"),
+                    market,
+                    quote_symbol="KRW",
+                    volume_comparable=False,
+                    regional_market=True,
+                )
+            )
+    return out
+
+
+SPOT_SOURCES = [
+    ("gate", gate_spot),
+    ("bybit", bybit_spot),
+    ("okx", okx_spot),
+    ("mexc", mexc_spot),
+    ("kucoin", kucoin_spot),
+    ("binance", binance_spot),
+    ("upbit", upbit_spot),
+]
 
 
 def _load_state(path: Path, default):
     gz = Path(str(path) + ".gz")
     try:
         if gz.exists():
-            with gzip.open(gz, "rt", encoding="utf-8") as f: return json.load(f)
-        if path.exists(): return json.loads(path.read_text(encoding="utf-8"))
-    except Exception: return default
+            with gzip.open(gz, "rt", encoding="utf-8") as f:
+                return json.load(f)
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default
     return default
 
 
 def _write_state(path: Path, state: dict) -> None:
-    gz = Path(str(path) + ".gz"); tmp = Path(str(gz) + ".tmp")
-    with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=6) as f: json.dump(state, f, separators=(",", ":"))
+    gz = Path(str(path) + ".gz")
+    tmp = Path(str(gz) + ".tmp")
+    with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=6) as f:
+        json.dump(state, f, separators=(",", ":"))
     tmp.replace(gz)
-    if path.exists(): path.unlink()
+    if path.exists():
+        path.unlink()
+
+
+def _oldest_valid(hist: list[dict], key: str):
+    for item in hist:
+        value = _f(item.get(key))
+        if value > 0:
+            return value
+    return 0.0
 
 
 def _enrich(rows: list[dict], state: dict, now: str):
     histories = state.get("markets") if isinstance(state.get("markets"), dict) else {}
     enriched = []
     for row in rows:
-        key = f"spot:{row['exchange']}:{row['symbol']}"; hist = histories.get(key) if isinstance(histories.get(key), list) else []; prev = hist[-1] if hist else {}
-        enriched.append({**row, "price_delta_pct": round(_pct(row.get("price"), prev.get("price")), 4) if prev else 0.0, "volume24_delta_pct": round(_pct(row.get("volume_24h"), prev.get("volume_24h")), 4) if prev else 0.0, "history_points": len(hist)})
-        hist.append({"observed_at": now, "price": row.get("price"), "change_24h_pct": row.get("change_24h_pct"), "volume_24h": row.get("volume_24h")}); histories[key] = hist[-96:]
-    return enriched, {"version": 1, "updated_at": now, "markets": histories, "signal_milestones": state.get("signal_milestones") if isinstance(state.get("signal_milestones"), dict) else {}}
+        key = f"spot:{row['exchange']}:{row['symbol']}:{row.get('market_id') or row['symbol']}"
+        hist = histories.get(key) if isinstance(histories.get(key), list) else []
+        prev = hist[-1] if hist else {}
+        baseline_price = _oldest_valid(hist, "price")
+        baseline_volume = _oldest_valid(hist, "volume_24h")
+        enriched.append(
+            {
+                **row,
+                "price_delta_pct": round(_pct(row.get("price"), prev.get("price")), 4) if prev else 0.0,
+                "volume24_delta_pct": round(_pct(row.get("volume_24h"), prev.get("volume_24h")), 4) if prev else 0.0,
+                "price_window_pct": round(_pct(row.get("price"), baseline_price), 4) if baseline_price else 0.0,
+                "volume_window_multiple": round(_multiple(row.get("volume_24h"), baseline_volume), 4)
+                if baseline_volume
+                else 0.0,
+                "history_points": len(hist),
+            }
+        )
+        hist.append(
+            {
+                "observed_at": now,
+                "price": row.get("price"),
+                "change_24h_pct": row.get("change_24h_pct"),
+                "volume_24h": row.get("volume_24h"),
+                "quote_symbol": row.get("quote_symbol"),
+            }
+        )
+        histories[key] = hist[-96:]
+    return enriched, {
+        "version": 2,
+        "updated_at": now,
+        "markets": histories,
+        "signal_milestones": state.get("signal_milestones")
+        if isinstance(state.get("signal_milestones"), dict)
+        else {},
+    }
 
 
 def _market_signal(row: dict) -> dict:
-    change = _f(row.get("change_24h_pct")); price_acc = _f(row.get("price_delta_pct")); volume_acc = _f(row.get("volume24_delta_pct")); volume = _f(row.get("volume_24h")); score = 0; hits = []; reasons = []
-    if change >= 8: score += 10; hits.append("MOMENTUM"); reasons.append(f"24h spot momentum {change:.1f}%")
-    if change >= 20: score += 10
-    if change >= 50: score += 5
-    if price_acc >= 2: score += 15; hits.append("PRICE_ACCEL"); reasons.append(f"spot price acceleration {price_acc:.2f}%/scan")
-    if price_acc >= 5: score += 10
-    if volume_acc >= 8: score += 12; hits.append("VOLUME_ACCEL"); reasons.append(f"spot volume acceleration {volume_acc:.1f}%/scan")
-    if volume_acc >= 25: score += 8
-    if volume >= 100_000: score += 3; reasons.append("spot turnover >= $100k")
-    if volume >= 1_000_000: score += 2
-    return {"exchange": row.get("exchange"), "score": score, "hits": hits, "hit_count": len(hits), "reasons": reasons, "change": change, "price_acc": price_acc, "volume_acc": volume_acc}
+    change = _f(row.get("change_24h_pct"))
+    price_acc = _f(row.get("price_delta_pct"))
+    volume_acc = _f(row.get("volume24_delta_pct"))
+    volume = _f(row.get("volume_24h"))
+    price_window = _f(row.get("price_window_pct"))
+    volume_multiple = _f(row.get("volume_window_multiple"))
+    score = 0
+    hits = []
+    reasons = []
+    shadow_hits = []
+    shadow_reasons = []
+
+    if change >= 8:
+        score += 10
+        hits.append("MOMENTUM")
+        reasons.append(f"24h spot momentum {change:.1f}%")
+    if change >= 20:
+        score += 10
+    if change >= 50:
+        score += 5
+    if price_acc >= 2:
+        score += 15
+        hits.append("PRICE_ACCEL")
+        reasons.append(f"spot price acceleration {price_acc:.2f}%/scan")
+    if price_acc >= 5:
+        score += 10
+    if volume_acc >= 8:
+        score += 12
+        hits.append("VOLUME_ACCEL")
+        reasons.append(f"spot volume acceleration {volume_acc:.1f}%/scan")
+    if volume_acc >= 25:
+        score += 8
+
+    # Absolute turnover bonuses are valid only when the quote is USD-like.
+    # KRW regional turnover remains useful for relative acceleration but must
+    # not be compared numerically with USDT turnover.
+    if row.get("volume_comparable_usd_like", True):
+        if volume >= 100_000:
+            score += 3
+            reasons.append("spot turnover >= $100k")
+        if volume >= 1_000_000:
+            score += 2
+
+    # LSK-derived research feature: large turnover expansion while price is
+    # still compressed. Shadow-only: it does not alter the production-facing
+    # research score or coherent confirmation count until validated broadly.
+    if (
+        row.get("history_points", 0) >= 6
+        and volume_multiple >= 3.0
+        and abs(price_window) <= 15.0
+    ):
+        shadow_hits.append("VOLUME_PRICE_ABSORPTION_SHADOW")
+        shadow_reasons.append(
+            f"volume window {volume_multiple:.2f}x while price window {price_window:.2f}%"
+        )
+    elif volume_acc >= 25.0 and abs(change) <= 15.0 and abs(price_acc) < 2.0:
+        shadow_hits.append("VOLUME_PRICE_ABSORPTION_SHADOW")
+        shadow_reasons.append(
+            f"volume acceleration {volume_acc:.1f}% with muted 24h price {change:.1f}%"
+        )
+
+    return {
+        "exchange": row.get("exchange"),
+        "score": score,
+        "hits": hits,
+        "hit_count": len(hits),
+        "reasons": reasons,
+        "shadow_hits": shadow_hits,
+        "shadow_reasons": shadow_reasons,
+        "change": change,
+        "price_acc": price_acc,
+        "volume_acc": volume_acc,
+        "price_window_pct": price_window,
+        "volume_window_multiple": volume_multiple,
+        "regional_market": bool(row.get("regional_market")),
+    }
 
 
 def _snapshot(now: str, markets: list[dict], score: int, coherent_conf: int, kind: str, best: dict) -> dict:
-    ref = max(markets, key=lambda x: (_f(x.get("volume_24h")), _f(x.get("price"))), default={})
-    return {"kind": kind, "observed_at": now, "reference_exchange": ref.get("exchange"), "reference_price": _f(ref.get("price")), "reference_change_24h_pct": _f(ref.get("change_24h_pct")), "score": min(int(score), 100), "confirmations": len({x.get("exchange") for x in markets}), "coherent_confirmations": coherent_conf, "coherent_exchange": best.get("exchange"), "coherent_feature_hits": best.get("hits", []), "price_acceleration_max_pct": round(max((_f(x.get("price_delta_pct")) for x in markets), default=0), 4), "volume_acceleration_max_pct": round(max((_f(x.get("volume24_delta_pct")) for x in markets), default=0), 4), "change_24h_max_pct": round(max((_f(x.get("change_24h_pct")) for x in markets), default=0), 4)}
+    usd_like = [x for x in markets if x.get("volume_comparable_usd_like", True)]
+    ref_pool = usd_like or markets
+    ref = max(ref_pool, key=lambda x: (_f(x.get("volume_24h")), _f(x.get("price"))), default={})
+    return {
+        "kind": kind,
+        "observed_at": now,
+        "reference_exchange": ref.get("exchange"),
+        "reference_price": _f(ref.get("price")),
+        "reference_quote_symbol": ref.get("quote_symbol", "USDT"),
+        "reference_change_24h_pct": _f(ref.get("change_24h_pct")),
+        "score": min(int(score), 100),
+        "confirmations": len({x.get("exchange") for x in markets}),
+        "coherent_confirmations": coherent_conf,
+        "coherent_exchange": best.get("exchange"),
+        "coherent_feature_hits": best.get("hits", []),
+        "price_acceleration_max_pct": round(
+            max((_f(x.get("price_delta_pct")) for x in markets), default=0), 4
+        ),
+        "volume_acceleration_max_pct": round(
+            max((_f(x.get("volume24_delta_pct")) for x in markets), default=0), 4
+        ),
+        "change_24h_max_pct": round(
+            max((_f(x.get("change_24h_pct")) for x in markets), default=0), 4
+        ),
+    }
+
+
+def _regional_lead(local: list[dict]) -> dict:
+    regional = [x for x in local if x.get("exchange") in REGIONAL_EXCHANGES]
+    nonregional = [x for x in local if x.get("exchange") not in REGIONAL_EXCHANGES]
+    regional_real = [x for x in regional if x.get("hit_count", 0) > 0]
+    regional_shadow = [x for x in regional if x.get("shadow_hits")]
+    nonregional_real = [x for x in nonregional if x.get("hit_count", 0) > 0]
+
+    status = "NONE"
+    if regional_real and not nonregional_real:
+        status = "REGIONAL_FIRST"
+    elif regional_shadow and not nonregional_real:
+        status = "REGIONAL_ABSORPTION_FIRST"
+    elif regional_real and nonregional_real:
+        status = "REGIONAL_CONFIRMED"
+
+    return {
+        "status": status,
+        "regional_exchanges": sorted({x.get("exchange") for x in regional_real + regional_shadow if x.get("exchange")}),
+        "regional_hits": sorted(
+            {
+                hit
+                for x in regional
+                for hit in (x.get("hits", []) + x.get("shadow_hits", []))
+            }
+        ),
+        "nonregional_coherent_confirmations": len(
+            {x.get("exchange") for x in nonregional_real if x.get("exchange")}
+        ),
+        "shadow_only": status == "REGIONAL_ABSORPTION_FIRST",
+    }
+
+
+def _coverage(health: dict, markets: list[dict]) -> dict:
+    requested = len(SPOT_SOURCES)
+    healthy = sum(1 for x in health.values() if x.get("ok"))
+    global_ratio = healthy / requested if requested else 0.0
+    candidate_exchanges = len({x.get("exchange") for x in markets if x.get("exchange")})
+    candidate_ratio = candidate_exchanges / healthy if healthy else 0.0
+    if global_ratio >= 0.85:
+        confidence = "HIGH"
+    elif global_ratio >= 0.6:
+        confidence = "MEDIUM"
+    else:
+        confidence = "LOW"
+    return {
+        "requested_sources": requested,
+        "healthy_sources": healthy,
+        "global_source_coverage_ratio": round(global_ratio, 4),
+        "candidate_exchange_breadth_ratio": round(candidate_ratio, 4),
+        "confidence": confidence,
+    }
 
 
 def run_cex_spot_revival(out: Path, now: str) -> dict:
-    out.mkdir(parents=True, exist_ok=True); rows = []; errors = []; health = {}
+    out.mkdir(parents=True, exist_ok=True)
+    rows = []
+    errors = []
+    health = {}
     with ThreadPoolExecutor(max_workers=len(SPOT_SOURCES)) as pool:
         futures = {pool.submit(fn): name for name, fn in SPOT_SOURCES}
         for fut in as_completed(futures):
             name = futures[fut]
             try:
-                got = fut.result(); rows.extend(got); health[name] = {"ok": bool(got), "markets": len(got)}
+                got = fut.result()
+                rows.extend(got)
+                health[name] = {"ok": bool(got), "markets": len(got)}
             except Exception as exc:
-                errors.append({"exchange": name, "error": str(exc)[:300]}); health[name] = {"ok": False, "markets": 0}
+                errors.append({"exchange": name, "error": str(exc)[:300]})
+                health[name] = {"ok": False, "markets": 0}
 
-    state_path = out / "cex-spot-state.json"; rows, state = _enrich(rows, _load_state(state_path, {}), now); milestones = state["signal_milestones"]
-    groups = {}; leveraged_products = set()
+    state_path = out / "cex-spot-state.json"
+    rows, state = _enrich(rows, _load_state(state_path, {}), now)
+    milestones = state["signal_milestones"]
+    groups = {}
+    leveraged_products = set()
     for row in rows:
         symbol = row.get("symbol", "")
-        if not symbol.endswith("USDT"): continue
+        if not symbol.endswith("USDT"):
+            continue
         if _is_leveraged_product(symbol):
-            leveraged_products.add(symbol); continue
+            leveraged_products.add(symbol)
+            continue
         groups.setdefault(symbol, []).append(row)
 
-    watchlist = []; alerts = []
+    watchlist = []
+    alerts = []
     for symbol, markets in groups.items():
-        local = [_market_signal(x) for x in markets]; best = max(local, key=lambda x: (x["score"], x["hit_count"]), default={"score": 0, "hit_count": 0, "reasons": []}); coherent = [x for x in local if x.get("hit_count", 0) > 0]; coherent_conf = len({x.get("exchange") for x in coherent if x.get("exchange")}); score = int(best.get("score", 0)); reasons = list(best.get("reasons") or [])
-        if coherent_conf >= 2: score += 8; reasons.append(f"{coherent_conf} coherent spot exchange confirmation")
-        if coherent_conf >= 4: score += 8
-        score = min(score, 100); ms = milestones.setdefault(symbol, {}); first = _snapshot(now, markets, score, coherent_conf, "FIRST_SEEN", best)
-        if "first_seen" not in ms: ms["first_seen"] = first
-        if best.get("hit_count") and "first_anomaly" not in ms: ms["first_anomaly"] = {**first, "kind": "FIRST_ANOMALY"}
-        if score >= WATCH_SCORE and "first_watch" not in ms: ms["first_watch"] = {**first, "kind": "FIRST_WATCH"}
-        if score >= ALERT_SCORE and "first_alert" not in ms: ms["first_alert"] = {**first, "kind": "FIRST_ALERT"}
-        record = {"symbol": symbol, "market_type": "spot", "spot_revival_score": score, "status": "DNA_WATCH_RESEARCH" if score >= ALERT_SCORE else "MOMENTUM_WATCH_RESEARCH", "research_only": True, "actionable": False, "identity_required_before_actionable": True, "leveraged_product": False, "learning_eligible": True, "reasons": reasons, "confirmations": len({x.get("exchange") for x in markets}), "coherent_confirmations": coherent_conf, "coherent_exchange": best.get("exchange"), "coherent_feature_hits": best.get("hits", []), "change_24h_max_pct": round(max((_f(x.get("change_24h_pct")) for x in markets), default=0), 4), "price_acceleration_max_pct": round(max((_f(x.get("price_delta_pct")) for x in markets), default=0), 4), "volume_acceleration_max_pct": round(max((_f(x.get("volume24_delta_pct")) for x in markets), default=0), 4), "exchanges": sorted({x.get("exchange") for x in markets if x.get("exchange")}), "milestones": ms, "markets": markets}
-        if score >= WATCH_SCORE: watchlist.append(record)
-        if score >= ALERT_SCORE: alerts.append(record)
+        local = [_market_signal(x) for x in markets]
+        best = max(
+            local,
+            key=lambda x: (x["score"], x["hit_count"]),
+            default={"score": 0, "hit_count": 0, "reasons": [], "shadow_hits": []},
+        )
+        coherent = [x for x in local if x.get("hit_count", 0) > 0]
+        coherent_conf = len({x.get("exchange") for x in coherent if x.get("exchange")})
+        score = int(best.get("score", 0))
+        reasons = list(best.get("reasons") or [])
+        if coherent_conf >= 2:
+            score += 8
+            reasons.append(f"{coherent_conf} coherent spot exchange confirmation")
+        if coherent_conf >= 4:
+            score += 8
 
-    _write_state(state_path, state); watchlist.sort(key=lambda x: (x["spot_revival_score"], x["coherent_confirmations"], x["confirmations"]), reverse=True); alerts.sort(key=lambda x: (x["spot_revival_score"], x["coherent_confirmations"], x["confirmations"]), reverse=True)
+        score = min(score, 100)
+        ms = milestones.setdefault(symbol, {})
+        first = _snapshot(now, markets, score, coherent_conf, "FIRST_SEEN", best)
+        if "first_seen" not in ms:
+            ms["first_seen"] = first
+        if best.get("hit_count") and "first_anomaly" not in ms:
+            ms["first_anomaly"] = {**first, "kind": "FIRST_ANOMALY"}
+        if score >= WATCH_SCORE and "first_watch" not in ms:
+            ms["first_watch"] = {**first, "kind": "FIRST_WATCH"}
+        if score >= ALERT_SCORE and "first_alert" not in ms:
+            ms["first_alert"] = {**first, "kind": "FIRST_ALERT"}
+
+        shadow_features = sorted(
+            {hit for x in local for hit in x.get("shadow_hits", [])}
+        )
+        shadow_reasons = [
+            reason for x in local for reason in x.get("shadow_reasons", [])
+        ]
+        regional_lead = _regional_lead(local)
+        coverage = _coverage(health, markets)
+        record = {
+            "symbol": symbol,
+            "market_type": "spot",
+            "spot_revival_score": score,
+            "status": "DNA_WATCH_RESEARCH" if score >= ALERT_SCORE else "MOMENTUM_WATCH_RESEARCH",
+            "research_only": True,
+            "actionable": False,
+            "identity_required_before_actionable": True,
+            "leveraged_product": False,
+            "learning_eligible": True,
+            "reasons": reasons,
+            "shadow_features": shadow_features,
+            "shadow_reasons": shadow_reasons,
+            "shadow_features_affect_score": False,
+            "regional_spot_lead": regional_lead,
+            "source_coverage": coverage,
+            "confirmations": len({x.get("exchange") for x in markets}),
+            "coherent_confirmations": coherent_conf,
+            "coherent_exchange": best.get("exchange"),
+            "coherent_feature_hits": best.get("hits", []),
+            "change_24h_max_pct": round(
+                max((_f(x.get("change_24h_pct")) for x in markets), default=0), 4
+            ),
+            "price_acceleration_max_pct": round(
+                max((_f(x.get("price_delta_pct")) for x in markets), default=0), 4
+            ),
+            "volume_acceleration_max_pct": round(
+                max((_f(x.get("volume24_delta_pct")) for x in markets), default=0), 4
+            ),
+            "volume_window_multiple_max": round(
+                max((_f(x.get("volume_window_multiple")) for x in markets), default=0), 4
+            ),
+            "price_window_abs_min_pct": round(
+                min((abs(_f(x.get("price_window_pct"))) for x in markets), default=0), 4
+            ),
+            "exchanges": sorted({x.get("exchange") for x in markets if x.get("exchange")}),
+            "milestones": ms,
+            "markets": markets,
+        }
+        if score >= WATCH_SCORE:
+            watchlist.append(record)
+        if score >= ALERT_SCORE:
+            alerts.append(record)
+
+    _write_state(state_path, state)
+    watchlist.sort(
+        key=lambda x: (
+            x["spot_revival_score"],
+            x["coherent_confirmations"],
+            x["confirmations"],
+        ),
+        reverse=True,
+    )
+    alerts.sort(
+        key=lambda x: (
+            x["spot_revival_score"],
+            x["coherent_confirmations"],
+            x["confirmations"],
+        ),
+        reverse=True,
+    )
     excluded = sorted(leveraged_products)
-    payload = {"version": 2, "generated_at": now, "mode": "RESEARCH_ONLY_CEX_SPOT_REVIVAL_V2", "production_portfolio_impact": "NONE", "symbol_only_actionable": False, "identity_rule": "EXACT_CHAIN_CONTRACT_AND_PAIR_REQUIRED_BEFORE_ANY_ACTIONABLE_PROMOTION", "learning_truth_contract": {"leveraged_cex_products_excluded": True, "no_hindsight": True}, "leveraged_products_excluded_count": len(excluded), "leveraged_products_excluded": excluded[:100], "requested_sources": [name for name, _ in SPOT_SOURCES], "source_health": health, "healthy_sources": sum(1 for x in health.values() if x.get("ok")), "markets_seen": len(rows), "symbols_seen": len(groups), "watch_score": WATCH_SCORE, "alert_score": ALERT_SCORE, "watch_count": len(watchlist), "alerts_count": len(alerts), "watchlist": watchlist[:100], "alerts": alerts[:100], "errors": errors}
-    (out / "cex-spot-revival-radar.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    learning = {"version": 2, "updated_at": now, "purpose": "learn whether spot price+volume acceleration predicts veteran-token revival before late pumps", "research_only": True, "no_hindsight": True, "leveraged_cex_products_excluded": True, "excluded_products": excluded[:100], "features": ["spot_24h_momentum", "spot_price_acceleration", "spot_volume_acceleration", "cross_exchange_spot_confirmation"], "top_candidates": [{"symbol": x["symbol"], "score": x["spot_revival_score"], "status": x["status"], "confirmations": x["confirmations"], "coherent_confirmations": x["coherent_confirmations"], "coherent_feature_hits": x["coherent_feature_hits"], "change_24h_max_pct": x["change_24h_max_pct"], "price_acceleration_max_pct": x["price_acceleration_max_pct"], "volume_acceleration_max_pct": x["volume_acceleration_max_pct"], "milestones": x.get("milestones", {})} for x in watchlist[:50]]}
-    (out / "cex-spot-learning.json").write_text(json.dumps(learning, indent=2), encoding="utf-8")
+    healthy_sources = sum(1 for x in health.values() if x.get("ok"))
+    source_coverage_ratio = healthy_sources / len(SPOT_SOURCES) if SPOT_SOURCES else 0.0
+    payload = {
+        "version": 3,
+        "generated_at": now,
+        "mode": "RESEARCH_ONLY_CEX_SPOT_REVIVAL_V3",
+        "production_portfolio_impact": "NONE",
+        "symbol_only_actionable": False,
+        "identity_rule": "EXACT_CHAIN_CONTRACT_AND_PAIR_REQUIRED_BEFORE_ANY_ACTIONABLE_PROMOTION",
+        "learning_truth_contract": {
+            "leveraged_cex_products_excluded": True,
+            "no_hindsight": True,
+            "regional_native_quote_not_compared_as_usd": True,
+            "new_lsk_features_shadow_only": True,
+        },
+        "leveraged_products_excluded_count": len(excluded),
+        "leveraged_products_excluded": excluded[:100],
+        "requested_sources": [name for name, _ in SPOT_SOURCES],
+        "source_health": health,
+        "healthy_sources": healthy_sources,
+        "source_coverage_ratio": round(source_coverage_ratio, 4),
+        "markets_seen": len(rows),
+        "symbols_seen": len(groups),
+        "watch_score": WATCH_SCORE,
+        "alert_score": ALERT_SCORE,
+        "watch_count": len(watchlist),
+        "alerts_count": len(alerts),
+        "watchlist": watchlist[:100],
+        "alerts": alerts[:100],
+        "errors": errors,
+    }
+    (out / "cex-spot-revival-radar.json").write_text(
+        json.dumps(payload, indent=2), encoding="utf-8"
+    )
+    learning = {
+        "version": 3,
+        "updated_at": now,
+        "purpose": "learn whether spot price+volume acceleration, regional leadership, and volume-price absorption predict veteran-token revival before late pumps",
+        "research_only": True,
+        "no_hindsight": True,
+        "leveraged_cex_products_excluded": True,
+        "new_lsk_features_shadow_only": True,
+        "excluded_products": excluded[:100],
+        "features": [
+            "spot_24h_momentum",
+            "spot_price_acceleration",
+            "spot_volume_acceleration",
+            "cross_exchange_spot_confirmation",
+            "volume_window_multiple",
+            "volume_price_absorption_shadow",
+            "regional_spot_lead_upbit",
+            "source_coverage_confidence",
+        ],
+        "top_candidates": [
+            {
+                "symbol": x["symbol"],
+                "score": x["spot_revival_score"],
+                "status": x["status"],
+                "confirmations": x["confirmations"],
+                "coherent_confirmations": x["coherent_confirmations"],
+                "coherent_feature_hits": x["coherent_feature_hits"],
+                "shadow_features": x["shadow_features"],
+                "regional_spot_lead": x["regional_spot_lead"],
+                "source_coverage": x["source_coverage"],
+                "change_24h_max_pct": x["change_24h_max_pct"],
+                "price_acceleration_max_pct": x["price_acceleration_max_pct"],
+                "volume_acceleration_max_pct": x["volume_acceleration_max_pct"],
+                "volume_window_multiple_max": x["volume_window_multiple_max"],
+                "milestones": x.get("milestones", {}),
+            }
+            for x in watchlist[:50]
+        ],
+    }
+    (out / "cex-spot-learning.json").write_text(
+        json.dumps(learning, indent=2), encoding="utf-8"
+    )
     return payload
 
 
 if __name__ == "__main__":
     from datetime import datetime, timezone
-    print(json.dumps(run_cex_spot_revival(Path("data"), datetime.now(timezone.utc).isoformat()), indent=2))
+
+    print(
+        json.dumps(
+            run_cex_spot_revival(Path("data"), datetime.now(timezone.utc).isoformat()),
+            indent=2,
+        )
+    )
