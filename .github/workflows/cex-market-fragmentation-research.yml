@@ -11,8 +11,10 @@ on:
       - '.github/workflows/cex-market-fragmentation-research.yml'
       - 'src/wallet500/cex_market_fragmentation.py'
       - 'src/wallet500/cex_market_timing_shadow.py'
+      - 'src/wallet500/cex_transfer_arbitrage_shadow.py'
       - 'tests/test_cex_market_fragmentation.py'
       - 'tests/test_cex_market_timing_shadow.py'
+      - 'tests/test_cex_transfer_arbitrage_shadow.py'
 
 permissions:
   contents: write
@@ -36,12 +38,14 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e . pytest
-      - name: Verify fragmentation and timing research contracts
-        run: python -m pytest -q tests/test_cex_market_fragmentation.py tests/test_cex_market_timing_shadow.py
+      - name: Verify fragmentation timing and transfer-arbitrage research contracts
+        run: python -m pytest -q tests/test_cex_market_fragmentation.py tests/test_cex_market_timing_shadow.py tests/test_cex_transfer_arbitrage_shadow.py
       - name: Build forward fragmentation shadow research
         run: python -m wallet500.cex_market_fragmentation
       - name: Build forward market timing shadow research
         run: python -m wallet500.cex_market_timing_shadow
+      - name: Build transfer arbitrage shadow research
+        run: python -m wallet500.cex_transfer_arbitrage_shadow
       - name: Validate production isolation
         run: |
           python - <<'PY'
@@ -70,14 +74,35 @@ jobs:
           assert t['truth_contract']['entry_or_hold_requires_verified_execution_liquidity_gte_50000'] is True
           assert t['truth_contract']['missing_identity_or_liquidity_fails_closed'] is True
           assert t['truth_contract']['timing_stage_never_triggers_automatic_trade'] is True
-          print('CEX_FRAGMENTATION_TIMING_RESEARCH_OK', {
+
+          a=json.loads(Path('data/cex-transfer-arbitrage-shadow.json').read_text())
+          assert a['production_effect'] is False
+          assert a['affects_score'] is False
+          assert a['actionable'] is False
+          assert a['automatic_buy'] is False
+          assert a['automatic_sell'] is False
+          assert a['automatic_transfer'] is False
+          assert a['production_thresholds_modified'] is False
+          assert a['liquidity_minimum_modified'] is False
+          assert a['identity_rules_modified'] is False
+          assert a['truth_contract']['last_price_is_proxy_not_executable_quote'] is True
+          assert a['truth_contract']['cross_exchange_transfer_requires_verified_same_asset_identity'] is True
+          assert a['truth_contract']['cross_exchange_transfer_requires_withdraw_and_deposit_enabled'] is True
+          assert a['truth_contract']['cross_exchange_transfer_requires_same_verified_network'] is True
+          assert a['truth_contract']['executable_orderbook_bid_ask_and_depth_required_before_actionable'] is True
+          assert a['truth_contract']['fees_slippage_transfer_time_and_withdrawal_cost_required_before_net_profit_claim'] is True
+          assert a['truth_contract']['missing_route_or_execution_data_fails_closed'] is True
+          print('CEX_FRAGMENTATION_TIMING_TRANSFER_RESEARCH_OK', {
               'current_shadow_candidates': p.get('symbols_with_current_shadow_features'),
               'new_forward_events': p.get('forward_state_new_feature_events'),
               'timing_counts': t.get('counts'),
               'new_timing_stage_events': t.get('new_forward_stage_events'),
+              'transfer_candidates': a.get('candidate_count'),
+              'extreme_transfer_dislocations': a.get('extreme_count'),
+              'verified_transfer_routes': a.get('route_verified_count'),
           })
           PY
-      - name: Publish fragmentation and timing research
+      - name: Publish fragmentation timing and transfer research
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -86,9 +111,11 @@ jobs:
           python scripts/serialized_publish.py \
             --github-api-cas \
             --attempts 80 \
-            --message 'research: refresh CEX fragmentation and timing shadow' \
+            --message 'research: refresh CEX fragmentation timing and transfer shadow' \
             data/cex-market-fragmentation-state.json \
             data/cex-market-fragmentation-research.json \
             data/cex-market-timing-shadow-state.json \
-            data/cex-market-timing-shadow.json
-          echo 'CEX_FRAGMENTATION_TIMING_RESEARCH_PUBLISH_OK'
+            data/cex-market-timing-shadow.json \
+            data/cex-transfer-arbitrage-shadow-state.json \
+            data/cex-transfer-arbitrage-shadow.json
+          echo 'CEX_FRAGMENTATION_TIMING_TRANSFER_RESEARCH_PUBLISH_OK'
