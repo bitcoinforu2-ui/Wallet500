@@ -6,7 +6,9 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/decision_replay_lab.py'
+      - 'src/wallet500/decision_replay_path_metrics.py'
       - 'tests/test_decision_replay_lab.py'
+      - 'tests/test_decision_replay_path_metrics.py'
       - '.github/workflows/decision-replay-lab.yml'
       - 'data/research-sample-ledger.json'
   schedule:
@@ -34,9 +36,11 @@ jobs:
       - name: Install and test Decision Replay contract
         run: |
           pip install -e . pytest
-          python -m pytest -q tests/test_decision_replay_lab.py
+          python -m pytest -q tests/test_decision_replay_lab.py tests/test_decision_replay_path_metrics.py
       - name: Build immutable forward-only replay
-        run: python -m wallet500.decision_replay_lab
+        run: |
+          python -m wallet500.decision_replay_lab
+          python -m wallet500.decision_replay_path_metrics
       - name: Validate research isolation, identity, horizon and promotion contracts
         run: |
           python - <<'PY'
@@ -44,6 +48,7 @@ jobs:
           from pathlib import Path
           r=json.loads(Path('data/decision-replay-report.json').read_text())
           l=json.loads(Path('data/decision-replay-ledger.json').read_text())
+          p=json.loads(Path('data/decision-replay-path-metrics.json').read_text())
           if r.get('mode')!='RESEARCH_ONLY_DECISION_REPLAY_V1': raise SystemExit('REPLAY_MODE_DRIFT')
           if r.get('research_only') is not True or r.get('production_effect') is not False: raise SystemExit('PRODUCTION_LEAK')
           if r.get('production_thresholds_modified') is not False: raise SystemExit('THRESHOLD_LEAK')
@@ -71,7 +76,12 @@ jobs:
               if not hard or not all(hard.values()): raise SystemExit('ILLEGAL_READY_HARD_PREREQ_FAILURE')
           expected={'A_CURRENT_PRODUCTION','B_ACCELERATION_TURNOVER','C_LIQUIDITY_SURVIVAL','D_WALLET_CAPITAL_SOCIAL','E_WINNER_DNA_PERSISTENCE'}
           if set((r.get('policies') or {}).keys()) != expected: raise SystemExit('SHADOW_POLICY_SET_DRIFT')
-          print('DECISION_REPLAY_VALID', r.get('sample'), gate)
+          if p.get('mode')!='RESEARCH_ONLY_DECISION_REPLAY_PATH_METRICS_V1': raise SystemExit('PATH_METRICS_MODE_DRIFT')
+          if p.get('research_only') is not True or p.get('production_effect') is not False: raise SystemExit('PATH_METRICS_PRODUCTION_LEAK')
+          if p.get('selection_contract')!='FIRST_RELIABLE_EXACT_PAIR_OBSERVATION_AT_OR_AFTER_TARGET': raise SystemExit('PATH_METRICS_SELECTION_DRIFT')
+          pg=p.get('guardrails') or {}
+          if pg.get('exact_pair_required') is not True or pg.get('no_future_observation_before_horizon_selection') is not True: raise SystemExit('PATH_METRICS_GUARD_LOST')
+          print('DECISION_REPLAY_VALID', r.get('sample'), gate, p.get('horizon_summary'))
           PY
       - name: Publish replay state atomically
         shell: bash
@@ -82,4 +92,5 @@ jobs:
           python scripts/atomic_publish.py \
             --message 'research: refresh decision replay lab' \
             data/decision-replay-ledger.json \
-            data/decision-replay-report.json
+            data/decision-replay-report.json \
+            data/decision-replay-path-metrics.json
