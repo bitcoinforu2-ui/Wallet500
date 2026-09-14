@@ -1,3 +1,5 @@
+import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from wallet500 import cex_spot_revival as spot
@@ -115,9 +117,56 @@ def test_lsk_absorption_is_shadow_only_and_does_not_raise_score():
     )
     assert "VOLUME_PRICE_ABSORPTION_SHADOW" in signal["shadow_hits"]
     assert "VOLUME_PRICE_ABSORPTION_SHADOW" not in signal["hits"]
-    # Only the existing VOLUME_ACCEL score applies. The new LSK feature itself
-    # is observational until broad forward validation.
     assert signal["score"] == 20
+
+
+def test_persistent_pressure_is_shadow_only_and_does_not_raise_score():
+    signal = spot._market_signal(
+        {
+            "exchange": "kucoin",
+            "change_24h_pct": 5.4,
+            "price_delta_pct": 0.2,
+            "volume24_delta_pct": 1.5,
+            "volume_24h": 650_000.0,
+            "volume_comparable_usd_like": True,
+            "history_points": 30,
+            "price_window_pct": 5.4,
+            "volume_window_multiple": 1.4,
+            "volume_multiple_6h": 1.25,
+            "volume_multiple_12h": 1.40,
+            "volume_multiple_24h": 0.0,
+        }
+    )
+    assert "PERSISTENT_SPOT_PRESSURE_SHADOW" in signal["shadow_hits"]
+    assert "PERSISTENT_SPOT_PRESSURE_MULTI_HORIZON_SHADOW" in signal["shadow_hits"]
+    assert "PERSISTENT_SPOT_PRESSURE_SHADOW" not in signal["hits"]
+    assert signal["score"] == 3
+
+
+def test_slow_ignition_requires_cross_venue_pressure():
+    one = [
+        {
+            "exchange": "kucoin",
+            "shadow_hits": ["PERSISTENT_SPOT_PRESSURE_SHADOW"],
+            "pressure_horizon_hits": ["6h"],
+        }
+    ]
+    building = spot._slow_ignition(one)
+    assert building["status"] == "BUILDING"
+    assert building["confirmations"] == 1
+
+    two = one + [
+        {
+            "exchange": "mexc",
+            "shadow_hits": ["PERSISTENT_SPOT_PRESSURE_SHADOW"],
+            "pressure_horizon_hits": ["6h", "12h"],
+        }
+    ]
+    confirmed = spot._slow_ignition(two)
+    assert confirmed["status"] == "CROSS_VENUE_PERSISTENT"
+    assert confirmed["confirmations"] == 2
+    assert confirmed["affects_score"] is False
+    assert confirmed["actionable"] is False
 
 
 def test_regional_first_marks_upbit_lead_without_score_bonus():
@@ -175,6 +224,68 @@ def test_spot_output_is_research_only_and_keeps_milestones(tmp_path: Path, monke
     assert alert["milestones"]["first_alert"]["observed_at"] == "2026-09-04T08:15:00+00:00"
 
 
+def test_shadow_watch_surfaces_below_regular_watch_score(tmp_path: Path, monkeypatch):
+    base = datetime(2026, 9, 8, 0, 0, tzinfo=timezone.utc)
+    state = {
+        "gate": {
+            "exchange": "gate",
+            "market_type": "spot",
+            "symbol": "CPOOLUSDT",
+            "market_id": "CPOOL_USDT",
+            "price": 1.0,
+            "change_24h_pct": 0.0,
+            "volume_24h": 100_000.0,
+            "volume_comparable_usd_like": True,
+        },
+        "mexc": {
+            "exchange": "mexc",
+            "market_type": "spot",
+            "symbol": "CPOOLUSDT",
+            "market_id": "CPOOLUSDT",
+            "price": 1.0,
+            "change_24h_pct": 0.0,
+            "volume_24h": 100_000.0,
+            "volume_comparable_usd_like": True,
+        },
+    }
+    monkeypatch.setattr(
+        spot,
+        "SPOT_SOURCES",
+        [("gate", lambda: [state["gate"]]), ("mexc", lambda: [state["mexc"]])],
+    )
+
+    report = None
+    for i in range(25):
+        progress = i / 24.0
+        for row in state.values():
+            row["price"] = 1.0 + 0.05 * progress
+            row["change_24h_pct"] = 5.0 * progress
+            row["volume_24h"] = 100_000.0 * (1.0 + 0.40 * progress)
+        now = (base + timedelta(minutes=15 * i)).isoformat()
+        report = spot.run_cex_spot_revival(tmp_path, now)
+
+    assert report is not None
+    assert report["watch_count"] == 0
+    assert report["alerts_count"] == 0
+    assert report["shadow_watch_count"] == 1
+    shadow = report["shadow_watchlist"][0]
+    assert shadow["symbol"] == "CPOOLUSDT"
+    assert shadow["spot_revival_score"] < spot.WATCH_SCORE
+    assert shadow["status"] == "SHADOW_WATCH_RESEARCH"
+    assert shadow["slow_ignition"]["status"] == "CROSS_VENUE_PERSISTENT"
+    assert shadow["slow_ignition"]["confirmations"] == 2
+    assert shadow["actionable"] is False
+    assert shadow["automatic_buy"] is False
+    assert shadow["shadow_features_affect_score"] is False
+    assert shadow["milestones"]["first_shadow_watch"]["observed_at"] == (base + timedelta(hours=6)).isoformat()
+
+    learning = json.loads((tmp_path / "cex-spot-learning.json").read_text())
+    learned_shadow = {x["symbol"] for x in learning["top_shadow_candidates"]}
+    assert "CPOOLUSDT" in learned_shadow
+    assert learning["slow_ignition_shadow_only"] is True
+    assert learning["shadow_watch_below_watch_score_allowed"] is True
+
+
 def test_leveraged_products_are_not_used_for_revival_or_learning(tmp_path: Path, monkeypatch):
     rows = [
         {
@@ -202,8 +313,6 @@ def test_leveraged_products_are_not_used_for_revival_or_learning(tmp_path: Path,
     assert "BEAT3SUSDT" not in symbols
     assert "BFCUSDT" in symbols
     assert "BEAT3SUSDT" in report["leveraged_products_excluded"]
-
-    import json
 
     learning = json.loads((tmp_path / "cex-spot-learning.json").read_text())
     learned = {x["symbol"] for x in learning["top_candidates"]}
