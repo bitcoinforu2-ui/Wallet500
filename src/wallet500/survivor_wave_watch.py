@@ -38,6 +38,14 @@ def norm(v):
     return str(v or "").lower()
 
 
+def pct_change(current, baseline):
+    current = f(current)
+    baseline = f(baseline)
+    if current is None or baseline is None or baseline <= 0:
+        return None
+    return ((current / baseline) - 1.0) * 100.0
+
+
 def http_json(url: str, timeout: int = 12):
     req = urllib.request.Request(url, headers={"User-Agent": "Wallet500/1.0", "Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -176,6 +184,12 @@ def dna_match(turnover, buy_ratio, wave_status, reasons):
 
 def format_alert(row: dict, previous_level: str | None) -> str:
     transition = "FIRST DNA MATCH" if not previous_level or previous_level == "LOW" else f"UPGRADE FROM {previous_level}"
+    discovery_price = f(row.get("discovery_price_usd"))
+    current_price = f(row.get("price_usd"))
+    move = pct_change(current_price, discovery_price)
+    discovery_line = f"Discovery: ${discovery_price:.10g}\n" if discovery_price is not None else "Discovery: n/a (legacy snapshot unavailable)\n"
+    current_line = f"Current: ${current_price:.10g}\n" if current_price is not None else "Current: n/a\n"
+    move_line = f"Since discovery: {move:+.2f}%\n" if move is not None else "Since discovery: n/a\n"
     return (
         "🚨 Wallet500 WINNER DNA ALERT\n"
         f"{transition}\n"
@@ -184,6 +198,10 @@ def format_alert(row: dict, previous_level: str | None) -> str:
         f"Pair: {row.get('pair_address')}\n"
         f"DNA: {row.get('winner_dna_match')}\n"
         f"Wave: {row.get('wave_status')} | score {row.get('wave_score')}\n"
+        f"{discovery_line}"
+        f"{current_line}"
+        f"{move_line}"
+        f"Discovered at: {row.get('discovered_at') or 'n/a'}\n"
         f"Liquidity: ${float(row.get('liquidity_usd') or 0):,.0f}\n"
         f"Vol 1H: ${float(row.get('volume_h1_usd') or 0):,.0f}\n"
         f"Turnover 1H: {row.get('turnover_h1')}\n"
@@ -197,16 +215,18 @@ def format_alert(row: dict, previous_level: str | None) -> str:
 
 def main():
     study = load(STUDY, {})
+    previous_output = load(OUT, {})
     prev = load(STATE, {"tokens": {}})
     prev_tokens = prev.get("tokens") or {}
     holders = holder_index()
     organic = organic_index()
     kols = kol_index()
     listings = listing_index()
+    observed_at = now_iso()
 
     winner_rows = [x for x in study.get("rows") or [] if isinstance(x, dict) and x.get("label") == "WINNER"]
     results = []
-    state_tokens = {}
+    state_tokens = dict(prev_tokens)
     errors = []
     telegram_events = []
 
@@ -230,12 +250,19 @@ def main():
         h1_tx = txns.get("h1") or {}
         h = holders.get(norm(token), {})
         holder_count = h.get("holders")
-        prev_row = prev_tokens.get(norm(token)) or {}
+        token_key = norm(token)
+        prev_row = prev_tokens.get(token_key) or {}
         prev_count = prev_row.get("holders")
         holder_delta = holder_count - prev_count if holder_count is not None and prev_count is not None else None
-        org = organic.get(norm(token), {})
+        current_price = f(snap.get("priceUsd"))
+        is_first_observation = token_key not in prev_tokens
+        discovery_price = current_price if is_first_observation else f(prev_row.get("discovery_price_usd"))
+        discovered_at = observed_at if is_first_observation else prev_row.get("discovered_at")
+        alert_price = f(prev_row.get("alert_price_usd"))
+        alerted_at = prev_row.get("alerted_at")
+        org = organic.get(token_key, {})
         org_score = f(org.get("organic_acceleration_score"))
-        kol = kols.get(norm(token), {})
+        kol = kols.get(token_key, {})
         kol_groups = f(kol.get("independent_wallet_groups") or kol.get("independent_sources"))
         score, status, reasons, turnover, buy_ratio = wave_state(
             f(changes.get("h1")), f(changes.get("h6")), f(volume.get("h1")), liq,
@@ -249,7 +276,13 @@ def main():
             "source_winner_t0": w.get("t0"),
             "source_return_24h_pct": w.get("return_24h_pct"),
             "survival": "EXACT_PAIR_LIQUIDITY_SURVIVED",
-            "price_usd": f(snap.get("priceUsd")),
+            "price_usd": current_price,
+            "current_price_usd": current_price,
+            "discovery_price_usd": discovery_price,
+            "discovered_at": discovered_at,
+            "alert_price_usd": alert_price,
+            "alerted_at": alerted_at,
+            "since_discovery_pct": round(pct_change(current_price, discovery_price), 6) if pct_change(current_price, discovery_price) is not None else None,
             "liquidity_usd": liq,
             "market_cap_usd": f(snap.get("marketCap")) or f(snap.get("fdv")),
             "volume_h1_usd": f(volume.get("h1")),
@@ -267,7 +300,7 @@ def main():
             "organic_social_status": org.get("status") or "NO_TIMESTAMP_SAFE_SIGNAL",
             "organic_acceleration_score": org_score,
             "kol_independent_groups": kol_groups,
-            "listing_evidence_count": len(listings.get(norm(token), [])),
+            "listing_evidence_count": len(listings.get(token_key, [])),
             "wave_score": score,
             "wave_status": status,
             "wave_reasons": reasons,
@@ -275,28 +308,59 @@ def main():
             "winner_dna_hits": dna_hits,
             "dex_url": snap.get("url"),
         }
-        results.append(row)
 
         previous_level = str(prev_row.get("winner_dna_match") or "LOW")
         should_alert = dna_level == "HIGH" and previous_level != "HIGH"
         if dna_level == "MEDIUM" and previous_level == "LOW" and status in {"EARLY_REACCELERATION", "WAVE_BUILDING"} and len(reasons) >= 2:
             should_alert = True
+        if should_alert and alert_price is None:
+            alert_price = current_price
+            alerted_at = observed_at
+            row["alert_price_usd"] = alert_price
+            row["alerted_at"] = alerted_at
         if should_alert:
             ok, telegram_status = telegram_send(format_alert(row, previous_level))
-            telegram_events.append({"token": token, "dna": dna_level, "sent": ok, "status": telegram_status})
+            telegram_events.append({
+                "token": token,
+                "dna": dna_level,
+                "sent": ok,
+                "status": telegram_status,
+                "alert_price_usd": alert_price,
+                "alerted_at": alerted_at,
+            })
 
-        state_tokens[norm(token)] = {
+        results.append(row)
+        state_tokens[token_key] = {
+            "chain": chain,
+            "pair_address": pair,
             "holders": holder_count,
-            "price_usd": row["price_usd"],
+            "price_usd": current_price,
+            "current_price_usd": current_price,
             "liquidity_usd": liq,
             "winner_dna_match": dna_level,
             "wave_status": status,
+            "discovery_price_usd": discovery_price,
+            "discovered_at": discovered_at,
+            "alert_price_usd": alert_price,
+            "alerted_at": alerted_at,
+            "last_seen_at": observed_at,
         }
 
     results.sort(key=lambda x: (x.get("wave_score") or 0, x.get("source_return_24h_pct") or 0), reverse=True)
     generated = now_iso()
+    previous_rows = previous_output.get("tokens") or previous_output.get("last_known_tokens") or []
+    last_known_tokens = []
+    if results:
+        last_known_tokens = [dict(results[0])]
+    elif previous_rows:
+        stale = dict(previous_rows[0])
+        stale["stale_snapshot"] = True
+        stale["stale_reason"] = "NO_CURRENT_SURVIVOR_SIGNAL"
+        stale["stale_since"] = generated
+        last_known_tokens = [stale]
+
     payload = {
-        "version": 2,
+        "version": 3,
         "generated_at": generated,
         "mode": "HOURLY_WINNER_SURVIVOR_WAVE_WATCH_V1",
         "research_only": True,
@@ -310,8 +374,15 @@ def main():
         "dna_high_n": sum(1 for x in results if x.get("winner_dna_match") == "HIGH"),
         "dna_medium_n": sum(1 for x in results if x.get("winner_dna_match") == "MEDIUM"),
         "telegram_events": telegram_events,
-        "note": "Research-only Winner DNA alerting. HIGH requires strong turnover + buy pressure; MEDIUM requires partial DNA plus active wave confirmation. Missing holder/social evidence is never imputed.",
+        "discovery_price_contract": {
+            "immutable": True,
+            "definition": "exact-pair price at first timestamp-safe observation by Survivor Wave Watch",
+            "legacy_missing_policy": "NULL_NEVER_INFERRED",
+            "current_price_definition": "latest exact-pair DexScreener snapshot",
+        },
+        "note": "Research-only Winner DNA alerting. Discovery/alert prices are immutable timestamp-safe snapshots; legacy missing discovery prices remain null and are never inferred.",
         "tokens": results,
+        "last_known_tokens": last_known_tokens,
         "errors": errors[:50],
     }
     OUT.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
