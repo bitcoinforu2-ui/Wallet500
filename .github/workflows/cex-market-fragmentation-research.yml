@@ -1,0 +1,67 @@
+name: Wallet500 CEX Market Fragmentation Research
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Wallet500 CEX Spot Revival Fast Lane"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-cex-market-fragmentation-research
+  cancel-in-progress: true
+
+jobs:
+  learn:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Verify fragmentation research contracts
+        run: python -m pytest -q tests/test_cex_market_fragmentation.py
+      - name: Build forward fragmentation shadow research
+        run: python -m wallet500.cex_market_fragmentation
+      - name: Validate production isolation
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('data/cex-market-fragmentation-research.json').read_text())
+          assert p['production_effect'] is False
+          assert p['automatic_buy'] is False
+          assert p['production_thresholds_modified'] is False
+          assert p['liquidity_gate_modified'] is False
+          assert p['identity_rules_modified'] is False
+          assert p['truth_contract']['shadow_features_never_change_score'] is True
+          assert p['truth_contract']['retrospective_case_study_never_rewrites_production_history'] is True
+          assert p['truth_contract']['regional_native_quotes_never_compared_directly_to_usd_prices'] is True
+          print('CEX_FRAGMENTATION_RESEARCH_OK', {
+              'current_shadow_candidates': p.get('symbols_with_current_shadow_features'),
+              'new_forward_events': p.get('forward_state_new_feature_events'),
+              'lsk_timeline_points': (p.get('focus_case') or {}).get('timeline_points'),
+          })
+          PY
+      - name: Publish fragmentation research
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git restore --worktree -- src/wallet500.egg-info || true
+          python scripts/serialized_publish.py \
+            --github-api-cas \
+            --attempts 80 \
+            --message 'research: refresh CEX market fragmentation' \
+            data/cex-market-fragmentation-state.json \
+            data/cex-market-fragmentation-research.json
+          echo 'CEX_FRAGMENTATION_RESEARCH_PUBLISH_OK'
