@@ -47,6 +47,25 @@ def _median(values: list[float]) -> float | None:
     return (xs[mid - 1] + xs[mid]) / 2.0
 
 
+def _max_peak_to_trough_drawdown_pct(entry_price: float | None, path: list[dict]) -> float | None:
+    if entry_price is None or entry_price <= 0:
+        return None
+    peak = entry_price
+    worst = 0.0
+    seen = False
+    for point in path:
+        price = _num(point.get("price_usd"))
+        if price is None or price <= 0:
+            continue
+        seen = True
+        if price > peak:
+            peak = price
+        drawdown = (price / peak - 1.0) * 100.0
+        if drawdown < worst:
+            worst = drawdown
+    return worst if seen else None
+
+
 def _path_metrics(row: dict, replay_record: dict) -> dict:
     identity = _identity(row)
     if identity is None:
@@ -75,7 +94,7 @@ def _path_metrics(row: dict, replay_record: dict) -> dict:
         returns = [(_pct(_num(c.get("price_usd")), entry_price), c) for c in price_points]
         returns = [(ret, c) for ret, c in returns if ret is not None]
         max_gain = max((ret for ret, _ in returns), default=None)
-        max_drawdown = min((ret for ret, _ in returns), default=None)
+        max_drawdown = _max_peak_to_trough_drawdown_pct(entry_price, path)
         peak = max(returns, key=lambda x: x[0]) if returns else None
         time_to_peak = None
         if peak is not None:
@@ -96,6 +115,7 @@ def _path_metrics(row: dict, replay_record: dict) -> dict:
             "selected_return_pct": selected_return,
             "observed_path_max_gain_pct": max_gain,
             "observed_path_max_drawdown_pct": max_drawdown,
+            "drawdown_semantics": "PEAK_TO_TROUGH_FROM_T0_THROUGH_SELECTED_HORIZON_OBSERVATION",
             "observed_path_time_to_peak_minutes": time_to_peak,
             "observed_path_points": len(path),
             "exact_pair_survival": True,
