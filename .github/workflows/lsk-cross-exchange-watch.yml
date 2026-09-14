@@ -1,0 +1,65 @@
+name: Wallet500 LSK Cross-Exchange Watch
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lsk-cross-exchange-watch.yml'
+      - 'src/wallet500/lsk_cross_exchange_watch.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-lsk-cross-exchange-watch
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run live LSK cross-exchange early warning
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m wallet500.lsk_cross_exchange_watch
+      - name: Validate fail-closed alert contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('data/lsk-cross-exchange-watch.json').read_text())
+          assert p['automatic_sell'] is False
+          assert p['automatic_buy'] is False
+          assert p['automatic_transfer'] is False
+          assert p['minimum_healthy_venues'] >= 3
+          assert p['truth_contract']['single_venue_extreme_move_is_not_proof_of_executable_price'] is True
+          assert p['truth_contract']['no_automatic_trading'] is True
+          print('LSK_CROSS_EXCHANGE_WATCH_OK', p['status'], p['healthy_venues'], p['telegram'])
+          PY
+      - name: Persist alert signature only when changed
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- data/lsk-cross-exchange-watch-state.json; then
+            echo 'NO_ALERT_STATE_CHANGE'
+            exit 0
+          fi
+          python scripts/serialized_publish.py \
+            --github-api-cas \
+            --attempts 40 \
+            --message 'data: update LSK cross-exchange alert state' \
+            data/lsk-cross-exchange-watch-state.json
+          echo 'LSK_ALERT_STATE_PUBLISH_OK'
