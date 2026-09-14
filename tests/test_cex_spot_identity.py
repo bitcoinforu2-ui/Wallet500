@@ -39,6 +39,7 @@ def test_dynamic_spot_identity_stays_research_only(monkeypatch, tmp_path):
             "chain": "ethereum",
             "token_address": "0x510975eda48a97e0ca228dd04d1217292487bea6",
             "pair_address": "0xpair",
+            "dex_price_usd": 0.000102,
             "dex_liquidity_usd": 1200,
         })
         p["platform_catalog"] = {"status": "OK"}
@@ -57,9 +58,88 @@ def test_dynamic_spot_identity_stays_research_only(monkeypatch, tmp_path):
     assert row["actionable"] is False
     assert row["automatic_buy"] is False
     assert row["identity_attempted_at"]
+    assert row["execution_pair_price_coherent"] is True
     assert out["truth_contract"]["cex_only_never_real_alert"] is True
     assert out["truth_contract"]["persistent_pending_priority_is_ordering_only"] is True
+    assert out["truth_contract"]["dynamic_exact_pair_requires_current_cex_dex_price_coherence"] is True
     assert out["truth_contract"]["no_hindsight"] is True
+
+
+def test_incoherent_exact_pair_fails_closed_and_quarantines_auto_registry(monkeypatch, tmp_path):
+    (tmp_path / "cex-spot-revival-radar.json").write_text(json.dumps({
+        "generated_at": "2026-09-14T10:19:52+00:00",
+        "watchlist": [{
+            "symbol": "CPOOLUSDT",
+            "spot_revival_score": 36,
+            "markets": [
+                {"exchange": "kucoin", "market_type": "spot", "symbol": "CPOOLUSDT", "quote_symbol": "USDT", "price": 0.03029, "volume_comparable_usd_like": True},
+                {"exchange": "mexc", "market_type": "spot", "symbol": "CPOOLUSDT", "quote_symbol": "USDT", "price": 0.03034, "volume_comparable_usd_like": True},
+                {"exchange": "gate", "market_type": "spot", "symbol": "CPOOLUSDT", "quote_symbol": "USDT", "price": 0.03019, "volume_comparable_usd_like": True},
+                {"exchange": "upbit", "market_type": "spot", "symbol": "CPOOLUSDT", "quote_symbol": "KRW", "price": 41.1, "volume_comparable_usd_like": False, "regional_market": True},
+            ],
+        }],
+    }), encoding="utf-8")
+    (tmp_path / "cex-identity-registry.json").write_text(json.dumps({
+        "version": 3,
+        "symbols": {
+            "CPOOL": {
+                "coingecko_id": "clearpool",
+                "chain": "solana",
+                "token_address": "AeXrLftu8chuY4ctc6oDeG4dUx6Yr4aqeakUMFNvACdg",
+                "market_age_evidence_at": "2024-01-01T00:00:00+00:00",
+                "evidence_source": "AUTO_STRICT_CEX_SPOT_CGID_AGE_PLUS_EXACT_DEX_PAIR",
+                "auto_verified_pair_address": "HxErbEaAT8wYAkyxXqmQcdUshgi7VuwmSEXkixkFvnF1",
+                "auto_verified_at": "2026-09-10T11:44:24+00:00"
+            }
+        }
+    }), encoding="utf-8")
+
+    def fake_age(path):
+        p = json.loads(path.read_text())
+        p["alerts"][0].update({
+            "coingecko_id": "clearpool",
+            "market_age_verified": True,
+            "market_age_evidence_at": "2024-01-01T00:00:00+00:00",
+        })
+        path.write_text(json.dumps(p))
+        return {"accepted": 1, "rejected": 0, "rejections": []}
+
+    def fake_exact(path):
+        p = json.loads(path.read_text())
+        p["alerts"][0].update({
+            "identity_status": "DEX_VERIFIED",
+            "identity_verified": True,
+            "chain": "solana",
+            "token_address": "AeXrLftu8chuY4ctc6oDeG4dUx6Yr4aqeakUMFNvACdg",
+            "pair_address": "HxErbEaAT8wYAkyxXqmQcdUshgi7VuwmSEXkixkFvnF1",
+            "dex_price_usd": 0.1629,
+            "dex_liquidity_usd": 202579.48,
+            "dex_volume_h24": 0,
+        })
+        p["platform_catalog"] = {"status": "OK"}
+        p["identity_contract"] = {"exact_dex_pair_required": True}
+        path.write_text(json.dumps(p))
+        return {"dex_verified": 1}
+
+    monkeypatch.setattr(mod, "verify_age_and_coin_identity", fake_age)
+    monkeypatch.setattr(mod, "resolve_exact_identity", fake_exact)
+    out = mod.run(tmp_path)
+    row = out["candidates"][0]
+    assert row["identity_status"] == "IDENTITY_RESOLVED_PAIR_PENDING"
+    assert row["identity_verified"] is False
+    assert row["identity_blocker"] == "DEX_PRICE_INCOHERENT_WITH_CEX_SPOT"
+    assert row["execution_pair_price_coherent"] is False
+    assert row["cex_reference_price_sample_count"] == 3
+    assert row["cex_reference_price_usd"] == 0.03029
+    assert row["cex_dex_price_ratio"] > 5
+    assert out["counts"]["dex_verified"] == 0
+    assert out["counts"]["price_incoherent"] == 1
+    assert out["auto_registry"]["quarantine"]["quarantined"] == ["CPOOL"]
+
+    registry = json.loads((tmp_path / "cex-identity-registry.json").read_text())
+    assert "CPOOL" not in registry["symbols"]
+    assert registry["quarantined_symbols"]["CPOOL"]["quarantine_reason"] == "DEX_PRICE_INCOHERENT_WITH_CEX_SPOT"
+    assert registry["quarantined_symbols"]["CPOOL"]["immutable_detection_history_untouched"] is True
 
 
 def test_provider_failure_is_fail_closed(monkeypatch, tmp_path):

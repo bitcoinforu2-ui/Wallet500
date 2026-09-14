@@ -11,6 +11,8 @@ from .cex_spot_identity_fallback import resolve as resolve_dex_fallback
 DATA = Path("data")
 MAX_WATCH_CANDIDATES = 60
 MAX_PERSISTENT_PRIORITY_SLOTS = 30
+MAX_CEX_DEX_PRICE_RATIO = 2.0
+USD_LIKE_QUOTES = {"USD", "USDT", "USDC", "BUSD", "FDUSD", "TUSD", "USDP", "DAI"}
 
 
 def _load(path: Path, default):
@@ -34,6 +36,92 @@ def _num(value: object) -> float:
         return float(value or 0)
     except Exception:
         return 0.0
+
+
+def _median(values: list[float]) -> float:
+    values = sorted(x for x in values if x > 0)
+    if not values:
+        return 0.0
+    middle = len(values) // 2
+    if len(values) % 2:
+        return values[middle]
+    return (values[middle - 1] + values[middle]) / 2.0
+
+
+def _current_cex_usd_reference_price(row: dict) -> tuple[float, list[float]]:
+    """Use only contemporaneous USD-like spot markets for execution-price coherence.
+
+    Historical first-seen/watch/alert prices are intentionally excluded here so this
+    verification cannot use stale milestones or hindsight. Regional/non-USD markets are
+    excluded because their raw prices are not directly USD-comparable.
+    """
+    prices: list[float] = []
+    for market in row.get("markets") or []:
+        if not isinstance(market, dict):
+            continue
+        if str(market.get("market_type") or "spot").lower() != "spot":
+            continue
+        if market.get("regional_market") is True or market.get("volume_comparable_usd_like") is False:
+            continue
+        quote_symbol = str(market.get("quote_symbol") or "").upper().strip()
+        market_symbol = str(market.get("symbol") or "").upper().replace("-", "").replace("_", "").replace("/", "")
+        if quote_symbol:
+            if quote_symbol not in USD_LIKE_QUOTES:
+                continue
+        elif not any(market_symbol.endswith(q) for q in USD_LIKE_QUOTES):
+            continue
+        price = _num(market.get("price"))
+        if price > 0:
+            prices.append(price)
+    return _median(prices), prices
+
+
+def _enforce_cex_dex_price_coherence(row: dict) -> dict:
+    """Fail closed when an exact DEX pair is economically detached from current CEX spot.
+
+    Exact chain+contract+pair identity is necessary but not sufficient for an execution
+    identity. A stale or detached exact-token pool can have large nominal liquidity while
+    quoting a price far away from the live CEX market. This guard never upgrades a row; it
+    can only withhold DEX_VERIFIED status and registry learning.
+    """
+    if str(row.get("identity_status") or "") != "DEX_VERIFIED":
+        return row
+
+    out = dict(row)
+    cex_reference, cex_prices = _current_cex_usd_reference_price(row)
+    dex_price = _num(row.get("dex_price_usd"))
+    out["cex_reference_price_usd"] = round(cex_reference, 12) if cex_reference > 0 else None
+    out["cex_reference_price_sample_count"] = len(cex_prices)
+    out["dex_execution_price_usd"] = dex_price if dex_price > 0 else None
+    out["max_cex_dex_price_ratio"] = MAX_CEX_DEX_PRICE_RATIO
+
+    blocker = None
+    ratio = None
+    if cex_reference <= 0:
+        blocker = "CEX_USD_REFERENCE_MISSING_FOR_DEX_COHERENCE"
+    elif dex_price <= 0:
+        blocker = "DEX_EXECUTION_PRICE_MISSING_FOR_CEX_COHERENCE"
+    else:
+        ratio = max(cex_reference, dex_price) / min(cex_reference, dex_price)
+        out["cex_dex_price_ratio"] = round(ratio, 6)
+        if ratio > MAX_CEX_DEX_PRICE_RATIO:
+            blocker = "DEX_PRICE_INCOHERENT_WITH_CEX_SPOT"
+
+    if blocker:
+        out.update({
+            "identity_status": "IDENTITY_RESOLVED_PAIR_PENDING",
+            "identity_verified": False,
+            "identity_blocker": blocker,
+            "execution_pair_price_coherent": False,
+            "registry_learning_eligible": False,
+            "actionable": False,
+            "automatic_buy": False,
+        })
+        return out
+
+    out["execution_pair_price_coherent"] = True
+    out["registry_learning_eligible"] = True
+    return out
 
 
 def _status(row: dict) -> str:
@@ -191,6 +279,8 @@ def _persist_verified_registry(data_dir: Path, rows: list[dict], now: str) -> di
     for row in rows:
         if row.get("identity_status") != "DEX_VERIFIED" or row.get("identity_verified") is not True:
             continue
+        if row.get("execution_pair_price_coherent") is not True:
+            continue
         if row.get("market_age_verified") is not True:
             continue
         symbol = _base_symbol(row.get("symbol"))
@@ -228,8 +318,9 @@ def _persist_verified_registry(data_dir: Path, rows: list[dict], now: str) -> di
             "evidence_source": "AUTO_STRICT_CEX_SPOT_CGID_AGE_PLUS_EXACT_DEX_PAIR",
             "evidence_note": (
                 "Automatically learned only after strict CEX symbol identity, >=90d age evidence, "
-                "exact on-chain chain+contract resolution and an exact-address DEX pair. This is an "
-                "identity seed only; all liquidity, holder, survival and REAL ALERT gates still apply."
+                "exact on-chain chain+contract resolution, exact-address DEX pair and current CEX/DEX "
+                "execution-price coherence. This is an identity seed only; all liquidity, holder, "
+                "survival and REAL ALERT gates still apply."
             ),
             "auto_verified_pair_address": pair,
             "auto_verified_at": now,
@@ -237,9 +328,9 @@ def _persist_verified_registry(data_dir: Path, rows: list[dict], now: str) -> di
         added.append(symbol)
 
     if added:
-        registry["version"] = max(int(registry.get("version") or 0), 3)
+        registry["version"] = max(int(registry.get("version") or 0), 4)
         registry["updated_at"] = now
-        registry["policy"] = "EXACT_IDENTITY_SEEDS_ONLY_NO_SYMBOL_ONLY_ACTIONABILITY"
+        registry["policy"] = "EXACT_IDENTITY_SEEDS_ONLY_PRICE_COHERENT_NO_SYMBOL_ONLY_ACTIONABILITY"
         registry["symbols"] = symbols
         _write(path, registry)
 
@@ -249,7 +340,67 @@ def _persist_verified_registry(data_dir: Path, rows: list[dict], now: str) -> di
         "conflicts": conflicts,
         "added_count": len(added),
         "conflict_count": len(conflicts),
-        "rule": "ONLY_CGID_BACKED_DEX_VERIFIED_EXACT_IDENTITY_SELF_REGISTERS; STRICT_DEX_FALLBACK_STAYS_RUN_SCOPED",
+        "rule": "ONLY_CGID_BACKED_DEX_VERIFIED_EXACT_IDENTITY_WITH_CURRENT_CEX_DEX_PRICE_COHERENCE_SELF_REGISTERS; STRICT_DEX_FALLBACK_STAYS_RUN_SCOPED",
+    }
+
+
+def _quarantine_incoherent_auto_registry(data_dir: Path, rows: list[dict], now: str) -> dict:
+    """Quarantine derived auto-registry seeds disproven by current execution-price coherence.
+
+    The original detection milestones remain immutable in their source state. Only the
+    derived identity cache is invalidated, and its previous value is retained under a
+    quarantine ledger for auditability.
+    """
+    path = data_dir / "cex-identity-registry.json"
+    registry = _load(path, {})
+    if not isinstance(registry, dict):
+        return {"quarantined": [], "quarantined_count": 0}
+    symbols = registry.get("symbols") if isinstance(registry.get("symbols"), dict) else {}
+    quarantine = registry.get("quarantined_symbols") if isinstance(registry.get("quarantined_symbols"), dict) else {}
+    quarantined: list[str] = []
+
+    for row in rows:
+        if row.get("identity_blocker") != "DEX_PRICE_INCOHERENT_WITH_CEX_SPOT":
+            continue
+        symbol = _base_symbol(row.get("symbol"))
+        existing = symbols.get(symbol)
+        if not isinstance(existing, dict):
+            continue
+        if str(existing.get("evidence_source") or "") != "AUTO_STRICT_CEX_SPOT_CGID_AGE_PLUS_EXACT_DEX_PAIR":
+            continue
+        same = (
+            str(existing.get("coingecko_id") or "") == str(row.get("coingecko_id") or "")
+            and str(existing.get("chain") or "").lower() == str(row.get("chain") or "").lower()
+            and str(existing.get("token_address") or "").lower() == str(row.get("token_address") or "").lower()
+            and str(existing.get("auto_verified_pair_address") or "").lower() == str(row.get("pair_address") or "").lower()
+        )
+        if not same:
+            continue
+        quarantine[symbol] = {
+            **existing,
+            "quarantined_at": now,
+            "quarantine_reason": "DEX_PRICE_INCOHERENT_WITH_CEX_SPOT",
+            "observed_cex_reference_price_usd": row.get("cex_reference_price_usd"),
+            "observed_dex_execution_price_usd": row.get("dex_execution_price_usd"),
+            "observed_cex_dex_price_ratio": row.get("cex_dex_price_ratio"),
+            "immutable_detection_history_untouched": True,
+        }
+        del symbols[symbol]
+        quarantined.append(symbol)
+
+    if quarantined:
+        registry["version"] = max(int(registry.get("version") or 0), 4)
+        registry["updated_at"] = now
+        registry["policy"] = "EXACT_IDENTITY_SEEDS_ONLY_PRICE_COHERENT_NO_SYMBOL_ONLY_ACTIONABILITY"
+        registry["symbols"] = symbols
+        registry["quarantined_symbols"] = quarantine
+        _write(path, registry)
+
+    return {
+        "quarantined": quarantined,
+        "quarantined_count": len(quarantined),
+        "reason": "AUTO_REGISTRY_SEED_INVALIDATED_BY_CURRENT_CEX_DEX_EXECUTION_PRICE_INCOHERENCE",
+        "immutable_detection_history_untouched": True,
     }
 
 
@@ -291,6 +442,8 @@ def run(data_dir: Path = DATA) -> dict:
             "unique_or_strictly_coherent_coin_identity_required": True,
             "exact_onchain_contract_required": True,
             "exact_dex_pair_required_before_registry_learning": True,
+            "dynamic_exact_pair_requires_current_cex_dex_price_coherence": True,
+            "incoherent_auto_registry_seed_quarantined_with_audit_record": True,
             "cex_only_never_real_alert": True,
             "hard_liquidity_and_survival_gates_unchanged": True,
             "existing_registry_conflict_never_overwritten": True,
@@ -309,8 +462,8 @@ def run(data_dir: Path = DATA) -> dict:
         payload = {
             **base,
             "status": "HEALTHY_EMPTY",
-            "counts": {"age_identity_verified": 0, "dex_verified": 0, "pair_pending": 0, "identity_pending": 0, "dex_fallback_verified": 0},
-            "auto_registry": {"added": [], "confirmed_existing": [], "conflicts": [], "added_count": 0, "conflict_count": 0},
+            "counts": {"age_identity_verified": 0, "dex_verified": 0, "pair_pending": 0, "identity_pending": 0, "price_incoherent": 0, "dex_fallback_verified": 0},
+            "auto_registry": {"added": [], "confirmed_existing": [], "conflicts": [], "added_count": 0, "conflict_count": 0, "quarantine": {"quarantined": [], "quarantined_count": 0}},
             "candidates": [],
             "rejections": [],
         }
@@ -323,7 +476,11 @@ def run(data_dir: Path = DATA) -> dict:
         age_report = verify_age_and_coin_identity(temp)
         resolve_exact_identity(temp)
         resolved = _load(temp, {})
-        rows = [_research_wrap(row, "CEX_SPOT_DYNAMIC_EXACT_IDENTITY", now) for row in (resolved.get("alerts") or []) if isinstance(row, dict)]
+        rows = [
+            _research_wrap(_enforce_cex_dex_price_coherence(row), "CEX_SPOT_DYNAMIC_EXACT_IDENTITY", now)
+            for row in (resolved.get("alerts") or [])
+            if isinstance(row, dict)
+        ]
 
         rejected = list((age_report or {}).get("rejections") or [])
         not_found = {_base_symbol(x.get("symbol")) for x in rejected if isinstance(x, dict) and x.get("reason") == "AGE_IDENTITY_NOT_FOUND"}
@@ -349,12 +506,15 @@ def run(data_dir: Path = DATA) -> dict:
                 unique[(str(row.get("symbol")), str(len(unique)), "pending")] = row
         rows = list(unique.values())
 
+        quarantine_report = _quarantine_incoherent_auto_registry(data_dir, rows, now)
         registry_report = _persist_verified_registry(data_dir, rows, now)
+        registry_report["quarantine"] = quarantine_report
         counts = {
             "age_identity_verified": len(rows),
             "dex_verified": sum(1 for x in rows if x.get("identity_status") == "DEX_VERIFIED"),
             "pair_pending": sum(1 for x in rows if x.get("identity_status") == "IDENTITY_RESOLVED_PAIR_PENDING"),
             "identity_pending": sum(1 for x in rows if x.get("identity_status") == "IDENTITY_PENDING"),
+            "price_incoherent": sum(1 for x in rows if x.get("identity_blocker") == "DEX_PRICE_INCOHERENT_WITH_CEX_SPOT"),
             "dex_fallback_verified": len(fallback_rows),
         }
         payload = {
@@ -373,8 +533,8 @@ def run(data_dir: Path = DATA) -> dict:
             **base,
             "status": "DEGRADED_FAIL_CLOSED",
             "error": f"{type(exc).__name__}: {exc}"[:500],
-            "counts": {"age_identity_verified": 0, "dex_verified": 0, "pair_pending": 0, "identity_pending": len(watch), "dex_fallback_verified": 0},
-            "auto_registry": {"added": [], "confirmed_existing": [], "conflicts": [], "added_count": 0, "conflict_count": 0},
+            "counts": {"age_identity_verified": 0, "dex_verified": 0, "pair_pending": 0, "identity_pending": len(watch), "price_incoherent": 0, "dex_fallback_verified": 0},
+            "auto_registry": {"added": [], "confirmed_existing": [], "conflicts": [], "added_count": 0, "conflict_count": 0, "quarantine": {"quarantined": [], "quarantined_count": 0}},
             "candidates": [],
             "rejections": [],
         }
