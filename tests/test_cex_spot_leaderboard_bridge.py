@@ -84,3 +84,37 @@ def test_existing_candidate_is_annotated_not_duplicated(tmp_path: Path):
     assert report["injected_count"] == 0
     assert len(radar["watchlist"]) == 1
     assert radar["watchlist"][0]["leaderboard_watch"] is True
+
+
+def test_current_four_part_state_key_keeps_raw_market_id_out_of_canonical_symbol(tmp_path: Path):
+    state = {
+        "version": 3,
+        "markets": {
+            "spot:gate:BRUSDT:BR_USDT": [{
+                "observed_at": "2026-09-14T15:48:44+00:00",
+                "price": 0.51485,
+                "change_24h_pct": 82.18,
+                "volume_24h": 3_234_519.08,
+            }],
+            "spot:kucoin:BRUSDT:BR-USDT": [{
+                "observed_at": "2026-09-14T15:48:44+00:00",
+                "price": 0.51519,
+                "change_24h_pct": 79.9,
+                "volume_24h": 1_617_898.89,
+            }],
+        },
+        "signal_milestones": {},
+    }
+    _write(tmp_path / "cex-spot-state.json", state)
+    _write(tmp_path / "cex-spot-revival-radar.json", {"version": 4, "watchlist": [], "alerts": []})
+
+    report = bridge.run(tmp_path, "2026-09-14T15:50:00+00:00")
+    radar = json.loads((tmp_path / "cex-spot-revival-radar.json").read_text())
+
+    assert report["injected_count"] == 1
+    assert report["leaderboard_symbols"] == 1
+    row = radar["watchlist"][0]
+    assert row["symbol"] == "BRUSDT"
+    assert row["confirmations"] == 2
+    assert {m["market_id"] for m in row["markets"]} == {"BR_USDT", "BR-USDT"}
+    assert all(":" not in m["symbol"] for m in row["markets"])
