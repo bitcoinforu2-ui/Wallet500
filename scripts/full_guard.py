@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 CRITICAL_TESTS = (
+    "tests/test_accuracy_contracts.py",
     "tests/test_price_identity_contract.py",
     "tests/test_signal_alert_guard.py",
     "tests/test_safe_json.py",
@@ -20,6 +21,7 @@ CRITICAL_TESTS = (
     "tests/test_truth_verification.py",
     "tests/test_provider_redundancy.py",
     "tests/test_waking_fallbacks.py",
+    "tests/test_solana_mintability_gate.py",
     "tests/test_production_risk_gate.py",
     "tests/test_system_integrity_audit.py",
 )
@@ -73,7 +75,7 @@ def main() -> int:
         ],
     )
     _run(
-        "Critical truth/alert/replay/provider contracts",
+        "Critical truth/alert/replay/provider/accuracy contracts",
         [sys.executable, "-m", "pytest", "-q", *CRITICAL_TESTS],
     )
 
