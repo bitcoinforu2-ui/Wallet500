@@ -5,28 +5,31 @@
     {
       "adaptive_discovery": {
         "anomaly_positive": true,
-        "anomaly_score": 49.45,
+        "anomaly_score": 66.4,
         "late_move_risk": false,
         "liquidity_change_pct": 1.37,
         "method": "FORWARD_SNAPSHOT_VELOCITY_PERSISTENCE_PROXY_V1",
         "pair_volume_change_pct": 0.51,
         "persistence_positive": true,
-        "persistence_score": 75.0,
-        "positive_independent_count": 1,
+        "persistence_score": 90.0,
+        "positive_independent_count": 2,
         "signal_families": [
           "holder_growth",
           "liquidity",
-          "pair_survival"
+          "pair_survival",
+          "verified_social"
         ],
-        "signal_family_count": 3,
+        "signal_family_count": 4,
         "signals": [
           "EXACT_PAIR_PERSISTENCE_VERIFIED",
           "LIQUIDITY_RETENTION_PERSISTENT",
           "LIQUIDITY_STABLE_OR_RISING",
-          "POSITIVE_HOLDER_GROWTH"
+          "MULTI_LANE_PERSISTENCE",
+          "POSITIVE_HOLDER_GROWTH",
+          "POSITIVE_VERIFIED_SOCIAL"
         ],
-        "velocity_positive": false,
-        "velocity_score": 28.0
+        "velocity_positive": true,
+        "velocity_score": 46.0
       },
       "automatic_buy": false,
       "blockers": [],
@@ -35,16 +38,18 @@
         "anomaly_watch": false,
         "evidence_ready": true,
         "market_confirmation_pending": false,
-        "positive_independent_count": 1,
+        "positive_independent_count": 2,
         "positive_independent_lanes": [
-          "HOLDER_GROWTH"
+          "HOLDER_GROWTH",
+          "VERIFIED_SOCIAL"
         ],
         "pre_waking_evidence_ready": false,
-        "verified_family_count": 4,
-        "verified_independent_count": 2,
+        "verified_family_count": 5,
+        "verified_independent_count": 3,
         "verified_independent_lanes": [
           "HOLDER_GROWTH",
-          "SMART_MONEY"
+          "SMART_MONEY",
+          "VERIFIED_SOCIAL"
         ]
       },
       "dex_url": "https://dexscreener.com/solana/eb9qkfiszkd185kdwlkzrmrejkeba2ah2bk7spnmopej",
@@ -105,7 +110,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 1570,
+            "verified_wallets_seen": 1565,
             "waking_t0": "2026-09-14T04:50:17.490230+00:00"
           },
           "positive": false,
@@ -113,10 +118,19 @@
           "verified": true
         },
         "social": {
-          "metrics": {},
-          "positive": false,
-          "status": "MISSING",
-          "verified": false
+          "metrics": {
+            "score": 0.0,
+            "signals": [
+              "SOCIAL_MENTIONS_0",
+              "SOCIAL_SOURCES_0",
+              "SOCIAL_AUTHORS_0",
+              "OFFICIAL_TELEGRAM_24H_POSTS_0"
+            ]
+          },
+          "positive": true,
+          "source": "WAKING_SOCIAL_MULTI_SOURCE+OFFICIAL_TELEGRAM_V2",
+          "status": "VERIFIED_MULTI_SOURCE_SOCIAL",
+          "verified": true
         },
         "waking_confirmation": {
           "metrics": {
@@ -144,13 +158,13 @@
       },
       "key": "solana:8XtRWb4uAAJFMP4QQhoYYCWR6XXb7ybcCdiqPwz9s5WS:eb9qkfiszkd185kdwlkzrmrejkeba2ah2bk7spnmopej",
       "learning_rank": {
-        "base_anomaly_score": 49.45,
+        "base_anomaly_score": 66.4,
         "matched_evidence_features": [],
         "may_bypass_truth_gate": false,
         "may_change_status_or_tier": false,
         "prospective": true,
         "rank_adjustment": 0,
-        "rank_score": 49.45,
+        "rank_score": 66.4,
         "research_only": true
       },
       "market": {
@@ -312,7 +326,7 @@
             "confirmation_score": 15.0
           },
           "positive": false,
-          "status": "WAKING_UNCONFIRMED_RESEARCH",
+          "status": "WAKING_RISK_RESEARCH",
           "verified": false
         },
         "wallet_accumulation": {
@@ -483,7 +497,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 579,
+            "verified_wallets_seen": 558,
             "waking_t0": "2026-09-14T06:30:25.381945+00:00"
           },
           "positive": false,
@@ -507,9 +521,9 @@
         "wallet_accumulation": {
           "metrics": {
             "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 0,
-            "net_distributing_wallets_h1": 1,
-            "resolution_pct": null,
+            "net_accumulating_wallets_h1": 1,
+            "net_distributing_wallets_h1": 0,
+            "resolution_pct": 100.0,
             "resolved_swaps_h1": 1,
             "unique_traders_h1": 1,
             "wallet_buy_sell_ratio_h1": 0.0
@@ -672,7 +686,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 203,
+            "verified_wallets_seen": 193,
             "waking_t0": "2026-09-14T06:30:25.381945+00:00"
           },
           "positive": false,
@@ -861,7 +875,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 161,
+            "verified_wallets_seen": 160,
             "waking_t0": "2026-09-13T06:30:37.327873+00:00"
           },
           "positive": false,
@@ -879,7 +893,7 @@
             "confirmation_score": 0.0
           },
           "positive": false,
-          "status": "WAKING_UNCONFIRMED_RESEARCH",
+          "status": "WAKING_RISK_RESEARCH",
           "verified": false
         },
         "wallet_accumulation": {
@@ -1636,7 +1650,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 524,
+            "verified_wallets_seen": 525,
             "waking_t0": "2026-09-13T17:20:18.225752+00:00"
           },
           "positive": false,
@@ -1661,11 +1675,11 @@
           "metrics": {
             "first_seen_buyers_h1": 2,
             "net_accumulating_wallets_h1": 1,
-            "net_distributing_wallets_h1": 6,
-            "resolution_pct": 50.0,
-            "resolved_swaps_h1": 9,
-            "unique_traders_h1": 8,
-            "wallet_buy_sell_ratio_h1": 0.2857
+            "net_distributing_wallets_h1": 7,
+            "resolution_pct": 0.0,
+            "resolved_swaps_h1": 10,
+            "unique_traders_h1": 9,
+            "wallet_buy_sell_ratio_h1": 0.25
           },
           "pair_match": true,
           "positive": false,
@@ -1830,7 +1844,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 535,
+            "verified_wallets_seen": 539,
             "waking_t0": "2026-09-14T06:30:25.381945+00:00"
           },
           "positive": false,
@@ -1853,13 +1867,13 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 6,
-            "net_accumulating_wallets_h1": 8,
-            "net_distributing_wallets_h1": 7,
-            "resolution_pct": 50.0,
-            "resolved_swaps_h1": 19,
-            "unique_traders_h1": 15,
-            "wallet_buy_sell_ratio_h1": 1.0
+            "first_seen_buyers_h1": 3,
+            "net_accumulating_wallets_h1": 5,
+            "net_distributing_wallets_h1": 5,
+            "resolution_pct": 100.0,
+            "resolved_swaps_h1": 17,
+            "unique_traders_h1": 10,
+            "wallet_buy_sell_ratio_h1": 0.8333
           },
           "pair_match": true,
           "positive": false,
@@ -1959,10 +1973,11 @@
           "HOLDER_GROWTH"
         ],
         "pre_waking_evidence_ready": false,
-        "verified_family_count": 3,
-        "verified_independent_count": 1,
+        "verified_family_count": 4,
+        "verified_independent_count": 2,
         "verified_independent_lanes": [
-          "HOLDER_GROWTH"
+          "HOLDER_GROWTH",
+          "WALLET_ACCUMULATION"
         ]
       },
       "dex_url": "https://dexscreener.com/solana/bumh6yebpbvah4by4otgjuvzq9cvh6dqpgrzvxfdmwc1",
@@ -2046,18 +2061,18 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 0,
-            "net_distributing_wallets_h1": 0,
-            "resolution_pct": null,
-            "resolved_swaps_h1": 0,
-            "unique_traders_h1": null,
-            "wallet_buy_sell_ratio_h1": 0.0
+            "first_seen_buyers_h1": 1,
+            "net_accumulating_wallets_h1": 3,
+            "net_distributing_wallets_h1": 1,
+            "resolution_pct": 100.0,
+            "resolved_swaps_h1": 4,
+            "unique_traders_h1": 4,
+            "wallet_buy_sell_ratio_h1": 3.0
           },
-          "pair_match": false,
+          "pair_match": true,
           "positive": false,
-          "status": "MISSING_OR_PARTIAL",
-          "verified": false
+          "status": "VERIFIED_NO_ACCUMULATION",
+          "verified": true
         }
       },
       "key": "solana:5yC9BM8KUsJTPbWPLfA2N8qH1s9V8DQ3Vcw1G6Jdpump:bumh6yebpbvah4by4otgjuvzq9cvh6dqpgrzvxfdmwc1",
@@ -2087,8 +2102,7 @@
       "network": "solana",
       "pair_address": "BUMh6YebpBvAh4by4oTGJUvzQ9CvH6dqPgrZvXFDMwC1",
       "pending_confirmations": [
-        "MARKET_CONFIRMATION_PENDING",
-        "WALLET_COVERAGE_PENDING"
+        "MARKET_CONFIRMATION_PENDING"
       ],
       "production_effect": false,
       "rescue_shadow": {
@@ -2368,10 +2382,10 @@
         "concentration": {
           "metrics": {
             "concentration_risk_score": 65.0,
-            "top10_pct": 61.7814,
-            "top1_pct": 50.4138,
-            "top20_pct": 62.9413,
-            "top5_pct": 60.5484
+            "top10_pct": 61.7613,
+            "top1_pct": 50.4072,
+            "top20_pct": 62.9212,
+            "top5_pct": 60.5287
           },
           "positive": false,
           "role": "RISK_CONTEXT_ONLY_NEVER_POSITIVE_ALPHA",
@@ -2411,7 +2425,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 224,
+            "verified_wallets_seen": 225,
             "waking_t0": "2026-09-14T07:24:29.716919+00:00"
           },
           "positive": false,
@@ -2436,13 +2450,13 @@
           "metrics": {
             "first_seen_buyers_h1": 0,
             "net_accumulating_wallets_h1": 0,
-            "net_distributing_wallets_h1": 0,
-            "resolution_pct": null,
-            "resolved_swaps_h1": 0,
-            "unique_traders_h1": null,
+            "net_distributing_wallets_h1": 2,
+            "resolution_pct": 83.33,
+            "resolved_swaps_h1": 8,
+            "unique_traders_h1": 2,
             "wallet_buy_sell_ratio_h1": 0.0
           },
-          "pair_match": false,
+          "pair_match": true,
           "positive": false,
           "status": "MISSING_OR_PARTIAL",
           "verified": false
@@ -3572,7 +3586,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 814,
+            "verified_wallets_seen": 820,
             "waking_t0": "2026-09-12T20:48:24.680347+00:00"
           },
           "positive": false,
@@ -3595,13 +3609,13 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 1,
-            "net_distributing_wallets_h1": 4,
-            "resolution_pct": 22.22,
-            "resolved_swaps_h1": 6,
-            "unique_traders_h1": 5,
-            "wallet_buy_sell_ratio_h1": 0.2
+            "first_seen_buyers_h1": 2,
+            "net_accumulating_wallets_h1": 3,
+            "net_distributing_wallets_h1": 11,
+            "resolution_pct": 83.33,
+            "resolved_swaps_h1": 16,
+            "unique_traders_h1": 14,
+            "wallet_buy_sell_ratio_h1": 0.3333
           },
           "pair_match": true,
           "positive": false,
@@ -3987,10 +4001,10 @@
             "net_distributing_wallets_h1": 0,
             "resolution_pct": null,
             "resolved_swaps_h1": 0,
-            "unique_traders_h1": 0,
+            "unique_traders_h1": null,
             "wallet_buy_sell_ratio_h1": 0.0
           },
-          "pair_match": true,
+          "pair_match": false,
           "positive": false,
           "status": "MISSING_OR_PARTIAL",
           "verified": false
@@ -4176,12 +4190,12 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 1,
-            "net_accumulating_wallets_h1": 2,
+            "first_seen_buyers_h1": 0,
+            "net_accumulating_wallets_h1": 0,
             "net_distributing_wallets_h1": 0,
             "resolution_pct": 0.0,
-            "resolved_swaps_h1": 3,
-            "unique_traders_h1": 2,
+            "resolved_swaps_h1": 0,
+            "unique_traders_h1": 0,
             "wallet_buy_sell_ratio_h1": 0.0
           },
           "pair_match": true,
@@ -4924,7 +4938,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 112,
+            "verified_wallets_seen": 111,
             "waking_t0": "2026-09-12T20:22:37.810947+00:00"
           },
           "positive": false,
@@ -4948,12 +4962,12 @@
         "wallet_accumulation": {
           "metrics": {
             "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 0,
+            "net_accumulating_wallets_h1": 1,
             "net_distributing_wallets_h1": 1,
-            "resolution_pct": 0.0,
-            "resolved_swaps_h1": 6,
-            "unique_traders_h1": 1,
-            "wallet_buy_sell_ratio_h1": 0.0
+            "resolution_pct": 16.67,
+            "resolved_swaps_h1": 8,
+            "unique_traders_h1": 2,
+            "wallet_buy_sell_ratio_h1": 1.0
           },
           "pair_match": true,
           "positive": false,
@@ -5311,7 +5325,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 1403,
+            "verified_wallets_seen": 1416,
             "waking_t0": "2026-09-12T11:45:56.486548+00:00"
           },
           "positive": false,
@@ -5334,15 +5348,15 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 0,
-            "net_distributing_wallets_h1": 0,
-            "resolution_pct": null,
-            "resolved_swaps_h1": 0,
-            "unique_traders_h1": null,
-            "wallet_buy_sell_ratio_h1": 0.0
+            "first_seen_buyers_h1": 8,
+            "net_accumulating_wallets_h1": 7,
+            "net_distributing_wallets_h1": 6,
+            "resolution_pct": 90.0,
+            "resolved_swaps_h1": 17,
+            "unique_traders_h1": 13,
+            "wallet_buy_sell_ratio_h1": 1.6667
           },
-          "pair_match": false,
+          "pair_match": true,
           "positive": false,
           "status": "MISSING_OR_PARTIAL",
           "verified": false
@@ -5653,10 +5667,10 @@
         "concentration": {
           "metrics": {
             "concentration_risk_score": 18.0,
-            "top10_pct": 34.4804,
-            "top1_pct": 11.4691,
-            "top20_pct": 44.1159,
-            "top5_pct": 26.0721
+            "top10_pct": 34.4566,
+            "top1_pct": 11.4808,
+            "top20_pct": 44.0825,
+            "top5_pct": 26.0838
           },
           "positive": false,
           "role": "RISK_CONTEXT_ONLY_NEVER_POSITIVE_ALPHA",
@@ -5696,7 +5710,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 1714,
+            "verified_wallets_seen": 1684,
             "waking_t0": "2026-09-13T20:21:46.694305+00:00"
           },
           "positive": false,
@@ -5719,13 +5733,13 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 0,
-            "net_distributing_wallets_h1": 10,
-            "resolution_pct": 11.11,
+            "first_seen_buyers_h1": 1,
+            "net_accumulating_wallets_h1": 2,
+            "net_distributing_wallets_h1": 8,
+            "resolution_pct": 50.0,
             "resolved_swaps_h1": 10,
             "unique_traders_h1": 10,
-            "wallet_buy_sell_ratio_h1": 0.0
+            "wallet_buy_sell_ratio_h1": 0.25
           },
           "pair_match": true,
           "positive": false,
@@ -16715,10 +16729,11 @@
         "positive_independent_count": 0,
         "positive_independent_lanes": [],
         "pre_waking_evidence_ready": false,
-        "verified_family_count": 3,
-        "verified_independent_count": 1,
+        "verified_family_count": 4,
+        "verified_independent_count": 2,
         "verified_independent_lanes": [
-          "HOLDER_GROWTH"
+          "HOLDER_GROWTH",
+          "WALLET_ACCUMULATION"
         ]
       },
       "dex_url": "https://dexscreener.com/solana/9b8xxgabweefclzwhawwbjzjqamifsh7wc8y5bkvpbqp",
@@ -16806,14 +16821,14 @@
             "net_accumulating_wallets_h1": 3,
             "net_distributing_wallets_h1": 3,
             "resolution_pct": 100.0,
-            "resolved_swaps_h1": 10,
+            "resolved_swaps_h1": 16,
             "unique_traders_h1": 6,
-            "wallet_buy_sell_ratio_h1": 1.25
+            "wallet_buy_sell_ratio_h1": 1.0
           },
           "pair_match": true,
           "positive": false,
-          "status": "MISSING_OR_PARTIAL",
-          "verified": false
+          "status": "VERIFIED_NO_ACCUMULATION",
+          "verified": true
         }
       },
       "key": "solana:2bpT3ksMdwdZ6DuHyq3FDUr7HDwvZ5DRZoT1fUPALJaH:9b8xxgabweefclzwhawwbjzjqamifsh7wc8y5bkvpbqp",
@@ -16844,8 +16859,7 @@
       "pair_address": "9B8xXGabWeEfCLzwHAwwbjZjQamiFsh7WC8Y5bkvPbqP",
       "pending_confirmations": [
         "INDEPENDENT_EVIDENCE_PENDING",
-        "MARKET_CONFIRMATION_PENDING",
-        "WALLET_COVERAGE_PENDING"
+        "MARKET_CONFIRMATION_PENDING"
       ],
       "production_effect": false,
       "rescue_shadow": {
@@ -17161,7 +17175,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 54,
+            "verified_wallets_seen": 55,
             "waking_t0": "2026-09-14T00:30:20.631897+00:00"
           },
           "positive": false,
@@ -17186,11 +17200,11 @@
           "metrics": {
             "first_seen_buyers_h1": 0,
             "net_accumulating_wallets_h1": 1,
-            "net_distributing_wallets_h1": 1,
-            "resolution_pct": null,
-            "resolved_swaps_h1": 16,
-            "unique_traders_h1": 2,
-            "wallet_buy_sell_ratio_h1": 0.5
+            "net_distributing_wallets_h1": 2,
+            "resolution_pct": 100.0,
+            "resolved_swaps_h1": 6,
+            "unique_traders_h1": 3,
+            "wallet_buy_sell_ratio_h1": 0.3333
           },
           "pair_match": true,
           "positive": false,
@@ -17478,12 +17492,11 @@
         "positive_independent_count": 0,
         "positive_independent_lanes": [],
         "pre_waking_evidence_ready": false,
-        "verified_family_count": 5,
-        "verified_independent_count": 3,
+        "verified_family_count": 4,
+        "verified_independent_count": 2,
         "verified_independent_lanes": [
           "HOLDER_GROWTH",
-          "SMART_MONEY",
-          "WALLET_ACCUMULATION"
+          "SMART_MONEY"
         ]
       },
       "dex_url": "https://dexscreener.com/solana/6wwcmirjfpdndfmtgvq8ey1zxmzlkglryuutry4izmye",
@@ -17570,15 +17583,15 @@
             "first_seen_buyers_h1": 0,
             "net_accumulating_wallets_h1": 0,
             "net_distributing_wallets_h1": 1,
-            "resolution_pct": 100.0,
+            "resolution_pct": null,
             "resolved_swaps_h1": 1,
             "unique_traders_h1": 1,
             "wallet_buy_sell_ratio_h1": 0.0
           },
           "pair_match": true,
           "positive": false,
-          "status": "VERIFIED_NO_ACCUMULATION",
-          "verified": true
+          "status": "MISSING_OR_PARTIAL",
+          "verified": false
         }
       },
       "key": "solana:8ncucXv6U6epZKHPbgaEBcEK399TpHGKCquSt4RnmX4f:6wwcmirjfpdndfmtgvq8ey1zxmzlkglryuutry4izmye",
@@ -17609,7 +17622,8 @@
       "pair_address": "6WwcmiRJFPDNdFmtgVQ8eY1zxMzLKGLrYuUtRy4iZmye",
       "pending_confirmations": [
         "INDEPENDENT_EVIDENCE_PENDING",
-        "MARKET_CONFIRMATION_PENDING"
+        "MARKET_CONFIRMATION_PENDING",
+        "WALLET_COVERAGE_PENDING"
       ],
       "production_effect": false,
       "rescue_shadow": {
@@ -18051,12 +18065,11 @@
         "positive_independent_count": 0,
         "positive_independent_lanes": [],
         "pre_waking_evidence_ready": false,
-        "verified_family_count": 5,
-        "verified_independent_count": 3,
+        "verified_family_count": 4,
+        "verified_independent_count": 2,
         "verified_independent_lanes": [
           "HOLDER_GROWTH",
-          "SMART_MONEY",
-          "WALLET_ACCUMULATION"
+          "SMART_MONEY"
         ]
       },
       "dex_url": "https://dexscreener.com/solana/e5h5bxlranyjfhezvr3r2j6kgdq3fnx8spkssgyqyya8",
@@ -18117,7 +18130,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 88,
+            "verified_wallets_seen": 86,
             "waking_t0": "2026-09-13T16:47:50.111818+00:00"
           },
           "positive": false,
@@ -18142,16 +18155,16 @@
           "metrics": {
             "first_seen_buyers_h1": 1,
             "net_accumulating_wallets_h1": 2,
-            "net_distributing_wallets_h1": 2,
-            "resolution_pct": 85.71,
-            "resolved_swaps_h1": 8,
-            "unique_traders_h1": 4,
-            "wallet_buy_sell_ratio_h1": 1.0
+            "net_distributing_wallets_h1": 1,
+            "resolution_pct": null,
+            "resolved_swaps_h1": 6,
+            "unique_traders_h1": 3,
+            "wallet_buy_sell_ratio_h1": 2.0
           },
           "pair_match": true,
           "positive": false,
-          "status": "VERIFIED_NO_ACCUMULATION",
-          "verified": true
+          "status": "MISSING_OR_PARTIAL",
+          "verified": false
         }
       },
       "key": "solana:DBRiDgJAMsM95moTzJs7M9LnkGErpbv9v6CUR1DXnUu5:e5h5bxlranyjfhezvr3r2j6kgdq3fnx8spkssgyqyya8",
@@ -18182,7 +18195,8 @@
       "pair_address": "E5H5BXLranyJFHEzvR3R2j6kGDQ3Fnx8sPKSsgYqyya8",
       "pending_confirmations": [
         "INDEPENDENT_EVIDENCE_PENDING",
-        "MARKET_CONFIRMATION_PENDING"
+        "MARKET_CONFIRMATION_PENDING",
+        "WALLET_COVERAGE_PENDING"
       ],
       "production_effect": false,
       "rescue_shadow": {
@@ -20148,11 +20162,12 @@
         "positive_independent_count": 0,
         "positive_independent_lanes": [],
         "pre_waking_evidence_ready": false,
-        "verified_family_count": 4,
-        "verified_independent_count": 2,
+        "verified_family_count": 5,
+        "verified_independent_count": 3,
         "verified_independent_lanes": [
           "HOLDER_GROWTH",
-          "SMART_MONEY"
+          "SMART_MONEY",
+          "WALLET_ACCUMULATION"
         ]
       },
       "dex_url": "https://dexscreener.com/solana/6hfajiuutxfzefmdkqsnbvfe6i95nh2wuvj5dwmf7gtw",
@@ -20237,17 +20252,17 @@
         "wallet_accumulation": {
           "metrics": {
             "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 1,
+            "net_accumulating_wallets_h1": 3,
             "net_distributing_wallets_h1": 2,
-            "resolution_pct": 50.0,
-            "resolved_swaps_h1": 5,
-            "unique_traders_h1": 3,
+            "resolution_pct": 100.0,
+            "resolved_swaps_h1": 13,
+            "unique_traders_h1": 5,
             "wallet_buy_sell_ratio_h1": 1.0
           },
           "pair_match": true,
           "positive": false,
-          "status": "MISSING_OR_PARTIAL",
-          "verified": false
+          "status": "VERIFIED_NO_ACCUMULATION",
+          "verified": true
         }
       },
       "key": "solana:zGh48JtNHVBb5evgoZLXwgPD2Qu4MhkWdJLGDAupump:6hfajiuutxfzefmdkqsnbvfe6i95nh2wuvj5dwmf7gtw",
@@ -20278,8 +20293,7 @@
       "pair_address": "6HfaJiUuTXFZEfmdkQSNbvfe6i95Nh2wUVJ5dWMf7gtw",
       "pending_confirmations": [
         "INDEPENDENT_EVIDENCE_PENDING",
-        "MARKET_CONFIRMATION_PENDING",
-        "WALLET_COVERAGE_PENDING"
+        "MARKET_CONFIRMATION_PENDING"
       ],
       "production_effect": false,
       "rescue_shadow": {
@@ -20341,12 +20355,11 @@
           "HOLDER_GROWTH"
         ],
         "pre_waking_evidence_ready": false,
-        "verified_family_count": 5,
-        "verified_independent_count": 3,
+        "verified_family_count": 4,
+        "verified_independent_count": 2,
         "verified_independent_lanes": [
           "HOLDER_GROWTH",
-          "SMART_MONEY",
-          "WALLET_ACCUMULATION"
+          "SMART_MONEY"
         ]
       },
       "dex_url": "https://dexscreener.com/solana/cey9e5wixjcre9qa3nwbb2szkjpf1pebh94ingxfebrs",
@@ -20433,15 +20446,15 @@
             "first_seen_buyers_h1": 0,
             "net_accumulating_wallets_h1": 0,
             "net_distributing_wallets_h1": 1,
-            "resolution_pct": 100.0,
+            "resolution_pct": null,
             "resolved_swaps_h1": 1,
             "unique_traders_h1": 1,
             "wallet_buy_sell_ratio_h1": 0.0
           },
           "pair_match": true,
           "positive": false,
-          "status": "VERIFIED_NO_ACCUMULATION",
-          "verified": true
+          "status": "MISSING_OR_PARTIAL",
+          "verified": false
         }
       },
       "key": "solana:2Wu1g2ft7qZHfTpfzP3wLdfPeV1is4EwQ3CXBfRYAciD:cey9e5wixjcre9qa3nwbb2szkjpf1pebh94ingxfebrs",
@@ -20471,7 +20484,8 @@
       "network": "solana",
       "pair_address": "Cey9E5WixJCre9qa3nwBB2SZKjPF1PEbh94ingxFeBrs",
       "pending_confirmations": [
-        "MARKET_CONFIRMATION_PENDING"
+        "MARKET_CONFIRMATION_PENDING",
+        "WALLET_COVERAGE_PENDING"
       ],
       "production_effect": false,
       "rescue_shadow": {
@@ -20555,10 +20569,10 @@
         "concentration": {
           "metrics": {
             "concentration_risk_score": 50.0,
-            "top10_pct": 45.1274,
-            "top1_pct": 22.3949,
-            "top20_pct": 57.7451,
-            "top5_pct": 35.5029
+            "top10_pct": 45.1319,
+            "top1_pct": 22.3994,
+            "top20_pct": 57.7496,
+            "top5_pct": 35.5074
           },
           "positive": false,
           "role": "RISK_CONTEXT_ONLY_NEVER_POSITIVE_ALPHA",
@@ -20621,13 +20635,13 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 1,
-            "net_accumulating_wallets_h1": 1,
-            "net_distributing_wallets_h1": 4,
+            "first_seen_buyers_h1": 0,
+            "net_accumulating_wallets_h1": 0,
+            "net_distributing_wallets_h1": 3,
             "resolution_pct": 100.0,
-            "resolved_swaps_h1": 6,
-            "unique_traders_h1": 5,
-            "wallet_buy_sell_ratio_h1": 0.25
+            "resolved_swaps_h1": 3,
+            "unique_traders_h1": 3,
+            "wallet_buy_sell_ratio_h1": 0.0
           },
           "pair_match": true,
           "positive": false,
@@ -20813,13 +20827,13 @@
           "metrics": {
             "first_seen_buyers_h1": 0,
             "net_accumulating_wallets_h1": 0,
-            "net_distributing_wallets_h1": 3,
-            "resolution_pct": 100.0,
-            "resolved_swaps_h1": 8,
-            "unique_traders_h1": 3,
+            "net_distributing_wallets_h1": 0,
+            "resolution_pct": null,
+            "resolved_swaps_h1": 0,
+            "unique_traders_h1": null,
             "wallet_buy_sell_ratio_h1": 0.0
           },
-          "pair_match": true,
+          "pair_match": false,
           "positive": false,
           "status": "MISSING_OR_PARTIAL",
           "verified": false
@@ -21297,11 +21311,12 @@
           "HOLDER_GROWTH"
         ],
         "pre_waking_evidence_ready": false,
-        "verified_family_count": 4,
-        "verified_independent_count": 2,
+        "verified_family_count": 5,
+        "verified_independent_count": 3,
         "verified_independent_lanes": [
           "HOLDER_GROWTH",
-          "SMART_MONEY"
+          "SMART_MONEY",
+          "WALLET_ACCUMULATION"
         ]
       },
       "dex_url": "https://dexscreener.com/solana/9vix1vducteoc2wertsp2tudxxpwaf69aeet8enpjpsn",
@@ -21385,18 +21400,18 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 0,
-            "net_distributing_wallets_h1": 7,
-            "resolution_pct": 50.0,
-            "resolved_swaps_h1": 7,
-            "unique_traders_h1": 7,
-            "wallet_buy_sell_ratio_h1": 0.0
+            "first_seen_buyers_h1": 1,
+            "net_accumulating_wallets_h1": 1,
+            "net_distributing_wallets_h1": 2,
+            "resolution_pct": 100.0,
+            "resolved_swaps_h1": 3,
+            "unique_traders_h1": 3,
+            "wallet_buy_sell_ratio_h1": 0.5
           },
           "pair_match": true,
           "positive": false,
-          "status": "MISSING_OR_PARTIAL",
-          "verified": false
+          "status": "VERIFIED_NO_ACCUMULATION",
+          "verified": true
         }
       },
       "key": "solana:DtR4D9FtVoTX2569gaL837ZgrB6wNjj6tkmnX9Rdk9B2:9vix1vducteoc2wertsp2tudxxpwaf69aeet8enpjpsn",
@@ -21426,8 +21441,7 @@
       "network": "solana",
       "pair_address": "9ViX1VductEoC2wERTSp2TuDxXPwAf69aeET8ENPJpsN",
       "pending_confirmations": [
-        "MARKET_CONFIRMATION_PENDING",
-        "WALLET_COVERAGE_PENDING"
+        "MARKET_CONFIRMATION_PENDING"
       ],
       "production_effect": false,
       "rescue_shadow": {
@@ -21745,7 +21759,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 225,
+            "verified_wallets_seen": 226,
             "waking_t0": "2026-09-13T03:47:47.575289+00:00"
           },
           "positive": false,
@@ -21768,13 +21782,13 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 1,
-            "net_distributing_wallets_h1": 2,
-            "resolution_pct": 0.0,
-            "resolved_swaps_h1": 4,
-            "unique_traders_h1": 3,
-            "wallet_buy_sell_ratio_h1": 0.5
+            "first_seen_buyers_h1": 1,
+            "net_accumulating_wallets_h1": 2,
+            "net_distributing_wallets_h1": 3,
+            "resolution_pct": 42.86,
+            "resolved_swaps_h1": 9,
+            "unique_traders_h1": 5,
+            "wallet_buy_sell_ratio_h1": 0.6667
           },
           "pair_match": true,
           "positive": false,
@@ -22128,7 +22142,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 188,
+            "verified_wallets_seen": 189,
             "waking_t0": "2026-09-13T04:47:17.577490+00:00"
           },
           "positive": false,
@@ -22153,10 +22167,10 @@
           "metrics": {
             "first_seen_buyers_h1": 0,
             "net_accumulating_wallets_h1": 0,
-            "net_distributing_wallets_h1": 3,
-            "resolution_pct": null,
-            "resolved_swaps_h1": 7,
-            "unique_traders_h1": 3,
+            "net_distributing_wallets_h1": 4,
+            "resolution_pct": 60.0,
+            "resolved_swaps_h1": 11,
+            "unique_traders_h1": 4,
             "wallet_buy_sell_ratio_h1": 0.0
           },
           "pair_match": true,
@@ -25000,15 +25014,15 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 0,
+            "first_seen_buyers_h1": 1,
+            "net_accumulating_wallets_h1": 2,
             "net_distributing_wallets_h1": 0,
-            "resolution_pct": null,
-            "resolved_swaps_h1": 0,
-            "unique_traders_h1": null,
+            "resolution_pct": 33.33,
+            "resolved_swaps_h1": 2,
+            "unique_traders_h1": 2,
             "wallet_buy_sell_ratio_h1": 0.0
           },
-          "pair_match": false,
+          "pair_match": true,
           "positive": false,
           "status": "MISSING_OR_PARTIAL",
           "verified": false
@@ -25477,10 +25491,11 @@
         "positive_independent_count": 0,
         "positive_independent_lanes": [],
         "pre_waking_evidence_ready": false,
-        "verified_family_count": 3,
-        "verified_independent_count": 1,
+        "verified_family_count": 4,
+        "verified_independent_count": 2,
         "verified_independent_lanes": [
-          "HOLDER_GROWTH"
+          "HOLDER_GROWTH",
+          "WALLET_ACCUMULATION"
         ]
       },
       "dex_url": "https://dexscreener.com/solana/hswwbsubmbwaqatcdwa8xrcd53qkg1bqtvtijrginmzg",
@@ -25565,17 +25580,17 @@
         "wallet_accumulation": {
           "metrics": {
             "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 0,
-            "net_distributing_wallets_h1": 1,
+            "net_accumulating_wallets_h1": 2,
+            "net_distributing_wallets_h1": 3,
             "resolution_pct": 100.0,
-            "resolved_swaps_h1": 1,
-            "unique_traders_h1": 1,
-            "wallet_buy_sell_ratio_h1": 0.0
+            "resolved_swaps_h1": 7,
+            "unique_traders_h1": 5,
+            "wallet_buy_sell_ratio_h1": 0.6667
           },
           "pair_match": true,
           "positive": false,
-          "status": "MISSING_OR_PARTIAL",
-          "verified": false
+          "status": "VERIFIED_NO_ACCUMULATION",
+          "verified": true
         }
       },
       "key": "solana:375aiUqZERLrB9sHtsArKr4nuWCgBrtqibUDBMGeLvZC:hswwbsubmbwaqatcdwa8xrcd53qkg1bqtvtijrginmzg",
@@ -25606,8 +25621,7 @@
       "pair_address": "HSWWBSubMBWAqatcdwa8xRcD53qkg1bQTVTijRGinmZG",
       "pending_confirmations": [
         "INDEPENDENT_EVIDENCE_PENDING",
-        "MARKET_CONFIRMATION_PENDING",
-        "WALLET_COVERAGE_PENDING"
+        "MARKET_CONFIRMATION_PENDING"
       ],
       "production_effect": false,
       "rescue_shadow": {
@@ -25665,11 +25679,10 @@
         "positive_independent_count": 0,
         "positive_independent_lanes": [],
         "pre_waking_evidence_ready": false,
-        "verified_family_count": 4,
-        "verified_independent_count": 2,
+        "verified_family_count": 3,
+        "verified_independent_count": 1,
         "verified_independent_lanes": [
-          "HOLDER_GROWTH",
-          "WALLET_ACCUMULATION"
+          "HOLDER_GROWTH"
         ]
       },
       "dex_url": "https://dexscreener.com/solana/69au8dkw4xxrza6hosi4fibmykjt6uefo9o4crus4vne",
@@ -25756,15 +25769,15 @@
             "first_seen_buyers_h1": 0,
             "net_accumulating_wallets_h1": 0,
             "net_distributing_wallets_h1": 0,
-            "resolution_pct": 80.0,
+            "resolution_pct": null,
             "resolved_swaps_h1": 0,
-            "unique_traders_h1": 0,
+            "unique_traders_h1": null,
             "wallet_buy_sell_ratio_h1": 0.0
           },
-          "pair_match": true,
+          "pair_match": false,
           "positive": false,
-          "status": "VERIFIED_NO_ACCUMULATION",
-          "verified": true
+          "status": "MISSING_OR_PARTIAL",
+          "verified": false
         }
       },
       "key": "solana:3iC63FgnB7EhcPaiSaC51UkVweeBDkqu17SaRyy2pump:69au8dkw4xxrza6hosi4fibmykjt6uefo9o4crus4vne",
@@ -25795,7 +25808,8 @@
       "pair_address": "69AU8DkW4XxrzA6hoSi4fibMYKjt6Uefo9o4cRUS4vne",
       "pending_confirmations": [
         "INDEPENDENT_EVIDENCE_PENDING",
-        "MARKET_CONFIRMATION_PENDING"
+        "MARKET_CONFIRMATION_PENDING",
+        "WALLET_COVERAGE_PENDING"
       ],
       "production_effect": false,
       "rescue_shadow": {
@@ -26316,12 +26330,12 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 0,
+            "first_seen_buyers_h1": 1,
+            "net_accumulating_wallets_h1": 1,
             "net_distributing_wallets_h1": 0,
-            "resolution_pct": null,
-            "resolved_swaps_h1": 0,
-            "unique_traders_h1": 0,
+            "resolution_pct": 33.33,
+            "resolved_swaps_h1": 1,
+            "unique_traders_h1": 1,
             "wallet_buy_sell_ratio_h1": 0.0
           },
           "pair_match": true,
@@ -26482,7 +26496,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 148,
+            "verified_wallets_seen": 149,
             "waking_t0": "2026-09-04T10:22:35.192220+00:00"
           },
           "positive": false,
@@ -26982,10 +26996,11 @@
         "positive_independent_count": 0,
         "positive_independent_lanes": [],
         "pre_waking_evidence_ready": false,
-        "verified_family_count": 3,
-        "verified_independent_count": 1,
+        "verified_family_count": 4,
+        "verified_independent_count": 2,
         "verified_independent_lanes": [
-          "HOLDER_GROWTH"
+          "HOLDER_GROWTH",
+          "WALLET_ACCUMULATION"
         ]
       },
       "dex_url": "https://dexscreener.com/solana/4bkrq2il3rv8mspdsfm5fnkz9sgq4iaqrytgnwjge3s4",
@@ -27071,16 +27086,16 @@
           "metrics": {
             "first_seen_buyers_h1": 0,
             "net_accumulating_wallets_h1": 0,
-            "net_distributing_wallets_h1": 0,
-            "resolution_pct": null,
-            "resolved_swaps_h1": 0,
-            "unique_traders_h1": null,
+            "net_distributing_wallets_h1": 1,
+            "resolution_pct": 100.0,
+            "resolved_swaps_h1": 1,
+            "unique_traders_h1": 1,
             "wallet_buy_sell_ratio_h1": 0.0
           },
-          "pair_match": false,
+          "pair_match": true,
           "positive": false,
-          "status": "MISSING_OR_PARTIAL",
-          "verified": false
+          "status": "VERIFIED_NO_ACCUMULATION",
+          "verified": true
         }
       },
       "key": "solana:5ToDNkiBAK6k697RRyngTburU7yZNFZFx7jzsD1Uc7pK:4bkrq2il3rv8mspdsfm5fnkz9sgq4iaqrytgnwjge3s4",
@@ -27111,8 +27126,7 @@
       "pair_address": "4BKRQ2iL3Rv8mSpDsFM5FNkZ9SGq4iaqrYtgNWjGE3s4",
       "pending_confirmations": [
         "INDEPENDENT_EVIDENCE_PENDING",
-        "MARKET_CONFIRMATION_PENDING",
-        "WALLET_COVERAGE_PENDING"
+        "MARKET_CONFIRMATION_PENDING"
       ],
       "production_effect": false,
       "rescue_shadow": {
@@ -27235,7 +27249,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 40,
+            "verified_wallets_seen": 39,
             "waking_t0": "2026-09-11T21:46:37.715218+00:00"
           },
           "positive": false,
@@ -27639,10 +27653,10 @@
             "net_distributing_wallets_h1": 0,
             "resolution_pct": null,
             "resolved_swaps_h1": 0,
-            "unique_traders_h1": 0,
+            "unique_traders_h1": null,
             "wallet_buy_sell_ratio_h1": 0.0
           },
-          "pair_match": true,
+          "pair_match": false,
           "positive": false,
           "status": "MISSING_OR_PARTIAL",
           "verified": false
@@ -27735,11 +27749,10 @@
         "positive_independent_count": 0,
         "positive_independent_lanes": [],
         "pre_waking_evidence_ready": false,
-        "verified_family_count": 4,
-        "verified_independent_count": 2,
+        "verified_family_count": 3,
+        "verified_independent_count": 1,
         "verified_independent_lanes": [
-          "HOLDER_GROWTH",
-          "WALLET_ACCUMULATION"
+          "HOLDER_GROWTH"
         ]
       },
       "dex_url": "https://dexscreener.com/solana/gwpljamb5zxrgbtsynww7v3p1pamryzsfapftdaeswgc",
@@ -27824,17 +27837,17 @@
         "wallet_accumulation": {
           "metrics": {
             "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 1,
+            "net_accumulating_wallets_h1": 0,
             "net_distributing_wallets_h1": 0,
-            "resolution_pct": 100.0,
-            "resolved_swaps_h1": 1,
-            "unique_traders_h1": 1,
+            "resolution_pct": null,
+            "resolved_swaps_h1": 0,
+            "unique_traders_h1": null,
             "wallet_buy_sell_ratio_h1": 0.0
           },
-          "pair_match": true,
+          "pair_match": false,
           "positive": false,
-          "status": "VERIFIED_NO_ACCUMULATION",
-          "verified": true
+          "status": "MISSING_OR_PARTIAL",
+          "verified": false
         }
       },
       "key": "solana:6MQpbiTC2YcogidTmKqMLK82qvE9z5QEm7EP3AEDpump:gwpljamb5zxrgbtsynww7v3p1pamryzsfapftdaeswgc",
@@ -27865,7 +27878,8 @@
       "pair_address": "GWPLjamb5ZxrGbTsYNWW7V3p1pAMryZSfaPFTdaEsWgC",
       "pending_confirmations": [
         "INDEPENDENT_EVIDENCE_PENDING",
-        "MARKET_CONFIRMATION_PENDING"
+        "MARKET_CONFIRMATION_PENDING",
+        "WALLET_COVERAGE_PENDING"
       ],
       "production_effect": false,
       "rescue_shadow": {
@@ -39226,10 +39240,10 @@
         "concentration": {
           "metrics": {
             "concentration_risk_score": 0.0,
-            "top10_pct": 10.3723,
-            "top1_pct": 2.3102,
-            "top20_pct": 14.7967,
-            "top5_pct": 7.0785
+            "top10_pct": 10.4829,
+            "top1_pct": 2.3767,
+            "top20_pct": 14.9073,
+            "top5_pct": 7.1891
           },
           "positive": false,
           "role": "RISK_CONTEXT_ONLY_NEVER_POSITIVE_ALPHA",
@@ -39962,11 +39976,10 @@
           "HOLDER_GROWTH"
         ],
         "pre_waking_evidence_ready": false,
-        "verified_family_count": 4,
-        "verified_independent_count": 2,
+        "verified_family_count": 3,
+        "verified_independent_count": 1,
         "verified_independent_lanes": [
-          "HOLDER_GROWTH",
-          "WALLET_ACCUMULATION"
+          "HOLDER_GROWTH"
         ]
       },
       "dex_url": "https://dexscreener.com/solana/hc4oes9yfitesp2ceshyj1r9flmtalqjkaokkhdcodmt",
@@ -40053,15 +40066,15 @@
             "first_seen_buyers_h1": 0,
             "net_accumulating_wallets_h1": 0,
             "net_distributing_wallets_h1": 1,
-            "resolution_pct": 100.0,
+            "resolution_pct": null,
             "resolved_swaps_h1": 1,
             "unique_traders_h1": 1,
             "wallet_buy_sell_ratio_h1": 0.0
           },
           "pair_match": true,
           "positive": false,
-          "status": "VERIFIED_NO_ACCUMULATION",
-          "verified": true
+          "status": "MISSING_OR_PARTIAL",
+          "verified": false
         }
       },
       "key": "solana:3VW31dwix6k2EdzhDgZ2zB15J7FbHYQwAUqXgktRcJEX:hc4oes9yfitesp2ceshyj1r9flmtalqjkaokkhdcodmt",
@@ -40091,7 +40104,8 @@
       "network": "solana",
       "pair_address": "Hc4oES9yFiTeSp2CeShYJ1R9FLmTaLqJKAokKhdcodmt",
       "pending_confirmations": [
-        "MARKET_CONFIRMATION_PENDING"
+        "MARKET_CONFIRMATION_PENDING",
+        "WALLET_COVERAGE_PENDING"
       ],
       "production_effect": false,
       "rescue_shadow": {
@@ -40239,14 +40253,14 @@
         "wallet_accumulation": {
           "metrics": {
             "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 0,
-            "net_distributing_wallets_h1": 0,
-            "resolution_pct": null,
-            "resolved_swaps_h1": 0,
-            "unique_traders_h1": null,
-            "wallet_buy_sell_ratio_h1": 0.0
+            "net_accumulating_wallets_h1": 1,
+            "net_distributing_wallets_h1": 5,
+            "resolution_pct": 44.44,
+            "resolved_swaps_h1": 7,
+            "unique_traders_h1": 6,
+            "wallet_buy_sell_ratio_h1": 0.2
           },
-          "pair_match": false,
+          "pair_match": true,
           "positive": false,
           "status": "MISSING_OR_PARTIAL",
           "verified": false
@@ -40428,14 +40442,14 @@
         "wallet_accumulation": {
           "metrics": {
             "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 4,
-            "net_distributing_wallets_h1": 3,
-            "resolution_pct": 100.0,
-            "resolved_swaps_h1": 13,
-            "unique_traders_h1": 7,
-            "wallet_buy_sell_ratio_h1": 1.5
+            "net_accumulating_wallets_h1": 0,
+            "net_distributing_wallets_h1": 0,
+            "resolution_pct": null,
+            "resolved_swaps_h1": 0,
+            "unique_traders_h1": null,
+            "wallet_buy_sell_ratio_h1": 0.0
           },
-          "pair_match": true,
+          "pair_match": false,
           "positive": false,
           "status": "MISSING_OR_PARTIAL",
           "verified": false
@@ -45126,7 +45140,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 291,
+            "verified_wallets_seen": 292,
             "waking_t0": "2026-09-14T05:22:18.251569+00:00"
           },
           "positive": false,
@@ -45312,7 +45326,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 113,
+            "verified_wallets_seen": 110,
             "waking_t0": "2026-09-08T05:22:27.986011+00:00"
           },
           "positive": false,
@@ -45330,7 +45344,7 @@
             "confirmation_score": 0.0
           },
           "positive": false,
-          "status": "WAKING_UNCONFIRMED_RESEARCH",
+          "status": "WAKING_RISK_RESEARCH",
           "verified": false
         },
         "wallet_accumulation": {
@@ -45692,7 +45706,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 326,
+            "verified_wallets_seen": 328,
             "waking_t0": "2026-09-13T14:21:09.565508+00:00"
           },
           "positive": false,
@@ -47448,13 +47462,13 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 2,
-            "net_accumulating_wallets_h1": 2,
-            "net_distributing_wallets_h1": 3,
+            "first_seen_buyers_h1": 1,
+            "net_accumulating_wallets_h1": 1,
+            "net_distributing_wallets_h1": 1,
             "resolution_pct": 75.0,
-            "resolved_swaps_h1": 6,
-            "unique_traders_h1": 5,
-            "wallet_buy_sell_ratio_h1": 0.6667
+            "resolved_swaps_h1": 2,
+            "unique_traders_h1": 2,
+            "wallet_buy_sell_ratio_h1": 1.0
           },
           "pair_match": true,
           "positive": false,
@@ -47767,10 +47781,10 @@
         "concentration": {
           "metrics": {
             "concentration_risk_score": 18.0,
-            "top10_pct": 33.404,
+            "top10_pct": 33.4066,
             "top1_pct": 10.949,
-            "top20_pct": 47.0138,
-            "top5_pct": 24.7451
+            "top20_pct": 47.0165,
+            "top5_pct": 24.7477
           },
           "positive": false,
           "role": "RISK_CONTEXT_ONLY_NEVER_POSITIVE_ALPHA",
@@ -47833,13 +47847,13 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 1,
-            "net_accumulating_wallets_h1": 1,
-            "net_distributing_wallets_h1": 2,
+            "first_seen_buyers_h1": 0,
+            "net_accumulating_wallets_h1": 0,
+            "net_distributing_wallets_h1": 0,
             "resolution_pct": 30.0,
-            "resolved_swaps_h1": 3,
-            "unique_traders_h1": 3,
-            "wallet_buy_sell_ratio_h1": 0.5
+            "resolved_swaps_h1": 0,
+            "unique_traders_h1": 0,
+            "wallet_buy_sell_ratio_h1": 0.0
           },
           "pair_match": true,
           "positive": false,
@@ -48003,7 +48017,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 134,
+            "verified_wallets_seen": 136,
             "waking_t0": "2026-09-14T06:54:09.770727+00:00"
           },
           "positive": false,
@@ -50831,10 +50845,10 @@
         "concentration": {
           "metrics": {
             "concentration_risk_score": 0.0,
-            "top10_pct": 25.5009,
-            "top1_pct": 8.6467,
-            "top20_pct": 37.0043,
-            "top5_pct": 17.6976
+            "top10_pct": 25.7872,
+            "top1_pct": 8.933,
+            "top20_pct": 37.2906,
+            "top5_pct": 17.9839
           },
           "positive": false,
           "role": "RISK_CONTEXT_ONLY_NEVER_POSITIVE_ALPHA",
@@ -50897,13 +50911,13 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 1,
-            "net_accumulating_wallets_h1": 1,
-            "net_distributing_wallets_h1": 5,
+            "first_seen_buyers_h1": 0,
+            "net_accumulating_wallets_h1": 0,
+            "net_distributing_wallets_h1": 0,
             "resolution_pct": 100.0,
-            "resolved_swaps_h1": 6,
-            "unique_traders_h1": 6,
-            "wallet_buy_sell_ratio_h1": 0.2
+            "resolved_swaps_h1": 0,
+            "unique_traders_h1": 0,
+            "wallet_buy_sell_ratio_h1": 0.0
           },
           "pair_match": true,
           "positive": false,
@@ -51768,11 +51782,12 @@
         "positive_independent_count": 0,
         "positive_independent_lanes": [],
         "pre_waking_evidence_ready": false,
-        "verified_family_count": 4,
-        "verified_independent_count": 2,
+        "verified_family_count": 5,
+        "verified_independent_count": 3,
         "verified_independent_lanes": [
           "HOLDER_GROWTH",
-          "SMART_MONEY"
+          "SMART_MONEY",
+          "WALLET_ACCUMULATION"
         ]
       },
       "dex_url": "https://dexscreener.com/solana/91fpaxonom2ywwk6t4awxkj8gexh6av6tlji41hft8fb",
@@ -51857,17 +51872,17 @@
         "wallet_accumulation": {
           "metrics": {
             "first_seen_buyers_h1": 0,
-            "net_accumulating_wallets_h1": 0,
+            "net_accumulating_wallets_h1": 1,
             "net_distributing_wallets_h1": 0,
-            "resolution_pct": null,
-            "resolved_swaps_h1": 0,
-            "unique_traders_h1": 0,
+            "resolution_pct": 100.0,
+            "resolved_swaps_h1": 1,
+            "unique_traders_h1": 1,
             "wallet_buy_sell_ratio_h1": 0.0
           },
           "pair_match": true,
           "positive": false,
-          "status": "MISSING_OR_PARTIAL",
-          "verified": false
+          "status": "VERIFIED_NO_ACCUMULATION",
+          "verified": true
         }
       },
       "key": "solana:28a2oQVCPrJB7SLZo4DVMVdHchSXiG8sZy31DohPpump:91fpaxonom2ywwk6t4awxkj8gexh6av6tlji41hft8fb",
@@ -51898,8 +51913,7 @@
       "pair_address": "91FPaXonom2yWwK6t4AWxKJ8gexh6AV6tLji41HFt8FB",
       "pending_confirmations": [
         "INDEPENDENT_EVIDENCE_PENDING",
-        "MARKET_CONFIRMATION_PENDING",
-        "WALLET_COVERAGE_PENDING"
+        "MARKET_CONFIRMATION_PENDING"
       ],
       "production_effect": false,
       "rescue_shadow": {
@@ -52024,7 +52038,7 @@
         "smart_money": {
           "metrics": {
             "historically_qualified_pre_waking_buyers": 0,
-            "verified_wallets_seen": 179,
+            "verified_wallets_seen": 181,
             "waking_t0": "2026-09-11T15:48:46.800659+00:00"
           },
           "positive": false,
@@ -52237,13 +52251,13 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 3,
-            "net_accumulating_wallets_h1": 2,
-            "net_distributing_wallets_h1": 2,
+            "first_seen_buyers_h1": 0,
+            "net_accumulating_wallets_h1": 0,
+            "net_distributing_wallets_h1": 0,
             "resolution_pct": 100.0,
-            "resolved_swaps_h1": 10,
-            "unique_traders_h1": 4,
-            "wallet_buy_sell_ratio_h1": 1.0
+            "resolved_swaps_h1": 0,
+            "unique_traders_h1": 0,
+            "wallet_buy_sell_ratio_h1": 0.0
           },
           "pair_match": true,
           "positive": false,
@@ -52429,13 +52443,13 @@
           "metrics": {
             "first_seen_buyers_h1": 0,
             "net_accumulating_wallets_h1": 0,
-            "net_distributing_wallets_h1": 0,
-            "resolution_pct": null,
-            "resolved_swaps_h1": 0,
-            "unique_traders_h1": null,
+            "net_distributing_wallets_h1": 1,
+            "resolution_pct": 33.33,
+            "resolved_swaps_h1": 1,
+            "unique_traders_h1": 1,
             "wallet_buy_sell_ratio_h1": 0.0
           },
-          "pair_match": false,
+          "pair_match": true,
           "positive": false,
           "status": "MISSING_OR_PARTIAL",
           "verified": false
@@ -54265,10 +54279,10 @@
         "concentration": {
           "metrics": {
             "concentration_risk_score": 0.0,
-            "top10_pct": 26.7163,
-            "top1_pct": 4.9929,
-            "top20_pct": 40.0537,
-            "top5_pct": 16.6572
+            "top10_pct": 26.7437,
+            "top1_pct": 5.0179,
+            "top20_pct": 40.0811,
+            "top5_pct": 16.6847
           },
           "positive": false,
           "role": "RISK_CONTEXT_ONLY_NEVER_POSITIVE_ALPHA",
@@ -54331,11 +54345,11 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 1,
+            "first_seen_buyers_h1": 0,
             "net_accumulating_wallets_h1": 1,
             "net_distributing_wallets_h1": 0,
             "resolution_pct": 100.0,
-            "resolved_swaps_h1": 2,
+            "resolved_swaps_h1": 1,
             "unique_traders_h1": 1,
             "wallet_buy_sell_ratio_h1": 0.0
           },
@@ -56992,12 +57006,12 @@
         },
         "wallet_accumulation": {
           "metrics": {
-            "first_seen_buyers_h1": 1,
-            "net_accumulating_wallets_h1": 1,
+            "first_seen_buyers_h1": 0,
+            "net_accumulating_wallets_h1": 0,
             "net_distributing_wallets_h1": 0,
             "resolution_pct": 100.0,
-            "resolved_swaps_h1": 1,
-            "unique_traders_h1": 1,
+            "resolved_swaps_h1": 0,
+            "unique_traders_h1": 0,
             "wallet_buy_sell_ratio_h1": 0.0
           },
           "pair_match": true,
@@ -60482,7 +60496,7 @@
       }
     }
   ],
-  "generated_at": "2026-09-14T08:08:01.660178+00:00",
+  "generated_at": "2026-09-14T08:27:33.123230+00:00",
   "mode": "RESEARCH_ONLY_PROSPECTIVE_LEARNING_RANK_V1",
   "production_change": false,
   "status_and_tier_unchanged": true,
