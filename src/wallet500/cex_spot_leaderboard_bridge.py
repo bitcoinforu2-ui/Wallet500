@@ -74,13 +74,17 @@ def _latest_market_rows(state: dict) -> list[dict]:
     for key, history in markets.items():
         if not isinstance(key, str) or not key.startswith("spot:") or not isinstance(history, list) or not history:
             continue
-        # State keys are `spot:<exchange>:<canonical_symbol>:<raw_market_id>`.
-        # Parse all four fields so exchange-specific market IDs never contaminate
-        # the canonical symbol consumed by leaderboard/identity downstream.
+        # Current state keys are `spot:<exchange>:<canonical_symbol>:<raw_market_id>`.
+        # Older/bootstrap state used `spot:<exchange>:<canonical_symbol>`. Support
+        # both forms while never allowing raw market IDs to contaminate symbols.
         parts = key.split(":", 3)
-        if len(parts) != 4:
+        if len(parts) == 4:
+            _, exchange, symbol, market_id = parts
+        elif len(parts) == 3:
+            _, exchange, symbol = parts
+            market_id = symbol
+        else:
             continue
-        _, exchange, symbol, market_id = parts
         latest = history[-1] if isinstance(history[-1], dict) else {}
         if not symbol.endswith("USDT"):
             continue
