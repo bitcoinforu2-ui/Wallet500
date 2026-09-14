@@ -4,6 +4,8 @@ from datetime import datetime, timezone, timedelta
 from wallet500 import revival_radar as mod
 from wallet500.revival_radar import (
     DEFAULT_BATCH_SIZE,
+    MIN_REVIVAL_LIQUIDITY_USD,
+    MIN_REVIVAL_PAIR_VOLUME_24H_USD,
     OLD_MIN_AGE_DAYS,
     OLD_PREFERRED_AGE_DAYS,
     _score,
@@ -38,6 +40,7 @@ def test_revival_policy_is_90d_veteran_only():
     veteran = _score(_snap(91), [], now)
     assert veteran['revival_eligible'] is True
     assert veteran['old_coin_age_class'] == 'VETERAN_90D_PLUS'
+    assert veteran['revival_activity_gate']['passed'] is True
     assert 'verified veteran pool age 90d+' in veteran['revival_reasons']
     assert 'tradable liquidity 15k+' in veteran['revival_reasons']
 
@@ -46,6 +49,42 @@ def test_revival_scan_expanded_batch_policy():
     assert OLD_MIN_AGE_DAYS == 90.0
     assert OLD_PREFERRED_AGE_DAYS == 90.0
     assert DEFAULT_BATCH_SIZE == 300
+    assert MIN_REVIVAL_LIQUIDITY_USD == 15000.0
+    assert MIN_REVIVAL_PAIR_VOLUME_24H_USD == 10000.0
+
+
+def test_dead_high_liquidity_pair_fails_before_relative_scoring():
+    now = datetime.now(timezone.utc)
+    dupe_like = _snap(180)
+    dupe_like.update({
+        'liquidity_usd': 119000,
+        'volume_h1': 0,
+        'volume_h24': 449,
+        'buys_h1': 0,
+        'sells_h1': 0,
+        'buys_h24': 4,
+        'sells_h24': 6,
+    })
+    scored = _score(dupe_like, [], now)
+    assert scored['revival_eligible'] is False
+    assert scored['revival_score'] == 0
+    assert scored['revival_activity_gate']['passed'] is False
+    assert scored['revival_activity_gate']['pair_volume_24h_usd'] == 449
+    assert scored['revival_reasons'] == ['PAIR_VOLUME_24H_LT_10K_OR_INVALID']
+
+
+def test_activity_gate_boundary_and_invalid_values_fail_closed():
+    now = datetime.now(timezone.utc)
+    exact = _snap(180)
+    exact['volume_h24'] = MIN_REVIVAL_PAIR_VOLUME_24H_USD
+    assert _score(exact, [], now)['revival_activity_gate']['passed'] is True
+
+    for bad in (None, 'not-a-number', float('nan'), float('inf')):
+        row = _snap(180)
+        row['volume_h24'] = bad
+        scored = _score(row, [], now)
+        assert scored['revival_eligible'] is False
+        assert scored['revival_activity_gate']['passed'] is False
 
 
 def test_revival_scan_reuses_locked_pair(tmp_path, monkeypatch):
@@ -76,6 +115,27 @@ def test_revival_scan_reuses_locked_pair(tmp_path, monkeypatch):
     assert calls == [('solana', 'Token111', 'PairLOCK')]
     assert result['state']['tokens']['solana:Token111']['pair_address'] == 'PairLOCK'
     assert result['snapshots'][0]['pair_identity_locked'] is True
+
+
+def test_revival_candidate_disappears_when_absolute_activity_collapses(tmp_path, monkeypatch):
+    now = datetime.now(timezone.utc)
+    discovery = {'tokens': {'solana:Token111': {'chain': 'solana', 'token': 'Token111'}}}
+
+    live = _snap(180, pair='PairLOCK')
+    monkeypatch.setattr(mod, 'snapshot', lambda chain, token, pair_address=None: dict(live))
+    first = mod.run_revival_scan(tmp_path, discovery, manual_watch=[], now=now.isoformat(), batch_size=1, threshold=0)
+    assert len(first['alerts']) == 1
+    assert first['alerts'][0]['revival_activity_gate']['passed'] is True
+
+    collapsed = _snap(180, pair='PairLOCK')
+    collapsed.update({'liquidity_usd': 119000, 'volume_h24': 449, 'volume_h1': 0, 'buys_h1': 0, 'sells_h1': 0, 'buys_h24': 4, 'sells_h24': 6})
+    monkeypatch.setattr(mod, 'snapshot', lambda chain, token, pair_address=None: dict(collapsed))
+    second = mod.run_revival_scan(tmp_path, discovery, manual_watch=[], now=(now + timedelta(minutes=5)).isoformat(), batch_size=1, threshold=0)
+
+    assert second['alerts'] == []
+    assert second['snapshots'][0]['revival_eligible'] is False
+    assert second['state']['activity_rejected_this_run'] == 1
+    assert second['state']['tokens']['solana:Token111']['activity_gate_passed'] is False
 
 
 def test_legacy_unlocked_history_is_reset_on_first_pair_lock(tmp_path, monkeypatch):
