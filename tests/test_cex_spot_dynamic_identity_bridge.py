@@ -33,6 +33,8 @@ def _verified_row():
         "market_age_evidence_source": "COINGECKO_TEST",
         "identity_status": "DEX_VERIFIED",
         "identity_verified": True,
+        "execution_pair_price_coherent": True,
+        "registry_learning_eligible": True,
         "chain": "ethereum",
         "token_address": GXE,
         "pair_address": "0xpair",
