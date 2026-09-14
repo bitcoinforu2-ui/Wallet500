@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime, timezone
@@ -12,6 +13,12 @@ OLD_MIN_AGE_DAYS = 90.0
 OLD_PREFERRED_AGE_DAYS = 90.0
 DEFAULT_BATCH_SIZE = 300
 MAX_WORKERS = 8
+
+# Hard display/alert truth gates. Relative acceleration must never allow a dead
+# pair to look interesting just because its baseline is even smaller. These
+# values match the existing Wallet500 Revival display/Hybrid absolute floors.
+MIN_REVIVAL_LIQUIDITY_USD = 15_000.0
+MIN_REVIVAL_PAIR_VOLUME_24H_USD = 10_000.0
 
 
 def _key(chain: str, token: str) -> str:
@@ -32,7 +39,7 @@ def _med(rows, field):
     for r in rows:
         try:
             v=float(r.get(field) or 0)
-            if v >= 0:
+            if math.isfinite(v) and v >= 0:
                 vals.append(v)
         except Exception:
             pass
@@ -40,7 +47,13 @@ def _med(rows, field):
 
 
 def _ratio(a, b):
-    return float(a) / float(b) if b and float(b) > 0 else (10.0 if a else 0.0)
+    try:
+        a=float(a); b=float(b)
+        if not math.isfinite(a) or not math.isfinite(b):
+            return 0.0
+        return a / b if b > 0 else (10.0 if a else 0.0)
+    except Exception:
+        return 0.0
 
 
 def _age_days(pair_created_at, now_dt):
@@ -51,20 +64,50 @@ def _age_days(pair_created_at, now_dt):
         return None
 
 
+def _finite_nonnegative(value):
+    try:
+        value=float(value)
+        return value if math.isfinite(value) and value >= 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _ineligible(s: dict, age_days, reason: str, *, volume_h24=None, liquidity=None) -> dict:
+    return {
+        **s,
+        'revival_score':0,
+        'revival_eligible':False,
+        'revival_reasons':[reason],
+        'pair_age_days':round(age_days,2) if age_days is not None else None,
+        'old_coin_age_class':'INELIGIBLE_LT_90D_OR_UNKNOWN' if age_days is None or age_days < OLD_MIN_AGE_DAYS else 'VETERAN_90D_PLUS',
+        'revival_activity_gate':{
+            'passed':False,
+            'min_liquidity_usd':MIN_REVIVAL_LIQUIDITY_USD,
+            'min_pair_volume_24h_usd':MIN_REVIVAL_PAIR_VOLUME_24H_USD,
+            'liquidity_usd':liquidity,
+            'pair_volume_24h_usd':volume_h24,
+            'reason':reason,
+        },
+    }
+
+
 def _score(s: dict, history: list[dict], now_dt) -> dict:
     age_days=_age_days(s.get('pair_created_at'), now_dt)
     if age_days is None or age_days < OLD_MIN_AGE_DAYS:
-        return {
-            **s,
-            'revival_score':0,
-            'revival_eligible':False,
-            'revival_reasons':['PAIR_LT_90D_OR_AGE_UNKNOWN'],
-            'pair_age_days':round(age_days,2) if age_days is not None else None,
-            'old_coin_age_class':'INELIGIBLE_LT_90D_OR_UNKNOWN',
-        }
+        return _ineligible(s, age_days, 'PAIR_LT_90D_OR_AGE_UNKNOWN')
 
-    v1=float(s.get('volume_h1') or 0); v24=float(s.get('volume_h24') or 0)
-    liq=float(s.get('liquidity_usd') or 0)
+    # Absolute activity gate BEFORE any relative/baseline scoring. Missing,
+    # malformed or non-finite market truth fails closed. This specifically
+    # prevents high-liquidity but effectively dead pairs from being displayed
+    # or alerted as Revival candidates.
+    v24=_finite_nonnegative(s.get('volume_h24'))
+    liq=_finite_nonnegative(s.get('liquidity_usd'))
+    if liq is None or liq < MIN_REVIVAL_LIQUIDITY_USD:
+        return _ineligible(s, age_days, 'LIQUIDITY_LT_15K_OR_INVALID', volume_h24=v24, liquidity=liq)
+    if v24 is None or v24 < MIN_REVIVAL_PAIR_VOLUME_24H_USD:
+        return _ineligible(s, age_days, 'PAIR_VOLUME_24H_LT_10K_OR_INVALID', volume_h24=v24, liquidity=liq)
+
+    v1=_finite_nonnegative(s.get('volume_h1')) or 0.0
     buys=int(s.get('buys_h1') or 0); sells=int(s.get('sells_h1') or 0)
     tx1=buys+sells
     tx24=int(s.get('buys_h24') or 0)+int(s.get('sells_h24') or 0)
@@ -102,7 +145,7 @@ def _score(s: dict, history: list[dict], now_dt) -> dict:
     if pc1>=12: score+=10; reasons.append(f'1h revival momentum +{pc1:.1f}%')
     elif pc1>=5: score+=5; reasons.append(f'1h revival momentum +{pc1:.1f}%')
     if pc5>=5: score+=5; reasons.append(f'5m impulse +{pc5:.1f}%')
-    if liq>=15000: score+=5; reasons.append('tradable liquidity 15k+')
+    if liq>=MIN_REVIVAL_LIQUIDITY_USD: score+=5; reasons.append('tradable liquidity 15k+')
 
     score=min(100,int(score))
     return {
@@ -112,6 +155,14 @@ def _score(s: dict, history: list[dict], now_dt) -> dict:
         'revival_reasons':reasons,
         'pair_age_days':round(age_days,2),
         'old_coin_age_class':'VETERAN_90D_PLUS',
+        'revival_activity_gate':{
+            'passed':True,
+            'min_liquidity_usd':MIN_REVIVAL_LIQUIDITY_USD,
+            'min_pair_volume_24h_usd':MIN_REVIVAL_PAIR_VOLUME_24H_USD,
+            'liquidity_usd':liq,
+            'pair_volume_24h_usd':v24,
+            'reason':'PASSED_ABSOLUTE_ACTIVITY_GATE',
+        },
         'revival_metrics':{
             'volume_clock_ratio':round(volume_clock,2),
             'tx_clock_ratio':round(tx_clock,2),
@@ -226,7 +277,7 @@ def run_revival_scan(out, discovery_state, manual_watch=None, now=None, batch_si
         snapshots.append(scored)
         hrow={'observed_at':now,'pair_address':observed_pair,'price_usd':s.get('price_usd'),'liquidity_usd':s.get('liquidity_usd'),'volume_h1':s.get('volume_h1'),'tx_h1':int(s.get('buys_h1') or 0)+int(s.get('sells_h1') or 0),'revival_score':scored.get('revival_score')}
         hist=(hist+[hrow])[-48:]
-        records[k]={'chain':c,'token':t,'pair_address':observed_pair,'pair_identity_locked':bool(observed_pair),'history':hist,'last_score':scored.get('revival_score',0),'last_seen':now,'pair_age_days':scored.get('pair_age_days'),'old_coin_age_class':scored.get('old_coin_age_class')}
+        records[k]={'chain':c,'token':t,'pair_address':observed_pair,'pair_identity_locked':bool(observed_pair),'history':hist,'last_score':scored.get('revival_score',0),'last_seen':now,'pair_age_days':scored.get('pair_age_days'),'old_coin_age_class':scored.get('old_coin_age_class'),'activity_gate_passed':bool((scored.get('revival_activity_gate') or {}).get('passed'))}
         if scored.get('revival_eligible') and int(scored.get('revival_score') or 0)>=threshold:
             alerts.append(scored)
 
@@ -234,19 +285,23 @@ def run_revival_scan(out, discovery_state, manual_watch=None, now=None, batch_si
     by_chain={c:sum(1 for x in snapshots if x.get('chain')==c) for c in ('solana','ethereum','bsc')}
     age_eligible=sum(1 for x in snapshots if x.get('revival_eligible'))
     veteran_90d=sum(1 for x in snapshots if x.get('old_coin_age_class')=='VETERAN_90D_PLUS')
+    activity_rejected=sum(1 for x in snapshots if x.get('old_coin_age_class')=='VETERAN_90D_PLUS' and not (x.get('revival_activity_gate') or {}).get('passed'))
     state={
-        'version':5,
+        'version':6,
         'cursor':next_cursor,
         'updated_at':now,
-        'method':'DEX_VETERAN_REVIVAL_ROTATING_EXACT_PAIR_LOCKED_SCAN',
+        'method':'DEX_VETERAN_REVIVAL_ROTATING_EXACT_PAIR_LOCKED_ACTIVITY_GATED_SCAN',
         'min_age_days':OLD_MIN_AGE_DAYS,
         'preferred_age_days':OLD_PREFERRED_AGE_DAYS,
+        'min_liquidity_usd':MIN_REVIVAL_LIQUIDITY_USD,
+        'min_pair_volume_24h_usd':MIN_REVIVAL_PAIR_VOLUME_24H_USD,
         'batch_size':batch_size,
         'max_workers':MAX_WORKERS,
         'universe_size':len(pool),
         'scanned_this_run':len(snapshots),
         'age_eligible_this_run':age_eligible,
         'veteran_90d_plus_this_run':veteran_90d,
+        'activity_rejected_this_run':activity_rejected,
         'pair_lock_migrations_this_run':pair_lock_migrations,
         'alerts_this_run':len(alerts),
         'errors_this_run':len(errors),
