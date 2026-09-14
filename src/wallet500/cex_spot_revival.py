@@ -5,13 +5,16 @@ import json
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-UA = {"User-Agent": "Wallet500/1.7", "Accept": "application/json"}
+UA = {"User-Agent": "Wallet500/1.8", "Accept": "application/json"}
 WATCH_SCORE = 25
 ALERT_SCORE = 35
 LEVERAGED_SUFFIXES = ("2L", "2S", "3L", "3S", "4L", "4S", "5L", "5S", "BULL", "BEAR", "UP", "DOWN")
 REGIONAL_EXCHANGES = {"upbit"}
+PRESSURE_HORIZONS = ((6, 1.20), (12, 1.35), (24, 1.50))
+STATE_HISTORY_LIMIT = 192
 
 
 def _get(url: str, timeout: int = 12):
@@ -47,6 +50,33 @@ def _multiple(cur, prev):
         return cur / prev
     except Exception:
         return 0.0
+
+
+def _parse_ts(value):
+    try:
+        dt = datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _asof_value(hist: list[dict], now_dt: datetime | None, hours: int, key: str):
+    if not now_dt:
+        return 0.0
+    target = now_dt - timedelta(hours=hours)
+    best_ts = None
+    best_value = 0.0
+    for item in hist:
+        ts = _parse_ts(item.get("observed_at"))
+        value = _f(item.get(key))
+        if ts is None or ts > target or value <= 0:
+            continue
+        if best_ts is None or ts > best_ts:
+            best_ts = ts
+            best_value = value
+    return best_value
 
 
 def _norm_symbol(symbol: str) -> str:
@@ -202,9 +232,8 @@ def upbit_spot():
             if not market.startswith("KRW-"):
                 continue
             base = market.split("-", 1)[1].upper()
-            # Canonical symbol is base+USDT so regional KRW evidence joins the
-            # same veteran-token research group without pretending the KRW price
-            # or turnover is USD-denominated.
+            # Canonical symbol joins regional evidence to the same token research
+            # group. Native KRW price/turnover remains explicitly non-USD-like.
             out.append(
                 _row(
                     "upbit",
@@ -265,6 +294,7 @@ def _oldest_valid(hist: list[dict], key: str):
 
 def _enrich(rows: list[dict], state: dict, now: str):
     histories = state.get("markets") if isinstance(state.get("markets"), dict) else {}
+    now_dt = _parse_ts(now)
     enriched = []
     for row in rows:
         key = f"spot:{row['exchange']}:{row['symbol']}:{row.get('market_id') or row['symbol']}"
@@ -272,6 +302,14 @@ def _enrich(rows: list[dict], state: dict, now: str):
         prev = hist[-1] if hist else {}
         baseline_price = _oldest_valid(hist, "price")
         baseline_volume = _oldest_valid(hist, "volume_24h")
+
+        horizon_fields = {}
+        for hours, _threshold in PRESSURE_HORIZONS:
+            hp = _asof_value(hist, now_dt, hours, "price")
+            hv = _asof_value(hist, now_dt, hours, "volume_24h")
+            horizon_fields[f"price_change_{hours}h_pct"] = round(_pct(row.get("price"), hp), 4) if hp else 0.0
+            horizon_fields[f"volume_multiple_{hours}h"] = round(_multiple(row.get("volume_24h"), hv), 4) if hv else 0.0
+
         enriched.append(
             {
                 **row,
@@ -282,6 +320,7 @@ def _enrich(rows: list[dict], state: dict, now: str):
                 if baseline_volume
                 else 0.0,
                 "history_points": len(hist),
+                **horizon_fields,
             }
         )
         hist.append(
@@ -293,9 +332,9 @@ def _enrich(rows: list[dict], state: dict, now: str):
                 "quote_symbol": row.get("quote_symbol"),
             }
         )
-        histories[key] = hist[-96:]
+        histories[key] = hist[-STATE_HISTORY_LIMIT:]
     return enriched, {
-        "version": 2,
+        "version": 3,
         "updated_at": now,
         "markets": histories,
         "signal_milestones": state.get("signal_milestones")
@@ -339,8 +378,6 @@ def _market_signal(row: dict) -> dict:
         score += 8
 
     # Absolute turnover bonuses are valid only when the quote is USD-like.
-    # KRW regional turnover remains useful for relative acceleration but must
-    # not be compared numerically with USDT turnover.
     if row.get("volume_comparable_usd_like", True):
         if volume >= 100_000:
             score += 3
@@ -348,9 +385,7 @@ def _market_signal(row: dict) -> dict:
         if volume >= 1_000_000:
             score += 2
 
-    # LSK-derived research feature: large turnover expansion while price is
-    # still compressed. Shadow-only: it does not alter the production-facing
-    # research score or coherent confirmation count until validated broadly.
+    # LSK-derived absorption remains shadow-only until broad forward validation.
     if (
         row.get("history_points", 0) >= 6
         and volume_multiple >= 3.0
@@ -366,6 +401,31 @@ def _market_signal(row: dict) -> dict:
             f"volume acceleration {volume_acc:.1f}% with muted 24h price {change:.1f}%"
         )
 
+    # CPOOL-derived hole fix: persistent multi-hour turnover expansion can lead
+    # a veteran-token move without any single 15-minute spike. This is strictly
+    # observational/shadow-only and cannot alter score or coherent confirmation.
+    pressure_hits = []
+    pressure_available = []
+    for hours, threshold in PRESSURE_HORIZONS:
+        multiple = _f(row.get(f"volume_multiple_{hours}h"))
+        if multiple > 0:
+            pressure_available.append(f"{hours}h")
+        if multiple >= threshold:
+            pressure_hits.append(f"{hours}h")
+
+    if 3.0 <= change <= 15.0 and pressure_hits:
+        shadow_hits.append("PERSISTENT_SPOT_PRESSURE_SHADOW")
+        details = ", ".join(
+            f"{hours}h={_f(row.get(f'volume_multiple_{hours}h')):.2f}x"
+            for hours, _threshold in PRESSURE_HORIZONS
+            if f"{hours}h" in pressure_hits
+        )
+        shadow_reasons.append(
+            f"moderate 24h move {change:.1f}% with persistent turnover expansion ({details})"
+        )
+        if len(pressure_hits) >= 2:
+            shadow_hits.append("PERSISTENT_SPOT_PRESSURE_MULTI_HORIZON_SHADOW")
+
     return {
         "exchange": row.get("exchange"),
         "score": score,
@@ -379,6 +439,11 @@ def _market_signal(row: dict) -> dict:
         "volume_acc": volume_acc,
         "price_window_pct": price_window,
         "volume_window_multiple": volume_multiple,
+        "pressure_horizons_available": pressure_available,
+        "pressure_horizon_hits": pressure_hits,
+        "volume_multiple_6h": _f(row.get("volume_multiple_6h")),
+        "volume_multiple_12h": _f(row.get("volume_multiple_12h")),
+        "volume_multiple_24h": _f(row.get("volume_multiple_24h")),
         "regional_market": bool(row.get("regional_market")),
     }
 
@@ -399,15 +464,9 @@ def _snapshot(now: str, markets: list[dict], score: int, coherent_conf: int, kin
         "coherent_confirmations": coherent_conf,
         "coherent_exchange": best.get("exchange"),
         "coherent_feature_hits": best.get("hits", []),
-        "price_acceleration_max_pct": round(
-            max((_f(x.get("price_delta_pct")) for x in markets), default=0), 4
-        ),
-        "volume_acceleration_max_pct": round(
-            max((_f(x.get("volume24_delta_pct")) for x in markets), default=0), 4
-        ),
-        "change_24h_max_pct": round(
-            max((_f(x.get("change_24h_pct")) for x in markets), default=0), 4
-        ),
+        "price_acceleration_max_pct": round(max((_f(x.get("price_delta_pct")) for x in markets), default=0), 4),
+        "volume_acceleration_max_pct": round(max((_f(x.get("volume24_delta_pct")) for x in markets), default=0), 4),
+        "change_24h_max_pct": round(max((_f(x.get("change_24h_pct")) for x in markets), default=0), 4),
     }
 
 
@@ -443,6 +502,34 @@ def _regional_lead(local: list[dict]) -> dict:
     }
 
 
+def _slow_ignition(local: list[dict]) -> dict:
+    pressure = [
+        x
+        for x in local
+        if "PERSISTENT_SPOT_PRESSURE_SHADOW" in set(x.get("shadow_hits") or [])
+    ]
+    exchanges = sorted({x.get("exchange") for x in pressure if x.get("exchange")})
+    multi_horizon = [x for x in pressure if len(x.get("pressure_horizon_hits") or []) >= 2]
+    multi_exchanges = sorted({x.get("exchange") for x in multi_horizon if x.get("exchange")})
+
+    status = "NONE"
+    if len(exchanges) >= 2:
+        status = "CROSS_VENUE_PERSISTENT"
+    elif len(exchanges) == 1:
+        status = "BUILDING"
+
+    return {
+        "status": status,
+        "confirmations": len(exchanges),
+        "exchanges": exchanges,
+        "multi_horizon_confirmations": len(multi_exchanges),
+        "multi_horizon_exchanges": multi_exchanges,
+        "shadow_only": True,
+        "affects_score": False,
+        "actionable": False,
+    }
+
+
 def _coverage(health: dict, markets: list[dict]) -> dict:
     requested = len(SPOT_SOURCES)
     healthy = sum(1 for x in health.values() if x.get("ok"))
@@ -462,6 +549,18 @@ def _coverage(health: dict, markets: list[dict]) -> dict:
         "candidate_exchange_breadth_ratio": round(candidate_ratio, 4),
         "confidence": confidence,
     }
+
+
+def _shadow_sort_key(record: dict):
+    slow = record.get("slow_ignition") or {}
+    status_rank = {"CROSS_VENUE_PERSISTENT": 2, "BUILDING": 1, "NONE": 0}.get(slow.get("status"), 0)
+    return (
+        status_rank,
+        int(slow.get("confirmations") or 0),
+        int(slow.get("multi_horizon_confirmations") or 0),
+        len(record.get("shadow_features") or []),
+        int(record.get("spot_revival_score") or 0),
+    )
 
 
 def run_cex_spot_revival(out: Path, now: str) -> dict:
@@ -497,6 +596,7 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
 
     watchlist = []
     alerts = []
+    shadow_watchlist = []
     for symbol, markets in groups.items():
         local = [_market_signal(x) for x in markets]
         best = max(
@@ -513,34 +613,53 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
             reasons.append(f"{coherent_conf} coherent spot exchange confirmation")
         if coherent_conf >= 4:
             score += 8
-
         score = min(score, 100)
+
+        shadow_features = sorted({hit for x in local for hit in x.get("shadow_hits", [])})
+        shadow_reasons = [reason for x in local for reason in x.get("shadow_reasons", [])]
+        regional_lead = _regional_lead(local)
+        slow_ignition = _slow_ignition(local)
+        coverage = _coverage(health, markets)
+
         ms = milestones.setdefault(symbol, {})
         first = _snapshot(now, markets, score, coherent_conf, "FIRST_SEEN", best)
         if "first_seen" not in ms:
             ms["first_seen"] = first
         if best.get("hit_count") and "first_anomaly" not in ms:
             ms["first_anomaly"] = {**first, "kind": "FIRST_ANOMALY"}
+        if shadow_features and "first_shadow_watch" not in ms:
+            ms["first_shadow_watch"] = {
+                **first,
+                "kind": "FIRST_SHADOW_WATCH",
+                "shadow_features": shadow_features,
+                "slow_ignition_status": slow_ignition.get("status"),
+            }
+        if slow_ignition.get("status") == "CROSS_VENUE_PERSISTENT" and "first_cross_venue_slow_ignition" not in ms:
+            ms["first_cross_venue_slow_ignition"] = {
+                **first,
+                "kind": "FIRST_CROSS_VENUE_SLOW_IGNITION",
+                "exchanges": slow_ignition.get("exchanges", []),
+            }
         if score >= WATCH_SCORE and "first_watch" not in ms:
             ms["first_watch"] = {**first, "kind": "FIRST_WATCH"}
         if score >= ALERT_SCORE and "first_alert" not in ms:
             ms["first_alert"] = {**first, "kind": "FIRST_ALERT"}
 
-        shadow_features = sorted(
-            {hit for x in local for hit in x.get("shadow_hits", [])}
-        )
-        shadow_reasons = [
-            reason for x in local for reason in x.get("shadow_reasons", [])
-        ]
-        regional_lead = _regional_lead(local)
-        coverage = _coverage(health, markets)
+        if score >= ALERT_SCORE:
+            status = "DNA_WATCH_RESEARCH"
+        elif score >= WATCH_SCORE:
+            status = "MOMENTUM_WATCH_RESEARCH"
+        else:
+            status = "SHADOW_WATCH_RESEARCH"
+
         record = {
             "symbol": symbol,
             "market_type": "spot",
             "spot_revival_score": score,
-            "status": "DNA_WATCH_RESEARCH" if score >= ALERT_SCORE else "MOMENTUM_WATCH_RESEARCH",
+            "status": status,
             "research_only": True,
             "actionable": False,
+            "automatic_buy": False,
             "identity_required_before_actionable": True,
             "leveraged_product": False,
             "learning_eligible": True,
@@ -548,31 +667,31 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
             "shadow_features": shadow_features,
             "shadow_reasons": shadow_reasons,
             "shadow_features_affect_score": False,
+            "shadow_watch_eligible": bool(shadow_features),
             "regional_spot_lead": regional_lead,
+            "slow_ignition": slow_ignition,
             "source_coverage": coverage,
             "confirmations": len({x.get("exchange") for x in markets}),
             "coherent_confirmations": coherent_conf,
             "coherent_exchange": best.get("exchange"),
             "coherent_feature_hits": best.get("hits", []),
-            "change_24h_max_pct": round(
-                max((_f(x.get("change_24h_pct")) for x in markets), default=0), 4
-            ),
-            "price_acceleration_max_pct": round(
-                max((_f(x.get("price_delta_pct")) for x in markets), default=0), 4
-            ),
-            "volume_acceleration_max_pct": round(
-                max((_f(x.get("volume24_delta_pct")) for x in markets), default=0), 4
-            ),
-            "volume_window_multiple_max": round(
-                max((_f(x.get("volume_window_multiple")) for x in markets), default=0), 4
-            ),
-            "price_window_abs_min_pct": round(
-                min((abs(_f(x.get("price_window_pct"))) for x in markets), default=0), 4
-            ),
+            "change_24h_max_pct": round(max((_f(x.get("change_24h_pct")) for x in markets), default=0), 4),
+            "price_acceleration_max_pct": round(max((_f(x.get("price_delta_pct")) for x in markets), default=0), 4),
+            "volume_acceleration_max_pct": round(max((_f(x.get("volume24_delta_pct")) for x in markets), default=0), 4),
+            "volume_window_multiple_max": round(max((_f(x.get("volume_window_multiple")) for x in markets), default=0), 4),
+            "volume_multiple_6h_max": round(max((_f(x.get("volume_multiple_6h")) for x in markets), default=0), 4),
+            "volume_multiple_12h_max": round(max((_f(x.get("volume_multiple_12h")) for x in markets), default=0), 4),
+            "volume_multiple_24h_max": round(max((_f(x.get("volume_multiple_24h")) for x in markets), default=0), 4),
+            "price_change_6h_max_pct": round(max((_f(x.get("price_change_6h_pct")) for x in markets), default=0), 4),
+            "price_change_12h_max_pct": round(max((_f(x.get("price_change_12h_pct")) for x in markets), default=0), 4),
+            "price_change_24h_window_max_pct": round(max((_f(x.get("price_change_24h_pct")) for x in markets), default=0), 4),
+            "price_window_abs_min_pct": round(min((abs(_f(x.get("price_window_pct"))) for x in markets), default=0), 4),
             "exchanges": sorted({x.get("exchange") for x in markets if x.get("exchange")}),
             "milestones": ms,
             "markets": markets,
         }
+        if shadow_features:
+            shadow_watchlist.append(record)
         if score >= WATCH_SCORE:
             watchlist.append(record)
         if score >= ALERT_SCORE:
@@ -580,36 +699,35 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
 
     _write_state(state_path, state)
     watchlist.sort(
-        key=lambda x: (
-            x["spot_revival_score"],
-            x["coherent_confirmations"],
-            x["confirmations"],
-        ),
+        key=lambda x: (x["spot_revival_score"], x["coherent_confirmations"], x["confirmations"]),
         reverse=True,
     )
     alerts.sort(
-        key=lambda x: (
-            x["spot_revival_score"],
-            x["coherent_confirmations"],
-            x["confirmations"],
-        ),
+        key=lambda x: (x["spot_revival_score"], x["coherent_confirmations"], x["confirmations"]),
         reverse=True,
     )
+    shadow_watchlist.sort(key=_shadow_sort_key, reverse=True)
+
     excluded = sorted(leveraged_products)
     healthy_sources = sum(1 for x in health.values() if x.get("ok"))
     source_coverage_ratio = healthy_sources / len(SPOT_SOURCES) if SPOT_SOURCES else 0.0
     payload = {
-        "version": 3,
+        "version": 4,
         "generated_at": now,
-        "mode": "RESEARCH_ONLY_CEX_SPOT_REVIVAL_V3",
+        "mode": "RESEARCH_ONLY_CEX_SPOT_REVIVAL_V4",
         "production_portfolio_impact": "NONE",
         "symbol_only_actionable": False,
+        "shadow_watch_actionable": False,
+        "shadow_watch_score_effect": False,
         "identity_rule": "EXACT_CHAIN_CONTRACT_AND_PAIR_REQUIRED_BEFORE_ANY_ACTIONABLE_PROMOTION",
         "learning_truth_contract": {
             "leveraged_cex_products_excluded": True,
             "no_hindsight": True,
             "regional_native_quote_not_compared_as_usd": True,
             "new_lsk_features_shadow_only": True,
+            "slow_ignition_shadow_only": True,
+            "shadow_watch_below_watch_score_allowed": True,
+            "shadow_watch_never_actionable": True,
         },
         "leveraged_products_excluded_count": len(excluded),
         "leveraged_products_excluded": excluded[:100],
@@ -623,21 +741,47 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
         "alert_score": ALERT_SCORE,
         "watch_count": len(watchlist),
         "alerts_count": len(alerts),
+        "shadow_watch_count": len(shadow_watchlist),
         "watchlist": watchlist[:100],
         "alerts": alerts[:100],
+        "shadow_watchlist": shadow_watchlist[:100],
         "errors": errors,
     }
-    (out / "cex-spot-revival-radar.json").write_text(
-        json.dumps(payload, indent=2), encoding="utf-8"
-    )
+    (out / "cex-spot-revival-radar.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def learning_row(x: dict) -> dict:
+        return {
+            "symbol": x["symbol"],
+            "score": x["spot_revival_score"],
+            "status": x["status"],
+            "confirmations": x["confirmations"],
+            "coherent_confirmations": x["coherent_confirmations"],
+            "coherent_feature_hits": x["coherent_feature_hits"],
+            "shadow_features": x["shadow_features"],
+            "regional_spot_lead": x["regional_spot_lead"],
+            "slow_ignition": x["slow_ignition"],
+            "source_coverage": x["source_coverage"],
+            "change_24h_max_pct": x["change_24h_max_pct"],
+            "price_acceleration_max_pct": x["price_acceleration_max_pct"],
+            "volume_acceleration_max_pct": x["volume_acceleration_max_pct"],
+            "volume_window_multiple_max": x["volume_window_multiple_max"],
+            "volume_multiple_6h_max": x["volume_multiple_6h_max"],
+            "volume_multiple_12h_max": x["volume_multiple_12h_max"],
+            "volume_multiple_24h_max": x["volume_multiple_24h_max"],
+            "milestones": x.get("milestones", {}),
+        }
+
     learning = {
-        "version": 3,
+        "version": 4,
         "updated_at": now,
-        "purpose": "learn whether spot price+volume acceleration, regional leadership, and volume-price absorption predict veteran-token revival before late pumps",
+        "purpose": "learn whether spot acceleration, regional leadership, absorption, and persistent cross-venue pressure predict veteran-token revival before late pumps",
         "research_only": True,
         "no_hindsight": True,
         "leveraged_cex_products_excluded": True,
         "new_lsk_features_shadow_only": True,
+        "slow_ignition_shadow_only": True,
+        "shadow_watch_below_watch_score_allowed": True,
+        "shadow_watch_never_actionable": True,
         "excluded_products": excluded[:100],
         "features": [
             "spot_24h_momentum",
@@ -648,36 +792,18 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
             "volume_price_absorption_shadow",
             "regional_spot_lead_upbit",
             "source_coverage_confidence",
+            "persistent_spot_pressure_shadow",
+            "slow_ignition_cross_venue_shadow",
+            "shadow_watch_below_watch_score",
         ],
-        "top_candidates": [
-            {
-                "symbol": x["symbol"],
-                "score": x["spot_revival_score"],
-                "status": x["status"],
-                "confirmations": x["confirmations"],
-                "coherent_confirmations": x["coherent_confirmations"],
-                "coherent_feature_hits": x["coherent_feature_hits"],
-                "shadow_features": x["shadow_features"],
-                "regional_spot_lead": x["regional_spot_lead"],
-                "source_coverage": x["source_coverage"],
-                "change_24h_max_pct": x["change_24h_max_pct"],
-                "price_acceleration_max_pct": x["price_acceleration_max_pct"],
-                "volume_acceleration_max_pct": x["volume_acceleration_max_pct"],
-                "volume_window_multiple_max": x["volume_window_multiple_max"],
-                "milestones": x.get("milestones", {}),
-            }
-            for x in watchlist[:50]
-        ],
+        "top_candidates": [learning_row(x) for x in watchlist[:50]],
+        "top_shadow_candidates": [learning_row(x) for x in shadow_watchlist[:50]],
     }
-    (out / "cex-spot-learning.json").write_text(
-        json.dumps(learning, indent=2), encoding="utf-8"
-    )
+    (out / "cex-spot-learning.json").write_text(json.dumps(learning, indent=2), encoding="utf-8")
     return payload
 
 
 if __name__ == "__main__":
-    from datetime import datetime, timezone
-
     print(
         json.dumps(
             run_cex_spot_revival(Path("data"), datetime.now(timezone.utc).isoformat()),
