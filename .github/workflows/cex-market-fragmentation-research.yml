@@ -5,6 +5,12 @@ on:
   workflow_run:
     workflows: ["Wallet500 CEX Spot Revival Fast Lane"]
     types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cex-market-fragmentation-research.yml'
+      - 'src/wallet500/cex_market_fragmentation.py'
+      - 'tests/test_cex_market_fragmentation.py'
 
 permissions:
   contents: write
@@ -15,7 +21,7 @@ concurrency:
 
 jobs:
   learn:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
