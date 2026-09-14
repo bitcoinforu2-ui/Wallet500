@@ -1,0 +1,76 @@
+name: Wallet500 Verified CEX Arbitrage
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cex-verified-arbitrage.yml'
+      - 'src/wallet500/cex_verified_arbitrage.py'
+      - 'src/wallet500/cex_verified_arbitrage_alert.py'
+      - 'tests/test_cex_verified_arbitrage.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-cex-verified-arbitrage
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Test fail-closed arbitrage contract
+        run: python -m pytest -q tests/test_cex_verified_arbitrage.py
+      - name: Run executable arbitrage verification and Telegram gate
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m wallet500.cex_verified_arbitrage_alert
+      - name: Validate truth contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('data/cex-verified-arbitrage.json').read_text())
+          assert p['production_effect'] is False
+          assert p['automatic_buy'] is False
+          assert p['automatic_sell'] is False
+          assert p['automatic_transfer'] is False
+          assert p['manual_decision_only'] is True
+          t=p['truth_contract']
+          assert t['last_price_never_sufficient'] is True
+          assert t['buy_ask_depth_required'] is True
+          assert t['sell_bid_depth_required'] is True
+          assert t['same_asset_and_network_required'] is True
+          assert t['withdraw_and_deposit_open_required'] is True
+          assert t['fees_and_transfer_time_required'] is True
+          assert t['missing_data_fails_closed'] is True
+          assert t['no_automatic_trade'] is True
+          print('VERIFIED_CEX_ARBITRAGE_CONTRACT_OK', {'candidates':p['candidate_count'],'verified':p['verified_count']})
+          PY
+      - name: Publish research state
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git restore --worktree -- src/wallet500.egg-info || true
+          python scripts/serialized_publish.py \
+            --github-api-cas \
+            --attempts 80 \
+            --message 'research: refresh verified CEX arbitrage' \
+            data/cex-verified-arbitrage.json \
+            data/cex-verified-arbitrage-alert-state.json
