@@ -44,9 +44,20 @@ def extended_repeat_is_material(text: str, refs: dict | None = None) -> bool:
 
 
 def extended_primary_symbol(text: str, refs: dict, market: dict | None) -> str | None:
+    # In multi-ticker posts, explicit ownership/conviction language is stronger
+    # evidence of the promoted token than the base heuristic's generic ticker
+    # ordering. Resolve that first so stock/narrative comparison tickers cannot
+    # steal attribution from the actual call.
+    tickers = list(refs.get("tickers") or [])
+    if len(tickers) > 1:
+        match = PRIMARY_CONVICTION_RE.search(str(text or ""))
+        if match:
+            return live._norm_symbol(match.group(1))
+
     symbol = _BASE_PRIMARY_SYMBOL(text, refs, market)
     if symbol:
         return symbol
+
     match = PRIMARY_CONVICTION_RE.search(str(text or ""))
     if match:
         return live._norm_symbol(match.group(1))
