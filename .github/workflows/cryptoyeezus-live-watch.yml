@@ -9,10 +9,12 @@ on:
     paths:
       - 'src/wallet500/cryptoyeezus_live_watch.py'
       - 'src/wallet500/cryptoyeezus_x_fallback.py'
+      - 'src/wallet500/cryptoyeezus_hardening.py'
       - 'src/wallet500/cryptoyeezus_identity_guard.py'
       - 'src/wallet500/cryptoyeezus_priority_alerts.py'
       - 'tests/test_cryptoyeezus_live_watch.py'
       - 'tests/test_cryptoyeezus_x_fallback.py'
+      - 'tests/test_cryptoyeezus_hardening.py'
       - 'tests/test_cryptoyeezus_identity_guard.py'
       - 'tests/test_cryptoyeezus_priority_alerts.py'
       - '.github/workflows/cryptoyeezus-live-watch.yml'
@@ -46,6 +48,7 @@ jobs:
           python -m pytest -q \
             tests/test_cryptoyeezus_live_watch.py \
             tests/test_cryptoyeezus_x_fallback.py \
+            tests/test_cryptoyeezus_hardening.py \
             tests/test_cryptoyeezus_identity_guard.py \
             tests/test_cryptoyeezus_priority_alerts.py
 
@@ -53,10 +56,12 @@ jobs:
         env:
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
           YEEZUS_X_POLL_EVERY_CYCLES: '1'
-        run: python -m wallet500.cryptoyeezus_live_watch
+        run: python -m wallet500.cryptoyeezus_hardening live
 
       - name: Recover X through public redundancy when direct API is degraded
-        run: python -m wallet500.cryptoyeezus_x_fallback
+        env:
+          YEEZUS_X_FALLBACK_COUNT: '50'
+        run: python -m wallet500.cryptoyeezus_hardening fallback
 
       - name: Quarantine false exact identities before priority delivery
         run: python -m wallet500.cryptoyeezus_identity_guard
@@ -66,7 +71,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           YEEZUS_PERSISTENCE_ALERT_MINUTES: '120'
-        run: python -m wallet500.cryptoyeezus_priority_alerts
+        run: python -m wallet500.cryptoyeezus_hardening priority
 
       - name: Validate source-check and priority-delivery contracts
         run: |
