@@ -1,0 +1,141 @@
+name: Wallet500 CEX Spot Shadow Forward
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '10,25,40,55 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cex-spot-shadow-forward.yml'
+      - 'src/wallet500/cex_spot_shadow_forward.py'
+      - 'tests/test_cex_spot_shadow_forward.py'
+      - 'data/cex-spot-revival-radar.json'
+      - 'data/cex-spot-state.json.gz'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-cex-spot-shadow-forward
+  cancel-in-progress: true
+
+jobs:
+  forward-shadow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Verify forward-only shadow contracts
+        run: python -m pytest -q tests/test_cex_spot_shadow_forward.py
+      - name: Update forward-only shadow outcomes
+        run: python -m wallet500.cex_spot_shadow_forward
+      - name: Validate no-hindsight and production boundary
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          report=json.loads(Path('data/cex-spot-shadow-forward-report.json').read_text())
+          ledger=json.loads(Path('data/cex-spot-shadow-forward-ledger.json').read_text())
+          def age(ts):
+              return (datetime.now(timezone.utc)-datetime.fromisoformat(str(ts).replace('Z','+00:00'))).total_seconds()
+
+          if age(report.get('generated_at')) > 600:
+              raise SystemExit('CEX_SHADOW_FORWARD_REPORT_STALE')
+          if report.get('research_only') is not True or report.get('production_portfolio_impact') != 'NONE':
+              raise SystemExit('CEX_SHADOW_FORWARD_PRODUCTION_BOUNDARY_LEAK')
+          if report.get('automatic_buy') is not False or report.get('no_hindsight') is not True:
+              raise SystemExit('CEX_SHADOW_FORWARD_TRUTH_BOUNDARY_LEAK')
+          if ledger.get('research_only') is not True or ledger.get('production_portfolio_impact') != 'NONE':
+              raise SystemExit('CEX_SHADOW_FORWARD_LEDGER_BOUNDARY_LEAK')
+          if ledger.get('automatic_buy') is not False or ledger.get('no_hindsight') is not True:
+              raise SystemExit('CEX_SHADOW_FORWARD_LEDGER_TRUTH_LEAK')
+
+          truth=report.get('truth_contract') or {}
+          required=(
+              'forward_only_after_activation',
+              'pre_activation_shadow_candidates_not_backfilled',
+              'entry_uses_immutable_first_shadow_watch_milestone',
+              'usd_like_reference_only',
+              'regional_native_quote_not_coerced_to_usd',
+              'future_outcomes_never_change_entry',
+              'late_24h_checkpoints_excluded_from_sample_gate',
+              'shadow_lane_never_actionable',
+              'production_scoring_unchanged',
+          )
+          if not all(truth.get(key) is True for key in required):
+              raise SystemExit('CEX_SHADOW_FORWARD_NO_HINDSIGHT_GUARD_MISSING')
+
+          maturity=report.get('sample_maturity') or {}
+          if maturity.get('statistical_claim_allowed') is not False:
+              raise SystemExit('CEX_SHADOW_FORWARD_PREMATURE_STATISTICAL_CLAIM')
+          if maturity.get('production_promotion_allowed') is not False:
+              raise SystemExit('CEX_SHADOW_FORWARD_PREMATURE_PRODUCTION_PROMOTION')
+          gate=maturity.get('gate') or {}
+          if maturity.get('descriptive_evaluation_allowed') is True:
+              if maturity.get('labeled_24h',0) < gate.get('minimum_labeled_24h',30):
+                  raise SystemExit('CEX_SHADOW_FORWARD_SAMPLE_GATE_BROKEN')
+              if maturity.get('positive_24h',0) < gate.get('minimum_positive_24h',10):
+                  raise SystemExit('CEX_SHADOW_FORWARD_POSITIVE_GATE_BROKEN')
+              if maturity.get('negative_24h',0) < gate.get('minimum_negative_24h',10):
+                  raise SystemExit('CEX_SHADOW_FORWARD_NEGATIVE_GATE_BROKEN')
+          print('CEX_SHADOW_FORWARD_VALID', {
+              'entry_count': report.get('entry_count'),
+              'completed_72h_count': report.get('completed_72h_count'),
+              'sample_maturity': maturity,
+          })
+          PY
+      - name: Publish forward-only shadow ledger with bounded optimistic retries
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          base="$GITHUB_SHA"
+          targets=(
+            data/cex-spot-shadow-forward-ledger.json
+            data/cex-spot-shadow-forward-report.json
+          )
+          snap="$(mktemp -d)"
+          for f in "${targets[@]}"; do
+            if [ -f "$f" ]; then
+              mkdir -p "$snap/$(dirname "$f")"
+              cp -a "$f" "$snap/$f"
+            fi
+          done
+
+          for attempt in $(seq 1 20); do
+            echo "CEX shadow forward publish attempt $attempt/20"
+            git fetch origin main
+            latest="$(git rev-parse origin/main)"
+            conflict=0
+            for f in "${targets[@]}"; do
+              if ! git diff --quiet "$base" "$latest" -- "$f"; then
+                echo "Newer main changed $f; preserving newer forward truth and skipping stale publish"
+                conflict=1
+              fi
+            done
+            if [ "$conflict" -ne 0 ]; then exit 0; fi
+
+            git reset --hard "$latest"
+            for f in "${targets[@]}"; do
+              if [ -f "$snap/$f" ]; then
+                mkdir -p "$(dirname "$f")"
+                cp -a "$snap/$f" "$f"
+              fi
+              git add -A -- "$f"
+            done
+            if git diff --cached --quiet; then echo "No shadow forward changes"; exit 0; fi
+            git commit -m "data: refresh CEX spot shadow forward outcomes"
+            if git push origin HEAD:main; then echo "Fresh shadow forward outcomes published"; exit 0; fi
+            echo "Main moved during push; retrying on newest main"; sleep 1
+          done
+          echo "CEX shadow forward publisher failed after 20 bounded retries"; exit 1
