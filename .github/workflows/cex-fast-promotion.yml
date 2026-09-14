@@ -12,7 +12,9 @@ on:
     paths:
       - '.github/workflows/cex-fast-promotion.yml'
       - 'src/wallet500/cex_fast_promotion.py'
+      - 'src/wallet500/cex_fast_current_bypass.py'
       - 'tests/test_cex_fast_promotion.py'
+      - 'tests/test_cex_fast_current_bypass.py'
 
 permissions:
   contents: write
@@ -39,6 +41,7 @@ jobs:
           pip install -e . pytest
           python -m pytest -q \
             tests/test_cex_fast_promotion.py \
+            tests/test_cex_fast_current_bypass.py \
             tests/test_cex_spot_identity.py \
             tests/test_cex_spot_dynamic_identity_bridge.py
       - name: Refuse stale exact-identity source
@@ -62,7 +65,9 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python -m wallet500.cex_fast_promotion
+        run: |
+          python -m wallet500.cex_fast_promotion
+          python -m wallet500.cex_fast_current_bypass
       - name: Validate no research-only Telegram leakage
         run: |
           python - <<'PY'
@@ -80,6 +85,9 @@ jobs:
           if float(truth.get('late_move_do_not_chase_above_24h_pct') or 0) != 45.0: raise SystemExit('CEX_FAST_CHASE_GUARD_DRIFT')
           if truth.get('canonical_180d_50k_pipeline_unchanged') is not True: raise SystemExit('CEX_FAST_CANONICAL_PIPELINE_LEAK')
           if truth.get('usdc_quote_coverage_enabled') is not True: raise SystemExit('CEX_FAST_USDC_COVERAGE_MISSING')
+          if truth.get('current_watch_identity_queue_bypass_enabled') is not True: raise SystemExit('CEX_FAST_CURRENT_WATCH_BYPASS_MISSING')
+          if truth.get('current_watch_bypass_requires_strict_dex_identity') is not True: raise SystemExit('CEX_FAST_BYPASS_STRICT_IDENTITY_GUARD_MISSING')
+          if truth.get('current_watch_bypass_symbol_only_never_actionable') is not True: raise SystemExit('CEX_FAST_BYPASS_SYMBOL_ONLY_GUARD_MISSING')
           for row in alerts.get('alerts') or []:
               if row.get('status') != 'REAL_ALERT' or row.get('actionable') is not True or row.get('research_only') is not False:
                   raise SystemExit('CEX_FAST_NON_ACTIONABLE_ALERT_LEAK')
@@ -91,11 +99,16 @@ jobs:
                   raise SystemExit('CEX_FAST_BLOCKED_ROW_PUBLISHED')
           if int(report.get('error_count') or 0) > 0:
               raise SystemExit(f"CEX_FAST_DELIVERY_ERRORS={report.get('error_count')}")
+          bypass=report.get('current_watch_bypass') or {}
           print('CEX_FAST_PROMOTION_VALID', {
               'eligible': report.get('eligible_count'),
               'delivered': report.get('delivered_count'),
               'usdc_markets': report.get('usdc_markets_seen'),
               'usdc_groups': report.get('usdc_groups_seen'),
+              'bypass_priority': bypass.get('priority_candidates'),
+              'bypass_resolved': bypass.get('strict_resolved'),
+              'bypass_eligible': bypass.get('eligible'),
+              'bypass_delivered': bypass.get('delivered'),
           })
           PY
       - name: Persist fast-promotion alert, dedupe state and report
@@ -111,4 +124,5 @@ jobs:
             --message 'alerts: persist CEX fast promotion state' \
             data/cex-fast-real-alerts.json \
             data/cex-fast-promotion-state.json \
+            data/cex-fast-current-bypass-state.json \
             data/cex-fast-promotion-report.json
