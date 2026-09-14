@@ -43,6 +43,9 @@ jobs:
       - name: Install
         run: pip install -e .
       - name: Run exact-pair survivor watch
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m wallet500.survivor_wave_watch
       - name: Run independent GeckoTerminal exact-pair cross-check
         run: python -m wallet500.survivor_exact_pair_crosscheck
