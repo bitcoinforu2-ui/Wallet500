@@ -54,22 +54,15 @@ jobs:
           })
           PY
       - name: Publish research observation intelligence
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/cex-spot-observation-ledger.json data/cex-spot-observation-intel.json
-          if git diff --cached --quiet; then
-            echo "No observation-intelligence changes"
-            exit 0
-          fi
-          git commit -m "research: refresh CEX observation intelligence"
-          for attempt in 1 2 3 4 5; do
-            if git push origin HEAD:main; then
-              exit 0
-            fi
-            echo "push conflict attempt ${attempt}; rebasing"
-            git pull --rebase origin main
-            sleep $((attempt * 2))
-          done
-          echo "Failed to publish observation intelligence after retries" >&2
-          exit 1
+          set -euo pipefail
+          git restore --worktree -- src/wallet500.egg-info || true
+          python scripts/serialized_publish.py \
+            --github-api-cas \
+            --attempts 80 \
+            --message 'research: refresh CEX observation intelligence' \
+            data/cex-spot-observation-ledger.json \
+            data/cex-spot-observation-intel.json
+          echo 'CEX_OBSERVATION_INTEL_PUBLISH_OK'
