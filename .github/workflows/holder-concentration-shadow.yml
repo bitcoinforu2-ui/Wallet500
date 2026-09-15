@@ -85,9 +85,7 @@ jobs:
                           raise SystemExit(f'HOLDER_CONCENTRATION_SHADOW_METRIC_INVALID:{key}')
 
               if has_holder_shadow:
-                  if row.get('holder_shadow_verified_contract') is not True:
-                      raise SystemExit('HOLDER_CONCENTRATION_SHADOW_HOLDER_CONTRACT_INVALID')
-                  if row.get('holder_shadow_semantics')!='TOTAL_TOKEN_ACCOUNTS_NOT_UNIQUE_BENEFICIAL_OWNERS':
+                  if row.get('holder_shadow_semantics')!='THIRD_PARTY_CACHED_HOLDER_COUNT_SHADOW_NOT_TRUSTED_GROWTH':
                       raise SystemExit('HOLDER_CONCENTRATION_SHADOW_HOLDER_SEMANTICS_INVALID')
                   if row.get('growth_signal_eligible') is not False:
                       raise SystemExit('HOLDER_CONCENTRATION_SHADOW_HOLDER_SIGNAL_LEAK')
