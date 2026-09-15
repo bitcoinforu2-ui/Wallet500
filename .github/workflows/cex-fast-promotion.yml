@@ -13,6 +13,7 @@ on:
       - '.github/workflows/cex-fast-promotion.yml'
       - 'src/wallet500/cex_fast_promotion.py'
       - 'src/wallet500/cex_fast_current_bypass.py'
+      - 'scripts/run_cex_action_guarded.py'
       - 'tests/test_cex_fast_promotion.py'
       - 'tests/test_cex_fast_current_bypass.py'
 
@@ -61,14 +62,13 @@ jobs:
           if age < -120 or age > 35*60: raise SystemExit(f'CEX_FAST_IDENTITY_SOURCE_STALE age={age:.0f}s')
           print('CEX_FAST_IDENTITY_SOURCE_FRESH', {'age_seconds':round(age,1)})
           PY
-      - name: Promote only exact verified actionable CEX candidates and send Telegram
+      - name: Promote only action-worthy exact assets and send Telegram
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python -m wallet500.cex_fast_promotion
-          python -m wallet500.cex_fast_current_bypass
-      - name: Validate no research-only Telegram leakage
+          python scripts/run_cex_action_guarded.py
+      - name: Validate no research-only or duplicate-pool Telegram leakage
         run: |
           python - <<'PY'
           import json
@@ -82,12 +82,13 @@ jobs:
           if truth.get('cex_dex_current_price_coherence_required') is not True: raise SystemExit('CEX_FAST_PRICE_COHERENCE_GUARD_MISSING')
           if float(truth.get('minimum_market_age_days') or 0) != 90.0: raise SystemExit('CEX_FAST_AGE_POLICY_DRIFT')
           if float(truth.get('minimum_execution_liquidity_usd') or 0) != 15000.0: raise SystemExit('CEX_FAST_LIQUIDITY_POLICY_DRIFT')
-          if float(truth.get('late_move_do_not_chase_above_24h_pct') or 0) != 45.0: raise SystemExit('CEX_FAST_CHASE_GUARD_DRIFT')
           if truth.get('canonical_180d_50k_pipeline_unchanged') is not True: raise SystemExit('CEX_FAST_CANONICAL_PIPELINE_LEAK')
           if truth.get('usdc_quote_coverage_enabled') is not True: raise SystemExit('CEX_FAST_USDC_COVERAGE_MISSING')
           if truth.get('current_watch_identity_queue_bypass_enabled') is not True: raise SystemExit('CEX_FAST_CURRENT_WATCH_BYPASS_MISSING')
           if truth.get('current_watch_bypass_requires_strict_dex_identity') is not True: raise SystemExit('CEX_FAST_BYPASS_STRICT_IDENTITY_GUARD_MISSING')
           if truth.get('current_watch_bypass_symbol_only_never_actionable') is not True: raise SystemExit('CEX_FAST_BYPASS_SYMBOL_ONLY_GUARD_MISSING')
+          seen=set()
+          excluded='61v8vbaqagmpgdqi4jcawo1dmbghsyhzodcpqnevpump'
           for row in alerts.get('alerts') or []:
               if row.get('status') != 'REAL_ALERT' or row.get('actionable') is not True or row.get('research_only') is not False:
                   raise SystemExit('CEX_FAST_NON_ACTIONABLE_ALERT_LEAK')
@@ -97,21 +98,19 @@ jobs:
                   raise SystemExit('CEX_FAST_IDENTITY_FIELDS_MISSING')
               if row.get('blockers'):
                   raise SystemExit('CEX_FAST_BLOCKED_ROW_PUBLISHED')
+              key=(str(row.get('chain')).lower(), str(row.get('token_address')).lower())
+              if key in seen: raise SystemExit('CEX_FAST_DUPLICATE_CANONICAL_ASSET')
+              seen.add(key)
+              if key == ('solana', excluded): raise SystemExit('CEX_FAST_EXCLUDED_ARC_LEAK')
+              if int(row.get('signal_score') or 0) < 50: raise SystemExit('CEX_FAST_WEAK_SCORE_TELEGRAM_LEAK')
+              since=float(row.get('since_discovery_pct') or 0)
+              if since < -12 or since > 25: raise SystemExit('CEX_FAST_BAD_ENTRY_WINDOW_LEAK')
+              if float(row.get('current_change_24h_pct') or 0) > 35: raise SystemExit('CEX_FAST_CHASE_LEAK')
           if int(report.get('error_count') or 0) > 0:
               raise SystemExit(f"CEX_FAST_DELIVERY_ERRORS={report.get('error_count')}")
-          bypass=report.get('current_watch_bypass') or {}
-          print('CEX_FAST_PROMOTION_VALID', {
-              'eligible': report.get('eligible_count'),
-              'delivered': report.get('delivered_count'),
-              'usdc_markets': report.get('usdc_markets_seen'),
-              'usdc_groups': report.get('usdc_groups_seen'),
-              'bypass_priority': bypass.get('priority_candidates'),
-              'bypass_resolved': bypass.get('strict_resolved'),
-              'bypass_eligible': bypass.get('eligible'),
-              'bypass_delivered': bypass.get('delivered'),
-          })
+          print('CEX_FAST_ACTION_ONLY_VALID', {'eligible': len(alerts.get('alerts') or []), 'delivered': report.get('delivered_count')})
           PY
-      - name: Persist fast-promotion alert, dedupe state and report
+      - name: Persist fast-promotion alert, canonical dedupe state and report
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -121,7 +120,7 @@ jobs:
           python scripts/serialized_publish.py \
             --github-api-cas \
             --attempts 80 \
-            --message 'alerts: persist CEX fast promotion state' \
+            --message 'alerts: persist CEX action-only promotion state' \
             data/cex-fast-real-alerts.json \
             data/cex-fast-promotion-state.json \
             data/cex-fast-current-bypass-state.json \
