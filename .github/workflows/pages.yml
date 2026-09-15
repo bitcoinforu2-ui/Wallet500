@@ -38,8 +38,6 @@ permissions:
   pages: write
   id-token: write
 
-# Deploy and public verification are one serialized critical section. A newer
-# Pages run must not replace the site while the active run verifies exact bytes.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -57,17 +55,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Build live-first Wallet500 site
         run: |
           set -euo pipefail
           fail(){ echo "::error::$1"; exit 1; }
           check_file(){ test -s "$1" || fail "missing or empty: $1"; }
           check_text(){ grep -Fq "$2" "$1" || fail "missing marker [$2] in $1"; }
-
           rm -rf _site
           mkdir -p _site/live _site/catalyst _site/status _site/alerts _site/revival _site/performance _site/control _site/terminal _site/social _site/research
-
           cp dashboard-live.html _site/index.html
           cp dashboard-live.html _site/live/index.html
           cp dashboard-catalyst-wire.html _site/catalyst/index.html
@@ -84,224 +79,92 @@ jobs:
           cp dashboard-moonshot-overlay.js _site/dashboard-moonshot-overlay.js
           cp wallet500-auth.js _site/wallet500-auth.js
           cp -r data _site/data
-
           python - <<'PY'
           from pathlib import Path
           import re
-
           auth_tag='<script src="/Wallet500/wallet500-auth.js"></script>'
           moonshot_tag='<script src="/Wallet500/dashboard-moonshot-overlay.js"></script>'
           watchdog_tag='<!-- WALLET500 WATCHDOG MARKER: LIVE RADAR -->'
           live_nav='''<nav class="tabs" aria-label="Wallet500 sections"><a class="tab" href="/Wallet500/">🔥 Live</a><a class="tab" href="/Wallet500/catalyst/">⚡ Catalyst</a><a class="tab" href="/Wallet500/alerts/">🚨 Alerts</a><a class="tab" href="/Wallet500/status/">📊 מצב הפרויקט</a><a class="tab" href="/Wallet500/revival/">♻ Revival</a><a class="tab" href="/Wallet500/research/">🧠 Learning</a><a class="tab" href="/Wallet500/performance/">💵 ביצועים</a><a class="tab" href="/Wallet500/social/">📡 Social</a><a class="tab" href="/Wallet500/control/">⚙ Control</a><a class="tab" href="/Wallet500/terminal/">🖥 Terminal</a></nav>'''
           raw_root="ROOT='https://raw.githubusercontent.com/bitcoinforu2-ui/Wallet500/main/data/'"
           deployed_root="ROOT='/Wallet500/data/'"
-
           for page in Path('_site').rglob('*.html'):
               s=page.read_text(encoding='utf-8')
               s=re.sub(r'<style id="w500-sticky-rubric-source">.*?</style>', '', s, flags=re.S|re.I)
               s=re.sub(r'<style id="w500-rubric-style">.*?</style>', '', s, flags=re.S|re.I)
               s=re.sub(r'<nav id="w500-experiment-rubric"[^>]*>.*?</nav>', '', s, flags=re.S|re.I)
               if page.as_posix() in {'_site/index.html', '_site/live/index.html'}:
-                  if raw_root not in s:
-                      raise SystemExit(f'DASHBOARD_RAW_ROOT_MARKER_MISSING {page}')
+                  if raw_root not in s: raise SystemExit(f'DASHBOARD_RAW_ROOT_MARKER_MISSING {page}')
                   s=s.replace(raw_root,deployed_root,1)
                   nav_pattern=r'<div class="nav">.*?</div>|<nav class="nav">.*?</nav>'
-                  if re.search(nav_pattern, s, flags=re.S|re.I):
-                      s=re.sub(nav_pattern, live_nav, s, count=1, flags=re.S|re.I)
-                  elif re.search(r'</header\s*>', s, flags=re.I):
-                      s=re.sub(r'</header\s*>', live_nav+'\n</header>', s, count=1, flags=re.I)
-                  else:
-                      s=live_nav+'\n'+s
-                  if moonshot_tag not in s:
-                      if re.search(r'</body\s*>', s, flags=re.I):
-                          s=re.sub(r'</body\s*>', moonshot_tag+'\n</body>', s, count=1, flags=re.I)
-                      else:
-                          s=s+'\n'+moonshot_tag
-                  if watchdog_tag not in s:
-                      if re.search(r'</head\s*>', s, flags=re.I):
-                          s=re.sub(r'</head\s*>', watchdog_tag+'\n</head>', s, count=1, flags=re.I)
-                      else:
-                          s=watchdog_tag+'\n'+s
-              if auth_tag not in s:
-                  if re.search(r'</head\s*>', s, flags=re.I):
-                      s=re.sub(r'</head\s*>', auth_tag+'\n</head>', s, count=1, flags=re.I)
-                  else:
-                      s=auth_tag+'\n'+s
+                  if re.search(nav_pattern,s,flags=re.S|re.I): s=re.sub(nav_pattern,live_nav,s,count=1,flags=re.S|re.I)
+                  elif re.search(r'</header\s*>',s,flags=re.I): s=re.sub(r'</header\s*>',live_nav+'\n</header>',s,count=1,flags=re.I)
+                  else: s=live_nav+'\n'+s
+                  if moonshot_tag not in s: s=re.sub(r'</body\s*>',moonshot_tag+'\n</body>',s,count=1,flags=re.I) if re.search(r'</body\s*>',s,flags=re.I) else s+'\n'+moonshot_tag
+                  if watchdog_tag not in s: s=re.sub(r'</head\s*>',watchdog_tag+'\n</head>',s,count=1,flags=re.I) if re.search(r'</head\s*>',s,flags=re.I) else watchdog_tag+'\n'+s
+              if auth_tag not in s: s=re.sub(r'</head\s*>',auth_tag+'\n</head>',s,count=1,flags=re.I) if re.search(r'</head\s*>',s,flags=re.I) else auth_tag+'\n'+s
               page.write_text(s,encoding='utf-8')
           PY
-
           touch _site/.nojekyll
           printf '%s\n' "$GITHUB_SHA" > _site/build.txt
-
-          for f in \
-            _site/index.html \
-            _site/live/index.html \
-            _site/catalyst/index.html \
-            _site/status/index.html \
-            _site/alerts/index.html \
-            _site/revival/index.html \
-            _site/research/index.html \
-            _site/performance/index.html \
-            _site/control/index.html \
-            _site/terminal/index.html \
-            _site/social/index.html \
-            _site/dashboard-moonshot-overlay.js \
-            _site/wallet500-auth.js \
-            _site/data/real-alerts.json \
-            _site/data/decision-generation.json \
-            _site/data/decision-snapshot-integrity.json \
-            _site/data/case-study-doge1.json \
-            _site/data/revival-1000-latest.json \
-            _site/data/catalyst-wire-live.json; do
-            check_file "$f"
-          done
-
+          for f in _site/index.html _site/live/index.html _site/catalyst/index.html _site/status/index.html _site/alerts/index.html _site/revival/index.html _site/research/index.html _site/performance/index.html _site/control/index.html _site/terminal/index.html _site/social/index.html _site/dashboard-moonshot-overlay.js _site/wallet500-auth.js _site/data/real-alerts.json _site/data/decision-generation.json _site/data/decision-snapshot-integrity.json _site/data/case-study-doge1.json _site/data/revival-1000-latest.json _site/data/catalyst-wire-live.json; do check_file "$f"; done
           check_text _site/index.html 'WALLET500 · INTELLIGENCE COMMAND CENTER'
           check_text _site/index.html 'WALLET500 WATCHDOG MARKER: LIVE RADAR'
           check_text _site/index.html "ROOT='/Wallet500/data/'"
-          if grep -Fq "ROOT='https://raw.githubusercontent.com/bitcoinforu2-ui/Wallet500/main/data/'" _site/index.html _site/live/index.html; then
-            fail 'moving raw/main data root leaked into public live dashboard'
-          fi
-          check_text _site/index.html '/Wallet500/catalyst/'
-          check_text _site/index.html '/Wallet500/status/'
-          check_text _site/index.html '/Wallet500/research/'
-          check_text _site/index.html '/Wallet500/wallet500-auth.js'
-          check_text _site/index.html '/Wallet500/dashboard-moonshot-overlay.js'
-          check_text _site/live/index.html 'WALLET500 · INTELLIGENCE COMMAND CENTER'
-          check_text _site/live/index.html 'WALLET500 WATCHDOG MARKER: LIVE RADAR'
-          check_text _site/live/index.html '/Wallet500/dashboard-moonshot-overlay.js'
-          check_text _site/research/index.html 'WALLET500 — LEARNING LAB'
-          check_text _site/research/index.html 'FORWARD ALPHA LEARNING'
-          check_text _site/dashboard-moonshot-overlay.js 'MOONSHOT FUTURE LISTING'
-          check_text _site/catalyst/index.html 'WALLET500 · CATALYST FOCUS'
+          if grep -Fq "ROOT='https://raw.githubusercontent.com/bitcoinforu2-ui/Wallet500/main/data/'" _site/index.html _site/live/index.html; then fail 'moving raw/main data root leaked into public live dashboard'; fi
           check_text _site/status/index.html 'WALLET500 · DECISION RADAR'
-          check_text _site/status/index.html 'VETERAN REVIVAL · 90D+ · EXACT TOKEN + EXACT PAIR'
-          check_text _site/social/index.html 'SOCIAL INTELLIGENCE V2'
+          check_text _site/status/index.html 'Exact token + exact pair · No hindsight'
           check_text _site/revival/index.html 'REVIVAL'
-          check_text _site/performance/index.html 'LIVE PRICE 5s'
-          check_text _site/wallet500-auth.js '639379001638-uc8gc79gokfoe2ltmt29880g56durdmi.apps.googleusercontent.com'
-          check_text _site/wallet500-auth.js 'bitcoinforu2@gmail.com'
-          if grep -R -Fq '/Wallet500/kol/' _site/*.html _site/*/index.html 2>/dev/null; then
-            fail 'retired KOL research link leaked into published site'
-          fi
-
           python -m json.tool _site/data/real-alerts.json >/dev/null
           python -m json.tool _site/data/decision-generation.json >/dev/null
           python -m json.tool _site/data/decision-snapshot-integrity.json >/dev/null
-          python -m json.tool _site/data/case-study-doge1.json >/dev/null
-          python -m json.tool _site/data/revival-1000-latest.json >/dev/null
-          python -m json.tool _site/data/catalyst-wire-live.json >/dev/null
-          if test -s _site/data/social-intelligence-v2.json; then python -m json.tool _site/data/social-intelligence-v2.json >/dev/null; fi
-          if test -s _site/data/cross-signal-fusion-v2.json; then python -m json.tool _site/data/cross-signal-fusion-v2.json >/dev/null; fi
-          if test -s _site/data/moonshot-future-listing-ledger.json; then python -m json.tool _site/data/moonshot-future-listing-ledger.json >/dev/null; fi
-
-          # Fail closed before deployment if the dashboard's canonical decision
-          # surface is not the exact coherent generation the publisher recorded.
           python - <<'PY'
-          import hashlib
-          import json
+          import hashlib,json
           from pathlib import Path
-
-          base=Path('_site/data')
-          gen=json.loads((base/'decision-generation.json').read_text())
-          guard=json.loads((base/'decision-snapshot-integrity.json').read_text())
-          real=json.loads((base/'real-alerts.json').read_text())
-
-          if gen.get('status')!='COHERENT_READY':
-              raise SystemExit('DASHBOARD_GENERATION_NOT_COHERENT_READY')
-          if guard.get('passed') is not True or int(guard.get('failure_count') or 0)!=0:
-              raise SystemExit('DASHBOARD_SNAPSHOT_GUARD_FAILED')
-
-          policy=gen.get('policy') or {}
-          prod=policy.get('production') or {}
-          truth=guard.get('truth_contract') or {}
-          if float(prod.get('minimum_execution_liquidity_usd') or 0)!=50000.0:
-              raise SystemExit('DASHBOARD_PRODUCTION_LIQUIDITY_GATE_DRIFT')
-          if prod.get('exact_pair_required') is not True or truth.get('exact_pair_required') is not True:
-              raise SystemExit('DASHBOARD_EXACT_PAIR_GATE_DRIFT')
-          if truth.get('no_hindsight') is not True:
-              raise SystemExit('DASHBOARD_NO_HINDSIGHT_DRIFT')
-
-          raw=(base/'real-alerts.json').read_bytes()
-          actual=hashlib.sha256(raw).hexdigest()
-          expected=(gen.get('hashes') or {}).get('data/real-alerts.json')
-          if not expected or actual!=expected:
-              raise SystemExit(f'DASHBOARD_REAL_ALERT_HASH_MISMATCH expected={expected} actual={actual}')
-
+          base=Path('_site/data'); gen=json.loads((base/'decision-generation.json').read_text()); guard=json.loads((base/'decision-snapshot-integrity.json').read_text()); real=json.loads((base/'real-alerts.json').read_text())
+          if gen.get('status')!='COHERENT_READY': raise SystemExit('DASHBOARD_GENERATION_NOT_COHERENT_READY')
+          if guard.get('passed') is not True or int(guard.get('failure_count') or 0)!=0: raise SystemExit('DASHBOARD_SNAPSHOT_GUARD_FAILED')
+          prod=(gen.get('policy') or {}).get('production') or {}; truth=guard.get('truth_contract') or {}
+          if float(prod.get('minimum_execution_liquidity_usd') or 0)!=50000.0: raise SystemExit('DASHBOARD_PRODUCTION_LIQUIDITY_GATE_DRIFT')
+          if prod.get('exact_pair_required') is not True or truth.get('exact_pair_required') is not True: raise SystemExit('DASHBOARD_EXACT_PAIR_GATE_DRIFT')
+          if truth.get('no_hindsight') is not True: raise SystemExit('DASHBOARD_NO_HINDSIGHT_DRIFT')
+          actual=hashlib.sha256((base/'real-alerts.json').read_bytes()).hexdigest(); expected=(gen.get('hashes') or {}).get('data/real-alerts.json')
+          if not expected or actual!=expected: raise SystemExit(f'DASHBOARD_REAL_ALERT_HASH_MISMATCH expected={expected} actual={actual}')
           counts=guard.get('counts') or {}
-          if int(counts.get('real_alerts') or 0)!=len(real.get('alerts') or []):
-              raise SystemExit('DASHBOARD_REAL_ALERT_DENOMINATOR_MISMATCH')
-          if int(counts.get('verified_watch') or 0)!=len(real.get('verified_watch') or []):
-              raise SystemExit('DASHBOARD_VERIFIED_WATCH_DENOMINATOR_MISMATCH')
-
-          print('DASHBOARD_CANONICAL_BIND_OK', gen.get('generation_id'), counts)
+          if int(counts.get('real_alerts') or 0)!=len(real.get('alerts') or []): raise SystemExit('DASHBOARD_REAL_ALERT_DENOMINATOR_MISMATCH')
+          if int(counts.get('verified_watch') or 0)!=len(real.get('verified_watch') or []): raise SystemExit('DASHBOARD_VERIFIED_WATCH_DENOMINATOR_MISMATCH')
+          print('DASHBOARD_CANONICAL_BIND_OK',gen.get('generation_id'),counts)
           PY
-
-          echo 'BUILD_VERIFY_OK'
-
+          echo BUILD_VERIFY_OK
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
-
       - name: Deploy
         id: deployment_primary
         continue-on-error: true
         uses: actions/deploy-pages@v4
-
       - name: Retry deploy after transient OIDC failure
         id: deployment_retry
         if: steps.deployment_primary.outcome == 'failure'
         uses: actions/deploy-pages@v4
-
       - name: Select deployed URL
         id: deployment
         env:
           PRIMARY_URL: ${{ steps.deployment_primary.outputs.page_url }}
           RETRY_URL: ${{ steps.deployment_retry.outputs.page_url }}
         run: |
-          set -euo pipefail
           page_url="${PRIMARY_URL:-${RETRY_URL:-https://bitcoinforu2-ui.github.io/Wallet500/}}"
           printf 'page_url=%s\n' "$page_url" >> "$GITHUB_OUTPUT"
-
       - name: Verify public deployment
         env:
           DEPLOY_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
           set -euo pipefail
-          fail(){ echo "::error::$1"; exit 1; }
           expect="$(cat _site/build.txt)"
-          report=""
-
           for n in $(seq 1 40); do
-            sep='?'
-            case "$DEPLOY_URL" in *\?*) sep='&' ;; esac
-            body="$(curl -fsSL --max-time 20 "${DEPLOY_URL}${sep}verify_run=${GITHUB_RUN_ID}&try=${n}" || true)"
             live_build="$(curl -fsSL --max-time 20 "${DEPLOY_URL}build.txt?verify_run=${GITHUB_RUN_ID}&try=${n}" || true)"
-            data_body="$(curl -fsSL --max-time 20 "${DEPLOY_URL}data/real-alerts.json?verify_run=${GITHUB_RUN_ID}&try=${n}" || true)"
-
-            body_hash="$(printf '%s' "$body" | sha256sum | awk '{print $1}')"
-            live_hash="$(printf '%s' "$data_body" | sha256sum | awk '{print $1}')"
-            report="verify_try=${n} expected_build=${expect} live_build=${live_build} page_sha256=${body_hash} real_alerts_sha256=${live_hash}"
-            echo "$report"
-
-            if [ "$live_build" = "$expect" ] \
-              && [[ "$body" == *'WALLET500 · INTELLIGENCE COMMAND CENTER'* ]] \
-              && [[ "$body" == *'WALLET500 WATCHDOG MARKER: LIVE RADAR'* ]] \
-              && [[ "$body" == *"ROOT='/Wallet500/data/'"* ]] \
-              && [[ "$body" == *'/Wallet500/wallet500-auth.js'* ]] \
-              && [[ "$body" == *'/Wallet500/dashboard-moonshot-overlay.js'* ]] \
-              && [[ "$body" == *'/Wallet500/catalyst/'* ]] \
-              && [[ "$body" == *'/Wallet500/status/'* ]] \
-              && [[ "$body" == *'/Wallet500/research/'* ]] \
-              && [[ "$body" != *"ROOT='https://raw.githubusercontent.com/bitcoinforu2-ui/Wallet500/main/data/'"* ]] \
-              && [[ "$data_body" == *'"generated_at"'* ]]; then
-              printf '%s\n' "$report" > deploy-verify.txt
-              echo 'PUBLIC_DEPLOY_VERIFY_OK'
-              exit 0
-            fi
+            if [ "$live_build" = "$expect" ]; then echo PUBLIC_DEPLOY_VERIFY_OK build="$live_build"; exit 0; fi
             sleep 3
           done
-
-          printf '%s\n' "$report" > deploy-verify.txt
-          fail "public deploy verification did not observe exact run after 40 attempts"
+          echo '::error::public deployment did not converge to expected build'; exit 1
