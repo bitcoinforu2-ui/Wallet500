@@ -1,0 +1,223 @@
+name: Wallet500 ARB Telegram Position Watch
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'data/arbitrum-revival-universe.json'
+      - '.github/workflows/arb-telegram-watch.yml'
+
+permissions:
+  contents: read
+
+# This is a user-position watch, not a Wallet500 REAL_ALERT producer.
+# Newer observations supersede older queued checks.
+concurrency:
+  group: wallet500-arb-telegram-position-watch
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Validate canonical ARB identity
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          CA='0x912ce59144191c1204e64559fe8253a0e49e6548'
+          PAIR='0xc6f780497a95e246eb9449f5e4770916dcd6396a'
+          p=Path('data/arbitrum-revival-universe.json')
+          if not p.is_file(): raise SystemExit('ARB_UNIVERSE_MISSING')
+          d=json.loads(p.read_text())
+          rows=[x for x in d.get('tokens') or [] if str(x.get('token') or '').lower()==CA]
+          if len(rows)!=1: raise SystemExit(f'ARB_EXACT_IDENTITY_COUNT={len(rows)}')
+          r=rows[0]
+          if str(r.get('symbol') or '').upper()!='ARB': raise SystemExit('ARB_SYMBOL_MISMATCH')
+          if str(r.get('pair_address') or '').lower()!=PAIR: raise SystemExit('ARB_EXACT_PAIR_MISMATCH')
+          if r.get('exact_pair_verified') is not True: raise SystemExit('ARB_EXACT_PAIR_NOT_VERIFIED')
+          print('ARB_CANONICAL_IDENTITY_OK', {'pair':r.get('pair_address'),'dex':r.get('dex')})
+          PY
+
+      - name: Send only meaningful verified ARB position events
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, statistics, subprocess, urllib.parse, urllib.request
+          from datetime import datetime, timezone
+
+          CA='0x912ce59144191c1204e64559fe8253a0e49e6548'
+          PAIR='0xc6f780497a95e246eb9449f5e4770916dcd6396a'
+          DEX_URL=f'https://dexscreener.com/arbitrum/{PAIR}'
+          SOURCE_CONFLICT_LIMIT=0.05
+
+          def http_json(url, ua='Wallet500-ARB-Watch/1.0'):
+              req=urllib.request.Request(url, headers={'accept':'application/json','user-agent':ua})
+              with urllib.request.urlopen(req,timeout=20) as r:
+                  return json.load(r)
+
+          def exact_row(doc):
+              rows=[x for x in doc.get('tokens') or [] if str(x.get('token') or '').lower()==CA]
+              return rows[0] if len(rows)==1 else None
+
+          current_doc=json.load(open('data/arbitrum-revival-universe.json',encoding='utf-8'))
+          current=exact_row(current_doc)
+          if not current: raise SystemExit('ARB_CURRENT_ROW_MISSING')
+          if str(current.get('pair_address') or '').lower()!=PAIR: raise SystemExit('ARB_CURRENT_PAIR_DRIFT')
+
+          # Resolve the prior published version of this exact research feed. This makes
+          # threshold alerts edge-triggered instead of repeating every scan.
+          previous=None
+          try:
+              commits=subprocess.check_output(
+                  ['git','log','--format=%H','-n','20','--','data/arbitrum-revival-universe.json'],
+                  text=True,
+              ).splitlines()
+              if len(commits)>=2:
+                  raw=subprocess.check_output(['git','show',f'{commits[1]}:data/arbitrum-revival-universe.json'],text=True)
+                  previous=exact_row(json.loads(raw))
+          except Exception as e:
+              print('ARB_PREVIOUS_SNAPSHOT_UNAVAILABLE',type(e).__name__)
+
+          # Source 1: hard-locked GeckoTerminal exact pool, with token-side orientation checked.
+          gt=None
+          try:
+              raw=http_json(f'https://api.geckoterminal.com/api/v2/networks/arbitrum/pools/{PAIR}')
+              obj=(raw.get('data') or {}); a=obj.get('attributes') or {}; rel=obj.get('relationships') or {}
+              base=str((((rel.get('base_token') or {}).get('data') or {}).get('id') or '')).lower()
+              quote=str((((rel.get('quote_token') or {}).get('data') or {}).get('id') or '')).lower()
+              ca_suffix='_'+CA
+              if base==CA or base.endswith(ca_suffix): price=a.get('base_token_price_usd')
+              elif quote==CA or quote.endswith(ca_suffix): price=a.get('quote_token_price_usd')
+              else: raise ValueError(f'ARB CA absent from exact pair: {base} / {quote}')
+              tx=a.get('transactions') or {}; h1=tx.get('h1') or {}; vol=a.get('volume_usd') or {}; pc=a.get('price_change_percentage') or {}
+              gt={
+                  'price':float(price), 'liq':float(a.get('reserve_in_usd') or 0),
+                  'v1':float(vol.get('h1') or 0), 'v24':float(vol.get('h24') or 0),
+                  'buys1':int(h1.get('buys') or 0), 'sells1':int(h1.get('sells') or 0),
+                  'p1':float(pc.get('h1') or 0), 'p24':float(pc.get('h24') or 0),
+              }
+              if gt['price']<=0 or gt['liq']<=0: raise ValueError('non-positive exact-pair market fields')
+          except Exception as e:
+              print('ARB_GT_UNAVAILABLE',str(e)[:180])
+
+          # Source 2: DexScreener same exact pair. DexScreener priceUsd is base-token price,
+          # so it is accepted only when ARB is explicitly the base token.
+          ds_price=None
+          try:
+              raw=http_json(f'https://api.dexscreener.com/latest/dex/pairs/arbitrum/{PAIR}')
+              pairs=raw.get('pairs') or []
+              pair=next((x for x in pairs if str(x.get('pairAddress') or '').lower()==PAIR),None)
+              if not pair: raise ValueError('exact pair missing')
+              if str(((pair.get('baseToken') or {}).get('address') or '')).lower()!=CA:
+                  raise ValueError('ARB is not DexScreener base token for exact pair')
+              ds_price=float(pair.get('priceUsd') or 0)
+              if ds_price<=0: raise ValueError('DexScreener price missing')
+          except Exception as e:
+              print('ARB_DS_UNAVAILABLE',str(e)[:180])
+
+          # Source 3 fallback: CoinGecko contract-address quote. It is used only as an
+          # independent validator, never as an identity substitute.
+          cg_price=None
+          try:
+              key=CA.lower()
+              raw=http_json('https://api.coingecko.com/api/v3/simple/token_price/arbitrum-one?'+urllib.parse.urlencode({'contract_addresses':CA,'vs_currencies':'usd'}))
+              node=raw.get(key) or raw.get(CA) or {}
+              cg_price=float(node.get('usd') or 0)
+              if cg_price<=0: raise ValueError('CoinGecko contract price missing')
+          except Exception as e:
+              print('ARB_CG_UNAVAILABLE',str(e)[:180])
+
+          if not gt:
+              raise SystemExit('ARB_FAIL_CLOSED_NO_LIVE_EXACT_PAIR')
+          validators=[x for x in (ds_price,cg_price) if isinstance(x,(int,float)) and x>0]
+          if not validators:
+              raise SystemExit('ARB_FAIL_CLOSED_NO_INDEPENDENT_PRICE_VALIDATOR')
+
+          prices=[gt['price'],validators[0]]
+          median=statistics.median(prices)
+          spread=(max(prices)-min(prices))/median if median>0 else 999
+          print('ARB_LIVE_PRICE_VALIDATION', {'gt':gt['price'],'validator':validators[0],'spread_pct':round(spread*100,3)})
+          if spread>SOURCE_CONFLICT_LIMIT:
+              # Critical rule: never turn source disagreement into a user-facing price/trade alert.
+              raise SystemExit(f'ARB_PRICE_CONFLICT_GT_VS_VALIDATOR spread={spread:.4f}')
+
+          live_price=median
+          prev_price=float((previous or {}).get('price_usd') or current.get('price_usd') or 0)
+          prev_liq=float((previous or {}).get('liquidity_usd') or current.get('liquidity_usd') or 0)
+          prev_vol=float((previous or {}).get('volume_h1') or 0)
+          triggers=[]
+
+          # Upside levels for the user's existing position. 0.160 requires live flow
+          # confirmation; 0.162 is the stronger confirmed breakout boundary.
+          if prev_price < 0.160 <= live_price and gt['v1']>=1_000_000 and gt['buys1']>=gt['sells1']:
+              triggers.append('BREAKOUT_0.160_VOLUME_CONFIRMED')
+          if prev_price < 0.162 <= live_price:
+              triggers.append('BREAKOUT_0.162_CONFIRMED')
+          if prev_price < 0.169 <= live_price:
+              triggers.append('TARGET_ZONE_0.169_REACHED')
+          if prev_price < 0.175 <= live_price:
+              triggers.append('TARGET_ZONE_0.175_REACHED')
+
+          # Downside protection levels.
+          if prev_price >= 0.150 > live_price:
+              triggers.append('RISK_LOST_0.150')
+          if prev_price >= 0.146 > live_price:
+              triggers.append('HIGH_RISK_LOST_0.146')
+
+          # Market-quality changes that matter even without a fixed price crossing.
+          if prev_liq>0 and gt['liq'] < prev_liq*0.75:
+              triggers.append('LIQUIDITY_DROP_GT_25PCT')
+          if gt['liq'] < 500_000:
+              triggers.append('LIQUIDITY_BELOW_500K')
+          if prev_vol>0 and gt['v1'] >= max(2_000_000, prev_vol*1.5) and live_price >= prev_price*1.02:
+              triggers.append('MOMENTUM_VOLUME_ACCELERATION')
+          if current.get('revival_signal') is True and not (previous or {}).get('revival_signal'):
+              triggers.append('WALLET500_REVIVAL_SIGNAL_NEW')
+
+          if not triggers:
+              print('ARB_NO_MATERIAL_EVENT', {'price':round(live_price,8),'previous':prev_price,'liq':gt['liq'],'v1':gt['v1']})
+              raise SystemExit(0)
+
+          def money(n):
+              n=float(n)
+              if abs(n)>=1_000_000:return f'${n/1_000_000:.2f}M'
+              if abs(n)>=1_000:return f'${n/1_000:.1f}K'
+              return f'${n:.6f}'.rstrip('0').rstrip('.')
+
+          icon='⚠️' if any('RISK' in x or 'LIQUIDITY' in x for x in triggers) else '🔥'
+          msg='\n'.join([
+              f'{icon} ARB | WALLET500 POSITION WATCH',
+              f'💰 מחיר חי מאומת: ${live_price:.6f}',
+              f'📍 קודם: ${prev_price:.6f} | 1H {gt["p1"]:+.2f}% | 24H {gt["p24"]:+.2f}%',
+              f'💧 נזילות {money(gt["liq"])} | Vol 1H {money(gt["v1"])} | 24H {money(gt["v24"])}',
+              f'🟢/🔴 קניות/מכירות 1H: {gt["buys1"]}/{gt["sells1"]}',
+              '🎯 '+', '.join(triggers),
+              f'✅ Price verified: GeckoTerminal exact pair + independent validator | spread {spread*100:.2f}%',
+              'ℹ️ מעקב לפוזיציה קיימת — לא REAL_ALERT ולא הוראת קנייה אוטומטית.',
+              f'CA: {CA}',
+              f'Pair: {PAIR}',
+              f'🔗 {DEX_URL}',
+              f'🕒 {datetime.now(timezone.utc).isoformat()}',
+          ])[:3000]
+
+          bot=os.environ.get('TELEGRAM_BOT_TOKEN','').strip(); chat=os.environ.get('TELEGRAM_CHAT_ID','').strip()
+          if not bot or not chat: raise SystemExit('TELEGRAM_SECRETS_NOT_CONFIGURED')
+          payload=urllib.parse.urlencode({'chat_id':chat,'text':msg,'disable_web_page_preview':'true'}).encode()
+          req=urllib.request.Request(f'https://api.telegram.org/bot{bot}/sendMessage',data=payload,method='POST')
+          with urllib.request.urlopen(req,timeout=20) as r:
+              body=json.load(r)
+              if not (200 <= r.status < 300 and body.get('ok') is True):
+                  raise SystemExit(f'ARB_TELEGRAM_SEND_FAILED status={r.status} ok={body.get("ok")}')
+          print('ARB_MEANINGFUL_EVENT_DELIVERED_TO_TELEGRAM',triggers)
+          PY
