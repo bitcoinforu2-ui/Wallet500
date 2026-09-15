@@ -6,7 +6,7 @@ Keeps discovery/research intact while making Telegram action-only:
 - canonical asset identity = chain + contract (pair changes do not create a new alert)
 - exact denylist is enforced before promotion
 - stale/failed discoveries and already-extended moves do not alert
-- weak scores stay in research/dashboard
+- BUY_ZONE means entry timing is still acceptable, not merely that discovery was correct
 - duplicate pools for the same asset collapse to the strongest execution pool
 """
 
@@ -18,12 +18,12 @@ from wallet500 import cex_fast_current_bypass as bypass
 
 MIN_ACTION_SCORE = 50
 MAX_ACTION_24H_MOVE_PCT = 35.0
-MAX_GAIN_SINCE_DISCOVERY_PCT = 25.0
+# A BUY label must not chase a move that already ran materially from engine discovery.
+MAX_GAIN_SINCE_DISCOVERY_PCT = 12.0
 MAX_LOSS_SINCE_DISCOVERY_PCT = -12.0
 
-# Exact-identity exclusions. Never block a ticker globally.
 EXCLUDED_ASSETS = {
-    ("solana", "61v8vbaqagmpgdqi4jcawo1dmbghsyhzodcpqnev pump".replace(" ", "").lower()),  # AI Rig Complex ARC
+    ("solana", "61v8vbaqagmpgdqi4jcawo1dmbghsyhzodcpqnev pump".replace(" ", "").lower()),
 }
 
 
@@ -59,12 +59,13 @@ def action_eligibility(row: object):
     if current_change > MAX_ACTION_24H_MOVE_PCT:
         blockers.append("ACTION_MOVE_ALREADY_EXTENDED")
     if since > MAX_GAIN_SINCE_DISCOVERY_PCT:
-        blockers.append("ACTION_ENTRY_TOO_FAR_ABOVE_DISCOVERY")
+        blockers.append("WAIT_FOR_RETEST_ABOVE_DISCOVERY")
     if since < MAX_LOSS_SINCE_DISCOVERY_PCT:
         blockers.append("ACTION_SIGNAL_INVALIDATED_DOWNSIDE")
 
     metrics["since_discovery_pct"] = round(since, 4)
-    metrics["action_state"] = "BUY_ZONE" if not blockers else "WAIT_OR_REJECT"
+    metrics["max_buy_zone_gain_since_discovery_pct"] = MAX_GAIN_SINCE_DISCOVERY_PCT
+    metrics["action_state"] = "BUY_ZONE" if not blockers else ("WAIT_FOR_RETEST" if blockers == ["WAIT_FOR_RETEST_ABOVE_DISCOVERY"] else "WAIT_OR_REJECT")
     metrics["blockers"] = sorted(set(blockers))
     return not blockers, metrics
 
@@ -96,7 +97,7 @@ def guarded_resolve_many(rows: list[dict]):
 
 def guarded_message(row: dict, metrics: dict, now: str, event_id: str) -> str:
     text = _ORIGINAL_MESSAGE(row, metrics, now, event_id)
-    return "🟢 BUY ZONE — ACTIONABLE NOW\n" + text
+    return "🟢 BUY ZONE — ENTRY TIMING PASSED\n" + text
 
 
 def migrate_state(path: Path) -> None:
@@ -127,7 +128,6 @@ _ORIGINAL_MERGE = promo._merge_live_usdc
 _ORIGINAL_RESOLVE_MANY = bypass._resolve_many
 _ORIGINAL_MESSAGE = promo._message
 
-# Patch both lanes in-process. bypass imported these helpers by value.
 promo._eligibility = action_eligibility
 promo._identity_key = canonical_key
 promo._merge_live_usdc = guarded_merge
@@ -140,7 +140,6 @@ bypass._message = guarded_message
 for state_name in (promo.STATE_FILE, bypass.STATE_FILE):
     migrate_state(Path("data") / state_name)
 
-# Hard self-checks: fail closed if policy drifts.
 assert canonical_key({"chain": "solana", "token_address": "ABC", "pair_address": "P1"}) == canonical_key({"chain": "solana", "token_address": "ABC", "pair_address": "P2"})
 assert is_excluded({"chain": "solana", "token_address": "61V8vBaqAGMpgDQi4JcAwo1dmBGHsyhzodcPqnEVpump"})
 
