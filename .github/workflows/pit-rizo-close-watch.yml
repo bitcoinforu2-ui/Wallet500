@@ -1,0 +1,132 @@
+name: PIT + RIZO Close Watch
+
+on:
+  schedule:
+    - cron: '4,19,34,49 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pit-rizo-close-watch
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Exact-identity market watch and material-change alert
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, urllib.request, urllib.parse
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          TOKENS=[
+            {'symbol':'PIT','name':'Pitbull','network':'bsc','ca':'0xa57ac35ce91ee92caefaa8dc04140c8e232c2e50'},
+            {'symbol':'RIZO','name':'HahaYes','network':'solana','ca':'rizo34MUwbCBqpSTSfnEktdWB4CTByqqYh8zBxL3WAR'},
+          ]
+          STATE=Path('data/pit-rizo-close-watch.json')
+          try: prev=json.loads(STATE.read_text()) if STATE.exists() else {}
+          except: prev={}
+          previous={x.get('ca'):x for x in (prev.get('tokens') or []) if isinstance(x,dict) and x.get('ca')}
+          now=datetime.now(timezone.utc).isoformat()
+
+          def f(x):
+            try:return float(x)
+            except:return None
+          def change(a,b):
+            try:return (float(a)/float(b)-1)*100 if float(b)!=0 else None
+            except:return None
+          def get_json(url):
+            req=urllib.request.Request(url,headers={'accept':'application/json','user-agent':'Wallet500-PIT-RIZO/1.0'})
+            with urllib.request.urlopen(req,timeout=20) as r:return json.load(r)
+          def money(x):
+            if x is None:return '—'
+            x=float(x)
+            if abs(x)>=1_000_000:return f'${x/1_000_000:.2f}M'
+            if abs(x)>=1_000:return f'${x/1_000:.1f}K'
+            if abs(x)>=1:return f'${x:.4f}'
+            return f'${x:.12f}'.rstrip('0').rstrip('.')
+          def pct(x):return '—' if x is None else f'{float(x):+.1f}%'
+
+          rows=[]; alerts=[]
+          for t in TOKENS:
+            # Discover pools from exact contract only, then select deepest pool containing exact CA.
+            u=f"https://api.geckoterminal.com/api/v2/networks/{t['network']}/tokens/{t['ca']}/pools?page=1"
+            raw=get_json(u); candidates=[]
+            for d in raw.get('data') or []:
+              a=d.get('attributes') or {}; rel=d.get('relationships') or {}
+              base=((rel.get('base_token') or {}).get('data') or {}).get('id','')
+              quote=((rel.get('quote_token') or {}).get('data') or {}).get('id','')
+              ca=t['ca']; match=(ca.lower() in str(base).lower() or ca.lower() in str(quote).lower()) if t['network']=='bsc' else (ca in str(base) or ca in str(quote))
+              if not match: continue
+              candidates.append((f(a.get('reserve_in_usd')) or 0,d))
+            if not candidates: raise SystemExit(f"Fail closed: no exact-identity pool for {t['symbol']}")
+            _,d=max(candidates,key=lambda z:z[0]); a=d.get('attributes') or {}; tx=a.get('transactions') or {}; vol=a.get('volume_usd') or {}; pc=a.get('price_change_percentage') or {}
+            # token endpoint is exact identity; infer token-side USD price using base/quote relationship.
+            rel=d.get('relationships') or {}; base=((rel.get('base_token') or {}).get('data') or {}).get('id','')
+            is_base=(t['ca'].lower() in str(base).lower()) if t['network']=='bsc' else (t['ca'] in str(base))
+            price=f(a.get('base_token_price_usd') if is_base else a.get('quote_token_price_usd'))
+            row={**t,'observed_at':now,'pool_id':d.get('id'),'pool_address':a.get('address'),'dex_name':a.get('name'),'price_usd':price,'liquidity_usd':f(a.get('reserve_in_usd')),'volume_h1':f(vol.get('h1')),'volume_h24':f(vol.get('h24')),'price_change_h1_pct':f(pc.get('h1')),'price_change_h24_pct':f(pc.get('h24')),'identity_verified':True,'source_url':u}
+            if row['price_usd'] is None or row['liquidity_usd'] is None: raise SystemExit(f"Fail closed: missing exact-pair price/liquidity for {t['symbol']}")
+            old=previous.get(t['ca']) or {}; anchor=(old.get('alert_anchor') or old) if old else {}
+            dp=change(row['price_usd'],anchor.get('price_usd')); dl=change(row['liquidity_usd'],anchor.get('liquidity_usd')); dv=change(row['volume_h24'],anchor.get('volume_h24'))
+            reasons=[]
+            if old:
+              if dp is not None and abs(dp)>=15: reasons.append(f'price {pct(dp)} since alert anchor')
+              if dl is not None and abs(dl)>=25: reasons.append(f'liquidity {pct(dl)} since alert anchor')
+              if dv is not None and dv>=100: reasons.append(f'24h volume {pct(dv)} since alert anchor')
+              if row['price_change_h1_pct'] is not None and abs(row['price_change_h1_pct'])>=12: reasons.append(f"1h move {pct(row['price_change_h1_pct'])}")
+              if row['liquidity_usd']<50000 <= (f(old.get('liquidity_usd')) or 0): reasons.append('liquidity fell below $50K')
+            if reasons:
+              row['material_change']=True; row['material_reasons']=reasons; row['alert_anchor']={k:row.get(k) for k in ('observed_at','price_usd','liquidity_usd','volume_h24')}; alerts.append(row)
+            else:
+              row['material_change']=False; row['material_reasons']=[]; row['alert_anchor']=old.get('alert_anchor') or ({k:row.get(k) for k in ('observed_at','price_usd','liquidity_usd','volume_h24')} if not old else anchor)
+            rows.append(row)
+
+          out={'version':1,'mode':'USER_REQUESTED_CLOSE_WATCH','observed_at':now,'automatic_buy':False,'alert_semantics':'MATERIAL_WATCH_CHANGE_NOT_BUY_SIGNAL','truth_contract':{'exact_contract_required':True,'exact_pool_identity_required':True,'ticker_only_never_actionable':True,'no_hindsight':True},'tokens':rows}
+          STATE.parent.mkdir(exist_ok=True); STATE.write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+
+          if alerts:
+            bot=os.environ.get('TELEGRAM_BOT_TOKEN','').strip(); chat=os.environ.get('TELEGRAM_CHAT_ID','').strip()
+            if not bot or not chat: raise SystemExit('Material change found but Telegram secrets are not configured')
+            for r in alerts:
+              text='\n'.join([
+                f"🔔 Wallet500 CLOSE WATCH | {r['symbol']}",
+                'שינוי מהותי זוהה — מעקב בלבד, לא BUY אוטומטי',
+                f"💰 מחיר {money(r['price_usd'])} | 1H {pct(r['price_change_h1_pct'])} | 24H {pct(r['price_change_h24_pct'])}",
+                f"💧 נזילות {money(r['liquidity_usd'])} | Vol 1H {money(r['volume_h1'])} | 24H {money(r['volume_h24'])}",
+                '⚡ '+' | '.join(r['material_reasons']),
+                f"🔒 exact CA: {r['ca']}",
+              ])[:1900]
+              data=urllib.parse.urlencode({'chat_id':chat,'text':text,'disable_web_page_preview':'true'}).encode()
+              req=urllib.request.Request(f'https://api.telegram.org/bot{bot}/sendMessage',data=data,method='POST')
+              with urllib.request.urlopen(req,timeout=20) as resp:
+                if not 200 <= resp.status < 300: raise SystemExit(f'Telegram HTTP {resp.status}')
+              print(f"Telegram material-change alert delivered for {r['symbol']}")
+          else: print('No material PIT/RIZO change; Telegram quiet')
+          PY
+
+      - name: Publish watch state safely
+        run: |
+          set -euo pipefail
+          SNAP="$(mktemp)"; cp data/pit-rizo-close-watch.json "$SNAP"
+          git config user.name wallet500-bot; git config user.email wallet500-bot@users.noreply.github.com
+          for attempt in $(seq 1 12); do
+            git fetch origin main; git reset --hard origin/main; mkdir -p data; cp "$SNAP" data/pit-rizo-close-watch.json
+            git add data/pit-rizo-close-watch.json; git commit -m 'data: refresh PIT RIZO close watch' || exit 0
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $(( attempt < 5 ? attempt : 5 ))
+          done
+          echo 'Fail closed: could not publish PIT/RIZO watch state'; exit 1
