@@ -111,22 +111,34 @@ jobs:
           set -euo pipefail
           git config user.name wallet500-research-bot
           git config user.email wallet500-research-bot@users.noreply.github.com
-          git fetch origin main --depth=1
-          git checkout main
-          git pull --rebase origin main
-          git add data/holder-concentration-shadow.json data/holder-concentration-shadow-state.json
-          if git diff --cached --quiet; then
-            echo "no holder-concentration shadow changes"
-            exit 0
-          fi
-          git commit -m "data: refresh holder concentration shadow [skip ci]"
+
+          # Freeze the already validated outputs before touching the moving main
+          # branch. Editable installs may dirty egg-info, and unrelated bots can
+          # advance main while this scan is running.
+          cp data/holder-concentration-shadow.json /tmp/holder-concentration-shadow.json
+          cp data/holder-concentration-shadow-state.json /tmp/holder-concentration-shadow-state.json
+          git restore src/wallet500.egg-info/SOURCES.txt 2>/dev/null || true
+
           for n in 1 2 3 4; do
+            git fetch origin main --depth=1
+            git reset --hard origin/main
+            cp /tmp/holder-concentration-shadow.json data/holder-concentration-shadow.json
+            cp /tmp/holder-concentration-shadow-state.json data/holder-concentration-shadow-state.json
+            git add data/holder-concentration-shadow.json data/holder-concentration-shadow-state.json
+
+            if git diff --cached --quiet; then
+              echo "no holder-concentration shadow changes"
+              exit 0
+            fi
+
+            git commit -m "data: refresh holder concentration shadow [skip ci]"
             if git push origin HEAD:main; then
               exit 0
             fi
-            echo "holder-concentration push race ${n}; rebasing"
-            git pull --rebase origin main
+
+            echo "holder-concentration push race ${n}; replaying validated outputs on latest main"
             sleep $((n * 2))
           done
+
           echo '::error::HOLDER_CONCENTRATION_SHADOW_PUBLISH_RACE_EXHAUSTED'
           exit 1
