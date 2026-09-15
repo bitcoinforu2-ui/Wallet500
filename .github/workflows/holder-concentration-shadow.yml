@@ -57,6 +57,7 @@ jobs:
               raise SystemExit('HOLDER_CONCENTRATION_SHADOW_BUDGET_BROKEN')
 
           concentration_keys={'verified','contract_match','semantics','top1_pct','top5_pct','top10_pct'}
+          holder_semantics='THIRD_PARTY_CACHED_HOLDER_COUNT_SHADOW_NOT_TRUSTED_GROWTH'
           for row in d.get('rows') or []:
               if not looks_like_solana_address(str(row.get('token_address') or '')):
                   raise SystemExit('HOLDER_CONCENTRATION_SHADOW_MINT_INVALID')
@@ -85,8 +86,18 @@ jobs:
                           raise SystemExit(f'HOLDER_CONCENTRATION_SHADOW_METRIC_INVALID:{key}')
 
               if has_holder_shadow:
-                  if row.get('holder_shadow_semantics')!='THIRD_PARTY_CACHED_HOLDER_COUNT_SHADOW_NOT_TRUSTED_GROWTH':
+                  shadow_semantics=row.get('holder_shadow_semantics')
+                  # Legacy rows written before holder-shadow semantics became explicit
+                  # are accepted only when the same row already carries fully verified
+                  # concentration evidence. The holder count still remains non-scoring.
+                  if shadow_semantics not in (None, holder_semantics):
                       raise SystemExit('HOLDER_CONCENTRATION_SHADOW_HOLDER_SEMANTICS_INVALID')
+                  if shadow_semantics is None and not (
+                      row.get('verified') is True
+                      and row.get('contract_match') is True
+                      and row.get('semantics')=='TOP_TOKEN_ACCOUNT_CONCENTRATION_NOT_OWNER_CLUSTER_CONCENTRATION'
+                  ):
+                      raise SystemExit('HOLDER_CONCENTRATION_SHADOW_LEGACY_HOLDER_UNVERIFIED')
                   if row.get('growth_signal_eligible') is not False:
                       raise SystemExit('HOLDER_CONCENTRATION_SHADOW_HOLDER_SIGNAL_LEAK')
                   count=row.get('holder_count_shadow')
