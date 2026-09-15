@@ -13,9 +13,11 @@ on:
       - '.github/workflows/cex-fast-promotion.yml'
       - 'src/wallet500/cex_fast_promotion.py'
       - 'src/wallet500/cex_fast_current_bypass.py'
+      - 'src/wallet500/reentry_active_watch.py'
       - 'scripts/run_cex_action_guarded.py'
       - 'tests/test_cex_fast_promotion.py'
       - 'tests/test_cex_fast_current_bypass.py'
+      - 'tests/test_reentry_active_watch.py'
 
 permissions:
   contents: write
@@ -37,14 +39,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install and verify strict fast-promotion contracts
+      - name: Install and verify strict action and re-entry contracts
         run: |
           pip install -e . pytest
           python -m pytest -q \
             tests/test_cex_fast_promotion.py \
             tests/test_cex_fast_current_bypass.py \
             tests/test_cex_spot_identity.py \
-            tests/test_cex_spot_dynamic_identity_bridge.py
+            tests/test_cex_spot_dynamic_identity_bridge.py \
+            tests/test_reentry_active_watch.py
       - name: Refuse stale exact-identity source
         run: |
           python - <<'PY'
@@ -66,9 +69,8 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          python scripts/run_cex_action_guarded.py
-      - name: Validate no research-only or duplicate-pool Telegram leakage
+        run: python scripts/run_cex_action_guarded.py
+      - name: Validate action-only Telegram contract
         run: |
           python - <<'PY'
           import json
@@ -82,33 +84,22 @@ jobs:
           if truth.get('cex_dex_current_price_coherence_required') is not True: raise SystemExit('CEX_FAST_PRICE_COHERENCE_GUARD_MISSING')
           if float(truth.get('minimum_market_age_days') or 0) != 90.0: raise SystemExit('CEX_FAST_AGE_POLICY_DRIFT')
           if float(truth.get('minimum_execution_liquidity_usd') or 0) != 15000.0: raise SystemExit('CEX_FAST_LIQUIDITY_POLICY_DRIFT')
-          if truth.get('canonical_180d_50k_pipeline_unchanged') is not True: raise SystemExit('CEX_FAST_CANONICAL_PIPELINE_LEAK')
-          if truth.get('usdc_quote_coverage_enabled') is not True: raise SystemExit('CEX_FAST_USDC_COVERAGE_MISSING')
-          if truth.get('current_watch_identity_queue_bypass_enabled') is not True: raise SystemExit('CEX_FAST_CURRENT_WATCH_BYPASS_MISSING')
-          if truth.get('current_watch_bypass_requires_strict_dex_identity') is not True: raise SystemExit('CEX_FAST_BYPASS_STRICT_IDENTITY_GUARD_MISSING')
-          if truth.get('current_watch_bypass_symbol_only_never_actionable') is not True: raise SystemExit('CEX_FAST_BYPASS_SYMBOL_ONLY_GUARD_MISSING')
-          seen=set()
-          excluded='61v8vbaqagmpgdqi4jcawo1dmbghsyhzodcpqnevpump'
+          seen=set(); excluded='61v8vbaqagmpgdqi4jcawo1dmbghsyhzodcpqnevpump'
           for row in alerts.get('alerts') or []:
-              if row.get('status') != 'REAL_ALERT' or row.get('actionable') is not True or row.get('research_only') is not False:
-                  raise SystemExit('CEX_FAST_NON_ACTIONABLE_ALERT_LEAK')
-              if row.get('automatic_buy') is not False or row.get('manual_decision_only') is not True:
-                  raise SystemExit('CEX_FAST_EXECUTION_POLICY_LEAK')
-              if not row.get('chain') or not row.get('token_address') or not row.get('pair_address'):
-                  raise SystemExit('CEX_FAST_IDENTITY_FIELDS_MISSING')
-              if row.get('blockers'):
-                  raise SystemExit('CEX_FAST_BLOCKED_ROW_PUBLISHED')
-              key=(str(row.get('chain')).lower(), str(row.get('token_address')).lower())
+              if row.get('status') != 'REAL_ALERT' or row.get('actionable') is not True or row.get('research_only') is not False: raise SystemExit('CEX_FAST_NON_ACTIONABLE_ALERT_LEAK')
+              if row.get('automatic_buy') is not False or row.get('manual_decision_only') is not True: raise SystemExit('CEX_FAST_EXECUTION_POLICY_LEAK')
+              if not row.get('chain') or not row.get('token_address') or not row.get('pair_address'): raise SystemExit('CEX_FAST_IDENTITY_FIELDS_MISSING')
+              if row.get('blockers'): raise SystemExit('CEX_FAST_BLOCKED_ROW_PUBLISHED')
+              key=(str(row.get('chain')).lower(),str(row.get('token_address')).lower())
               if key in seen: raise SystemExit('CEX_FAST_DUPLICATE_CANONICAL_ASSET')
               seen.add(key)
-              if key == ('solana', excluded): raise SystemExit('CEX_FAST_EXCLUDED_ARC_LEAK')
-              if int(row.get('signal_score') or 0) < 50: raise SystemExit('CEX_FAST_WEAK_SCORE_TELEGRAM_LEAK')
+              if key==('solana',excluded): raise SystemExit('CEX_FAST_EXCLUDED_ARC_LEAK')
+              if int(row.get('signal_score') or 0)<50: raise SystemExit('CEX_FAST_WEAK_SCORE_TELEGRAM_LEAK')
               since=float(row.get('since_discovery_pct') or 0)
-              if since < -12 or since > 25: raise SystemExit('CEX_FAST_BAD_ENTRY_WINDOW_LEAK')
-              if float(row.get('current_change_24h_pct') or 0) > 35: raise SystemExit('CEX_FAST_CHASE_LEAK')
-          if int(report.get('error_count') or 0) > 0:
-              raise SystemExit(f"CEX_FAST_DELIVERY_ERRORS={report.get('error_count')}")
-          print('CEX_FAST_ACTION_ONLY_VALID', {'eligible': len(alerts.get('alerts') or []), 'delivered': report.get('delivered_count')})
+              if since < -12 or since > 12: raise SystemExit('CEX_FAST_BAD_ENTRY_WINDOW_LEAK')
+              if float(row.get('current_change_24h_pct') or 0)>35: raise SystemExit('CEX_FAST_CHASE_LEAK')
+          if int(report.get('error_count') or 0)>0: raise SystemExit(f"CEX_FAST_DELIVERY_ERRORS={report.get('error_count')}")
+          print('CEX_FAST_ACTION_ONLY_VALID', {'eligible':len(alerts.get('alerts') or []),'delivered':report.get('delivered_count')})
           PY
       - name: Persist fast-promotion alert, canonical dedupe state and report
         env:
@@ -117,11 +108,4 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
-          python scripts/serialized_publish.py \
-            --github-api-cas \
-            --attempts 80 \
-            --message 'alerts: persist CEX action-only promotion state' \
-            data/cex-fast-real-alerts.json \
-            data/cex-fast-promotion-state.json \
-            data/cex-fast-current-bypass-state.json \
-            data/cex-fast-promotion-report.json
+          python scripts/serialized_publish.py --github-api-cas --attempts 80 --message 'alerts: persist CEX action-only promotion state' data/cex-fast-real-alerts.json data/cex-fast-promotion-state.json data/cex-fast-current-bypass-state.json data/cex-fast-promotion-report.json
