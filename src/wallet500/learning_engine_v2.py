@@ -4,7 +4,7 @@ import json
 import math
 import statistics
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +19,7 @@ SCAN_FILE = "adaptive-scan-plan.json"
 MIN_POLICY_EVALUATED = 10
 MIN_MATURED_FOR_WEIGHT_REVIEW = 30
 MAX_HISTORY = 12
+STATE_RETENTION_HOURS = 24
 
 DEFAULT_WEIGHTS: dict[str, float] = {
     "wallet_alpha": 22.0,
@@ -49,6 +50,12 @@ POLICY_TO_LANES: dict[str, dict[str, float]] = {
         "holder_growth": 0.25,
         "independent_confirmation": 0.25,
     },
+}
+
+TIER_RANK = {"HOT_PREWAVE": 4, "WARM_PREWAVE": 3, "WATCH_PREWAVE": 2, "COLD": 1}
+EVM = {
+    "ethereum", "bsc", "base", "arbitrum", "optimism", "polygon",
+    "avalanche", "linea", "scroll", "zksync", "mantle", "blast",
 }
 
 
@@ -97,18 +104,33 @@ def _ts(value: Any) -> datetime | None:
 
 def _norm_chain(value: Any) -> str:
     chain = str(value or "").strip().lower()
-    return {"eth": "ethereum", "bnb": "bsc", "arbitrum-one": "arbitrum"}.get(chain, chain)
+    return {
+        "eth": "ethereum",
+        "bnb": "bsc",
+        "binance-smart-chain": "bsc",
+        "arbitrum-one": "arbitrum",
+    }.get(chain, chain)
 
 
 def _norm_addr(chain: str, value: Any) -> str:
     text = str(value or "").strip()
-    return text.lower() if chain in {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche", "linea", "scroll"} else text
+    return text.lower() if chain in EVM else text
 
 
 def _identity(row: dict[str, Any]) -> tuple[str, str, str]:
-    chain = _norm_chain(row.get("chain") or row.get("network"))
-    token = _norm_addr(chain, row.get("token_address") or row.get("token") or row.get("mint") or row.get("contract"))
-    pair = _norm_addr(chain, row.get("pair_address") or row.get("entry_pair_address") or row.get("dex_pair_address"))
+    decision = row.get("decision_snapshot") if isinstance(row.get("decision_snapshot"), dict) else {}
+    nested = decision.get("identity") if isinstance(decision.get("identity"), dict) else {}
+    chain = _norm_chain(row.get("chain") or row.get("network") or nested.get("chain"))
+    token = _norm_addr(
+        chain,
+        row.get("token_address") or row.get("token") or row.get("mint") or row.get("contract")
+        or nested.get("token_address") or nested.get("token") or nested.get("mint"),
+    )
+    pair = _norm_addr(
+        chain,
+        row.get("pair_address") or row.get("entry_pair_address") or row.get("dex_pair_address")
+        or nested.get("pair_address"),
+    )
     return chain, token, pair
 
 
@@ -118,13 +140,27 @@ def _key(row: dict[str, Any]) -> str:
 
 
 def _records(payload: Any) -> list[dict[str, Any]]:
-    if isinstance(payload, dict):
-        raw = payload.get("records")
-        if isinstance(raw, dict):
-            return [x for x in raw.values() if isinstance(x, dict)]
-        if isinstance(raw, list):
-            return [x for x in raw if isinstance(x, dict)]
+    if not isinstance(payload, dict):
+        return []
+    raw = payload.get("records")
+    if isinstance(raw, dict):
+        return [x for x in raw.values() if isinstance(x, dict)]
+    if isinstance(raw, list):
+        return [x for x in raw if isinstance(x, dict)]
     return []
+
+
+def _is_real_alert_status(status: Any) -> bool:
+    """Fail closed without treating explicit NOT_REAL_ALERT labels as production alerts."""
+    value = str(status or "").strip().upper().replace(" ", "_")
+    if not value or "NOT_REAL_ALERT" in value or "NO_REAL_ALERT" in value:
+        return False
+    return (
+        value == "REAL_ALERT"
+        or value.startswith("REAL_ALERT_")
+        or value.endswith("_REAL_ALERT")
+        or "SUCCESSFULLY_DELIVERED_NEW_TELEGRAM_REAL_ALERT" in value
+    )
 
 
 def _checkpoint_return(record: dict[str, Any]) -> tuple[float | None, str | None, str | None]:
@@ -139,9 +175,7 @@ def _checkpoint_return(record: dict[str, Any]) -> tuple[float | None, str | None
             px = _num(cp.get("price_usd"))
             if entry and px is not None:
                 ret = (px / entry - 1.0) * 100.0
-        if ret is None:
-            continue
-        if best[0] is None or ret > best[0]:
+        if ret is not None and (best[0] is None or ret > best[0]):
             best = (ret, str(horizon), cp.get("captured_at") or cp.get("observed_at"))
     return best
 
@@ -151,7 +185,7 @@ def build_missed_winners(data_dir: Path, now: datetime) -> dict[str, Any]:
     missed: list[dict[str, Any]] = []
     blocker_counts: Counter[str] = Counter()
     threshold_counts = {"gte_50": 0, "gte_100": 0, "gte_200": 0}
-    matured = 0
+    observed = 0
 
     for row in _records(source):
         decision = row.get("decision_snapshot") if isinstance(row.get("decision_snapshot"), dict) else {}
@@ -159,18 +193,17 @@ def build_missed_winners(data_dir: Path, now: datetime) -> dict[str, Any]:
         best_ret, horizon, observed_at = _checkpoint_return(row)
         if best_ret is None:
             continue
-        matured += 1
+        observed += 1
         status = str(entry.get("status") or row.get("status") or "")
         actionable = entry.get("actionable") is True or row.get("actionable") is True
-        production_alert = actionable or "REAL_ALERT" in status
-        if production_alert or best_ret < 50.0:
+        if actionable or _is_real_alert_status(status) or best_ret < 50.0:
             continue
-        if best_ret >= 50:
-            threshold_counts["gte_50"] += 1
-        if best_ret >= 100:
+        threshold_counts["gte_50"] += 1
+        if best_ret >= 100.0:
             threshold_counts["gte_100"] += 1
-        if best_ret >= 200:
+        if best_ret >= 200.0:
             threshold_counts["gte_200"] += 1
+
         blockers = [str(x) for x in (entry.get("blockers") or row.get("blockers") or []) if str(x)]
         missing = [str(x) for x in (entry.get("missing_gates") or []) if str(x)]
         blocker_counts.update(blockers)
@@ -180,7 +213,7 @@ def build_missed_winners(data_dir: Path, now: datetime) -> dict[str, Any]:
             "token_address": token,
             "pair_address": pair,
             "symbol": row.get("symbol"),
-            "first_decision_at": row.get("event_at") or entry.get("observed_at"),
+            "first_decision_at": row.get("first_decision_at") or row.get("event_at") or entry.get("observed_at"),
             "entry_price_usd": _num(row.get("entry_price_usd") or entry.get("entry_price_usd")),
             "best_forward_return_pct": round(best_ret, 4),
             "best_horizon": horizon,
@@ -206,24 +239,28 @@ def build_missed_winners(data_dir: Path, now: datetime) -> dict[str, Any]:
         "no_hindsight": True,
         "winner_thresholds_pct": [50, 100, 200],
         "source": "research-sample-ledger.json",
-        "counts": {"records_with_forward_observation": matured, "missed_winners": len(missed), **threshold_counts},
-        "top_blockers_on_missed_winners": [{"blocker": k, "count": v} for k, v in blocker_counts.most_common(20)],
+        "counts": {"records_with_forward_observation": observed, "missed_winners": len(missed), **threshold_counts},
+        "top_blockers_on_missed_winners": [
+            {"blocker": k, "count": v} for k, v in blocker_counts.most_common(20)
+        ],
         "missed_winners": missed[:100],
         "truth_contract": {
             "t0_is_immutable": True,
             "future_outcome_used_only_for_research_labels": True,
             "no_retroactive_alert_creation": True,
             "exact_identity_preserved": True,
+            "explicit_not_real_alert_never_counted_as_real_alert": True,
         },
     }
 
 
 def _prior_weights(confluence: dict[str, Any]) -> dict[str, float]:
     raw = ((confluence.get("weight_contract") or {}).get("weights") or {}) if isinstance(confluence, dict) else {}
-    out = {k: float(raw.get(k, v)) for k, v in DEFAULT_WEIGHTS.items()}
-    if abs(sum(out.values()) - 100.0) > 0.01:
+    try:
+        out = {k: float(raw.get(k, v)) for k, v in DEFAULT_WEIGHTS.items()}
+    except (TypeError, ValueError):
         return dict(DEFAULT_WEIGHTS)
-    return out
+    return out if abs(sum(out.values()) - 100.0) <= 0.01 else dict(DEFAULT_WEIGHTS)
 
 
 def _policy_quality(metric: dict[str, Any]) -> tuple[float | None, int]:
@@ -259,7 +296,10 @@ def build_adaptive_weights(data_dir: Path, now: datetime) -> dict[str, Any]:
         metric = metrics.get(policy) if isinstance(metrics.get(policy), dict) else {}
         quality, evaluated = _policy_quality(metric)
         total_evaluated += evaluated
-        policy_evidence[policy] = {"evaluated": evaluated, "quality": None if quality is None else round(quality, 4)}
+        policy_evidence[policy] = {
+            "evaluated": evaluated,
+            "quality": None if quality is None else round(quality, 4),
+        }
         if quality is None:
             continue
         usable_policies += 1
@@ -276,23 +316,22 @@ def build_adaptive_weights(data_dir: Path, now: datetime) -> dict[str, Any]:
         if denom <= 0:
             continue
         raw_mult = sum(mult * n * share for mult, n, share in signals) / denom
-        mult = 1.0 + (raw_mult - 1.0) * shrink
-        mult = max(0.80, min(1.20, mult))
+        mult = max(0.80, min(1.20, 1.0 + (raw_mult - 1.0) * shrink))
         learned[lane] = prior[lane] * mult
 
-    # Execution is copyability, not predictive alpha: keep it fixed and normalise the rest around it.
+    # Execution is copyability, not predictive alpha. Keep it fixed.
     execution = prior["execution_copyability"]
     predictive_target = 100.0 - execution
-    pred_names = [k for k in learned if k != "execution_copyability"]
-    pred_sum = sum(learned[k] for k in pred_names) or predictive_target
-    for lane in pred_names:
+    predictive = [k for k in learned if k != "execution_copyability"]
+    pred_sum = sum(learned[k] for k in predictive) or predictive_target
+    for lane in predictive:
         learned[lane] = learned[lane] / pred_sum * predictive_target
     learned["execution_copyability"] = execution
     learned = {k: round(v, 4) for k, v in learned.items()}
 
     gate = replay.get("promotion_gate") if isinstance(replay.get("promotion_gate"), dict) else {}
-    replay_ready = gate.get("status") == "READY_FOR_REVIEW"
-    eligible = bool(replay_ready and total_evaluated >= MIN_MATURED_FOR_WEIGHT_REVIEW and usable_policies >= 2)
+    ready = gate.get("status") == "READY_FOR_REVIEW"
+    eligible = bool(ready and total_evaluated >= MIN_MATURED_FOR_WEIGHT_REVIEW and usable_policies >= 2)
     status = "READY_FOR_SHADOW_RANKING_REVIEW" if eligible else "STATIC_PRIOR_WAITING_FOR_FORWARD_VALIDATION"
     return {
         "version": 1,
@@ -325,9 +364,7 @@ def build_adaptive_weights(data_dir: Path, now: datetime) -> dict[str, Any]:
 def _lane_score(row: dict[str, Any], name: str) -> float | None:
     lanes = row.get("lanes") if isinstance(row.get("lanes"), dict) else {}
     lane = lanes.get(name) if isinstance(lanes.get(name), dict) else {}
-    if lane.get("available") is not True:
-        return None
-    return _num(lane.get("score"))
+    return _num(lane.get("score")) if lane.get("available") is True else None
 
 
 def _regime(row: dict[str, Any]) -> str:
@@ -339,7 +376,7 @@ def _regime(row: dict[str, Any]) -> str:
         return "CEX_CATALYST"
     if "REVIVAL" in source:
         return "VETERAN_REVIVAL"
-    if market >= 72 and _num(row.get("priority_score"), 0.0) >= 60:
+    if market >= 72 and (_num(row.get("priority_score"), 0.0) or 0.0) >= 60:
         return "BREAKOUT"
     return "NEW_WAVE"
 
@@ -363,27 +400,27 @@ def _confidence(row: dict[str, Any], source_health_ratio: float) -> tuple[float,
     lanes = row.get("lanes") if isinstance(row.get("lanes"), dict) else {}
     available = [x for x in lanes.values() if isinstance(x, dict) and x.get("available") is True]
     coverage = len(available) / max(1, len(DEFAULT_WEIGHTS))
-    strong_independent = sum(1 for x in available if (_num(x.get("score"), 0.0) or 0.0) >= 60)
-    independence = min(1.0, strong_independent / 4.0)
+    strong = sum(1 for x in available if (_num(x.get("score"), 0.0) or 0.0) >= 60)
+    independence = min(1.0, strong / 4.0)
     base = (_num(row.get("confidence_pct"), 0.0) or 0.0) / 100.0
     score = 100.0 * (0.40 * base + 0.25 * coverage + 0.20 * source_health_ratio + 0.15 * independence)
     blockers = [str(x) for x in (row.get("hard_blockers") or []) if str(x)]
     if blockers:
         score = min(score, 25.0)
-    score = _clamp(score)
-    return score, {
+    return _clamp(score), {
         "base_confluence_confidence_pct": round(base * 100.0, 2),
         "lane_coverage_pct": round(coverage * 100.0, 2),
         "fresh_source_ratio_pct": round(source_health_ratio * 100.0, 2),
-        "strong_independent_lanes": strong_independent,
+        "strong_independent_lanes": strong,
         "hard_blocker_cap_applied": bool(blockers),
     }
 
 
-def _observation(row: dict[str, Any], at: str) -> dict[str, Any]:
+def _observation(row: dict[str, Any], at: str, source_generated_at: Any) -> dict[str, Any]:
     change = row.get("source_change") if isinstance(row.get("source_change"), dict) else {}
     return {
         "at": at,
+        "source_generated_at": source_generated_at,
         "priority": _num(row.get("priority_score"), 0.0) or 0.0,
         "alpha": _num(row.get("signal_alpha_score"), 0.0) or 0.0,
         "confidence": _num(row.get("confidence_pct"), 0.0) or 0.0,
@@ -428,10 +465,27 @@ def _shadow_weighted_score(row: dict[str, Any], weights: dict[str, float]) -> fl
         cf = _num(lane.get("coverage_factor"), 1.0) or 0.0
         if score is None or cf <= 0:
             continue
-        ew = weight * min(1.0, max(0.0, cf))
-        total += score * ew
-        denom += ew
+        effective = weight * min(1.0, max(0.0, cf))
+        total += score * effective
+        denom += effective
     return total / denom if denom else None
+
+
+def _carry_recent_histories(
+    histories: dict[str, Any],
+    current_keys: set[str],
+    now: datetime,
+) -> dict[str, list[dict[str, Any]]]:
+    out: dict[str, list[dict[str, Any]]] = {}
+    cutoff = now - timedelta(hours=STATE_RETENTION_HOURS)
+    for key, raw in histories.items():
+        if key in current_keys or not isinstance(raw, list) or not raw:
+            continue
+        last = raw[-1] if isinstance(raw[-1], dict) else {}
+        last_at = _ts(last.get("at") or last.get("source_generated_at"))
+        if last_at is not None and last_at >= cutoff:
+            out[key] = [x for x in raw[-MAX_HISTORY:] if isinstance(x, dict)]
+    return out
 
 
 def build_prewave(data_dir: Path, now: datetime, adaptive: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -440,6 +494,7 @@ def build_prewave(data_dir: Path, now: datetime, adaptive: dict[str, Any]) -> tu
     histories = old_state.get("histories") if isinstance(old_state.get("histories"), dict) else {}
     rows = [x for x in (confluence.get("tokens") or []) if isinstance(x, dict)]
     at = now.isoformat()
+    source_generated_at = confluence.get("generated_at")
 
     source_health = confluence.get("source_health_summary") if isinstance(confluence.get("source_health_summary"), dict) else {}
     fresh = float(_num(source_health.get("fresh"), 0) or 0)
@@ -448,27 +503,26 @@ def build_prewave(data_dir: Path, now: datetime, adaptive: dict[str, Any]) -> tu
     priorities = [float(_num(x.get("priority_score"), 0.0) or 0.0) for x in rows]
     alphas = [float(_num(x.get("signal_alpha_score"), 0.0) or 0.0) for x in rows]
 
+    current_keys = {k for k in (_key(x) for x in rows) if k}
+    next_histories = _carry_recent_histories(histories, current_keys, now)
     out: list[dict[str, Any]] = []
-    next_histories: dict[str, list[dict[str, Any]]] = {}
     weights = adaptive.get("learned_weights") if isinstance(adaptive.get("learned_weights"), dict) else DEFAULT_WEIGHTS
     use_learned = adaptive.get("eligible_for_shadow_ranking_review") is True
 
     for row in rows:
-        k = _key(row)
-        if not k:
+        key = _key(row)
+        if not key:
             continue
-        history = list(histories.get(k) or [])[-(MAX_HISTORY - 1):]
-        # Same generated snapshot can be processed more than once; do not fabricate acceleration.
-        current = _observation(row, at)
-        if not history or history[-1].get("source_generated_at") != confluence.get("generated_at"):
-            current["source_generated_at"] = confluence.get("generated_at")
-            history.append(current)
-        next_histories[k] = history[-MAX_HISTORY:]
+        history = [x for x in list(histories.get(key) or [])[-(MAX_HISTORY - 1):] if isinstance(x, dict)]
+        if not history or history[-1].get("source_generated_at") != source_generated_at:
+            history.append(_observation(row, at, source_generated_at))
+        history = history[-MAX_HISTORY:]
+        next_histories[key] = history
 
-        p = float(_num(row.get("priority_score"), 0.0) or 0.0)
-        a = float(_num(row.get("signal_alpha_score"), 0.0) or 0.0)
-        pz = _robust_z(p, priorities)
-        az = _robust_z(a, alphas)
+        priority = float(_num(row.get("priority_score"), 0.0) or 0.0)
+        alpha = float(_num(row.get("signal_alpha_score"), 0.0) or 0.0)
+        pz = _robust_z(priority, priorities)
+        az = _robust_z(alpha, alphas)
         priority_slope = _slope(history, "priority")
         market_slope = _slope(history, "market")
         holder_slope = _slope(history, "holders")
@@ -482,24 +536,20 @@ def build_prewave(data_dir: Path, now: datetime, adaptive: dict[str, Any]) -> tu
         temporal_bonus += max(-4.0, min(8.0, (volume_slope or 0.0) * 0.05))
         temporal_bonus += max(-4.0, min(8.0, (priority_accel or 0.0) * 0.5))
         peer_bonus = max(-8.0, min(12.0, 3.0 * pz + 2.0 * az))
-        prewave = _clamp(0.72 * p + 0.18 * a + temporal_bonus + peer_bonus)
-        conf, conf_detail = _confidence(row, fresh_ratio)
-        if row.get("hard_blockers"):
+        prewave = _clamp(0.72 * priority + 0.18 * alpha + temporal_bonus + peer_bonus)
+        confidence, confidence_detail = _confidence(row, fresh_ratio)
+        blockers = row.get("hard_blockers") or []
+        if blockers:
             prewave = min(prewave, 25.0)
 
-        regime = _regime(row)
-        if prewave >= 80 and conf >= 65:
-            tier = "HOT_PREWAVE"
-            interval = 120
-        elif prewave >= 65 and conf >= 50:
-            tier = "WARM_PREWAVE"
-            interval = 300
+        if prewave >= 80 and confidence >= 65:
+            tier, interval = "HOT_PREWAVE", 120
+        elif prewave >= 65 and confidence >= 50:
+            tier, interval = "WARM_PREWAVE", 300
         elif prewave >= 50:
-            tier = "WATCH_PREWAVE"
-            interval = 600
+            tier, interval = "WATCH_PREWAVE", 600
         else:
-            tier = "COLD"
-            interval = 1800
+            tier, interval = "COLD", 1800
 
         learned_score = _shadow_weighted_score(row, weights)
         out.append({
@@ -507,10 +557,10 @@ def build_prewave(data_dir: Path, now: datetime, adaptive: dict[str, Any]) -> tu
             "token_address": row.get("token_address"),
             "pair_address": row.get("pair_address"),
             "symbol": row.get("symbol"),
-            "regime": regime,
+            "regime": _regime(row),
             "prewave_score": round(prewave, 2),
-            "confidence_score": round(conf, 2),
-            "confidence_components": conf_detail,
+            "confidence_score": round(confidence, 2),
+            "confidence_components": confidence_detail,
             "tier": tier,
             "recommended_scan_interval_seconds": interval,
             "observations_in_state": len(history),
@@ -521,19 +571,28 @@ def build_prewave(data_dir: Path, now: datetime, adaptive: dict[str, Any]) -> tu
                 "holder_slope": None if holder_slope is None else round(holder_slope, 4),
                 "volume_change_slope": None if volume_slope is None else round(volume_slope, 4),
             },
-            "peer_baseline": {"priority_robust_z": round(pz, 4), "alpha_robust_z": round(az, 4)},
-            "canonical_priority_score": round(p, 2),
-            "canonical_alpha_score": round(a, 2),
+            "peer_baseline": {
+                "priority_robust_z": round(pz, 4),
+                "alpha_robust_z": round(az, 4),
+            },
+            "canonical_priority_score": round(priority, 2),
+            "canonical_alpha_score": round(alpha, 2),
             "experimental_adaptive_alpha_score": None if learned_score is None else round(learned_score, 2),
             "adaptive_weight_status": adaptive.get("status"),
             "adaptive_weights_used_for_tier": bool(use_learned),
-            "hard_blockers": row.get("hard_blockers") or [],
+            "hard_blockers": blockers,
             "production_effect": False,
             "automatic_buy": False,
         })
 
-    out.sort(key=lambda x: (x["tier"] != "COLD", x["prewave_score"], x["confidence_score"]), reverse=True)
-    counts = {name: sum(x["tier"] == name for x in out) for name in ("HOT_PREWAVE", "WARM_PREWAVE", "WATCH_PREWAVE", "COLD")}
+    out.sort(
+        key=lambda x: (TIER_RANK.get(str(x.get("tier")), 0), x["prewave_score"], x["confidence_score"]),
+        reverse=True,
+    )
+    counts = {
+        name: sum(x.get("tier") == name for x in out)
+        for name in ("HOT_PREWAVE", "WARM_PREWAVE", "WATCH_PREWAVE", "COLD")
+    }
     payload = {
         "version": 2,
         "generated_at": at,
@@ -544,7 +603,7 @@ def build_prewave(data_dir: Path, now: datetime, adaptive: dict[str, Any]) -> tu
         "no_hindsight": True,
         "regimes": ["NEW_WAVE", "VETERAN_REVIVAL", "CEX_CATALYST", "BREAKOUT"],
         "counts": {"tokens": len(out), **counts},
-        "source_generated_at": confluence.get("generated_at"),
+        "source_generated_at": source_generated_at,
         "tokens": out,
         "truth_contract": {
             "temporal_features_use_only_prior_and_current_snapshots": True,
@@ -560,6 +619,7 @@ def build_prewave(data_dir: Path, now: datetime, adaptive: dict[str, Any]) -> tu
         "updated_at": at,
         "mode": "RESEARCH_ONLY_PREWAVE_STATE_V1",
         "max_history_per_identity": MAX_HISTORY,
+        "retention_hours": STATE_RETENTION_HOURS,
         "histories": next_histories,
     }
     return payload, state
@@ -567,8 +627,6 @@ def build_prewave(data_dir: Path, now: datetime, adaptive: dict[str, Any]) -> tu
 
 def build_scan_plan(prewave: dict[str, Any], now: datetime) -> dict[str, Any]:
     rows = [x for x in (prewave.get("tokens") or []) if isinstance(x, dict)]
-    hot = [x for x in rows if x.get("tier") == "HOT_PREWAVE"]
-    warm = [x for x in rows if x.get("tier") == "WARM_PREWAVE"]
     return {
         "version": 1,
         "generated_at": now.isoformat(),
@@ -577,10 +635,23 @@ def build_scan_plan(prewave: dict[str, Any], now: datetime) -> dict[str, Any]:
         "production_effect": False,
         "automatic_buy": False,
         "scheduler_execution_cap_seconds": 300,
-        "recommended_cadence_seconds": {"HOT_PREWAVE": 120, "WARM_PREWAVE": 300, "WATCH_PREWAVE": 600, "COLD": 1800},
-        "counts": {"hot": len(hot), "warm": len(warm), "total": len(rows)},
+        "recommended_cadence_seconds": {
+            "HOT_PREWAVE": 120,
+            "WARM_PREWAVE": 300,
+            "WATCH_PREWAVE": 600,
+            "COLD": 1800,
+        },
+        "counts": {
+            "hot": sum(x.get("tier") == "HOT_PREWAVE" for x in rows),
+            "warm": sum(x.get("tier") == "WARM_PREWAVE" for x in rows),
+            "watch": sum(x.get("tier") == "WATCH_PREWAVE" for x in rows),
+            "total": len(rows),
+        },
         "priority_identities": [
-            {k: x.get(k) for k in ("chain", "token_address", "pair_address", "symbol", "tier", "prewave_score", "confidence_score", "recommended_scan_interval_seconds")}
+            {k: x.get(k) for k in (
+                "chain", "token_address", "pair_address", "symbol", "regime", "tier",
+                "prewave_score", "confidence_score", "recommended_scan_interval_seconds",
+            )}
             for x in rows[:50]
         ],
         "truth_contract": {
