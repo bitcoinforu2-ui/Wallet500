@@ -1,6 +1,13 @@
 from datetime import datetime, timezone
 
-from wallet500.genesis_live import _mark_entry, _open_paper_entry, _shadow_ready, _shadow_score
+from wallet500.genesis_live import (
+    _deep_priority,
+    _mark_entry,
+    _open_paper_entry,
+    _priority,
+    _shadow_ready,
+    _shadow_score,
+)
 from wallet500.genesis_radar import PAPER_ENTRY_USD, genesis_score
 
 
@@ -41,7 +48,9 @@ def candidate():
         "organic_social_confirmed": False,
         "gain_from_baseline_pct": 180,
         "pair_age_minutes": 120,
-        "source_confirmations": 2,
+        "source": "geckoterminal:new_pools:fresh",
+        "sources": ["geckoterminal:new_pools:fresh"],
+        "source_confirmations": 1,
     }
 
 
@@ -68,6 +77,8 @@ def test_new_paper_entry_allocates_exactly_five_dollars():
     assert entry["initial_quantity"] == 500.0
     assert entry["paper_mode"] == "SHADOW_PAPER_UNVERIFIED_LP"
     assert entry["verified_track_record"] is False
+    assert entry["entry_alert_stage"] == scored["alert_stage"]
+    assert entry["entry_source_catalyst"] == scored["source_catalyst"]
 
 
 def test_half_take_profit_at_exact_two_x_keeps_remainder():
@@ -93,3 +104,51 @@ def test_no_shadow_paper_after_five_thousand_percent():
     shadow = _shadow_score(c, scored)
     assert scored["extension_band"] == "LATE_NO_CHASE"
     assert _shadow_ready(c, scored, shadow) is False
+
+
+def test_moonshot_new_gets_snapshot_priority_over_generic_fresh_pool():
+    moonshot = {
+        "source": "moonshot:new",
+        "sources": ["moonshot:new"],
+        "source_confirmations": 1,
+        "reserve_usd": 50_000,
+    }
+    generic = {
+        "source": "geckoterminal:new_pools:fresh",
+        "sources": ["geckoterminal:new_pools:fresh"],
+        "source_confirmations": 1,
+        "reserve_usd": 500_000,
+    }
+    assert _priority(moonshot) < _priority(generic)
+
+
+def test_cross_source_confirmation_beats_single_generic_source():
+    multi = {
+        "source": "geckoterminal:new_pools:fresh",
+        "sources": ["geckoterminal:new_pools:fresh", "dexscreener:/token-profiles/latest/v1"],
+        "source_confirmations": 2,
+        "reserve_usd": 50_000,
+    }
+    generic = {
+        "source": "geckoterminal:new_pools:fresh",
+        "sources": ["geckoterminal:new_pools:fresh"],
+        "source_confirmations": 1,
+        "reserve_usd": 500_000,
+    }
+    assert _priority(multi) < _priority(generic)
+
+
+def test_deep_verification_prioritizes_moonshot_catalyst():
+    moonshot = {
+        "sources": ["moonshot:finalized"],
+        "source_confirmations": 1,
+        "liquidity_usd": 60_000,
+        "pair_age_minutes": 120,
+    }
+    generic = {
+        "sources": ["geckoterminal:new_pools:fresh"],
+        "source_confirmations": 1,
+        "liquidity_usd": 500_000,
+        "pair_age_minutes": 120,
+    }
+    assert _deep_priority(moonshot) < _deep_priority(generic)

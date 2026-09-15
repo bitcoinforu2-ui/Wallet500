@@ -49,6 +49,14 @@ def _fmt_money(value) -> str:
     return f"${v:.4f}" if v < 1 else f"${v:.2f}"
 
 
+def _eligible_entry(entry: dict) -> bool:
+    return (
+        entry.get("paper_mode") == "VERIFIED_PAPER"
+        and entry.get("verified_track_record") is True
+        and entry.get("entry_alert_stage") == "REAL_ALERT"
+    )
+
+
 def _message(entry: dict, candidate: dict | None) -> str:
     candidate = candidate or {}
     created = str(entry.get("created_at") or "")
@@ -59,21 +67,27 @@ def _message(entry: dict, candidate: dict | None) -> str:
         stamp = created or "unknown"
     signals = ", ".join(entry.get("entry_acceleration_signals") or []) or "—"
     symbol = entry.get("symbol") or candidate.get("symbol") or "NEW TOKEN"
-    mode = entry.get("paper_mode") or "PAPER"
-    warning = "VERIFIED safety gates" if mode == "VERIFIED_PAPER" else "SHADOW research — LP/critical evidence not fully verified"
+    source = entry.get("entry_source_catalyst") or candidate.get("source_catalyst") or {}
+    source_reasons = ", ".join(source.get("reasons") or []) or "—"
+    summary = entry.get("entry_signal_summary") or candidate.get("signal_summary") or {}
+    passed = summary.get("passed")
+    total = summary.get("total")
+    signal_count = f"{passed}/{total}" if passed is not None and total is not None else "—"
     return (
-        f"🧪 GENESIS PAPER ${PAPER_ENTRY_USD:.0f} • NEW\n"
+        f"🔥🔥🔥 GENESIS REAL ALERT • PAPER ${PAPER_ENTRY_USD:.0f}\n"
         f"🕒 {stamp}\n"
         f"🪙 {symbol} | {str(entry.get('chain') or '').upper()}\n"
-        f"Mode: {mode}\n"
+        f"CA: {entry.get('token') or candidate.get('token') or '—'}\n"
         f"Genesis: {entry.get('entry_genesis_score')} | Shadow: {entry.get('entry_shadow_score')}\n"
+        f"Signals: {signal_count} | {signals}\n"
+        f"Catalyst: {source_reasons}\n"
         f"Age: {entry.get('entry_age_minutes')}m\n"
         f"Entry: {_fmt_money(entry.get('entry_price_usd'))}\n"
         f"Liquidity: {_fmt_money(entry.get('entry_liquidity_usd'))}\n"
         f"Holders: {entry.get('entry_holders') if entry.get('entry_holders') is not None else '—'}\n"
         f"Top10: {entry.get('entry_top10_pct') if entry.get('entry_top10_pct') is not None else '—'}%\n"
-        f"Signals: {signals}\n"
-        f"⚠️ PAPER ONLY — no real-money buy. {warning}\n"
+        f"✅ REAL_ALERT gates verified\n"
+        f"⚠️ PAPER ONLY — no automatic real-money buy.\n"
         f"DEX: {entry.get('dex_url') or candidate.get('url') or '—'}"
     )
 
@@ -93,9 +107,13 @@ def run(data_dir: Path | None = None, now: datetime | None = None) -> dict:
 
     attempted = 0
     delivered = 0
+    filtered_research = 0
     failures = []
     for entry in radar.get("new_paper_entries") or []:
         if not isinstance(entry, dict):
+            continue
+        if not _eligible_entry(entry):
+            filtered_research += 1
             continue
         entry_id = str(entry.get("entry_id") or "")
         if not entry_id or entry_id in sent:
@@ -119,16 +137,17 @@ def run(data_dir: Path | None = None, now: datetime | None = None) -> dict:
             failures.append({"entry_id": entry_id, "reason": f"{type(exc).__name__}:{str(exc)[:120]}"})
 
     state = {
-        "version": 1,
+        "version": 2,
         "updated_at": now.isoformat(),
         "configured": configured,
         "attempted": attempted,
         "delivered": delivered,
+        "filtered_research": filtered_research,
         "failures": failures[-20:],
         "sent": sent,
     }
     _write(state_path, state)
-    print("GENESIS_TELEGRAM", {"configured": configured, "attempted": attempted, "delivered": delivered})
+    print("GENESIS_TELEGRAM", {"configured": configured, "attempted": attempted, "delivered": delivered, "filtered_research": filtered_research})
     return state
 
 
