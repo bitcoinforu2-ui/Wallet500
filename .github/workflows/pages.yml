@@ -286,16 +286,16 @@ jobs:
             echo "$report"
 
             if [ "$live_build" = "$expect" ] \
-              && printf '%s' "$body" | grep -Fq 'WALLET500 · INTELLIGENCE COMMAND CENTER' \
-              && printf '%s' "$body" | grep -Fq 'WALLET500 WATCHDOG MARKER: LIVE RADAR' \
-              && printf '%s' "$body" | grep -Fq "ROOT='/Wallet500/data/'" \
-              && printf '%s' "$body" | grep -Fq '/Wallet500/wallet500-auth.js' \
-              && printf '%s' "$body" | grep -Fq '/Wallet500/dashboard-moonshot-overlay.js' \
-              && printf '%s' "$body" | grep -Fq '/Wallet500/catalyst/' \
-              && printf '%s' "$body" | grep -Fq '/Wallet500/status/' \
-              && printf '%s' "$body" | grep -Fq '/Wallet500/research/' \
-              && ! printf '%s' "$body" | grep -Fq "ROOT='https://raw.githubusercontent.com/bitcoinforu2-ui/Wallet500/main/data/'" \
-              && printf '%s' "$data_body" | grep -Fq '"generated_at"'; then
+              && [[ "$body" == *'WALLET500 · INTELLIGENCE COMMAND CENTER'* ]] \
+              && [[ "$body" == *'WALLET500 WATCHDOG MARKER: LIVE RADAR'* ]] \
+              && [[ "$body" == *"ROOT='/Wallet500/data/'"* ]] \
+              && [[ "$body" == *'/Wallet500/wallet500-auth.js'* ]] \
+              && [[ "$body" == *'/Wallet500/dashboard-moonshot-overlay.js'* ]] \
+              && [[ "$body" == *'/Wallet500/catalyst/'* ]] \
+              && [[ "$body" == *'/Wallet500/status/'* ]] \
+              && [[ "$body" == *'/Wallet500/research/'* ]] \
+              && [[ "$body" != *"ROOT='https://raw.githubusercontent.com/bitcoinforu2-ui/Wallet500/main/data/'"* ]] \
+              && [[ "$data_body" == *'"generated_at"'* ]]; then
               printf '%s\n' "$report" > deploy-verify.txt
               echo 'PUBLIC_DEPLOY_VERIFY_OK'
               exit 0
