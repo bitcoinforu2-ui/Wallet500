@@ -3,26 +3,19 @@ name: Wallet500 Holder Concentration Shadow
 on:
   workflow_dispatch:
   schedule:
-    - cron: '22,52 * * * *'
-  push:
-    branches: [main]
-    paths:
-      - 'src/wallet500/holder_concentration_shadow.py'
-      - 'tests/test_holder_concentration_shadow.py'
-      - '.github/workflows/holder-concentration-shadow.yml'
+    - cron: '17,47 * * * *'
 
 permissions:
   contents: write
 
-# Research-only lane: keep it independent from the high-frequency publisher queue.
 concurrency:
-  group: wallet500-holder-concentration-shadow
-  cancel-in-progress: true
+  group: holder-concentration-shadow
+  cancel-in-progress: false
 
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,36 +49,69 @@ jobs:
               raise SystemExit('HOLDER_CONCENTRATION_SHADOW_TRUTH_INVALID')
           if int(d.get('selected_this_run') or 0) > int(d.get('budget') or 0):
               raise SystemExit('HOLDER_CONCENTRATION_SHADOW_BUDGET_BROKEN')
+
+          concentration_keys={'verified','contract_match','semantics','top1_pct','top5_pct','top10_pct'}
           for row in d.get('rows') or []:
               if not looks_like_solana_address(str(row.get('token_address') or '')):
                   raise SystemExit('HOLDER_CONCENTRATION_SHADOW_MINT_INVALID')
-              if row.get('verified') is not True or row.get('contract_match') is not True:
-                  raise SystemExit('HOLDER_CONCENTRATION_SHADOW_UNVERIFIED_ROW')
-              if row.get('positive_signal_eligible') is not False or row.get('hybrid_score_impact')!='NONE':
+              if row.get('hybrid_score_impact')!='NONE':
+                  raise SystemExit('HOLDER_CONCENTRATION_SHADOW_SCORE_LEAK')
+              if row.get('positive_signal_eligible') not in (None, False):
                   raise SystemExit('HOLDER_CONCENTRATION_SHADOW_POSITIVE_SIGNAL_LEAK')
-              if row.get('semantics')!='TOP_TOKEN_ACCOUNT_CONCENTRATION_NOT_OWNER_CLUSTER_CONCENTRATION':
-                  raise SystemExit('HOLDER_CONCENTRATION_SHADOW_SEMANTICS_INVALID')
+              if row.get('growth_signal_eligible') not in (None, False):
+                  raise SystemExit('HOLDER_CONCENTRATION_SHADOW_GROWTH_SIGNAL_LEAK')
+
+              has_concentration=any(k in row for k in concentration_keys)
+              has_holder_shadow=row.get('holder_count_shadow') is not None
+              if not has_concentration and not has_holder_shadow:
+                  raise SystemExit('HOLDER_CONCENTRATION_SHADOW_EVIDENCE_MISSING')
+
+              if has_concentration:
+                  if row.get('verified') is not True or row.get('contract_match') is not True:
+                      raise SystemExit('HOLDER_CONCENTRATION_SHADOW_UNVERIFIED_CONCENTRATION')
+                  if row.get('positive_signal_eligible') is not False:
+                      raise SystemExit('HOLDER_CONCENTRATION_SHADOW_CONCENTRATION_SIGNAL_LEAK')
+                  if row.get('semantics')!='TOP_TOKEN_ACCOUNT_CONCENTRATION_NOT_OWNER_CLUSTER_CONCENTRATION':
+                      raise SystemExit('HOLDER_CONCENTRATION_SHADOW_SEMANTICS_INVALID')
+                  for key in ('top1_pct','top5_pct','top10_pct'):
+                      value=row.get(key)
+                      if not isinstance(value,(int,float)) or not (0.0 <= float(value) <= 100.0):
+                          raise SystemExit(f'HOLDER_CONCENTRATION_SHADOW_METRIC_INVALID:{key}')
+
+              if has_holder_shadow:
+                  if row.get('holder_shadow_verified_contract') is not True:
+                      raise SystemExit('HOLDER_CONCENTRATION_SHADOW_HOLDER_CONTRACT_INVALID')
+                  if row.get('holder_shadow_semantics')!='TOTAL_TOKEN_ACCOUNTS_NOT_UNIQUE_BENEFICIAL_OWNERS':
+                      raise SystemExit('HOLDER_CONCENTRATION_SHADOW_HOLDER_SEMANTICS_INVALID')
+                  if row.get('growth_signal_eligible') is not False:
+                      raise SystemExit('HOLDER_CONCENTRATION_SHADOW_HOLDER_SIGNAL_LEAK')
+                  count=row.get('holder_count_shadow')
+                  if isinstance(count,bool) or not isinstance(count,int) or count < 0:
+                      raise SystemExit('HOLDER_CONCENTRATION_SHADOW_HOLDER_COUNT_INVALID')
+
           print('HOLDER_CONCENTRATION_SHADOW_OK', {'selected':d.get('selected_this_run'),'verified':d.get('verified_this_run'),'total':d.get('total_verified_rows')})
           PY
       - name: Publish concentration shadow state
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-holder-shadow-bot'
-          git config user.email 'wallet500-holder-shadow-bot@users.noreply.github.com'
-          tmp="$(mktemp -d)"
-          cp data/holder-concentration-shadow.json "$tmp/latest.json"
-          cp data/holder-concentration-shadow-state.json "$tmp/state.json"
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
-            cp "$tmp/latest.json" data/holder-concentration-shadow.json
-            cp "$tmp/state.json" data/holder-concentration-shadow-state.json
-            git add data/holder-concentration-shadow.json data/holder-concentration-shadow-state.json
-            if git diff --cached --quiet; then echo 'HOLDER_CONCENTRATION_SHADOW_NO_CHANGE'; exit 0; fi
-            git commit -m 'data: refresh holder concentration shadow'
-            if git push origin HEAD:main; then echo 'HOLDER_CONCENTRATION_SHADOW_PUBLISH_OK'; exit 0; fi
-            echo "HOLDER_CONCENTRATION_SHADOW_RETRY attempt=$attempt"
-            sleep 3
+          git config user.name wallet500-research-bot
+          git config user.email wallet500-research-bot@users.noreply.github.com
+          git fetch origin main --depth=1
+          git checkout main
+          git pull --rebase origin main
+          git add data/holder-concentration-shadow.json data/holder-concentration-shadow-state.json
+          if git diff --cached --quiet; then
+            echo "no holder-concentration shadow changes"
+            exit 0
+          fi
+          git commit -m "data: refresh holder concentration shadow [skip ci]"
+          for n in 1 2 3 4; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "holder-concentration push race ${n}; rebasing"
+            git pull --rebase origin main
+            sleep $((n * 2))
           done
           echo '::error::HOLDER_CONCENTRATION_SHADOW_PUBLISH_RACE_EXHAUSTED'
           exit 1
