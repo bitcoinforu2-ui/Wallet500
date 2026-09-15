@@ -1,0 +1,24 @@
+name: Early Revival Contract Guard
+on:
+  push:
+    paths:
+      - 'src/wallet500/early_revival_*.py'
+      - 'tests/test_early_revival_*.py'
+      - '.github/workflows/early-revival-contract.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: early-revival-contract-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_early_revival_contract.py tests/test_early_revival_replay.py
