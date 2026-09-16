@@ -1,66 +1,106 @@
 {
   "version": 1,
   "mode": "INDEPENDENT_OBSERVABILITY_NO_TRADING_POLICY_EFFECT",
-  "updated_at": "2026-09-16T11:09:34.416667+00:00",
-  "overall": "HEALTHY",
-  "incident_count": 0,
+  "updated_at": "2026-09-16T11:40:47.720615+00:00",
+  "overall": "DEGRADED",
+  "incident_count": 1,
   "critical_count": 0,
-  "high_count": 0,
+  "high_count": 1,
   "new_notifications": [],
   "recovered_codes": [],
-  "real_alert_transitions_entered": [],
-  "incidents": [],
+  "real_alert_transitions_entered": [
+    "bsc:0xeccbb861c0dda7efd964010085488b69317e4444:0x22af7297243c4eef12e2d5a4f888b92e56bf127c"
+  ],
+  "incidents": [
+    {
+      "code": "GITHUB_ACTIONS_CAPACITY_PRESSURE",
+      "severity": "HIGH",
+      "detail": "queued=22, in_progress=19, runs_today=5265",
+      "queued": 22,
+      "in_progress": 19,
+      "runs_today": 5265,
+      "thresholds": {
+        "queued": 8,
+        "in_progress": 12,
+        "runs_today": 1500
+      }
+    }
+  ],
   "checks": {
     "real-alerts.json": {
-      "timestamp": "2026-09-16T10:47:07.588566+00:00",
-      "age_seconds": 1346.8,
+      "timestamp": "2026-09-16T11:19:26.594481+00:00",
+      "age_seconds": 1281.1,
       "max_age_seconds": 2700,
       "ok": true
     },
     "system-health.json": {
-      "timestamp": "2026-09-16T10:47:08.111873+00:00",
-      "age_seconds": 1346.3,
+      "timestamp": "2026-09-16T11:19:26.974398+00:00",
+      "age_seconds": 1280.7,
       "max_age_seconds": 2700,
       "ok": true
     },
     "scheduler-health.json": {
-      "timestamp": "2026-09-16T10:47:08.157537+00:00",
-      "age_seconds": 1346.3,
+      "timestamp": "2026-09-16T11:19:27.007387+00:00",
+      "age_seconds": 1280.7,
       "max_age_seconds": 2700,
       "ok": true
     },
     "telegram-alert-report.json": {
-      "timestamp": "2026-09-16T11:07:43.513443+00:00",
-      "age_seconds": 110.9,
+      "timestamp": "2026-09-16T11:37:14.935350+00:00",
+      "age_seconds": 212.8,
       "max_age_seconds": 3600,
       "ok": true
     },
     "real-alert-10usd-summary.json": {
-      "timestamp": "2026-09-16T11:07:47.575143+00:00",
-      "age_seconds": 106.8,
+      "timestamp": "2026-09-16T11:37:20.799579+00:00",
+      "age_seconds": 206.9,
       "max_age_seconds": 3600,
       "ok": true
     },
     "github_live_scan": {
       "latest_status": "completed",
       "latest_conclusion": "success",
-      "latest_event": "workflow_dispatch",
-      "latest_created_at": "2026-09-16T11:05:41Z",
-      "latest_updated_at": "2026-09-16T11:08:59Z",
-      "latest_run_id": 35088469248,
-      "last_success_at": "2026-09-16T11:08:59Z",
-      "last_success_run_id": 35088469248,
+      "latest_event": "schedule",
+      "latest_created_at": "2026-09-16T11:29:17Z",
+      "latest_updated_at": "2026-09-16T11:32:27Z",
+      "latest_run_id": 35090571897,
+      "last_success_at": "2026-09-16T11:32:27Z",
+      "last_success_run_id": 35090571897,
       "cancellations_since_success": 0,
       "latest_cancelled_run_id": null,
       "latest_hard_failure_conclusion": null,
       "latest_hard_failure_run_id": null,
       "active_run_count": 0,
-      "ignored_non_operational_run_count": 3
+      "ignored_non_operational_run_count": 7
     },
     "public_surface": {
       "dashboard_ok": true,
       "real_feed_ok": true,
-      "real_feed_generated_at": "2026-09-16T10:47:07.588566+00:00"
+      "real_feed_generated_at": "2026-09-16T11:19:26.594481+00:00"
+    },
+    "github_actions_capacity": {
+      "queued": 22,
+      "in_progress": 19,
+      "runs_today": 5265,
+      "failures_today": 17,
+      "ok": false
+    },
+    "revival_publish_freshness": {
+      "latest_run_id": 35091342324,
+      "latest_status": "completed",
+      "latest_conclusion": "success",
+      "latest_updated_at": "2026-09-16T11:40:16Z",
+      "published_generated_at": "2026-09-16T10:49:44.638842+00:00",
+      "ok": true
+    },
+    "candidate_starvation": {
+      "zero_active_started_at": "2026-09-16T11:40:49.384004+00:00",
+      "zero_active_age_seconds": 0.0,
+      "active_qualified": 0,
+      "market_scan": 384,
+      "legacy_qualified": 2,
+      "warn_after_seconds": 5400,
+      "ok": true
     }
   },
   "truth_contract": [
@@ -70,11 +110,16 @@
     "CURRENT_REAL_ALERTS_ARE_BASELINED_ON_FIRST_WATCHDOG_RUN",
     "NEW_REAL_ALERT_TELEGRAM_GAPS_ARE_DETECTED_BY_EXACT_PAIR_TRANSITION",
     "SINGLE_LIVE_SCAN_CANCELLATION_IS_TRANSIENT_WHILE_LAST_SUCCESS_IS_FRESH",
-    "PUSH_TRIGGERED_LIVE_SCAN_RUNS_ARE_CI_NOT_PRODUCTION_HEALTH"
+    "PUSH_TRIGGERED_LIVE_SCAN_RUNS_ARE_CI_NOT_PRODUCTION_HEALTH",
+    "GLOBAL_ACTIONS_QUEUE_AND_RUN_PRESSURE_IS_MEASURED",
+    "NEWER_FAILED_REVIVAL_PUBLICATION_IS_NOT_HEALTHY",
+    "SUSTAINED_ZERO_ACTIVE_WITH_QUALIFIED_SCAN_INPUT_IS_STARVATION",
+    "OPERATIONAL_GUARD_NEVER_CHANGES_TRADING_POLICY"
   ],
   "notification": {
     "attempted": false,
     "sent": false,
     "reason": "NO_NEW_INCIDENTS"
-  }
+  },
+  "operational_guard_updated_at": "2026-09-16T11:40:49.384004+00:00"
 }
