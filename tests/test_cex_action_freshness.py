@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import importlib.util
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-from scripts import run_cex_action_guarded as guard
+
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "run_cex_action_guarded.py"
+SPEC = importlib.util.spec_from_file_location("wallet500_run_cex_action_guarded_test", SCRIPT)
+assert SPEC is not None and SPEC.loader is not None
+guard = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(guard)
 
 
 def _row(observed_at: str, changes: tuple[float, float]) -> dict:
