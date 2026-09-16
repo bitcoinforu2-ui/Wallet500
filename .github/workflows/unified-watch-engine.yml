@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/unified_watch_engine.py'
+      - 'scripts/free_intelligence_collector.py'
       - 'scripts/intelligence_fusion.py'
       - 'data/unified-watch-config.json'
       - 'data/close-watch-intelligence-policy.json'
@@ -30,13 +31,19 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Validate unified watcher and intelligence fusion
+      - name: Validate unified watcher, free collectors and intelligence fusion
         run: |
-          python -m py_compile scripts/unified_watch_engine.py scripts/intelligence_fusion.py
+          python -m py_compile scripts/unified_watch_engine.py scripts/free_intelligence_collector.py scripts/intelligence_fusion.py
           python -m json.tool data/unified-watch-config.json >/dev/null
           python -m json.tool data/unified-watch-state.json >/dev/null
           python -m json.tool data/close-watch-intelligence-policy.json >/dev/null
           python -m json.tool data/close-watch-events.json >/dev/null
+          python -m json.tool data/free-intelligence-collector-state.json >/dev/null
+
+      - name: Collect free cross-domain intelligence
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/free_intelligence_collector.py
 
       - name: Fuse cross-domain intelligence evidence
         run: python scripts/intelligence_fusion.py
@@ -47,12 +54,12 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scripts/unified_watch_engine.py
 
-      - name: Persist verified forward-only state and intelligence snapshot
+      - name: Persist verified forward-only state, evidence and intelligence snapshot
         run: |
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/unified-watch-state.json data/close-watch-intelligence.json || true
+          git add data/unified-watch-state.json data/close-watch-intelligence.json data/close-watch-events.json data/free-intelligence-collector-state.json || true
           if git diff --cached --quiet; then
             echo 'UNIFIED_WATCH_STATE_UNCHANGED'
             exit 0
