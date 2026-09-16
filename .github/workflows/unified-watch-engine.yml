@@ -1,0 +1,53 @@
+name: Wallet500 Unified Verified Watch Engine
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/unified_watch_engine.py'
+      - 'data/unified-watch-config.json'
+      - '.github/workflows/unified-watch-engine.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-unified-verified-watch
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Validate unified watcher syntax and config
+        run: |
+          python -m py_compile scripts/unified_watch_engine.py
+          python -m json.tool data/unified-watch-config.json >/dev/null
+          python -m json.tool data/unified-watch-state.json >/dev/null
+
+      - name: Run fail-closed verified watchlist
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/unified_watch_engine.py
+
+      - name: Persist verified forward-only state
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-bot'
+          git config user.email 'wallet500-bot@users.noreply.github.com'
+          git add data/unified-watch-state.json
+          if git diff --cached --quiet; then
+            echo 'UNIFIED_WATCH_STATE_UNCHANGED'
+            exit 0
+          fi
+          git commit -m 'chore: update unified watch state [skip ci]'
+          git push
