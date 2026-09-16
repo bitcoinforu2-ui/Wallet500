@@ -65,6 +65,42 @@ def _expanded_identity_verified(row: dict, chain: str, token: str, pair: str) ->
     )
 
 
+def _static_prefilter(row: object, now: datetime) -> bool:
+    """Cheap fail-closed filter before any live provider call.
+
+    The expanded Revival universe can contain hundreds of rows. Only rows that
+    already satisfy identity, age, liquidity, score and display/risk gates are
+    allowed to consume a live DexScreener request for H1 confirmation.
+    """
+    if not isinstance(row, dict):
+        return False
+    chain = _norm_chain(row.get("chain") or row.get("network"))
+    token = str(row.get("token") or row.get("token_address") or "")
+    base = str(row.get("base_token_address") or "")
+    pair = str(row.get("pair_address") or row.get("dex_pair_address") or "")
+    if not chain or not token or not pair:
+        return False
+    if not (bool(base and _same_identity(chain, token, base)) or _expanded_identity_verified(row, chain, token, pair)):
+        return False
+
+    created = _created_at(row)
+    verified_age = row.get("market_age_verified") is True
+    explicit_age = _f(row.get("market_age_min_days"), -1.0)
+    age = explicit_age if verified_age and explicit_age >= 0 else ((now - created).total_seconds() / 86400.0 if created else 0.0)
+    if age < MIN_AGE_DAYS:
+        return False
+    if _f(row.get("liquidity_usd") or row.get("dex_pair_liquidity_usd")) < MIN_LIQUIDITY_USD:
+        return False
+    if _f(row.get("revival_score") or row.get("revival_score_verified")) < MIN_REVIVAL_SCORE:
+        return False
+    display_gate = row.get("active_display_gate")
+    if isinstance(display_gate, dict) and display_gate.get("pass") is not True:
+        return False
+    if str(row.get("pump_dump_risk_level") or row.get("risk_level") or "").upper() in {"HIGH", "CRITICAL"}:
+        return False
+    return True
+
+
 def _eligibility(row: object, now: datetime) -> tuple[bool, dict[str, Any]]:
     if not isinstance(row, dict):
         return False, {"blockers": ["ROW_INVALID"]}
@@ -143,7 +179,7 @@ def _dex_live(row: dict) -> dict[str, Any]:
     if not chain or not pair:
         return {}
     url = f"https://api.dexscreener.com/latest/dex/pairs/{chain}/{pair}"
-    req = urllib.request.Request(url, headers={"User-Agent": "Wallet500-Revival90D/2.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "Wallet500-Revival90D/2.1"})
     try:
         with urllib.request.urlopen(req, timeout=12) as response:
             payload = json.loads(response.read().decode("utf-8"))
@@ -246,8 +282,15 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
 
     eligible: list[tuple[dict, dict[str, Any]]] = []
     blocked: list[dict[str, Any]] = []
+    live_refresh_candidates = 0
+    live_refresh_errors = 0
     for raw in rows:
-        row = _with_live(raw)
+        row = dict(raw)
+        if _static_prefilter(row, now_dt):
+            live_refresh_candidates += 1
+            row = _with_live(row)
+            if row.get("live_refresh_error"):
+                live_refresh_errors += 1
         ok, m = _eligibility(row, now_dt)
         if ok:
             eligible.append((row, m))
@@ -315,6 +358,8 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
         "configured": configured,
         "source": SOURCE,
         "source_rows": len(rows),
+        "live_refresh_candidates": live_refresh_candidates,
+        "live_refresh_errors": live_refresh_errors,
         "eligible_count": len(eligible),
         "blocked_count": len(blocked),
         "baseline_count": baseline_count,
@@ -337,6 +382,7 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
             "exact_base_token_identity_required": True,
             "expanded_source_required": SOURCE,
             "live_pair_refresh_before_delivery": True,
+            "live_refresh_prefiltered": True,
             "notification_marker": "🔥🔥🔥",
             "dedupe": "one alert per exact chain+token+pair active transition; re-arm after leaving eligibility",
             "no_historical_backfill": True,
