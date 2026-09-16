@@ -1,0 +1,80 @@
+name: Wallet500 RAG Intelligence Shadow
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Wallet500 Multi-Chain Live Scan"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-rag-intelligence-shadow
+  cancel-in-progress: true
+
+jobs:
+  rag-shadow:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python -m pip install -e . pytest
+      - name: Validate RAG safety contracts
+        run: python -m pytest -q tests/test_rag_intelligence.py
+      - name: Build leakage-safe RAG shadow intelligence
+        env:
+          W500_RAG_ENABLED: '1'
+        run: python -m wallet500.rag_shadow
+      - name: Verify no production influence
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('data/rag-intelligence-shadow.json').read_text())
+          if p.get('production_change') is not False: raise SystemExit('RAG_PRODUCTION_CHANGE_LEAK')
+          if p.get('automatic_buy') is not False: raise SystemExit('RAG_AUTOMATIC_BUY_LEAK')
+          t=p.get('truth_contract') or {}
+          required=(
+              'strict_prior_only',
+              'exact_chain_token_pair_identity',
+              'same_candidate_history_excluded',
+              'hard_gates_never_weakened',
+              'production_action_never_changed',
+          )
+          if not all(t.get(k) is True for k in required): raise SystemExit('RAG_TRUTH_CONTRACT_MISSING')
+          print('RAG_SHADOW_SAFE', p.get('summary'))
+          PY
+      - name: Publish RAG shadow evidence atomically
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            git add data/rag-intelligence-shadow.json
+            if git diff --cached --quiet; then
+              echo "No RAG shadow changes"
+              exit 0
+            fi
+            git commit -m "data: refresh RAG intelligence shadow"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "Main moved; rebuilding RAG against newest canonical data (attempt $attempt)"
+            git fetch origin main
+            git reset --hard origin/main
+            python -m wallet500.rag_shadow
+            if [ "$attempt" -eq 3 ]; then
+              echo "RAG shadow publish failed after safe rebuild retries"
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
