@@ -1,0 +1,55 @@
+name: Wallet500 BULLA Cluster Telegram Watch
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '22 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/bulla_cluster_watch.py'
+      - '.github/workflows/bulla-cluster-telegram-watch.yml'
+
+permissions:
+  contents: write
+
+# Exact-token / exact-pair watch. Never auto-trades and never treats a CEX
+# withdrawal as a buy signal by itself.
+concurrency:
+  group: wallet500-bulla-cluster-telegram-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Validate watcher syntax
+        run: python -m py_compile scripts/bulla_cluster_watch.py
+
+      - name: Scan finalized BNB transfers and alert only on material BULLA events
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/bulla_cluster_watch.py
+
+      - name: Persist BULLA forward-only watch state
+        run: |
+          set -euo pipefail
+          if [ ! -f data/bulla-cluster-watch-state.json ]; then
+            echo 'BULLA state file was not produced' >&2
+            exit 1
+          fi
+          git config user.name 'wallet500-bot'
+          git config user.email 'wallet500-bot@users.noreply.github.com'
+          git add data/bulla-cluster-watch-state.json
+          if git diff --cached --quiet; then
+            echo 'BULLA_STATE_UNCHANGED'
+            exit 0
+          fi
+          git commit -m 'chore: update BULLA cluster watch state [skip ci]'
+          git push
