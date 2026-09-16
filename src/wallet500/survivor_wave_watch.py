@@ -182,31 +182,74 @@ def dna_match(turnover, buy_ratio, wave_status, reasons):
     return "LOW", hits
 
 
+def classify_dna_event(previous_level: str | None, current_level: str | None, had_prior_alert: bool) -> str:
+    previous = str(previous_level or "LOW").upper()
+    current = str(current_level or "LOW").upper()
+    if not had_prior_alert:
+        return "FIRST_DNA_MATCH"
+    if previous == "LOW" and current in {"MEDIUM", "HIGH"}:
+        return "DNA_REENTRY_REACCELERATION"
+    if previous == "MEDIUM" and current == "HIGH":
+        return "DNA_UPGRADE_MEDIUM_TO_HIGH"
+    if previous != current:
+        return "DNA_UPGRADE"
+    return "DNA_REACCELERATION"
+
+
+def dna_event_label(event_type: str, previous_level: str | None, current_level: str | None) -> str:
+    previous = str(previous_level or "LOW").upper()
+    current = str(current_level or "LOW").upper()
+    labels = {
+        "FIRST_DNA_MATCH": "FIRST DNA MATCH",
+        "DNA_REENTRY_REACCELERATION": "DNA RE-ENTRY / REACCELERATION",
+        "DNA_UPGRADE_MEDIUM_TO_HIGH": "DNA UPGRADE MEDIUM → HIGH",
+        "DNA_REACCELERATION": "DNA REACCELERATION",
+    }
+    return labels.get(event_type, f"DNA UPGRADE {previous} → {current}")
+
+
+def _fmt_price(value) -> str:
+    value = f(value)
+    return f"${value:.10g}" if value is not None else "n/a"
+
+
 def format_alert(row: dict, previous_level: str | None) -> str:
-    transition = "FIRST DNA MATCH" if not previous_level or previous_level == "LOW" else f"UPGRADE FROM {previous_level}"
+    current_level = str(row.get("winner_dna_match") or "LOW").upper()
+    event_type = str(row.get("dna_event_type") or "FIRST_DNA_MATCH")
+    event_label = dna_event_label(event_type, previous_level, current_level)
     discovery_price = f(row.get("discovery_price_usd"))
+    first_alert_price = f(row.get("first_dna_alert_price_usd") or row.get("alert_price_usd"))
     current_price = f(row.get("price_usd"))
-    move = pct_change(current_price, discovery_price)
-    discovery_line = f"Discovery: ${discovery_price:.10g}\n" if discovery_price is not None else "Discovery: n/a (legacy snapshot unavailable)\n"
-    current_line = f"Current: ${current_price:.10g}\n" if current_price is not None else "Current: n/a\n"
-    move_line = f"Since discovery: {move:+.2f}%\n" if move is not None else "Since discovery: n/a\n"
+    since_discovery = pct_change(current_price, discovery_price)
+    since_first_alert = pct_change(current_price, first_alert_price)
+    discovery_line = f"Discovery: {_fmt_price(discovery_price)}\n"
+    current_line = f"Current: {_fmt_price(current_price)}\n"
+    discovery_move_line = f"Since discovery: {since_discovery:+.2f}%\n" if since_discovery is not None else "Since discovery: n/a\n"
+    first_alert_move_line = f"Since first DNA alert: {since_first_alert:+.2f}%\n" if since_first_alert is not None else "Since first DNA alert: n/a\n"
+    holders_delta = row.get("holder_delta_since_prior_hourly_snapshot")
+    holders_line = f"Holders Δ: {holders_delta}" if holders_delta is not None else "Holders Δ: n/a (no timestamp-safe comparison)"
     return (
         "🚨 Wallet500 WINNER DNA ALERT\n"
-        f"{transition}\n"
+        f"Event: {event_label}\n"
+        f"DNA transition: {str(previous_level or 'LOW').upper()} → {current_level}\n"
+        f"DNA alert #: {int(row.get('dna_alert_count') or 1)}\n"
         f"Chain: {row.get('chain')}\n"
         f"Token: {row.get('token')}\n"
         f"Pair: {row.get('pair_address')}\n"
-        f"DNA: {row.get('winner_dna_match')}\n"
+        f"DNA: {current_level}\n"
         f"Wave: {row.get('wave_status')} | score {row.get('wave_score')}\n"
         f"{discovery_line}"
+        f"First DNA alert: {_fmt_price(first_alert_price)}\n"
+        f"First DNA alert time: {row.get('first_dna_alerted_at') or row.get('alerted_at') or 'n/a'}\n"
         f"{current_line}"
-        f"{move_line}"
+        f"{discovery_move_line}"
+        f"{first_alert_move_line}"
         f"Discovered at: {row.get('discovered_at') or 'n/a'}\n"
         f"Liquidity: ${float(row.get('liquidity_usd') or 0):,.0f}\n"
         f"Vol 1H: ${float(row.get('volume_h1_usd') or 0):,.0f}\n"
         f"Turnover 1H: {row.get('turnover_h1')}\n"
-        f"Buy/Sell 1H: {row.get('buy_sell_ratio_h1')}\n"
-        f"Holders Δ: {row.get('holder_delta_since_prior_hourly_snapshot')}\n"
+        f"Buy/Sell 1H: {row.get('buy_sell_ratio_h1')} (transaction count ratio)\n"
+        f"{holders_line}\n"
         f"DNA hits: {', '.join(row.get('winner_dna_hits') or []) or 'n/a'}\n"
         f"Reasons: {', '.join(row.get('wave_reasons') or []) or 'n/a'}\n"
         "Research alert only — no automatic BUY."
@@ -258,8 +301,16 @@ def main():
         is_first_observation = token_key not in prev_tokens
         discovery_price = current_price if is_first_observation else f(prev_row.get("discovery_price_usd"))
         discovered_at = observed_at if is_first_observation else prev_row.get("discovered_at")
-        alert_price = f(prev_row.get("alert_price_usd"))
-        alerted_at = prev_row.get("alerted_at")
+
+        legacy_first_alert_price = f(prev_row.get("alert_price_usd"))
+        legacy_first_alerted_at = prev_row.get("alerted_at")
+        first_alert_price = f(prev_row.get("first_dna_alert_price_usd"), legacy_first_alert_price)
+        first_alerted_at = prev_row.get("first_dna_alerted_at") or legacy_first_alerted_at
+        last_alert_price = f(prev_row.get("last_dna_alert_price_usd"), first_alert_price)
+        last_alerted_at = prev_row.get("last_dna_alerted_at") or first_alerted_at
+        prior_alert_count = int(prev_row.get("dna_alert_count") or (1 if first_alert_price is not None or first_alerted_at else 0))
+        had_prior_alert = prior_alert_count > 0
+
         org = organic.get(token_key, {})
         org_score = f(org.get("organic_acceleration_score"))
         kol = kols.get(token_key, {})
@@ -269,6 +320,26 @@ def main():
             f(h1_tx.get("buys")), f(h1_tx.get("sells")), holder_delta, org_score, kol_groups,
         )
         dna_level, dna_hits = dna_match(turnover, buy_ratio, status, reasons)
+        previous_level = str(prev_row.get("winner_dna_match") or "LOW").upper()
+        should_alert = dna_level == "HIGH" and previous_level != "HIGH"
+        if dna_level == "MEDIUM" and previous_level == "LOW" and status in {"EARLY_REACCELERATION", "WAVE_BUILDING"} and len(reasons) >= 2:
+            should_alert = True
+
+        event_type = None
+        event_price = None
+        event_alerted_at = None
+        alert_count = prior_alert_count
+        if should_alert:
+            event_type = classify_dna_event(previous_level, dna_level, had_prior_alert)
+            event_price = current_price
+            event_alerted_at = observed_at
+            alert_count = prior_alert_count + 1
+            if not had_prior_alert:
+                first_alert_price = current_price
+                first_alerted_at = observed_at
+            last_alert_price = current_price
+            last_alerted_at = observed_at
+
         row = {
             "chain": chain,
             "token": token,
@@ -280,9 +351,16 @@ def main():
             "current_price_usd": current_price,
             "discovery_price_usd": discovery_price,
             "discovered_at": discovered_at,
-            "alert_price_usd": alert_price,
-            "alerted_at": alerted_at,
+            "alert_price_usd": first_alert_price,
+            "alerted_at": first_alerted_at,
+            "first_dna_alert_price_usd": first_alert_price,
+            "first_dna_alerted_at": first_alerted_at,
+            "last_dna_alert_price_usd": last_alert_price,
+            "last_dna_alerted_at": last_alerted_at,
+            "dna_alert_count": alert_count,
+            "dna_event_type": event_type,
             "since_discovery_pct": round(pct_change(current_price, discovery_price), 6) if pct_change(current_price, discovery_price) is not None else None,
+            "since_first_dna_alert_pct": round(pct_change(current_price, first_alert_price), 6) if pct_change(current_price, first_alert_price) is not None else None,
             "liquidity_usd": liq,
             "market_cap_usd": f(snap.get("marketCap")) or f(snap.get("fdv")),
             "volume_h1_usd": f(volume.get("h1")),
@@ -309,24 +387,20 @@ def main():
             "dex_url": snap.get("url"),
         }
 
-        previous_level = str(prev_row.get("winner_dna_match") or "LOW")
-        should_alert = dna_level == "HIGH" and previous_level != "HIGH"
-        if dna_level == "MEDIUM" and previous_level == "LOW" and status in {"EARLY_REACCELERATION", "WAVE_BUILDING"} and len(reasons) >= 2:
-            should_alert = True
-        if should_alert and alert_price is None:
-            alert_price = current_price
-            alerted_at = observed_at
-            row["alert_price_usd"] = alert_price
-            row["alerted_at"] = alerted_at
         if should_alert:
             ok, telegram_status = telegram_send(format_alert(row, previous_level))
             telegram_events.append({
                 "token": token,
                 "dna": dna_level,
+                "previous_dna": previous_level,
+                "event_type": event_type,
                 "sent": ok,
                 "status": telegram_status,
-                "alert_price_usd": alert_price,
-                "alerted_at": alerted_at,
+                "event_price_usd": event_price,
+                "event_alerted_at": event_alerted_at,
+                "first_dna_alert_price_usd": first_alert_price,
+                "first_dna_alerted_at": first_alerted_at,
+                "dna_alert_count": alert_count,
             })
 
         results.append(row)
@@ -341,8 +415,14 @@ def main():
             "wave_status": status,
             "discovery_price_usd": discovery_price,
             "discovered_at": discovered_at,
-            "alert_price_usd": alert_price,
-            "alerted_at": alerted_at,
+            "alert_price_usd": first_alert_price,
+            "alerted_at": first_alerted_at,
+            "first_dna_alert_price_usd": first_alert_price,
+            "first_dna_alerted_at": first_alerted_at,
+            "last_dna_alert_price_usd": last_alert_price,
+            "last_dna_alerted_at": last_alerted_at,
+            "dna_alert_count": alert_count,
+            "last_dna_alert_event_type": event_type or prev_row.get("last_dna_alert_event_type"),
             "last_seen_at": observed_at,
         }
 
@@ -380,7 +460,16 @@ def main():
             "legacy_missing_policy": "NULL_NEVER_INFERRED",
             "current_price_definition": "latest exact-pair DexScreener snapshot",
         },
-        "note": "Research-only Winner DNA alerting. Discovery/alert prices are immutable timestamp-safe snapshots; legacy missing discovery prices remain null and are never inferred.",
+        "alert_semantics_contract": {
+            "version": 2,
+            "first_dna_match_requires_no_prior_dna_alert": True,
+            "low_to_medium_or_high_after_prior_alert_is_reentry": True,
+            "first_dna_alert_price_immutable": True,
+            "last_dna_alert_snapshot_tracked": True,
+            "dna_alert_count_tracked": True,
+            "buy_sell_ratio_definition": "TRANSACTION_COUNT_RATIO_NOT_CAPITAL_FLOW",
+        },
+        "note": "Research-only Winner DNA alerting. Discovery price and first DNA alert price are immutable timestamp-safe snapshots. Repeat DNA events are labeled as re-entry/reacceleration or upgrade rather than FIRST DNA MATCH.",
         "tokens": results,
         "last_known_tokens": last_known_tokens,
         "errors": errors[:50],
