@@ -18,6 +18,7 @@ on:
       - 'tests/test_cex_fast_promotion.py'
       - 'tests/test_cex_fast_current_bypass.py'
       - 'tests/test_reentry_active_watch.py'
+      - 'tests/test_cex_liquidity_context.py'
 
 permissions:
   contents: write
@@ -39,7 +40,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install and verify strict action and re-entry contracts
+      - name: Install and verify strict action, liquidity-context and re-entry contracts
         run: |
           pip install -e . pytest
           python -m pytest -q \
@@ -47,7 +48,8 @@ jobs:
             tests/test_cex_fast_current_bypass.py \
             tests/test_cex_spot_identity.py \
             tests/test_cex_spot_dynamic_identity_bridge.py \
-            tests/test_reentry_active_watch.py
+            tests/test_reentry_active_watch.py \
+            tests/test_cex_liquidity_context.py
       - name: Refuse stale exact-identity source
         run: |
           python - <<'PY'
@@ -98,6 +100,11 @@ jobs:
               since=float(row.get('since_discovery_pct') or 0)
               if since < -12 or since > 12: raise SystemExit('CEX_FAST_BAD_ENTRY_WINDOW_LEAK')
               if float(row.get('current_change_24h_pct') or 0)>35: raise SystemExit('CEX_FAST_CHASE_LEAK')
+              if 'best_verified_pool_liquidity_usd' in row:
+                  if float(row.get('best_verified_pool_liquidity_usd') or 0) < float(row.get('execution_liquidity_usd') or 0):
+                      raise SystemExit('CEX_FAST_BEST_POOL_LT_EXECUTION_PAIR')
+                  if row.get('best_verified_pool_check_complete') not in {True, False}:
+                      raise SystemExit('CEX_FAST_BEST_POOL_COMPLETENESS_MISSING')
           if int(report.get('error_count') or 0)>0: raise SystemExit(f"CEX_FAST_DELIVERY_ERRORS={report.get('error_count')}")
           print('CEX_FAST_ACTION_ONLY_VALID', {'eligible':len(alerts.get('alerts') or []),'delivered':report.get('delivered_count')})
           PY
