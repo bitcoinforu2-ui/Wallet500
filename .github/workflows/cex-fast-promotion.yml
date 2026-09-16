@@ -13,10 +13,13 @@ on:
       - '.github/workflows/cex-fast-promotion.yml'
       - 'src/wallet500/cex_fast_promotion.py'
       - 'src/wallet500/cex_fast_current_bypass.py'
+      - 'src/wallet500/cex_endpoint_fallbacks.py'
       - 'src/wallet500/reentry_active_watch.py'
       - 'scripts/run_cex_action_guarded.py'
+      - 'scripts/run_cex_action_resilient.py'
       - 'tests/test_cex_fast_promotion.py'
       - 'tests/test_cex_fast_current_bypass.py'
+      - 'tests/test_cex_endpoint_fallbacks.py'
       - 'tests/test_reentry_active_watch.py'
       - 'tests/test_cex_liquidity_context.py'
 
@@ -40,7 +43,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install and verify strict action, liquidity-context and re-entry contracts
+      - name: Install and verify strict action, liquidity-context, re-entry and endpoint-fallback contracts
         run: |
           pip install -e . pytest
           python -m pytest -q \
@@ -48,6 +51,7 @@ jobs:
             tests/test_cex_fast_current_bypass.py \
             tests/test_cex_spot_identity.py \
             tests/test_cex_spot_dynamic_identity_bridge.py \
+            tests/test_cex_endpoint_fallbacks.py \
             tests/test_reentry_active_watch.py \
             tests/test_cex_liquidity_context.py
       - name: Refuse stale exact-identity source
@@ -71,8 +75,8 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python scripts/run_cex_action_guarded.py
-      - name: Validate action-only Telegram contract
+        run: python scripts/run_cex_action_resilient.py
+      - name: Validate action-only Telegram and resilient CEX coverage contracts
         run: |
           python - <<'PY'
           import json
@@ -86,6 +90,14 @@ jobs:
           if truth.get('cex_dex_current_price_coherence_required') is not True: raise SystemExit('CEX_FAST_PRICE_COHERENCE_GUARD_MISSING')
           if float(truth.get('minimum_market_age_days') or 0) != 90.0: raise SystemExit('CEX_FAST_AGE_POLICY_DRIFT')
           if float(truth.get('minimum_execution_liquidity_usd') or 0) != 15000.0: raise SystemExit('CEX_FAST_LIQUIDITY_POLICY_DRIFT')
+          health=report.get('usdc_source_health') or {}
+          for source in ('binance','bybit'):
+              h=health.get(source) or {}
+              if h.get('official_endpoint_only') is not True: raise SystemExit(f'CEX_FAST_{source.upper()}_OFFICIAL_FALLBACK_GUARD_MISSING')
+              if not isinstance(h.get('endpoint_attempts'), list) or not h.get('endpoint_attempts'):
+                  raise SystemExit(f'CEX_FAST_{source.upper()}_ENDPOINT_TELEMETRY_MISSING')
+              if int(h.get('fallback_pool_size') or 0) < 2:
+                  raise SystemExit(f'CEX_FAST_{source.upper()}_FALLBACK_POOL_TOO_SMALL')
           seen=set(); excluded='61v8vbaqagmpgdqi4jcawo1dmbghsyhzodcpqnevpump'
           for row in alerts.get('alerts') or []:
               if row.get('status') != 'REAL_ALERT' or row.get('actionable') is not True or row.get('research_only') is not False: raise SystemExit('CEX_FAST_NON_ACTIONABLE_ALERT_LEAK')
@@ -106,7 +118,14 @@ jobs:
                   if row.get('best_verified_pool_check_complete') not in {True, False}:
                       raise SystemExit('CEX_FAST_BEST_POOL_COMPLETENESS_MISSING')
           if int(report.get('error_count') or 0)>0: raise SystemExit(f"CEX_FAST_DELIVERY_ERRORS={report.get('error_count')}")
-          print('CEX_FAST_ACTION_ONLY_VALID', {'eligible':len(alerts.get('alerts') or []),'delivered':report.get('delivered_count')})
+          print('CEX_FAST_ACTION_ONLY_VALID', {
+              'eligible':len(alerts.get('alerts') or []),
+              'delivered':report.get('delivered_count'),
+              'binance_ok':(health.get('binance') or {}).get('ok'),
+              'binance_endpoint':(health.get('binance') or {}).get('endpoint'),
+              'bybit_ok':(health.get('bybit') or {}).get('ok'),
+              'bybit_endpoint':(health.get('bybit') or {}).get('endpoint'),
+          })
           PY
       - name: Persist fast-promotion alert, canonical dedupe state and report
         env:
