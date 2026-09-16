@@ -1,7 +1,7 @@
 # Wallet500 Cohort Research
 
-Generated: 2026-09-16T12:32:07.174483+00:00
-Source snapshot: 2026-09-16T12:25:58.071576+00:00
+Generated: 2026-09-16T12:48:47.848729+00:00
+Source snapshot: 2026-09-16T12:42:41.834574+00:00
 
 ## Baseline
 - N=359 ROI=-0.8134% P/L=$-2.920037
