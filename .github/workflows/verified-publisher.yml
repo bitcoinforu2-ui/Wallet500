@@ -55,6 +55,7 @@ jobs:
           EVENT_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
+          canonical_tip="$(git rev-parse HEAD)"
           if [ "$EVENT_NAME" = "workflow_run" ] && [ -n "${EVENT_RUN_ID:-}" ]; then
             run_id="$EVENT_RUN_ID"
             event_sha="${EVENT_SHA:-}"
@@ -104,7 +105,7 @@ jobs:
                   continue
                 }
               fi
-              if git merge-base --is-ancestor "$candidate_sha" HEAD 2>/dev/null; then
+              if git merge-base --is-ancestor "$candidate_sha" "$canonical_tip" 2>/dev/null; then
                 run_id="$candidate_run"
                 event_sha="$candidate_sha"
                 break
@@ -119,7 +120,8 @@ jobs:
           fi
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
           echo "event_sha=$event_sha" >> "$GITHUB_OUTPUT"
-          echo "Resolved verified source run $run_id (event head ${event_sha:-unknown})"
+          echo "canonical_tip=$canonical_tip" >> "$GITHUB_OUTPUT"
+          echo "Resolved verified source run $run_id (event head ${event_sha:-unknown}, canonical tip $canonical_tip)"
 
       - name: Download immutable verified snapshot
         uses: actions/download-artifact@v4
@@ -134,7 +136,7 @@ jobs:
       # against a later default-branch commit. The artifact is the immutable record
       # of what was actually validated, so bind the publisher to its checkout SHA.
       # We still fail closed on run identity, manifest version/status, SHA syntax,
-      # and later verify that the checkout SHA is an ancestor of canonical main.
+      # and verify the source against the immutable canonical tip captured above.
       - name: Resolve immutable artifact checkout provenance
         id: artifact_source
         env:
@@ -166,11 +168,6 @@ jobs:
           PY
           cat "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 1
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -184,21 +181,34 @@ jobs:
         env:
           SOURCE_SHA: ${{ steps.artifact_source.outputs.source_sha }}
           EVENT_SHA: ${{ steps.source.outputs.event_sha }}
+          CANONICAL_TIP: ${{ steps.source.outputs.canonical_tip }}
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=200 origin main
-          git fetch --no-tags --depth=1 origin "$SOURCE_SHA"
+          git cat-file -e "$CANONICAL_TIP^{commit}"
+          if ! git cat-file -e "$SOURCE_SHA^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$SOURCE_SHA"
+          fi
           git cat-file -e "$SOURCE_SHA^{commit}"
-          # The validated checkout must be on canonical main history. This prevents
-          # accepting an artifact that merely claims an arbitrary repository SHA.
-          if ! git merge-base --is-ancestor "$SOURCE_SHA" origin/main; then
-            echo "::error::VERIFIED_ARTIFACT_SOURCE_NOT_ON_MAIN_HISTORY source=$SOURCE_SHA"
+
+          # Validate against the exact canonical tip used when the source run was
+          # selected. Do not replace that proof with a later shallow checkout: on
+          # this high-churn repository a valid ancestor can move beyond a shallow
+          # boundary within minutes and otherwise produce a false negative.
+          if ! git merge-base --is-ancestor "$SOURCE_SHA" "$CANONICAL_TIP" 2>/dev/null; then
+            echo "::notice::PROVENANCE_HISTORY_DEEPEN source=$SOURCE_SHA canonical_tip=$CANONICAL_TIP"
+            git fetch --no-tags --deepen=2000 origin main || true
+          fi
+          if ! git merge-base --is-ancestor "$SOURCE_SHA" "$CANONICAL_TIP" 2>/dev/null; then
+            echo "::error::VERIFIED_ARTIFACT_SOURCE_NOT_ON_RESOLVED_MAIN_HISTORY source=$SOURCE_SHA canonical_tip=$CANONICAL_TIP"
             exit 1
           fi
+
           # When GitHub's workflow event head differs because the scheduled job was
           # queued, require that event head is also on the same forward history.
           if [ -n "${EVENT_SHA:-}" ] && [ "$EVENT_SHA" != "$SOURCE_SHA" ]; then
-            git fetch --no-tags --depth=200 origin "$EVENT_SHA" || true
+            if ! git cat-file -e "$EVENT_SHA^{commit}" 2>/dev/null; then
+              git fetch --no-tags --depth=1 origin "$EVENT_SHA" || true
+            fi
             if git cat-file -e "$EVENT_SHA^{commit}" 2>/dev/null; then
               if ! git merge-base --is-ancestor "$EVENT_SHA" "$SOURCE_SHA"; then
                 echo "::error::VERIFIED_ARTIFACT_EVENT_HISTORY_DIVERGED event=$EVENT_SHA source=$SOURCE_SHA"
@@ -207,6 +217,7 @@ jobs:
               echo "VERIFIED_ARTIFACT_QUEUE_ADVANCE event=$EVENT_SHA validated_checkout=$SOURCE_SHA"
             fi
           fi
+          echo "VERIFIED_ARTIFACT_PROVENANCE_OK source=$SOURCE_SHA canonical_tip=$CANONICAL_TIP"
 
       - name: Validate and publish verified snapshot atomically
         run: |
