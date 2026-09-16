@@ -25,11 +25,30 @@ def _row(**overrides):
     return row
 
 
-def test_gate_accepts_90d_15k_research_case():
+def test_gate_accepts_90d_15k_actionable_case():
     ok, meta = mod._eligibility(_row(), datetime(2026, 9, 7, tzinfo=timezone.utc))
     assert ok is True
     assert meta["liquidity_usd"] == 20_000
     assert meta["market_age_days"] >= 90
+
+
+def test_gate_accepts_expanded_verified_solana_identity():
+    row = {
+        "network": "solana",
+        "network_verified": True,
+        "token_address": "Token1111111111111111111111111111111111111",
+        "dex_pair_address": "Pair11111111111111111111111111111111111111",
+        "dex_link_type": "DEXSCREENER_VERIFIED_PAIR",
+        "market_age_verified": True,
+        "market_age_min_days": 120,
+        "dex_pair_liquidity_usd": 25_000,
+        "revival_score_verified": 70,
+        "live_h1": {"volume_h1": 21_000, "buys_h1": 20, "sells_h1": 15},
+        "active_display_gate": {"pass": True},
+    }
+    ok, meta = mod._eligibility(row, datetime(2026, 9, 7, tzinfo=timezone.utc))
+    assert ok is True
+    assert meta["market_age_verified"] is True
 
 
 def test_gate_accepts_30_txns_and_rejects_29():
@@ -57,6 +76,7 @@ def test_forward_only_baseline_then_three_fire_transition(tmp_path, monkeypatch)
     src.write_text(json.dumps([_row()]), encoding="utf-8")
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+    monkeypatch.setenv("REVIVAL_90D_LIVE_REFRESH", "0")
     messages = []
 
     def fake_send(token, chat_id, text):
@@ -80,12 +100,13 @@ def test_forward_only_baseline_then_three_fire_transition(tmp_path, monkeypatch)
     assert fired["delivered_count"] == 1
     assert again["delivered_count"] == 0
     assert len(messages) == 1
-    assert messages[0].startswith("🔥🔥🔥 REVIVAL 90D / 15K")
+    assert messages[0].startswith("🔥🔥🔥 REAL ALERT — REVIVAL 90D / 15K")
     assert "Activity H1: 70 tx ✅ min 30" in messages[0]
-    assert "Canonical Revival gate: 90d / $15K ✅" in messages[0]
-    assert "180d/$50K" not in messages[0]
-    assert fired["truth_contract"]["research_only"] is True
-    assert fired["truth_contract"]["production_gate_changed"] is False
+    assert "Canonical Revival lane: 90d / $15K ✅" in messages[0]
+    assert "RESEARCH ONLY" not in messages[0]
+    assert fired["truth_contract"]["research_only"] is False
+    assert fired["truth_contract"]["actionable_only"] is True
+    assert fired["truth_contract"]["automatic_buy"] is False
     assert fired["truth_contract"]["minimum_txns_h1"] == 30
     assert fired["truth_contract"]["no_historical_backfill"] is True
 
@@ -94,6 +115,7 @@ def test_no_secrets_never_marks_sent(tmp_path, monkeypatch):
     (tmp_path / mod.SOURCE).write_text(json.dumps([_row()]), encoding="utf-8")
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    monkeypatch.setenv("REVIVAL_90D_LIVE_REFRESH", "0")
     result = mod.run(str(tmp_path), now=datetime(2026, 9, 7, 19, 0, tzinfo=timezone.utc))
     assert result["configured"] is False
     assert result["delivered_count"] == 0
