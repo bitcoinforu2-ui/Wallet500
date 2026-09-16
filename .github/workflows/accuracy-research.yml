@@ -8,17 +8,8 @@ on:
       - 'src/wallet500/accuracy_research.py'
       - 'tests/test_accuracy_research.py'
       - '.github/workflows/accuracy-research.yml'
-      - 'data/research-sample-report.json'
-      - 'data/research-sample-ledger.json'
-      - 'data/real-alert-10usd-ledger.json'
-      - 'data/decision-only-shadow.json'
-  workflow_run:
-    workflows:
-      - "Wallet500 Near Alert Observatory"
-      - "Wallet500 New REAL ALERT $10 Paper Tracker Repair"
-    types: [completed]
   schedule:
-    - cron: '7,22,37,52 * * * *'
+    - cron: '12,42 * * * *'
 
 permissions:
   contents: write
@@ -29,7 +20,6 @@ concurrency:
 
 jobs:
   research:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -64,12 +54,13 @@ jobs:
           if (d.get('barrier_probabilities') or {}).get('probabilities_publishable') is not False: raise SystemExit('UNORDERED_PATH_PROBABILITY_LEAK')
           print('ACCURACY_RESEARCH_VALID', d.get('sample'), d.get('headline'))
           PY
-      - name: Publish Accuracy Lab snapshot atomically
+      - name: Publish Accuracy Lab snapshot with contention-safe CAS
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name "wallet500-research-bot"
-          git config user.email "wallet500-research-bot@users.noreply.github.com"
           python scripts/atomic_publish.py \
+            --github-api-cas \
             --message 'research: refresh accuracy lab' \
             data/accuracy-research.json
