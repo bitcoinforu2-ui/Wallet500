@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-import importlib.util
+import subprocess
+import sys
+import textwrap
+
+
+def test_cex_action_freshness_and_reactivation_contract():
+    code = r'''
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from scripts import run_cex_action_guarded as guard
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "run_cex_action_guarded.py"
-SPEC = importlib.util.spec_from_file_location("wallet500_run_cex_action_guarded_test", SCRIPT)
-assert SPEC is not None and SPEC.loader is not None
-guard = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(guard)
-
-
-def _row(observed_at: str, changes: tuple[float, float]) -> dict:
+def row(observed_at, changes):
     return {
         "symbol": "TESTUSDT",
         "identity_status": "DEX_VERIFIED",
@@ -62,32 +61,38 @@ def _row(observed_at: str, changes: tuple[float, float]) -> dict:
         },
     }
 
+# Exact regression: a 12-day-old discovery with flat/negative current markets
+# must NOT be presented as a current BUY_ZONE.
+stale = (datetime.now(timezone.utc) - timedelta(days=12)).isoformat()
+ok, metrics = guard.action_eligibility(row(stale, (-0.1, -0.2)))
+assert ok is False, metrics
+assert "STALE_SIGNAL_NO_FRESH_REACTIVATION" in metrics["blockers"], metrics
+assert metrics["action_state"] == "WAIT_FRESH_REACTIVATION", metrics
+assert metrics["signal_age_hours"] > guard.MAX_FRESH_SIGNAL_AGE_HOURS, metrics
+assert metrics["fresh_reactivation_confirmations"] == 0, metrics
 
-def test_twelve_day_old_signal_with_flat_current_market_is_not_actionable():
-    observed = (datetime.now(timezone.utc) - timedelta(days=12)).isoformat()
-    ok, metrics = guard.action_eligibility(_row(observed, (-0.1, -0.2)))
-    assert ok is False
-    assert "STALE_SIGNAL_NO_FRESH_REACTIVATION" in metrics["blockers"]
-    assert metrics["action_state"] == "WAIT_FRESH_REACTIVATION"
-    assert metrics["signal_age_hours"] > guard.MAX_FRESH_SIGNAL_AGE_HOURS
-    assert metrics["fresh_reactivation_confirmations"] == 0
+# An old discovery may re-enter only when CURRENT independent CEX markets
+# confirm new momentum now.
+ok, metrics = guard.action_eligibility(row(stale, (7.0, 6.0)))
+assert ok is True, metrics
+assert metrics["blockers"] == [], metrics
+assert metrics["action_state"] == "REENTRY_ZONE", metrics
+assert metrics["action_basis"] == "FRESH_MULTI_CEX_REACTIVATION", metrics
+assert metrics["fresh_reactivation_confirmations"] == 2, metrics
+assert metrics["fresh_reactivation_exchanges"] == ["gate", "mexc"], metrics
 
-
-def test_stale_signal_can_reenter_only_after_fresh_multi_cex_momentum():
-    observed = (datetime.now(timezone.utc) - timedelta(days=12)).isoformat()
-    ok, metrics = guard.action_eligibility(_row(observed, (7.0, 6.0)))
-    assert ok is True
-    assert metrics["blockers"] == []
-    assert metrics["action_state"] == "REENTRY_ZONE"
-    assert metrics["action_basis"] == "FRESH_MULTI_CEX_REACTIVATION"
-    assert metrics["fresh_reactivation_confirmations"] == 2
-    assert metrics["fresh_reactivation_exchanges"] == ["gate", "mexc"]
-
-
-def test_fresh_signal_keeps_normal_buy_zone():
-    observed = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-    ok, metrics = guard.action_eligibility(_row(observed, (4.0, 3.5)))
-    assert ok is True
-    assert metrics["action_state"] == "BUY_ZONE"
-    assert metrics["action_basis"] == "FRESH_SIGNAL"
-    assert metrics["signal_freshness"] == "FRESH"
+# A genuinely recent signal retains the normal BUY_ZONE path.
+fresh = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+ok, metrics = guard.action_eligibility(row(fresh, (4.0, 3.5)))
+assert ok is True, metrics
+assert metrics["action_state"] == "BUY_ZONE", metrics
+assert metrics["action_basis"] == "FRESH_SIGNAL", metrics
+assert metrics["signal_freshness"] == "FRESH", metrics
+'''
+    proc = subprocess.run(
+        [sys.executable, "-c", textwrap.dedent(code)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert proc.returncode == 0, proc.stdout + "\n" + proc.stderr
