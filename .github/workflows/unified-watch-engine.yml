@@ -8,7 +8,10 @@ on:
     branches: [main]
     paths:
       - 'scripts/unified_watch_engine.py'
+      - 'scripts/intelligence_fusion.py'
       - 'data/unified-watch-config.json'
+      - 'data/close-watch-intelligence-policy.json'
+      - 'data/close-watch-events.json'
       - '.github/workflows/unified-watch-engine.yml'
 
 permissions:
@@ -27,27 +30,32 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Validate unified watcher syntax and config
+      - name: Validate unified watcher and intelligence fusion
         run: |
-          python -m py_compile scripts/unified_watch_engine.py
+          python -m py_compile scripts/unified_watch_engine.py scripts/intelligence_fusion.py
           python -m json.tool data/unified-watch-config.json >/dev/null
           python -m json.tool data/unified-watch-state.json >/dev/null
+          python -m json.tool data/close-watch-intelligence-policy.json >/dev/null
+          python -m json.tool data/close-watch-events.json >/dev/null
 
-      - name: Run fail-closed verified watchlist
+      - name: Fuse cross-domain intelligence evidence
+        run: python scripts/intelligence_fusion.py
+
+      - name: Run fail-closed verified market watchlist
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scripts/unified_watch_engine.py
 
-      - name: Persist verified forward-only state
+      - name: Persist verified forward-only state and intelligence snapshot
         run: |
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/unified-watch-state.json
+          git add data/unified-watch-state.json data/close-watch-intelligence.json || true
           if git diff --cached --quiet; then
             echo 'UNIFIED_WATCH_STATE_UNCHANGED'
             exit 0
           fi
-          git commit -m 'chore: update unified watch state [skip ci]'
+          git commit -m 'chore: update unified watch intelligence state [skip ci]'
           git push
