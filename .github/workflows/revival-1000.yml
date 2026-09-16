@@ -14,6 +14,7 @@ on:
       - 'src/wallet500/revival_strict_strength.py'
       - 'src/wallet500/revival_strict_t0.py'
       - 'src/wallet500/mature_age_gate.py'
+      - 'src/wallet500/revival_contract_normalizer.py'
       - 'src/wallet500/paid_visibility_lab.py'
       - 'tests/test_revival_1000.py'
       - 'tests/test_revival_absorption_signal.py'
@@ -22,15 +23,13 @@ on:
       - 'tests/test_mature_age_gate.py'
       - 'tests/test_paid_visibility_lab.py'
       - '.github/workflows/revival-1000.yml'
-      - 'dashboard-revival1000.html'
-      - 'dashboard-live-price.js'
 
 permissions:
   contents: write
 
 concurrency:
   group: wallet500-revival-solana-expanded-publisher
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   collect:
@@ -39,6 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
@@ -73,10 +73,12 @@ jobs:
         run: python -m wallet500.revival_strict_strength
       - name: Lock immutable first green STRICT discovery price and strength
         run: python -m wallet500.revival_strict_t0
-      - name: Enforce verified 60-day mature-coin hard gate
+      - name: Enforce verified 90-day mature-coin hard gate
         env:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: python -m wallet500.mature_age_gate --revival
+      - name: Normalize canonical 90-day count contract
+        run: python -m wallet500.revival_contract_normalizer
       - name: Validate expanded truth contract
         run: |
           python - <<'PY'
@@ -89,6 +91,9 @@ jobs:
           if d.get('no_hindsight') is not True or d.get('candidate_cap') is not None: raise SystemExit('REVIVAL_TRUTH_OR_CAP_VIOLATION')
           age_gate=d.get('age_gate') or {}
           if age_gate.get('status')!='ENFORCED_FAIL_CLOSED' or int(age_gate.get('minimum_market_age_days') or 0)!=90: raise SystemExit('REVIVAL_90D_AGE_GATE_MISSING')
+          age_contract=d.get('age_count_contract') or {}
+          if age_contract.get('canonical_field')!='age_verified_90d_plus' or int(age_contract.get('minimum_market_age_days') or 0)!=90: raise SystemExit('REVIVAL_AGE_COUNT_CONTRACT_INVALID')
+          if age_contract.get('semantic_drift_forbidden') is not True: raise SystemExit('REVIVAL_AGE_SEMANTIC_DRIFT_GUARD_MISSING')
           contract=d.get('discovery_expansion_contract') or {}
           if contract.get('version')!='REVIVAL_DISCOVERY_ABSORPTION_EXPANSION_V2': raise SystemExit('DISCOVERY_EXPANSION_V2_CONTRACT_MISSING')
           if contract.get('fixed_candidate_cap') is not None or contract.get('production_portfolio_impact')!='NONE': raise SystemExit('DISCOVERY_EXPANSION_SAFETY_INVALID')
@@ -135,7 +140,7 @@ jobs:
           strict=sum(1 for x in coins if (x.get('order_flow_absorption') or {}).get('signal') is True)
           candidates=sum(1 for x in coins if x.get('absorption_candidate_proxy') is True)
           if counts.get('universe')!=len(coins) or counts.get('dex_verified_pairs')!=verified: raise SystemExit('AGGREGATE_COUNT_MISMATCH')
-          if counts.get('age_verified_60d_plus')!=len(coins): raise SystemExit('AGE_COUNT_MISMATCH')
+          if counts.get('age_verified_90d_plus')!=len(coins): raise SystemExit('AGE_90D_COUNT_MISMATCH')
           if counts.get('absorption_proxy_watch')!=strict or counts.get('absorption_candidate_proxy_watch')!=candidates: raise SystemExit('ABSORPTION_COUNT_MISMATCH')
           if counts.get('absorption_discovery_expansion_added')!=expansion: raise SystemExit('EXPANSION_COUNT_MISMATCH')
           if counts.get('absorption_discovery_strict_added')!=strict_expansion: raise SystemExit('STRICT_EXPANSION_COUNT_MISMATCH')
@@ -169,21 +174,28 @@ jobs:
                   if int(o.get('horizon_min') or 0) not in {0,60,360,1440,4320}: raise SystemExit('PAID_EVENT_HORIZON_INVALID')
           print('PAID_VISIBILITY_LAB_V1_TRUTH_OK', {'active':summary.get('active_paid_events_now'),'solana':summary.get('active_solana_paid_events_now'),'events':summary.get('total_events_observed')})
           PY
-      - name: Publish expanded Revival, paid visibility lab, immutable strict T0, and immutable base T0 state
+      - name: Publish expanded Revival snapshot with contention-safe CAS
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-truth-bot'
-          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
-          tmp="$(mktemp -d)"
-          for f in revival-1000-latest.json revival-1000-state.json revival-strict-t0.json paid-visibility-ledger.json paid-visibility-summary.json; do cp "data/$f" "$tmp/$f"; done
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
-            for f in revival-1000-latest.json revival-1000-state.json revival-strict-t0.json paid-visibility-ledger.json paid-visibility-summary.json; do cp "$tmp/$f" "data/$f"; done
-            git add data/revival-1000-latest.json data/revival-1000-state.json data/revival-strict-t0.json data/paid-visibility-ledger.json data/paid-visibility-summary.json
-            if git diff --cached --quiet; then echo 'REVIVAL_AND_PAID_VISIBILITY_NO_DATA_CHANGE'; exit 0; fi
-            git commit -m 'data: refresh Revival, strict strength/T0, and paid visibility experiment'
-            if git push origin HEAD:main; then echo 'REVIVAL_AND_PAID_VISIBILITY_PUBLISH_OK'; exit 0; fi
-            echo "REVIVAL_AND_PAID_VISIBILITY_PUBLISH_RETRY attempt=$attempt"; sleep 3
-          done
-          echo '::error::REVIVAL_AND_PAID_VISIBILITY_PUBLISH_RACE_EXHAUSTED'; exit 1
+          source_sha="$(git rev-parse HEAD)"
+          set +e
+          python scripts/atomic_publish.py \
+            --hybrid-cas \
+            --base "$source_sha" \
+            --fail-on-newer \
+            --message 'data: refresh Revival, strict strength/T0, and paid visibility experiment' \
+            data/revival-1000-latest.json \
+            data/revival-1000-state.json \
+            data/revival-strict-t0.json \
+            data/paid-visibility-ledger.json \
+            data/paid-visibility-summary.json
+          rc=$?
+          set -e
+          if [ "$rc" -eq 75 ]; then
+            echo 'REVIVAL_SNAPSHOT_SUPERSEDED_BY_NEWER_PUBLISH'
+            exit 0
+          fi
+          exit "$rc"
