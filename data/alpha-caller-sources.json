@@ -1,16 +1,46 @@
 {
-  "version": 1,
+  "version": 2,
   "free_only": true,
   "sources": [
     {
-      "id": "swarm_public_terminal",
-      "name": "SWARM Public Terminal",
-      "url": "https://swarmx.info/terminal",
+      "id": "swarm_home",
+      "name": "SWARM Public Alpha",
+      "url": "https://swarmx.info/",
       "enabled": true,
       "mode": "PUBLIC_DISCOVERY",
       "confidence_cap": 45,
       "timestamp_semantics": "wallet500_first_seen",
-      "notes": "Public discovery only. Do not infer original caller timestamp or individual caller-token association unless explicitly present in source payload."
+      "notes": "Public discovery. SWARM caller performance is external evidence; Wallet500 independently verifies token identity and market state."
+    },
+    {
+      "id": "swarm_leaderboard",
+      "name": "SWARM Public Leaderboard",
+      "url": "https://swarmx.info/terminal/leaderboard",
+      "enabled": true,
+      "mode": "PUBLIC_DISCOVERY",
+      "confidence_cap": 45,
+      "timestamp_semantics": "wallet500_first_seen",
+      "notes": "Leaderboard discovery only; never treat ranking as a Wallet500 buy signal."
+    },
+    {
+      "id": "alphacino_free",
+      "name": "Alphacino Free Alpha Feed",
+      "url": "https://alphacino.io/",
+      "enabled": true,
+      "mode": "PUBLIC_DISCOVERY_DELAYED",
+      "confidence_cap": 35,
+      "timestamp_semantics": "wallet500_first_seen",
+      "notes": "Free/public layer is described by provider as delayed. Never infer original call time from scrape observation."
+    },
+    {
+      "id": "alphatrace_public",
+      "name": "Alphatrace Public Best Calls",
+      "url": "https://t.me/s/alphatracebestcalls",
+      "enabled": true,
+      "mode": "PUBLIC_DISCOVERY",
+      "confidence_cap": 35,
+      "timestamp_semantics": "wallet500_first_seen",
+      "notes": "Public Telegram preview only; discovery evidence remains untrusted until Wallet500 gates pass."
     }
   ]
 }
