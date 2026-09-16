@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from wallet500.cex_fast_promotion import (
     _canonical_symbol,
     _eligibility,
     _market_row,
 )
+from wallet500.cex_reactivation_hold import evaluate_hold
 
 
 def _row(**overrides):
@@ -128,3 +131,91 @@ def test_research_source_only_promotes_after_hard_truth_gates_pass():
     ok, metrics = _eligibility(row)
     assert ok is False
     assert "CEX_DEX_PRICE_COHERENCE_NOT_VERIFIED" in metrics["blockers"]
+
+
+def test_reactivation_first_observation_is_pending_not_confirmed():
+    now = datetime(2026, 9, 16, 17, 17, tzinfo=timezone.utc)
+    decision = evaluate_hold(
+        None,
+        now=now,
+        pair_address="0xPAIR",
+        current_pair_price=0.0041665,
+    )
+    assert decision["state"] == "PENDING_HOLD"
+    assert decision["confirmed"] is False
+    assert decision["entry"]["trigger_price_usd"] == 0.0041665
+
+
+def test_reactivation_followup_too_early_stays_pending_and_trigger_is_immutable():
+    now = datetime(2026, 9, 16, 17, 17, tzinfo=timezone.utc)
+    first = evaluate_hold(None, now=now, pair_address="0xPAIR", current_pair_price=0.0041665)
+    follow = evaluate_hold(
+        first["entry"],
+        now=now + timedelta(minutes=3),
+        pair_address="0xPAIR",
+        current_pair_price=0.00420,
+    )
+    assert follow["state"] == "PENDING_HOLD"
+    assert follow["confirmed"] is False
+    assert follow["entry"]["triggered_at"] == first["entry"]["triggered_at"]
+    assert follow["entry"]["trigger_price_usd"] == first["entry"]["trigger_price_usd"]
+
+
+def test_reactivation_followup_after_delay_confirms_only_when_exact_pair_holds():
+    now = datetime(2026, 9, 16, 17, 17, tzinfo=timezone.utc)
+    first = evaluate_hold(None, now=now, pair_address="0xPAIR", current_pair_price=0.0041665)
+    held = evaluate_hold(
+        first["entry"],
+        now=now + timedelta(minutes=10),
+        pair_address="0xPAIR",
+        current_pair_price=0.00422,
+    )
+    assert held["state"] == "CONFIRMED_HOLD"
+    assert held["confirmed"] is True
+    assert held["change_since_trigger_pct"] > 0
+
+
+def test_reactivation_followup_below_trigger_is_fade_and_requires_reclaim():
+    now = datetime(2026, 9, 16, 17, 17, tzinfo=timezone.utc)
+    first = evaluate_hold(None, now=now, pair_address="0xPAIR", current_pair_price=0.0041665)
+    faded = evaluate_hold(
+        first["entry"],
+        now=now + timedelta(minutes=10),
+        pair_address="0xPAIR",
+        current_pair_price=0.003924,
+    )
+    assert faded["state"] == "FADE_RECLAIM_REQUIRED"
+    assert faded["confirmed"] is False
+    assert faded["entry"]["trigger_price_usd"] == 0.0041665
+
+    reclaimed = evaluate_hold(
+        faded["entry"],
+        now=now + timedelta(minutes=14),
+        pair_address="0xPAIR",
+        current_pair_price=0.00418,
+    )
+    assert reclaimed["state"] == "CONFIRMED_HOLD"
+    assert reclaimed["confirmed"] is True
+
+
+def test_reactivation_pair_change_or_expired_window_starts_new_trigger():
+    now = datetime(2026, 9, 16, 17, 17, tzinfo=timezone.utc)
+    first = evaluate_hold(None, now=now, pair_address="0xPAIR1", current_pair_price=0.0040)
+    changed = evaluate_hold(
+        first["entry"],
+        now=now + timedelta(minutes=10),
+        pair_address="0xPAIR2",
+        current_pair_price=0.0041,
+    )
+    assert changed["state"] == "PENDING_HOLD"
+    assert changed["entry"]["pair_address"] == "0xPAIR2"
+    assert changed["entry"]["trigger_price_usd"] == 0.0041
+
+    expired = evaluate_hold(
+        changed["entry"],
+        now=now + timedelta(minutes=31),
+        pair_address="0xPAIR2",
+        current_pair_price=0.0042,
+    )
+    assert expired["state"] == "PENDING_HOLD"
+    assert expired["entry"]["trigger_price_usd"] == 0.0042
