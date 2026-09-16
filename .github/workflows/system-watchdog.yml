@@ -3,13 +3,12 @@ name: Wallet500 Independent System Watchdog
 on:
   workflow_dispatch:
   schedule:
-    # Lightweight integrity/availability guard twice per hour.
-    # The deeper Wallet500 Full Guard remains the hourly second layer.
     - cron: '3,33 * * * *'
   push:
     branches: [main]
     paths:
       - 'src/wallet500/system_watchdog.py'
+      - 'src/wallet500/operational_guard.py'
       - 'tests/test_system_watchdog.py'
       - '.github/workflows/system-watchdog.yml'
 
@@ -19,7 +18,7 @@ permissions:
 
 concurrency:
   group: wallet500-independent-system-watchdog
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   watchdog:
@@ -99,6 +98,11 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m wallet500.system_watchdog
 
+      - name: Add Actions capacity, publish freshness and starvation guard
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m wallet500.operational_guard
+
       - name: Validate watchdog outputs
         run: |
           python -m json.tool data/system-watchdog.json >/dev/null
@@ -116,40 +120,29 @@ jobs:
               'INCIDENTS_ARE_DEDUPED_AND_RATE_LIMITED',
               'CURRENT_REAL_ALERTS_ARE_BASELINED_ON_FIRST_WATCHDOG_RUN',
               'NEW_REAL_ALERT_TELEGRAM_GAPS_ARE_DETECTED_BY_EXACT_PAIR_TRANSITION',
+              'GLOBAL_ACTIONS_QUEUE_AND_RUN_PRESSURE_IS_MEASURED',
+              'NEWER_FAILED_REVIVAL_PUBLICATION_IS_NOT_HEALTHY',
+              'SUSTAINED_ZERO_ACTIVE_WITH_QUALIFIED_SCAN_INPUT_IS_STARVATION',
+              'OPERATIONAL_GUARD_NEVER_CHANGES_TRADING_POLICY',
           }
           if not required.issubset(rules):
               raise SystemExit('WATCHDOG_TRUTH_CONTRACT_INCOMPLETE')
-          print('WATCHDOG_VALID', {'overall':r.get('overall'),'incidents':r.get('incident_count'),'critical':r.get('critical_count')})
+          checks=r.get('checks') or {}
+          if 'github_actions_capacity' not in checks or 'revival_publish_freshness' not in checks or 'candidate_starvation' not in checks:
+              raise SystemExit('WATCHDOG_OPERATIONAL_CHECKS_MISSING')
+          print('WATCHDOG_VALID', {'overall':r.get('overall'),'incidents':r.get('incident_count'),'critical':r.get('critical_count'),'high':r.get('high_count')})
           PY
 
-      - name: Persist watchdog state and report
+      - name: Persist watchdog state and report with contention-safe CAS
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-watchdog-bot'
-          git config user.email 'wallet500-watchdog-bot@users.noreply.github.com'
-          tmp="$(mktemp -d)"
-          cp data/system-watchdog.json "$tmp/report.json"
-          cp data/system-watchdog-state.json "$tmp/state.json"
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
-            cp "$tmp/report.json" data/system-watchdog.json
-            cp "$tmp/state.json" data/system-watchdog-state.json
-            git add data/system-watchdog.json data/system-watchdog-state.json
-            if git diff --cached --quiet; then
-              echo 'No watchdog state changes'
-              exit 0
-            fi
-            git commit -m 'watchdog: refresh independent system health sentinel'
-            if git push origin HEAD:main; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 5 ]; then
-              echo 'Watchdog state publish failed after retries'
-              exit 1
-            fi
-            sleep $((attempt * 2))
-          done
+          python scripts/atomic_publish.py \
+            --github-api-cas \
+            --message 'watchdog: refresh independent system health sentinel' \
+            data/system-watchdog.json \
+            data/system-watchdog-state.json
 
       - name: Surface unresolved critical incidents in Actions
         if: always()
