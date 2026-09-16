@@ -7,6 +7,7 @@ Keeps discovery/research intact while making Telegram action-only:
 - exact denylist is enforced before promotion
 - stale/failed discoveries and already-extended moves do not alert
 - BUY_ZONE means entry timing is still acceptable, not merely that discovery was correct
+- stale historical signals need a fresh multi-CEX reactivation before a REENTRY_ZONE alert
 - duplicate pools for the same asset collapse to the strongest execution pool
 - Telegram distinguishes exact execution-pair liquidity from the deepest verified
   same-token pool so pair depth is never presented as total asset liquidity
@@ -25,6 +26,14 @@ MAX_ACTION_24H_MOVE_PCT = 35.0
 # A BUY label must not chase a move that already ran materially from engine discovery.
 MAX_GAIN_SINCE_DISCOVERY_PCT = 12.0
 MAX_LOSS_SINCE_DISCOVERY_PCT = -12.0
+# Fast/actionable alerts are expected to be fresh. Older discoveries may only
+# re-enter the action lane after independent CURRENT multi-CEX momentum appears.
+MAX_FRESH_SIGNAL_AGE_HOURS = 6.0
+MAX_SIGNAL_FUTURE_SKEW_MINUTES = 5.0
+MIN_REACTIVATION_CHANGE_PCT = 3.0
+MIN_REACTIVATION_MARKET_TURNOVER_USD = 50_000.0
+MIN_REACTIVATION_TOTAL_TURNOVER_USD = 250_000.0
+MIN_REACTIVATION_CONFIRMATIONS = 2
 
 EXCLUDED_ASSETS = {
     ("solana", "61v8vbaqagmpgdqi4jcawo1dmbghsyhzodcpqnev pump".replace(" ", "").lower()),
@@ -43,6 +52,53 @@ def is_excluded(row: dict) -> bool:
     chain = str(row.get("chain") or "").lower().strip()
     token = str(row.get("token_address") or "").strip().lower()
     return (chain, token) in EXCLUDED_ASSETS
+
+
+def _signal_age_hours(metrics: dict, now: datetime | None = None) -> float | None:
+    signal_at = promo._parse_ts(metrics.get("signal_at"))
+    if signal_at is None:
+        return None
+    now_dt = now or datetime.now(timezone.utc)
+    if now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=timezone.utc)
+    return (now_dt.astimezone(timezone.utc) - signal_at).total_seconds() / 3600.0
+
+
+def _current_reactivation_evidence(row: dict, metrics: dict) -> dict:
+    """Require CURRENT, independent CEX evidence before reviving an old signal.
+
+    Historical milestone score/confirmations are intentionally ignored here. A stale
+    discovery can only become actionable again when at least two live CEX markets
+    independently show positive momentum with non-trivial current turnover.
+    """
+    exchanges = set()
+    qualifying_turnover = 0.0
+    for market in row.get("markets") or []:
+        if not isinstance(market, dict) or market.get("volume_comparable_usd_like", True) is False:
+            continue
+        exchange = str(market.get("exchange") or "").lower().strip()
+        price = float(market.get("price") or 0.0)
+        change = float(market.get("change_24h_pct") or 0.0)
+        turnover = float(market.get("volume_24h") or 0.0)
+        if (
+            exchange
+            and price > 0
+            and change >= MIN_REACTIVATION_CHANGE_PCT
+            and turnover >= MIN_REACTIVATION_MARKET_TURNOVER_USD
+        ):
+            exchanges.add(exchange)
+            qualifying_turnover += turnover
+
+    current_turnover = float(metrics.get("cex_turnover_usd") or 0.0)
+    return {
+        "confirmations": len(exchanges),
+        "exchanges": sorted(exchanges),
+        "qualifying_turnover_usd": round(qualifying_turnover, 4),
+        "passes": bool(
+            len(exchanges) >= MIN_REACTIVATION_CONFIRMATIONS
+            and max(current_turnover, qualifying_turnover) >= MIN_REACTIVATION_TOTAL_TURNOVER_USD
+        ),
+    }
 
 
 def action_eligibility(row: object):
@@ -67,10 +123,47 @@ def action_eligibility(row: object):
     if since < MAX_LOSS_SINCE_DISCOVERY_PCT:
         blockers.append("ACTION_SIGNAL_INVALIDATED_DOWNSIDE")
 
+    signal_age = _signal_age_hours(metrics)
+    reactivation = _current_reactivation_evidence(row, metrics)
+    stale_signal = False
+    if signal_age is None:
+        blockers.append("SIGNAL_TIME_MISSING")
+        freshness = "UNKNOWN"
+    elif signal_age < -(MAX_SIGNAL_FUTURE_SKEW_MINUTES / 60.0):
+        blockers.append("SIGNAL_TIME_IN_FUTURE")
+        freshness = "INVALID_FUTURE"
+    elif signal_age > MAX_FRESH_SIGNAL_AGE_HOURS:
+        stale_signal = True
+        freshness = "STALE_REQUIRES_REACTIVATION"
+        if not reactivation["passes"]:
+            blockers.append("STALE_SIGNAL_NO_FRESH_REACTIVATION")
+    else:
+        freshness = "FRESH"
+
     metrics["since_discovery_pct"] = round(since, 4)
     metrics["max_buy_zone_gain_since_discovery_pct"] = MAX_GAIN_SINCE_DISCOVERY_PCT
-    metrics["action_state"] = "BUY_ZONE" if not blockers else ("WAIT_FOR_RETEST" if blockers == ["WAIT_FOR_RETEST_ABOVE_DISCOVERY"] else "WAIT_OR_REJECT")
-    metrics["blockers"] = sorted(set(blockers))
+    metrics["signal_age_hours"] = round(signal_age, 3) if signal_age is not None else None
+    metrics["signal_freshness"] = freshness
+    metrics["max_fresh_signal_age_hours"] = MAX_FRESH_SIGNAL_AGE_HOURS
+    metrics["fresh_reactivation_confirmations"] = reactivation["confirmations"]
+    metrics["fresh_reactivation_exchanges"] = reactivation["exchanges"]
+    metrics["fresh_reactivation_turnover_usd"] = reactivation["qualifying_turnover_usd"]
+    metrics["fresh_reactivation_required_for_stale_signal"] = True
+
+    blockers = sorted(set(blockers))
+    if not blockers:
+        metrics["action_state"] = "REENTRY_ZONE" if stale_signal else "BUY_ZONE"
+        metrics["action_basis"] = "FRESH_MULTI_CEX_REACTIVATION" if stale_signal else "FRESH_SIGNAL"
+    elif blockers == ["WAIT_FOR_RETEST_ABOVE_DISCOVERY"]:
+        metrics["action_state"] = "WAIT_FOR_RETEST"
+        metrics["action_basis"] = "PRICE_EXTENSION"
+    elif "STALE_SIGNAL_NO_FRESH_REACTIVATION" in blockers:
+        metrics["action_state"] = "WAIT_FRESH_REACTIVATION"
+        metrics["action_basis"] = "STALE_HISTORICAL_SIGNAL_ONLY"
+    else:
+        metrics["action_state"] = "WAIT_OR_REJECT"
+        metrics["action_basis"] = "BLOCKED"
+    metrics["blockers"] = blockers
     return not blockers, metrics
 
 
@@ -239,6 +332,9 @@ def guarded_message(row: dict, metrics: dict, now: str, event_id: str) -> str:
     dex = str(context.get("best_verified_pool_dex") or "verified pool")
     complete = context.get("best_verified_pool_check_complete") is True
     same_pair = context.get("best_verified_pool_is_execution_pair") is True
+    action_state = str(metrics.get("action_state") or "BUY_ZONE")
+    signal_age = metrics.get("signal_age_hours")
+    reactivation_exchanges = [str(x) for x in (metrics.get("fresh_reactivation_exchanges") or [])]
 
     replacement = [f"Execution pair liquidity: {promo._fmt_money(execution)} ✅ min $15K"]
     if complete:
@@ -257,11 +353,35 @@ def guarded_message(row: dict, metrics: dict, now: str, event_id: str) -> str:
         if line.startswith("Execution liquidity:"):
             lines.extend(replacement)
             replaced = True
-        else:
+            continue
+        if line.startswith("🧾 Alert ID:"):
+            lines.append(f"🕒 Current validation time: {now}")
+        if line.startswith("🎯 ENGINE DISCOVERY PRICE:"):
+            line = line.replace("🎯 ENGINE DISCOVERY PRICE:", "🎯 ORIGINAL ENGINE DISCOVERY PRICE:", 1)
+        if line.startswith("⏱ Engine signal time:"):
+            line = line.replace("⏱ Engine signal time:", "⏱ Original engine signal time:", 1)
             lines.append(line)
+            if signal_age is not None:
+                lines.append(f"⏳ Signal age at validation: {float(signal_age):.1f}h")
+            if action_state == "REENTRY_ZONE":
+                exchanges_text = ", ".join(reactivation_exchanges) or "multi-CEX"
+                lines.append(
+                    f"🔄 Fresh reactivation NOW: {int(metrics.get('fresh_reactivation_confirmations') or 0)} CEX · {exchanges_text} ✅"
+                )
+            continue
+        if action_state == "REENTRY_ZONE" and line.startswith("Signal score:"):
+            line = line.replace("Signal score:", "Original signal score:", 1)
+        lines.append(line)
     if not replaced:
         lines.extend(replacement)
-    return "🟢 BUY ZONE — ENTRY TIMING PASSED\n" + "\n".join(lines)
+
+    if action_state == "REENTRY_ZONE":
+        title = "🟢 RE-ENTRY ZONE — FRESH MULTI-CEX REACTIVATION CONFIRMED ✅"
+    else:
+        # Keep the historical prefix for compatibility, but remove the ambiguity:
+        # PASSED means the validation gate passed; it does NOT mean the window expired.
+        title = "🟢 BUY ZONE — ENTRY TIMING PASSED ✅ — VALID NOW"
+    return title + "\n" + "\n".join(lines)
 
 
 def migrate_state(path: Path) -> None:
