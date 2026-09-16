@@ -18,6 +18,12 @@ RUNNING_HIGH = 12
 RUNS_PER_DAY_HIGH = 1500
 FAILURES_PER_DAY_HIGH = 20
 STARVATION_WARN_SECONDS = 90 * 60
+MANAGED_CODES = {
+    "GITHUB_ACTIONS_CAPACITY_PRESSURE",
+    "GITHUB_ACTIONS_FAILURE_PRESSURE",
+    "REVIVAL_NEWER_RUN_FAILED_TO_PUBLISH",
+    "CANDIDATE_STARVATION_SUSTAINED",
+}
 
 
 def _now() -> datetime:
@@ -213,7 +219,13 @@ def run(now: datetime | None = None) -> dict[str, Any]:
         "ok": starvation is None,
     }
 
-    existing = [x for x in report.get("incidents") or [] if isinstance(x, dict)]
+    # Operational incidents are edge-triggered facts, not permanent history.
+    # Drop managed codes that have recovered; keep incidents owned by the base watchdog.
+    existing = [
+        x
+        for x in report.get("incidents") or []
+        if isinstance(x, dict) and str(x.get("code") or "") not in MANAGED_CODES
+    ]
     by_code = {str(x.get("code") or ""): x for x in existing if x.get("code")}
     for item in incidents:
         by_code[str(item["code"])] = item
