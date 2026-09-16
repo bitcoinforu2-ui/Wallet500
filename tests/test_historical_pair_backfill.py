@@ -91,12 +91,12 @@ def test_backfill_adds_exact_pair_horizon_observations_without_mutating_t0():
     assert rec_state["status"] == "TERMINAL_COMPLETE"
 
 
-def test_backfill_does_not_displace_an_earlier_reliable_live_observation():
+def test_backfill_does_not_duplicate_an_equal_or_earlier_reliable_live_observation():
     source = _source()
     first = datetime(2026, 9, 1, tzinfo=timezone.utc)
     source["records"]["x"]["checkpoint_history"] = [
         {
-            "captured_at": (first + timedelta(hours=24, minutes=1)).isoformat(),
+            "captured_at": (first + timedelta(hours=24)).isoformat(),
             "price_usd": 1.25,
             "pair_address": "PAIR",
             "token_address": "TOKEN",
