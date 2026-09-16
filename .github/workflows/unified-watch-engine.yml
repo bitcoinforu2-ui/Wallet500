@@ -9,11 +9,13 @@ on:
     paths:
       - 'scripts/unified_watch_engine.py'
       - 'scripts/free_intelligence_collector.py'
+      - 'scripts/derivatives_intelligence_collector.py'
       - 'scripts/public_alpha_source_collector.py'
       - 'scripts/alpha_caller_intake.py'
       - 'scripts/alpha_caller_reputation.py'
       - 'scripts/intelligence_fusion.py'
       - 'data/unified-watch-config.json'
+      - 'data/derivatives-intelligence-state.json'
       - 'data/alpha-caller-sources.json'
       - 'data/alpha-caller-inbox.json'
       - 'data/alpha-caller-reputation.json'
@@ -37,12 +39,14 @@ jobs:
           fetch-depth: 0
       - name: Validate unified watcher, collectors and intelligence fusion
         run: |
-          python -m py_compile scripts/unified_watch_engine.py scripts/free_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py
-          for f in data/unified-watch-config.json data/unified-watch-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json; do python -m json.tool "$f" >/dev/null; done
+          python -m py_compile scripts/unified_watch_engine.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py
+          for f in data/unified-watch-config.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json; do python -m json.tool "$f" >/dev/null; done
       - name: Collect free cross-domain intelligence
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/free_intelligence_collector.py
+      - name: Collect derivatives and public wallet-perp intelligence
+        run: python scripts/derivatives_intelligence_collector.py
       - name: Stream free public alpha discoveries
         run: python scripts/public_alpha_source_collector.py
       - name: Gate alpha caller signals into Wallet500 evidence
@@ -61,7 +65,7 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/unified-watch-state.json data/close-watch-intelligence.json data/close-watch-events.json data/free-intelligence-collector-state.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json || true
+          git add data/unified-watch-state.json data/derivatives-intelligence-state.json data/close-watch-intelligence.json data/close-watch-events.json data/free-intelligence-collector-state.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json || true
           if git diff --cached --quiet; then echo 'UNIFIED_WATCH_STATE_UNCHANGED'; exit 0; fi
           git commit -m 'chore: update unified watch intelligence state [skip ci]'
           for attempt in 1 2 3; do
