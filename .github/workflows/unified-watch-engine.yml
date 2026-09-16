@@ -20,7 +20,7 @@ permissions:
 
 concurrency:
   group: wallet500-unified-verified-watch
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   watch:
@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Validate unified watcher, free collectors and intelligence fusion
         run: |
@@ -65,4 +65,12 @@ jobs:
             exit 0
           fi
           git commit -m 'chore: update unified watch intelligence state [skip ci]'
-          git push
+          for attempt in 1 2 3; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "STATE_PUSH_RETRY_${attempt}"
+            sleep $((attempt * 2))
+          done
+          echo 'STATE_PERSIST_FAILED_AFTER_RETRIES'
+          exit 1
