@@ -3,7 +3,6 @@ name: Wallet500 Veteran DNA Forward Lab
 on:
   workflow_dispatch:
   schedule:
-    # Deliberately offset from Revival collection (:07/:37) to avoid reading a source while it is being rebuilt.
     - cron: '32 * * * *'
   push:
     branches: [main]
@@ -13,17 +12,13 @@ on:
       - 'src/wallet500/veteran_dna_shadow_eval.py'
       - 'src/wallet500/veteran_dna_context_coverage.py'
       - '.github/workflows/veteran-dna-forward-lab.yml'
-      - 'data/revival-1000-latest.json'
-      - 'data/holder-concentration-shadow.json'
-      - 'data/social-organic-acceleration.json'
-      - 'data/kol-revival-convergence-summary.json'
 
 permissions:
   contents: write
 
 concurrency:
   group: wallet500-veteran-dna-forward-lab
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   lab:
@@ -88,27 +83,16 @@ jobs:
                   if str(ctx.get('exact_pair') or '').lower() != str(r.get('pair_address') or '').lower(): raise SystemExit('T0_CONTEXT_PAIR_MISMATCH')
           print('VETERAN_DNA_FORWARD_OK', s.get('counts'), l.get('last_context_freeze'), e.get('labeled_sample'), v.get('coverage',{}).get('metrics'), e.get('status'))
           PY
-      - name: Publish forward ledger and research audits
+      - name: Publish forward ledger and research audits with contention-safe CAS
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-veteran-dna-bot'
-          git config user.email 'wallet500-veteran-dna-bot@users.noreply.github.com'
-          cp data/veteran-dna-forward-ledger.json /tmp/veteran-dna-forward-ledger.json
-          cp data/veteran-dna-forward-summary.json /tmp/veteran-dna-forward-summary.json
-          cp data/veteran-dna-shadow-eval.json /tmp/veteran-dna-shadow-eval.json
-          cp data/veteran-dna-context-coverage.json /tmp/veteran-dna-context-coverage.json
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
-            cp /tmp/veteran-dna-forward-ledger.json data/veteran-dna-forward-ledger.json
-            cp /tmp/veteran-dna-forward-summary.json data/veteran-dna-forward-summary.json
-            cp /tmp/veteran-dna-shadow-eval.json data/veteran-dna-shadow-eval.json
-            cp /tmp/veteran-dna-context-coverage.json data/veteran-dna-context-coverage.json
-            git add data/veteran-dna-forward-ledger.json data/veteran-dna-forward-summary.json data/veteran-dna-shadow-eval.json data/veteran-dna-context-coverage.json
-            if git diff --cached --quiet; then exit 0; fi
-            git commit -m 'research: advance veteran DNA forward lab'
-            if git push origin HEAD:main; then exit 0; fi
-            sleep 3
-          done
-          exit 1
+          python scripts/atomic_publish.py \
+            --github-api-cas \
+            --message 'research: advance veteran DNA forward lab' \
+            data/veteran-dna-forward-ledger.json \
+            data/veteran-dna-forward-summary.json \
+            data/veteran-dna-shadow-eval.json \
+            data/veteran-dna-context-coverage.json
