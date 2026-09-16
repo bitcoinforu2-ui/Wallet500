@@ -38,18 +38,37 @@ jobs:
         run: python scripts/bulla_cluster_watch.py
 
       - name: Persist BULLA forward-only watch state
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ ! -f data/bulla-cluster-watch-state.json ]; then
+          STATE='data/bulla-cluster-watch-state.json'
+          if [ ! -f "$STATE" ]; then
             echo 'BULLA state file was not produced' >&2
             exit 1
           fi
-          git config user.name 'wallet500-bot'
-          git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/bulla-cluster-watch-state.json
-          if git diff --cached --quiet; then
-            echo 'BULLA_STATE_UNCHANGED'
-            exit 0
-          fi
-          git commit -m 'chore: update BULLA cluster watch state [skip ci]'
-          git push
+          # Update only this state blob through the Contents API. The blob SHA is
+          # refreshed on every retry, so unrelated writers advancing main cannot
+          # cause a non-fast-forward push failure. A same-file race fails closed
+          # and retries against the newest blob instead of overwriting blindly.
+          for attempt in 1 2 3 4 5; do
+            sha="$(gh api "repos/${GITHUB_REPOSITORY}/contents/${STATE}?ref=main" --jq '.sha' 2>/dev/null || true)"
+            encoded="$(base64 -w0 "$STATE")"
+            payload="$(python - "$sha" "$encoded" <<'PY'
+import json, sys
+sha, content = sys.argv[1], sys.argv[2]
+p = {"message": "chore: update BULLA cluster watch state [skip ci]", "content": content, "branch": "main"}
+if sha:
+    p["sha"] = sha
+print(json.dumps(p))
+PY
+)"
+            if printf '%s' "$payload" | gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/${STATE}" --input - >/tmp/bulla-put.json 2>/tmp/bulla-put.err; then
+              echo "BULLA_STATE_PERSISTED_CONTENTS_API attempt=${attempt} commit=$(jq -r '.commit.sha' /tmp/bulla-put.json)"
+              exit 0
+            fi
+            echo "BULLA_STATE_CAS_RETRY attempt=${attempt}: $(cat /tmp/bulla-put.err)" >&2
+            sleep $((attempt * 2))
+          done
+          echo 'BULLA state persistence failed after CAS retries' >&2
+          exit 1
