@@ -9,8 +9,10 @@ on:
     paths:
       - 'scripts/unified_watch_engine.py'
       - 'scripts/free_intelligence_collector.py'
+      - 'scripts/alpha_caller_intake.py'
       - 'scripts/intelligence_fusion.py'
       - 'data/unified-watch-config.json'
+      - 'data/alpha-caller-inbox.json'
       - 'data/close-watch-intelligence-policy.json'
       - 'data/close-watch-events.json'
       - '.github/workflows/unified-watch-engine.yml'
@@ -31,11 +33,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate unified watcher, free collectors and intelligence fusion
+      - name: Validate unified watcher, collectors and intelligence fusion
         run: |
-          python -m py_compile scripts/unified_watch_engine.py scripts/free_intelligence_collector.py scripts/intelligence_fusion.py
+          python -m py_compile scripts/unified_watch_engine.py scripts/free_intelligence_collector.py scripts/alpha_caller_intake.py scripts/intelligence_fusion.py
           python -m json.tool data/unified-watch-config.json >/dev/null
           python -m json.tool data/unified-watch-state.json >/dev/null
+          python -m json.tool data/alpha-caller-inbox.json >/dev/null
+          python -m json.tool data/alpha-caller-candidates.json >/dev/null
           python -m json.tool data/close-watch-intelligence-policy.json >/dev/null
           python -m json.tool data/close-watch-events.json >/dev/null
           python -m json.tool data/free-intelligence-collector-state.json >/dev/null
@@ -44,6 +48,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/free_intelligence_collector.py
+
+      - name: Gate alpha caller signals into Wallet500 evidence
+        run: python scripts/alpha_caller_intake.py
 
       - name: Fuse cross-domain intelligence evidence
         run: python scripts/intelligence_fusion.py
@@ -59,7 +66,7 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/unified-watch-state.json data/close-watch-intelligence.json data/close-watch-events.json data/free-intelligence-collector-state.json || true
+          git add data/unified-watch-state.json data/close-watch-intelligence.json data/close-watch-events.json data/free-intelligence-collector-state.json data/alpha-caller-candidates.json || true
           if git diff --cached --quiet; then
             echo 'UNIFIED_WATCH_STATE_UNCHANGED'
             exit 0
