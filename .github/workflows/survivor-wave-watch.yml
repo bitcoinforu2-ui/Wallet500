@@ -17,16 +17,13 @@ on:
       - 'src/wallet500/survivor_pre_wave_fusion_v6.py'
       - 'src/wallet500/survivor_veteran_gate.py'
       - '.github/workflows/survivor-wave-watch.yml'
-      - 'data/winner-separator-study.json'
-      - 'data/hot-healthy-radar.json'
-      - 'data/wallet-transaction-observations.json'
 
 permissions:
   contents: write
 
 concurrency:
   group: wallet500-survivor-wave-watch
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   watch:
@@ -42,10 +39,10 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install -e .
-      - name: Run exact-pair survivor watch
+      - name: Run research-only exact-pair survivor watch with delivery disabled
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
         run: python -m wallet500.survivor_wave_watch
       - name: Run independent GeckoTerminal exact-pair cross-check
         run: python -m wallet500.survivor_exact_pair_crosscheck
@@ -69,9 +66,9 @@ jobs:
         run: python -m wallet500.survivor_wallet_transaction_intelligence_v5
       - name: Run shadow Pre-Wave Fusion v6
         run: python -m wallet500.survivor_pre_wave_fusion_v6
-      - name: Apply veteran-only alert gate
+      - name: Apply veteran-only research gate
         run: python -m wallet500.survivor_veteran_gate
-      - name: Validate truth contract
+      - name: Validate truth contract and enforce no research delivery
         run: |
           python - <<'PY'
           import json
@@ -128,40 +125,23 @@ jobs:
               if not q.exists(): raise SystemExit('SHADOW_OUTPUT_MISSING:'+qn)
               qd=json.loads(q.read_text())
               if qd.get('research_only') is not True or qd.get('production_gates_changed') is not False: raise SystemExit('SHADOW_OUTPUT_CONTRACT_INVALID:'+qn)
-          print('SURVIVOR_WAVE_WATCH_OK', d.get('survivor_n'), d.get('veteran_age_verified_exact_pair_n'), d.get('actionable_veteran_signal_n'), d.get('suppressed_non_veteran_or_unverified_signal_n'), feed_data.get('provider_status'), tx5.get('verified_flow_token_n'), (cross_data.get('summary') or {}).get('verified_n'))
+          print('SURVIVOR_RESEARCH_ONLY_NO_TELEGRAM_OK', d.get('survivor_n'), d.get('veteran_age_verified_exact_pair_n'), d.get('actionable_veteran_signal_n'), d.get('suppressed_non_veteran_or_unverified_signal_n'), feed_data.get('provider_status'), tx5.get('verified_flow_token_n'), (cross_data.get('summary') or {}).get('verified_n'))
           PY
-      - name: Publish hourly survivor state
+      - name: Publish hourly survivor research state with contention-safe CAS
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-survivor-bot'
-          git config user.email 'wallet500-survivor-bot@users.noreply.github.com'
-          tmp="$(mktemp -d)"
-          cp data/survivor-wave-watch.json "$tmp/survivor-wave-watch.json"
-          cp data/survivor-wave-watch-state.json "$tmp/survivor-wave-watch-state.json"
-          cp data/survivor-signal-enhancer-state.json "$tmp/survivor-signal-enhancer-state.json"
-          cp data/survivor-forward-validation.json "$tmp/survivor-forward-validation.json"
-          cp data/survivor-signal-intelligence-v3.json "$tmp/survivor-signal-intelligence-v3.json"
-          cp data/survivor-model-governor-v4.json "$tmp/survivor-model-governor-v4.json"
-          cp data/survivor-wallet-transaction-intelligence-v5.json "$tmp/survivor-wallet-transaction-intelligence-v5.json"
-          cp data/survivor-pre-wave-fusion-v6.json "$tmp/survivor-pre-wave-fusion-v6.json"
-          cp data/survivor-exact-pair-crosscheck.json "$tmp/survivor-exact-pair-crosscheck.json"
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
-            cp "$tmp/survivor-wave-watch.json" data/survivor-wave-watch.json
-            cp "$tmp/survivor-wave-watch-state.json" data/survivor-wave-watch-state.json
-            cp "$tmp/survivor-signal-enhancer-state.json" data/survivor-signal-enhancer-state.json
-            cp "$tmp/survivor-forward-validation.json" data/survivor-forward-validation.json
-            cp "$tmp/survivor-signal-intelligence-v3.json" data/survivor-signal-intelligence-v3.json
-            cp "$tmp/survivor-model-governor-v4.json" data/survivor-model-governor-v4.json
-            cp "$tmp/survivor-wallet-transaction-intelligence-v5.json" data/survivor-wallet-transaction-intelligence-v5.json
-            cp "$tmp/survivor-pre-wave-fusion-v6.json" data/survivor-pre-wave-fusion-v6.json
-            cp "$tmp/survivor-exact-pair-crosscheck.json" data/survivor-exact-pair-crosscheck.json
-            git add data/survivor-wave-watch.json data/survivor-wave-watch-state.json data/survivor-signal-enhancer-state.json data/survivor-forward-validation.json data/survivor-signal-intelligence-v3.json data/survivor-model-governor-v4.json data/survivor-wallet-transaction-intelligence-v5.json data/survivor-pre-wave-fusion-v6.json data/survivor-exact-pair-crosscheck.json
-            if git diff --cached --quiet; then exit 0; fi
-            git commit -m 'data: refresh hourly survivor wave watch'
-            if git push origin HEAD:main; then exit 0; fi
-            sleep 3
-          done
-          exit 1
+          python scripts/atomic_publish.py \
+            --hybrid-cas \
+            --message 'data: refresh hourly survivor wave research' \
+            data/survivor-wave-watch.json \
+            data/survivor-wave-watch-state.json \
+            data/survivor-signal-enhancer-state.json \
+            data/survivor-forward-validation.json \
+            data/survivor-signal-intelligence-v3.json \
+            data/survivor-model-governor-v4.json \
+            data/survivor-wallet-transaction-intelligence-v5.json \
+            data/survivor-pre-wave-fusion-v6.json \
+            data/survivor-exact-pair-crosscheck.json
