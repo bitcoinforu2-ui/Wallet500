@@ -1,0 +1,69 @@
+name: Wallet500 Historical Pair Backfill
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/wallet500/historical_pair_backfill.py'
+      - 'tests/test_historical_pair_backfill.py'
+      - '.github/workflows/historical-pair-backfill.yml'
+  schedule:
+    - cron: '2 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-historical-pair-backfill
+  cancel-in-progress: true
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install and test historical backfill contract
+        run: |
+          pip install -e . pytest
+          python -m pytest -q tests/test_historical_pair_backfill.py
+      - name: Backfill exact-pair historical outcomes
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          WALLET500_BACKFILL_MAX_RECORDS: '8'
+          WALLET500_BACKFILL_REQUEST_INTERVAL_SECONDS: '7'
+        run: |
+          python -m wallet500.historical_pair_backfill
+      - name: Validate historical backfill isolation contract
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          s=json.loads(Path('data/historical-pair-backfill-state.json').read_text())
+          if s.get('mode')!='RESEARCH_ONLY_HISTORICAL_PAIR_BACKFILL_V1': raise SystemExit('BACKFILL_MODE_DRIFT')
+          if s.get('research_only') is not True or s.get('production_effect') is not False: raise SystemExit('BACKFILL_PRODUCTION_LEAK')
+          if s.get('t0_mutation_forbidden') is not True: raise SystemExit('BACKFILL_T0_GUARD_LOST')
+          g=(s.get('summary') or {}).get('guardrails') or {}
+          if g.get('exact_pair_endpoint_required') is not True: raise SystemExit('BACKFILL_EXACT_PAIR_GUARD_LOST')
+          if g.get('token_orientation_explicit') is not True: raise SystemExit('BACKFILL_TOKEN_ORIENTATION_GUARD_LOST')
+          if g.get('closed_candle_only') is not True or g.get('candle_close_known_at_end_only') is not True: raise SystemExit('BACKFILL_TIME_INTEGRITY_GUARD_LOST')
+          if g.get('t0_mutation') is not False or g.get('production_changes') is not False or g.get('telegram_changes') is not False: raise SystemExit('BACKFILL_ISOLATION_LOST')
+          print('HISTORICAL_BACKFILL_VALID', s.get('summary'))
+          PY
+      - name: Publish backfill state atomically
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "wallet500-research-bot"
+          git config user.email "wallet500-research-bot@users.noreply.github.com"
+          python scripts/atomic_publish.py \
+            --message 'research: backfill exact-pair historical outcomes' \
+            data/research-sample-ledger.json \
+            data/historical-pair-backfill-state.json
