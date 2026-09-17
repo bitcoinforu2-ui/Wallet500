@@ -6,7 +6,12 @@ from pathlib import Path
 
 from wallet500 import telegram_alerts as core
 
-NEW_MARKER = "🆕🆕🆕 NEW COIN — זוהה לראשונה ע״י המנוע 🆕🆕🆕"
+NEW_TO_ENGINE_MARKER = "🆕🆕🆕 NEW TO ENGINE — זוהה לראשונה ע״י המנוע 🆕🆕🆕"
+NEWLY_LAUNCHED_MARKER = "🚀 NEWLY LAUNCHED — מטבע חדש בשוק (≤7 ימים)"
+EXISTING_MARKET_MARKER = "♻️ EXISTING MARKET — חדש למנוע, לא השקה חדשה"
+NEW_LAUNCH_MAX_AGE_DAYS = 7.0
+# Backward-compatible export for tests/importers that used the old constant.
+NEW_MARKER = NEW_TO_ENGINE_MARKER
 LEGACY_ALWAYS_NEW_MARKER = "🆕 NEW REAL ALERT"
 
 _seen_tokens_cache: set[str] | None = None
@@ -88,13 +93,39 @@ def _strip_legacy_new_marker(text: str) -> str:
     return text.replace(f"\n{LEGACY_ALWAYS_NEW_MARKER}", "").replace(LEGACY_ALWAYS_NEW_MARKER, "")
 
 
-def _mark_first_seen(text: str, row: dict) -> str:
-    """Show NEW once per token across PRE_WAVE/REAL_ALERT and future reruns.
+def _verified_market_age_days(row: dict) -> float | None:
+    """Return verified token market age; never infer token launch age from pair age."""
+    if row.get("market_age_verified") is not True:
+        return None
+    raw = row.get("market_age_days")
+    if raw is None:
+        raw = row.get("market_age_min_days")
+    try:
+        age = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return age if age >= 0 else None
 
-    Existing Telegram delivery state is the durable source of truth. Historical
-    tokens are backfilled automatically from prior sent keys, while a token claimed
-    in the current process is protected from receiving a second NEW marker if two
-    alert stages are emitted in the same run.
+
+def _first_seen_labels(row: dict) -> list[str]:
+    labels = [NEW_TO_ENGINE_MARKER]
+    age = _verified_market_age_days(row)
+    if age is None:
+        return labels
+    if age <= NEW_LAUNCH_MAX_AGE_DAYS:
+        labels.append(f"{NEWLY_LAUNCHED_MARKER} — verified age {age:g}d")
+    else:
+        labels.append(f"{EXISTING_MARKET_MARKER} — verified age {age:g}d")
+    return labels
+
+
+def _mark_first_seen(text: str, row: dict) -> str:
+    """Show first-engine-seen once and separately classify actual market age.
+
+    NEW TO ENGINE means this chain+contract has never been delivered by Wallet500.
+    NEWLY LAUNCHED is a separate, stricter label and is emitted only when verified
+    token market age is <=7 days. Pair age is deliberately ignored because an old
+    token can open a new liquidity pool and must not be mislabelled as a new launch.
     """
     identity = _row_identity(row)
     cleaned = _strip_legacy_new_marker(text)
@@ -104,10 +135,11 @@ def _mark_first_seen(text: str, row: dict) -> str:
         return cleaned
 
     _claimed_this_run.add(identity)
+    labels = _first_seen_labels(row)
     lines = cleaned.splitlines()
     if not lines:
-        return NEW_MARKER
-    return "\n".join([lines[0], NEW_MARKER, *lines[1:]])
+        return "\n".join(labels)
+    return "\n".join([lines[0], *labels, *lines[1:]])
 
 
 _original_message = core._message
