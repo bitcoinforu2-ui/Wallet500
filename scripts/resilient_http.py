@@ -22,13 +22,16 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 LOCK_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_INTERVALS = {
-    "api.geckoterminal.com": 2.15,
+    # Public GeckoTerminal quota can be shared by hosted-runner egress IPs.
+    # Deliberately stay far below the nominal public limit.
+    "api.geckoterminal.com": 4.0,
     "api.dexscreener.com": 0.35,
-    "api.gateio.ws": 0.30,
-    "fx-api.gateio.ws": 0.30,
-    "fapi.binance.com": 0.35,
-    "api.bybit.com": 0.30,
-    "www.okx.com": 0.30,
+    "api.gateio.ws": 0.35,
+    "fx-api.gateio.ws": 0.35,
+    "api.hyperliquid.xyz": 0.35,
+    "fapi.binance.com": 0.50,
+    "api.bybit.com": 0.50,
+    "www.okx.com": 0.50,
     "api.mainnet-beta.solana.com": 0.25,
     "eth.blockscout.com": 0.25,
     "base.blockscout.com": 0.25,
@@ -44,6 +47,7 @@ _STATS = {
     "retries": 0,
     "http_429": 0,
     "http_5xx": 0,
+    "cooldowns": 0,
     "errors": 0,
     "hosts": {},
 }
@@ -55,6 +59,7 @@ def _host_stats(host: str) -> dict:
         "cache_hits": 0,
         "retries": 0,
         "http_429": 0,
+        "cooldowns": 0,
         "errors": 0,
     })
 
@@ -63,10 +68,40 @@ def _safe_host(host: str) -> str:
     return "".join(c if c.isalnum() or c in ".-_" else "_" for c in host)
 
 
+def _cooldown_path(host: str) -> Path:
+    return LOCK_DIR / (_safe_host(host) + ".cooldown")
+
+
+def _set_cooldown(host: str, seconds: float) -> None:
+    seconds = max(0.0, float(seconds))
+    if seconds <= 0:
+        return
+    p = _cooldown_path(host)
+    until = time.time() + seconds
+    try:
+        current = 0.0
+        if p.exists():
+            current = float(p.read_text().strip() or 0)
+        if until > current:
+            p.write_text(str(until))
+        _STATS["cooldowns"] += 1
+        _host_stats(host)["cooldowns"] += 1
+    except Exception:
+        pass
+
+
+def _cooldown_wait(host: str) -> float:
+    p = _cooldown_path(host)
+    if not p.exists():
+        return 0.0
+    try:
+        return max(0.0, float(p.read_text().strip() or 0) - time.time())
+    except Exception:
+        return 0.0
+
+
 def _pace(host: str, min_interval: float | None) -> None:
     interval = DEFAULT_INTERVALS.get(host, 0.10) if min_interval is None else max(0.0, float(min_interval))
-    if interval <= 0:
-        return
     lock_path = LOCK_DIR / (_safe_host(host) + ".lock")
     with lock_path.open("a+") as fh:
         if fcntl is not None:
@@ -77,7 +112,9 @@ def _pace(host: str, min_interval: float | None) -> None:
             last = float(raw) if raw else 0.0
         except ValueError:
             last = 0.0
-        wait = interval - (time.monotonic() - last)
+        wait_interval = max(0.0, interval - (time.monotonic() - last))
+        wait_cooldown = _cooldown_wait(host)
+        wait = max(wait_interval, wait_cooldown)
         if wait > 0:
             time.sleep(wait)
         fh.seek(0)
@@ -129,7 +166,7 @@ def request_bytes(
     attempts: int = 5,
     cache_ttl: float = 0,
     min_interval: float | None = None,
-    user_agent: str = "Wallet500-ResilientHTTP/1.0",
+    user_agent: str = "Wallet500-ResilientHTTP/2.0",
 ) -> bytes:
     method = method.upper()
     parsed = urllib.parse.urlparse(url)
@@ -164,22 +201,27 @@ def request_bytes(
             last_error = exc
             code = int(getattr(exc, "code", 0) or 0)
             retryable = code == 429 or 500 <= code < 600
+            retry_after = 0.0
+            try:
+                retry_after = float(exc.headers.get("Retry-After") or 0)
+            except Exception:
+                retry_after = 0.0
             if code == 429:
                 _STATS["http_429"] += 1
                 hs["http_429"] += 1
+                # Even if this caller is fail-closed/no-retry, protect the next
+                # request for this host instead of creating a retry storm.
+                default_cooldown = 15.0 if host == "api.geckoterminal.com" else 5.0
+                _set_cooldown(host, max(retry_after, default_cooldown))
             elif 500 <= code < 600:
                 _STATS["http_5xx"] += 1
+                _set_cooldown(host, max(retry_after, 2.0))
             if not retryable or attempt >= total_attempts - 1:
                 _STATS["errors"] += 1
                 hs["errors"] += 1
                 raise
             _STATS["retries"] += 1
             hs["retries"] += 1
-            retry_after = 0.0
-            try:
-                retry_after = float(exc.headers.get("Retry-After") or 0)
-            except Exception:
-                retry_after = 0.0
             delay = max(retry_after, min(30.0, (2 ** attempt) + random.uniform(0.15, 0.75)))
             time.sleep(delay)
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
@@ -207,7 +249,7 @@ def request_json(
     attempts: int = 5,
     cache_ttl: float = 0,
     min_interval: float | None = None,
-    user_agent: str = "Wallet500-ResilientHTTP/1.0",
+    user_agent: str = "Wallet500-ResilientHTTP/2.0",
 ):
     raw_payload = None
     merged_headers = dict(headers or {})
@@ -235,7 +277,7 @@ def request_text(
     attempts: int = 5,
     cache_ttl: float = 0,
     min_interval: float | None = None,
-    user_agent: str = "Wallet500-ResilientHTTP/1.0",
+    user_agent: str = "Wallet500-ResilientHTTP/2.0",
     accept: str = "text/plain,*/*",
 ) -> str:
     body = request_bytes(
