@@ -8,6 +8,8 @@ on:
     branches: [main]
     paths:
       - 'scripts/unified_watch_engine.py'
+      - 'scripts/resilient_unified_watch_runner.py'
+      - 'scripts/resilient_http.py'
       - 'scripts/spot_market_discovery_collector.py'
       - 'scripts/unified_candidate_bridge.py'
       - 'scripts/cross_domain_intelligence_collector.py'
@@ -26,7 +28,7 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: wallet500-unified-verified-watch-v5
+  group: wallet500-unified-verified-watch-v6
   cancel-in-progress: false
 
 jobs:
@@ -42,8 +44,8 @@ jobs:
       - name: Validate unified watcher, collectors and intelligence fusion
         id: validate
         run: |
-          python -m py_compile scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py
-          for f in data/unified-watch-config.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json; do python -m json.tool "$f" >/dev/null; done
+          python -m py_compile scripts/resilient_http.py scripts/resilient_unified_watch_runner.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py
+          for f in data/unified-watch-config.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/http-resilience-state.json; do python -m json.tool "$f" >/dev/null; done
 
       - name: Test exact-identity intelligence fusion contract
         id: contract
@@ -75,7 +77,7 @@ jobs:
         id: cross_domain
         run: python scripts/cross_domain_intelligence_collector.py
 
-      - name: Collect exact-identity derivatives and public wallet-perp intelligence
+      - name: Collect identity-safe resilient derivatives intelligence
         id: derivatives
         run: python scripts/derivatives_intelligence_collector.py
 
@@ -95,12 +97,12 @@ jobs:
           python -m json.tool data/unified-watch-state.json >/dev/null
           echo 'UNIFIED_ALERT_STATE_REFRESHED_FROM_LATEST_MAIN'
 
-      - name: Run fail-closed verified market watchlist
+      - name: Run rate-limit-resilient fail-closed verified market watchlist
         id: market_watch
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python scripts/unified_watch_engine.py
+        run: python scripts/resilient_unified_watch_runner.py
 
       - name: Build unified runtime evidence manifest
         if: always()
@@ -144,6 +146,7 @@ jobs:
           dynamic = load('data/unified-dynamic-candidates.json')
           cross = load('data/cross-domain-intelligence-state.json')
           derivatives = load('data/derivatives-intelligence-state.json')
+          http_state = load('data/http-resilience-state.json')
           outcomes = {
               'validate': os.getenv('VALIDATE_OUTCOME'),
               'contract': os.getenv('CONTRACT_OUTCOME'),
@@ -159,7 +162,7 @@ jobs:
               'market_watch': os.getenv('MARKET_WATCH_OUTCOME'),
           }
           manifest = {
-              'version': 3,
+              'version': 4,
               'generated_at': datetime.now(timezone.utc).isoformat(),
               'github_run_id': os.getenv('GH_RUN_ID'),
               'github_run_attempt': os.getenv('GH_RUN_ATTEMPT'),
@@ -175,6 +178,9 @@ jobs:
                   'cross_domain_target_count': len((cross or {}).get('tokens') or {}) if isinstance(cross, dict) else None,
                   'derivatives_updated_at': (derivatives or {}).get('updated_at') if isinstance(derivatives, dict) else None,
                   'derivatives_provider_success': (derivatives or {}).get('provider_success') if isinstance(derivatives, dict) else None,
+                  'derivatives_provider_health': (derivatives or {}).get('provider_health') if isinstance(derivatives, dict) else None,
+                  'derivatives_not_listed_targets': (derivatives or {}).get('not_listed_targets') if isinstance(derivatives, dict) else None,
+                  'http_resilience_metrics': (http_state or {}).get('metrics') if isinstance(http_state, dict) else None,
                   'close_watch_events_exists': (root/'data/close-watch-events.json').exists(),
                   'close_watch_event_count': len(events.get('events') or []) if isinstance(events, dict) else None,
                   'fusion_snapshot_exists': fusion is not None,
@@ -202,6 +208,7 @@ jobs:
             data/unified-watch-intelligence-report.json
             data/unified-watch-runtime-evidence.json
             data/derivatives-intelligence-state.json
+            data/http-resilience-state.json
             data/close-watch-intelligence.json
             data/close-watch-events.json
             data/free-intelligence-collector-state.json
