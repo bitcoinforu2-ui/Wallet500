@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import importlib.util
 import json
+from pathlib import Path
 
 import pytest
 
-from scripts import run_telegram_with_intelligence_shadow as shadow
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "run_telegram_with_intelligence_shadow.py"
+SPEC = importlib.util.spec_from_file_location("wallet500_telegram_intelligence_shadow", SCRIPT)
+assert SPEC is not None and SPEC.loader is not None
+shadow = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(shadow)
 
 
 def _row(pair: str = "0xpair") -> dict:
