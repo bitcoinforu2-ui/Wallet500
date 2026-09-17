@@ -39,15 +39,25 @@ def _delivery_pre_wave_message(row: dict, sent_at: str | None = None, alert_even
 
 
 def run() -> dict:
-    """Run the canonical sender with one-time NEW coin presentation semantics."""
+    """Run the canonical sender with one-time NEW coin presentation semantics.
+
+    The package remains monkeypatch-compatible with the historical module API:
+    tests/diagnostics that replace wallet500.telegram_alerts._send are mirrored
+    into the canonical core only for the duration of this run.
+    """
     _first_seen._seen_tokens_cache = None
     _first_seen._claimed_this_run.clear()
+
     previous_message = _core._message
     previous_pre_wave = _core._pre_wave_message
+    previous_send = _core._send
+
     _core._message = _delivery_message
     _core._pre_wave_message = _delivery_pre_wave_message
+    _core._send = globals().get("_send", previous_send)
     try:
         return _original_run()
     finally:
         _core._message = previous_message
         _core._pre_wave_message = previous_pre_wave
+        _core._send = previous_send
