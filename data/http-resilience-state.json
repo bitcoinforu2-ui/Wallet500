@@ -1,27 +1,27 @@
 {
-  "version": 2,
-  "updated_at": "2026-09-17T18:35:32.195856+00:00",
+  "version": 3,
+  "updated_at": "2026-09-17T18:42:39.551204+00:00",
   "component": "unified_watch",
-  "strategy": "STRICT_EXACT_PAIR_4S_GECKO_PACING_429_CIRCUIT_BREAKER_NO_RETRY_STORM",
+  "strategy": "STRICT_EXACT_PAIR_4S_GECKO_PACING_429_CIRCUIT_BREAKER_PLUS_REAL_ALERT_ACTIONABLE_GATE",
   "metrics": {
-    "requests": 82,
+    "requests": 90,
     "cache_hits": 0,
     "retries": 0,
-    "http_429": 18,
+    "http_429": 10,
     "http_5xx": 0,
-    "cooldowns": 18,
-    "errors": 18,
+    "cooldowns": 10,
+    "errors": 10,
     "hosts": {
       "api.geckoterminal.com": {
         "requests": 50,
         "cache_hits": 0,
         "retries": 0,
-        "http_429": 18,
-        "cooldowns": 18,
-        "errors": 18
+        "http_429": 10,
+        "cooldowns": 10,
+        "errors": 10
       },
       "api.dexscreener.com": {
-        "requests": 32,
+        "requests": 40,
         "cache_hits": 0,
         "retries": 0,
         "http_429": 0,
@@ -29,5 +29,11 @@
         "errors": 0
       }
     }
+  },
+  "telegram_mode": "REAL_ALERT_ACTIONABLE_ONLY",
+  "actionability_stats": {
+    "suppressed_non_actionable": 7,
+    "suppressed:NO_HIGH_VALUE_INTELLIGENCE_CONFIRMATION": 3,
+    "suppressed:INTELLIGENCE_STATUS_STALE_ONLY": 4
   }
 }
