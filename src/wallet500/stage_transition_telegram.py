@@ -12,9 +12,10 @@ SOURCE = "candidate-evidence-envelope.json"
 STATE = "stage-transition-telegram-state.json"
 REPORT = "stage-transition-telegram-report.json"
 
-# Raw research, WATCH and EVIDENCE_READY remain silent. User-facing stage
-# notifications begin only at PAPER_BUY_CANDIDATE: one stage before BUY/REAL
-# ALERT, then continue for stronger stages. This lane never weakens BUY gates.
+# Telegram has exactly two market-decision levels:
+# 1) this lane: PAPER_BUY_CANDIDATE = very close to buy;
+# 2) the production Telegram lane: final Decision Engine BUY.
+# Research, WATCH, EVIDENCE_READY and stronger research/genesis labels stay silent.
 STAGE_RANK = {
     "RESEARCH": 0,
     "WATCH": 0,
@@ -68,8 +69,8 @@ def _message(row: dict, previous_stage: str, current_stage: str) -> str:
     pending = row.get("pending_confirmations") if isinstance(row.get("pending_confirmations"), list) else []
     blockers = row.get("blockers") if isinstance(row.get("blockers"), list) else []
     return "\n".join([
-        "🔥 WALLET500 — PRE-BUY STAGE",
-        "⚠️ שלב אחד לפני BUY או חזק יותר — עדיין לא הוראת BUY",
+        "🟠 WALLET500 — קרוב מאוד לקנייה / PRE-BUY STAGE",
+        "⚠️ עדיין לא BUY — זהו PAPER_BUY_CANDIDATE בלבד",
         f"Token: {token}",
         f"Mint: {mint}",
         f"Exact Pair: {pair}",
@@ -79,7 +80,7 @@ def _message(row: dict, previous_stage: str, current_stage: str) -> str:
         f"Positive lanes: {positive if positive is not None else 'n/a'}",
         f"Pending confirmations: {', '.join(map(str, pending)) if pending else 'none'}",
         f"Blockers: {', '.join(map(str, blockers)) if blockers else 'none'}",
-        "REAL ALERT / BUY נשארים במסלול נפרד עם gates קשיחים יותר.",
+        "התראת BUY תישלח בנפרד רק אם Decision Engine עובר ל-BUY_ZONE.",
     ])
 
 
@@ -87,7 +88,7 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
     out = Path(output_dir or os.getenv("WALLET500_OUTPUT_DIR", "data"))
     source = _load(out / SOURCE, {})
     state_exists = (out / STATE).exists()
-    state = _load(out / STATE, {"version": 2, "candidates": {}})
+    state = _load(out / STATE, {"version": 3, "candidates": {}})
     previous = state.get("candidates") if isinstance(state.get("candidates"), dict) else {}
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
@@ -122,9 +123,9 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
         # First execution establishes a baseline and never replays historical research.
         if not state_exists:
             continue
-        # EVIDENCE_READY and all earlier stages are dashboard/state only. Telegram
-        # starts at PAPER_BUY_CANDIDATE (one stage before BUY) and only on upward moves.
-        if rank <= old_rank or rank < MIN_USER_FACING_RANK:
+        # Only the exact near-buy state is user-facing in this lane. Higher research
+        # labels are intentionally silent so Telegram does not become a stage feed.
+        if rank <= old_rank or stage != MIN_USER_FACING_STAGE:
             continue
         event = {"key": key, "from_stage": old_stage, "to_stage": stage, "rank": rank}
         eligible.append(event)
@@ -143,10 +144,10 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
             else:
                 current.pop(key, None)
 
-    state_payload = {"version": 2, "updated_at": reference.isoformat(), "candidates": current}
+    state_payload = {"version": 3, "updated_at": reference.isoformat(), "candidates": current}
     report = {
-        "version": 2,
-        "mode": "PRE_BUY_AND_STRONGER_STAGE_TELEGRAM",
+        "version": 3,
+        "mode": "NEAR_BUY_ONLY_STAGE_TELEGRAM",
         "updated_at": reference.isoformat(),
         "source": SOURCE,
         "configured": configured,
@@ -162,11 +163,14 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
             "evidence_ready_notifications": False,
             "minimum_user_facing_stage": MIN_USER_FACING_STAGE,
             "minimum_user_facing_rank": MIN_USER_FACING_RANK,
+            "only_user_facing_stage": MIN_USER_FACING_STAGE,
+            "stronger_stage_notifications": False,
             "only_upward_transitions": True,
             "exact_pair_scoped_state": True,
             "historical_replay_on_first_run": False,
             "automatic_buy": False,
             "real_alert_pipeline_unchanged": True,
+            "final_buy_pipeline_separate": True,
         },
     }
     _write(out / STATE, state_payload)
