@@ -1,8 +1,8 @@
 {
-  "version": 6,
+  "version": 7,
   "mode": "POSITION_WATCH_RESEARCH_ONLY",
   "data_integrity": {
-    "max_price_source_spread_pct": 2.0,
+    "max_price_source_spread_pct": 2,
     "exact_contract_required": true,
     "exact_pair_required": true,
     "missing_data_is_zero": false,
@@ -11,22 +11,22 @@
   "alert_policy": {
     "significant_change_only": true,
     "compare_against_last_sent_alert": true,
-    "price_change_from_last_alert_pct": 8.0,
-    "liquidity_change_from_last_alert_pct": 20.0,
-    "volume_multiple_from_last_alert": 2.0,
-    "minimum_volume_usd_for_volume_delta": 1000.0,
-    "intelligence_score_delta": 12.0,
-    "wallet_holder_family_score_delta": 3.0,
-    "notable_evidence_min_raw": 0.30,
+    "price_change_from_last_alert_pct": 8,
+    "liquidity_change_from_last_alert_pct": 20,
+    "volume_multiple_from_last_alert": 2,
+    "minimum_volume_usd_for_volume_delta": 1000,
+    "intelligence_score_delta": 12,
+    "wallet_holder_family_score_delta": 3,
+    "notable_evidence_min_raw": 0.3,
     "suppress_repeated_trigger_without_delta": true,
     "alpha_close_watch_require_confirmation": true,
     "alpha_min_confirmations_for_telegram": 1,
-    "alpha_min_fusion_score_for_telegram": 12.0,
+    "alpha_min_fusion_score_for_telegram": 12,
     "alpha_min_positive_families_for_telegram": 2,
-    "alpha_wallet_holder_score_for_telegram": 3.0,
-    "alpha_min_volume_h1_for_telegram": 5000.0,
+    "alpha_wallet_holder_score_for_telegram": 3,
+    "alpha_min_volume_h1_for_telegram": 5000,
     "alpha_min_buys_h1_for_telegram": 15,
-    "alpha_min_buy_sell_ratio_for_telegram": 2.0,
+    "alpha_min_buy_sell_ratio_for_telegram": 2,
     "notes": "A tracked token stays silent unless something materially changes versus the last Telegram alert. New hard risks always bypass suppression. PUBLIC_ALPHA close-watch candidates remain in engine learning/state, but Telegram requires at least one additional confirmation such as multi-family intelligence, a material wallet/holder signal, social/search/news evidence, a meaningful fusion-score rise, strong volume acceleration, or strong buy imbalance."
   },
   "experiment": {
@@ -50,10 +50,17 @@
       "wallet_perp_correlation": true,
       "tracked_perp_wallets": [],
       "reference_cost": 0.004344,
-      "up_levels": [0.0044, 0.005, 0.006],
-      "down_levels": [0.00365, 0.00355],
+      "up_levels": [
+        0.0044,
+        0.005,
+        0.006
+      ],
+      "down_levels": [
+        0.00365,
+        0.00355
+      ],
       "min_volume_h1_for_momentum": 10000,
-      "volume_acceleration_multiple": 2.0,
+      "volume_acceleration_multiple": 2,
       "liquidity_drop_pct": 25
     },
     {
@@ -85,8 +92,16 @@
       "derivatives_intelligence": true,
       "wallet_perp_correlation": true,
       "tracked_perp_wallets": [],
-      "up_levels": [0.16, 0.162, 0.169, 0.175],
-      "down_levels": [0.15, 0.146],
+      "up_levels": [
+        0.16,
+        0.162,
+        0.169,
+        0.175
+      ],
+      "down_levels": [
+        0.15,
+        0.146
+      ],
       "min_volume_h1_for_momentum": 1000000,
       "volume_acceleration_multiple": 1.5,
       "liquidity_drop_pct": 25
@@ -105,7 +120,7 @@
       "up_levels": [],
       "down_levels": [],
       "min_volume_h1_for_momentum": 0,
-      "volume_acceleration_multiple": 2.0,
+      "volume_acceleration_multiple": 2,
       "liquidity_drop_pct": 25
     },
     {
@@ -163,8 +178,17 @@
       "derivatives_intelligence": true,
       "wallet_perp_correlation": true,
       "tracked_perp_wallets": [],
-      "up_levels": [0.02713, 0.0285, 0.0304],
-      "down_levels": [0.024, 0.0229, 0.0226, 0.021],
+      "up_levels": [
+        0.02713,
+        0.0285,
+        0.0304
+      ],
+      "down_levels": [
+        0.024,
+        0.0229,
+        0.0226,
+        0.021
+      ],
       "min_volume_h1_for_momentum": 20000,
       "volume_acceleration_multiple": 1.5,
       "liquidity_drop_pct": 20
@@ -210,6 +234,27 @@
       "symbol": "MET",
       "priority": "HIGHEST",
       "status": "EXACT_CONTRACT_AND_PAIR_REQUIRED"
+    },
+    {
+      "symbol": "ONE",
+      "priority": "HIGHEST",
+      "status": "EXACT_ONCHAIN_IDENTITY_REQUIRED",
+      "reason": "Gate ONE_USDT is under forced engine watch; on-chain wallet/holder promotion remains blocked until exact chain + contract/native identity + liquid pair are verified."
+    }
+  ],
+  "cex_research_watch_targets": [
+    {
+      "symbol": "ONE",
+      "exchange": "gate",
+      "currency_pair": "ONE_USDT",
+      "priority": "HIGHEST",
+      "close_watch": "HIGHEST",
+      "research_only": true,
+      "telegram_eligible": false,
+      "identity_requirement": "PROMOTE_ONLY_AFTER_EXACT_CHAIN_CONTRACT_PAIR",
+      "reason": "User-requested close watch during active investigation; exact on-chain identity remains fail-closed until Harmony ONE chain/contract/pair is resolved.",
+      "first_engine_seen_at": "2026-09-17T14:39:45.519920+00:00",
+      "reference_discovery_price": 0.0020976
     }
   ]
 }
