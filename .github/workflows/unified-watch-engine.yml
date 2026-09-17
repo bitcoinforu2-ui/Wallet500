@@ -22,6 +22,7 @@ on:
       - 'scripts/alpha_caller_reputation.py'
       - 'scripts/intelligence_fusion.py'
       - 'scripts/test_intelligence_fusion_contract.py'
+      - 'scripts/atomic_publish.py'
       - 'data/unified-watch-config.json'
       - 'data/alpha-caller-sources.json'
       - 'data/close-watch-intelligence-policy.json'
@@ -46,7 +47,7 @@ jobs:
       - name: Validate unified watcher, collectors and intelligence fusion
         id: validate
         run: |
-          python -m py_compile scripts/resilient_http.py scripts/resilient_unified_watch_runner.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py
+          python -m py_compile scripts/resilient_http.py scripts/resilient_unified_watch_runner.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py scripts/atomic_publish.py
           for f in data/unified-watch-config.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/narrative-dependency-state.json data/http-resilience-state.json; do python -m json.tool "$f" >/dev/null; done
 
       - name: Test exact-identity intelligence fusion contract
@@ -171,13 +172,18 @@ jobs:
               'market_watch': os.getenv('MARKET_WATCH_OUTCOME'),
           }
           manifest = {
-              'version': 6,
+              'version': 7,
               'generated_at': datetime.now(timezone.utc).isoformat(),
               'github_run_id': os.getenv('GH_RUN_ID'),
               'github_run_attempt': os.getenv('GH_RUN_ATTEMPT'),
               'github_sha': os.getenv('GH_SHA'),
               'stage_outcomes': outcomes,
               'first_failed_or_skipped_stage': next((k for k,v in outcomes.items() if v not in ('success',)), None),
+              'publication_contract': {
+                  'diagnostics_publish_on_failure': True,
+                  'verified_business_state_requires_all_stages_success': True,
+                  'business_snapshot_fail_on_newer_main': True,
+              },
               'evidence': {
                   'spot_discovery_exists': spot is not None,
                   'spot_discovery_generated_at': (spot or {}).get('generated_at') if isinstance(spot, dict) else None,
@@ -211,16 +217,27 @@ jobs:
           print('UNIFIED_RUNTIME_EVIDENCE', json.dumps(manifest, ensure_ascii=False))
           PY
 
-      - name: Persist verified forward-only state, evidence and intelligence snapshot
+      - name: Persist runtime diagnostics independently
         if: always()
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-bot'
-          git config user.email 'wallet500-bot@users.noreply.github.com'
-          files=(
+          python scripts/atomic_publish.py \
+            --github-api-cas \
+            --message 'diagnostics: publish unified watch runtime evidence [skip ci]' \
+            data/unified-watch-runtime-evidence.json
+
+      - name: Persist verified forward-only business state atomically
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          candidates=(
             data/unified-watch-state.json
             data/unified-watch-intelligence-report.json
-            data/unified-watch-runtime-evidence.json
             data/derivatives-intelligence-state.json
             data/http-resilience-state.json
             data/close-watch-intelligence.json
@@ -237,29 +254,28 @@ jobs:
             data/cross-domain-intelligence-state.json
             data/narrative-dependency-state.json
           )
-          snapshot="$(mktemp -d)"
-          for f in "${files[@]}"; do
-            if [ -f "$f" ]; then mkdir -p "$snapshot/$(dirname "$f")"; cp "$f" "$snapshot/$f"; fi
+          critical=(
+            data/unified-watch-state.json
+            data/unified-watch-intelligence-report.json
+            data/close-watch-intelligence.json
+            data/close-watch-events.json
+            data/spot-market-discovery.json
+            data/unified-dynamic-candidates.json
+          )
+          for f in "${critical[@]}"; do
+            test -f "$f" || { echo "UNIFIED_VERIFIED_STATE_MISSING:$f"; exit 1; }
           done
-          for attempt in 1 2 3 4; do
-            git fetch origin main
-            git reset --hard origin/main
-            for f in "${files[@]}"; do
-              if [ -f "$snapshot/$f" ]; then mkdir -p "$(dirname "$f")"; cp "$snapshot/$f" "$f"; fi
-            done
-            git add "${files[@]}" || true
-            if git diff --cached --quiet; then
-              echo 'UNIFIED_WATCH_STATE_UNCHANGED'
-              echo 'UNIFIED_WATCH_PERSIST_OK'
-              exit 0
+          publish_files=()
+          for f in "${candidates[@]}"; do
+            if [ -f "$f" ]; then
+              python -m json.tool "$f" >/dev/null
+              publish_files+=("$f")
+            else
+              echo "UNIFIED_OPTIONAL_STATE_PRESERVED_FROM_MAIN:$f"
             fi
-            git commit -m 'chore: update unified watch intelligence state [skip ci]'
-            if git push origin HEAD:main; then
-              echo 'UNIFIED_WATCH_PERSIST_OK'
-              exit 0
-            fi
-            echo "STATE_PUSH_RETRY_${attempt}"
-            sleep $((attempt * 2))
           done
-          echo 'STATE_PERSIST_FAILED_AFTER_RETRIES'
-          exit 1
+          python scripts/atomic_publish.py \
+            --github-api-cas \
+            --fail-on-newer \
+            --message 'state: publish coherent verified unified watch snapshot [skip ci]' \
+            "${publish_files[@]}"
