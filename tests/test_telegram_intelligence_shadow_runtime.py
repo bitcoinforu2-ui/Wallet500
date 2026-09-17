@@ -84,7 +84,7 @@ def test_shadow_current_exact_pair_renders_fusion_metadata():
     index = {shadow.identity_key(intel): intel}
     text = "\n".join(shadow.shadow_lines(_row(), index))
     assert "72.5/100 — CONFLUENCE (SHADOW)" in text
-    assert "Independent positive families: 3" in text
+    assert "independent positive families: 3" in text
     assert "current evidence: 5" in text
     assert "wallet_flow 12.0" in text
     assert "derivatives" not in text
