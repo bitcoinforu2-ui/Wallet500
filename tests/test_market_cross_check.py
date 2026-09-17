@@ -59,6 +59,25 @@ def test_one_source_is_insufficient_not_false_confirmation():
     assert result["agreement_score"] is None
 
 
+def test_token_aggregate_never_confirms_exact_pair():
+    result = mcc.cross_check_asset([
+        snap("wallet500", role="primary", market_scope="exact_pair", pair_address="PAIR_A", price_usd=0.001),
+        snap("binance_web3", market_scope="token_aggregate", price_usd=0.001),
+    ], now=NOW)
+    assert result["status"] == "scope_mismatch"
+    assert result["agreement_score"] is None
+    assert result["scope_mismatch_sources"] == ["binance_web3"]
+
+
+def test_different_exact_pairs_never_cross_confirm():
+    result = mcc.cross_check_asset([
+        snap("wallet500", role="primary", market_scope="exact_pair", pair_address="PAIR_A", price_usd=0.001),
+        snap("provider_b", market_scope="exact_pair", pair_address="PAIR_B", price_usd=0.001),
+    ], now=NOW)
+    assert result["status"] == "scope_mismatch"
+    assert result["agreement_score"] is None
+
+
 def test_builder_keeps_exact_chain_mint_identity_and_risk_flags():
     raw = [
         {
@@ -85,3 +104,4 @@ def test_builder_keeps_exact_chain_mint_identity_and_risk_flags():
     assert asset["status"] == "ok"
     assert asset["risk_flags"] == ["mint_authority_present"]
     assert payload["automatic_trade"] is False
+    assert payload["policy"]["price_integrity_tolerance"] == 0.02
