@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import urllib.error
 import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,8 +61,11 @@ def targets():
             continue
         if ctype == "CONFIGURED" and not t.get("derivatives_intelligence", False):
             continue
-        seen.add(i[3])
-        out.append(t)
+        # Gate spot candidates are identity-safe on Gate because their symbol was
+        # resolved from that exchange into this exact chain+contract+pair.
+        if ctype == "GATE_SPOT_DISCOVERY" or ctype == "CONFIGURED":
+            seen.add(i[3])
+            out.append(t)
     return out[:60]
 
 
@@ -90,172 +95,228 @@ def ev(t, kind, direction, strength, confidence, source, subject, **extra):
         "observed_at": now(),
         "free_source": True,
         "identity_verified": True,
-        "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR",
+        "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR_WITH_DECLARED_DERIVATIVE_SYMBOL_MAPPING",
     }
     x.update(extra)
     return x
 
 
-def jget(url, cache_ttl=45):
+def jget(url, cache_ttl=45, attempts=4):
     return resilient_http.request_json(
         url,
         timeout=15,
-        attempts=5,
+        attempts=attempts,
         cache_ttl=cache_ttl,
-        user_agent="Wallet500-Derivatives/3.0",
+        user_agent="Wallet500-Derivatives/4.0",
     )
 
 
-def gate_catalog():
-    rows = jget("https://api.gateio.ws/api/v4/futures/usdt/contracts", 60)
+def jpost(url, payload, cache_ttl=45, attempts=4):
+    return resilient_http.request_json(
+        url,
+        method="POST",
+        payload=payload,
+        timeout=15,
+        attempts=attempts,
+        cache_ttl=cache_ttl,
+        user_agent="Wallet500-Derivatives/4.0",
+    )
+
+
+def gate_contract_catalog():
+    # Contract metadata does NOT contain the OI field we need. It is used only
+    # for existence/mark/funding; OI comes from /contract_stats below.
+    rows = jget("https://api.gateio.ws/api/v4/futures/usdt/contracts?limit=1000&offset=0", 60)
+    if not isinstance(rows, list):
+        raise RuntimeError("GATE_CONTRACT_LIST_NOT_ARRAY")
     out = {}
-    for d in rows if isinstance(rows, list) else []:
+    for d in rows:
+        if not isinstance(d, dict):
+            continue
         name = str(d.get("name") or "").upper()
-        if not name.endswith("_USDT"):
+        if not name.endswith("_USDT") or d.get("in_delisting") is True:
             continue
         sym = name[:-5]
         try:
             px = float(d.get("mark_price") or d.get("last_price") or 0)
-            oi = float(d.get("open_interest") or 0)
-            mult = float(d.get("quanto_multiplier") or 1)
-            oi_usd = oi * px * mult
             funding = float(d.get("funding_rate") or 0) * 100
         except Exception:
             continue
-        if px > 0 and oi_usd > 0:
-            out[sym] = {"provider": "Gate Futures", "oi_usd": oi_usd, "mark_price": px, "funding_pct": funding}
+        if px > 0:
+            out[sym] = {
+                "contract": name,
+                "mark_price": px,
+                "funding_pct": funding,
+            }
     return out
 
 
-def bybit_catalog():
-    doc = jget("https://api.bybit.com/v5/market/tickers?category=linear", 60)
-    if str(doc.get("retCode", "0")) not in {"0", "None"}:
-        raise RuntimeError(f"BYBIT_RETCODE_{doc.get('retCode')}")
-    out = {}
-    for d in ((doc.get("result") or {}).get("list") or []):
-        name = str(d.get("symbol") or "").upper()
-        if not name.endswith("USDT"):
-            continue
-        sym = name[:-4]
-        try:
-            px = float(d.get("markPrice") or d.get("lastPrice") or 0)
-            oi_usd = float(d.get("openInterestValue") or 0)
-            funding = float(d.get("fundingRate") or 0) * 100
-        except Exception:
-            continue
-        if px > 0 and oi_usd > 0:
-            out[sym] = {"provider": "Bybit Perpetuals", "oi_usd": oi_usd, "mark_price": px, "funding_pct": funding}
-    return out
-
-
-def binance_catalog(configured_symbols):
-    marks = jget("https://fapi.binance.com/fapi/v1/premiumIndex", 60)
-    marks = marks if isinstance(marks, list) else [marks]
-    mark_map = {str(x.get("symbol") or "").upper(): x for x in marks if isinstance(x, dict)}
-    out = {}
-    for sym in configured_symbols:
-        pair = sym.upper() + "USDT"
-        m = mark_map.get(pair)
-        if not m:
-            continue
-        try:
-            oi = jget("https://fapi.binance.com/fapi/v1/openInterest?" + urllib.parse.urlencode({"symbol": pair}), 20)
-            px = float(m.get("markPrice") or 0)
-            units = float(oi.get("openInterest") or 0)
-            funding = float(m.get("lastFundingRate") or 0) * 100
-        except Exception:
-            continue
-        if px > 0 and units > 0:
-            out[sym] = {"provider": "Binance Futures", "oi_usd": units * px, "mark_price": px, "funding_pct": funding}
-    return out
-
-
-def provider_catalogs(rows):
-    catalogs, health = {}, {}
-    providers = (("Gate Futures", gate_catalog), ("Bybit Perpetuals", bybit_catalog))
-    for name, fn in providers:
-        try:
-            catalogs[name] = fn()
-            health[name] = {"status": "OK", "symbols": len(catalogs[name])}
-        except Exception as e:
-            catalogs[name] = {}
-            health[name] = {"status": "ERROR", "error": f"{type(e).__name__}:{str(e)[:120]}"}
-    configured_symbols = {
-        str(t.get("derivatives_symbol") or t.get("symbol") or "").upper()
-        for t in rows
-        if str(t.get("candidate_type") or "CONFIGURED").upper() == "CONFIGURED"
-    }
-    try:
-        catalogs["Binance Futures"] = binance_catalog(configured_symbols)
-        health["Binance Futures"] = {"status": "OK", "symbols": len(catalogs["Binance Futures"])}
-    except Exception as e:
-        catalogs["Binance Futures"] = {}
-        health["Binance Futures"] = {"status": "ERROR", "error": f"{type(e).__name__}:{str(e)[:120]}"}
-    return catalogs, health
-
-
-def pick_snapshot(t, catalogs):
-    sym = str(t.get("derivatives_symbol") or t.get("symbol") or "").upper()
-    ctype = str(t.get("candidate_type") or "CONFIGURED").upper()
-    if not sym:
+def gate_snapshot(sym, meta):
+    if not meta:
         return None
-    # Gate-discovered identities are contract-linked to the Gate spot symbol, so
-    # only Gate futures may be attached automatically. This prevents ticker collisions.
-    if ctype == "GATE_SPOT_DISCOVERY":
-        snap = (catalogs.get("Gate Futures") or {}).get(sym)
-        return dict(snap, derivative_symbol=sym) if snap else None
-    for provider in ("Bybit Perpetuals", "Gate Futures", "Binance Futures"):
-        snap = (catalogs.get(provider) or {}).get(sym)
-        if snap:
-            return dict(snap, derivative_symbol=sym)
-    return None
+    contract = meta["contract"]
+    q = urllib.parse.urlencode({"contract": contract, "limit": 1})
+    stats = jget(f"https://api.gateio.ws/api/v4/futures/usdt/contract_stats?{q}", 25)
+    if not isinstance(stats, list) or not stats:
+        return None
+    s = stats[-1] if isinstance(stats[-1], dict) else {}
+    try:
+        oi_usd = float(s.get("open_interest_usd") or 0)
+        mark = float(s.get("mark_price") or meta.get("mark_price") or 0)
+    except Exception:
+        return None
+    if oi_usd <= 0 or mark <= 0:
+        return None
+    return {
+        "provider": "Gate Futures",
+        "oi_usd": oi_usd,
+        "mark_price": mark,
+        "funding_pct": float(meta.get("funding_pct") or 0),
+        "derivative_symbol": sym,
+        "derivative_contract": contract,
+        "mapping": "GATE_SPOT_SYMBOL_TO_GATE_FUTURES" if sym else "GATE_FUTURES",
+    }
+
+
+def hyperliquid_catalog():
+    doc = jpost("https://api.hyperliquid.xyz/info", {"type": "metaAndAssetCtxs"}, 45)
+    if not isinstance(doc, list) or len(doc) < 2:
+        raise RuntimeError("HYPERLIQUID_META_CONTEXT_SCHEMA")
+    meta, contexts = doc[0], doc[1]
+    universe = (meta or {}).get("universe") or []
+    if not isinstance(universe, list) or not isinstance(contexts, list):
+        raise RuntimeError("HYPERLIQUID_UNIVERSE_SCHEMA")
+    out = {}
+    for asset, ctx in zip(universe, contexts):
+        if not isinstance(asset, dict) or not isinstance(ctx, dict):
+            continue
+        sym = str(asset.get("name") or "").upper()
+        try:
+            mark = float(ctx.get("markPx") or ctx.get("midPx") or 0)
+            oi_units = float(ctx.get("openInterest") or 0)
+            funding = float(ctx.get("funding") or 0) * 100
+        except Exception:
+            continue
+        oi_usd = oi_units * mark
+        if sym and mark > 0 and oi_usd > 0:
+            out[sym] = {
+                "provider": "Hyperliquid",
+                "oi_usd": oi_usd,
+                "mark_price": mark,
+                "funding_pct": funding,
+                "derivative_symbol": sym,
+                "mapping": "CONFIGURED_SYMBOL_TO_HYPERLIQUID_PERP",
+            }
+    return out
+
+
+def restricted_provider_health():
+    # Hosted GitHub egress produced deterministic Binance 451 and Bybit 403.
+    # Do not burn requests every 15 minutes. They can be opt-in re-probed.
+    enabled = os.getenv("WALLET500_REPROBE_GEO_RESTRICTED_DERIVATIVES", "0") == "1"
+    status = "REPROBE_ENABLED_NOT_IMPLEMENTED" if enabled else "DISABLED_AFTER_RUNTIME_GEO_RESTRICTION"
+    return {
+        "Binance Futures": {"status": status, "last_observed_http": 451},
+        "Bybit Perpetuals": {"status": status, "last_observed_http": 403},
+    }
 
 
 def main():
     doc = load(EVENTS, {"version": 3, "events": []})
-    state = load(STATE, {"version": 3, "tokens": {}})
-    state["version"] = 3
+    state = load(STATE, {"version": 4, "tokens": {}})
+    state["version"] = 4
     old_tokens = state.setdefault("tokens", {})
-    out = []
     rows = targets()
-    catalogs, provider_health = provider_catalogs(rows)
-    provider_ok = {k: 0 for k in catalogs}
-    unavailable = 0
+    out = []
+
+    provider_health = restricted_provider_health()
+    provider_success = {"Gate Futures": 0, "Hyperliquid": 0, "Binance Futures": 0, "Bybit Perpetuals": 0}
+
+    try:
+        gate_meta = gate_contract_catalog()
+        provider_health["Gate Futures"] = {"status": "OK", "contracts": len(gate_meta)}
+    except Exception as e:
+        gate_meta = {}
+        provider_health["Gate Futures"] = {"status": "ERROR", "error": f"{type(e).__name__}:{str(e)[:160]}"}
+
+    try:
+        hyper = hyperliquid_catalog()
+        provider_health["Hyperliquid"] = {"status": "OK", "contracts": len(hyper)}
+    except Exception as e:
+        hyper = {}
+        provider_health["Hyperliquid"] = {"status": "ERROR", "error": f"{type(e).__name__}:{str(e)[:160]}"}
+
     not_listed = 0
+    provider_errors = 0
+    mapping_rejected = 0
 
     for t in rows:
-        sym = str(t.get("symbol") or "").upper()
         i = ident(t)
-        if not sym or not i:
+        sym = str(t.get("derivatives_symbol") or t.get("symbol") or "").upper()
+        ctype = str(t.get("candidate_type") or "CONFIGURED").upper()
+        if not i or not sym:
             continue
         prev = old_tokens.get(i[3]) or {}
-        snap = pick_snapshot(t, catalogs)
-        if not snap:
+        snap = None
+        errors = []
+
+        # Gate discovery has a strong exchange-local mapping: Gate supplied the
+        # spot symbol AND the chain contract that became this exact identity.
+        # Configured targets have deliberate operator mapping and may fail over
+        # to Hyperliquid if Gate has no perp.
+        if sym in gate_meta:
+            try:
+                snap = gate_snapshot(sym, gate_meta[sym])
+                if snap:
+                    snap["mapping"] = (
+                        "GATE_SPOT_CONTRACT_RESOLUTION_TO_SAME_GATE_SYMBOL_PERP"
+                        if ctype == "GATE_SPOT_DISCOVERY"
+                        else "CONFIGURED_SYMBOL_TO_GATE_PERP"
+                    )
+            except urllib.error.HTTPError as e:
+                errors.append(f"GateHTTP{e.code}")
+            except Exception as e:
+                errors.append(f"Gate:{type(e).__name__}")
+
+        if snap is None and ctype == "CONFIGURED":
+            h = hyper.get(sym)
+            if h:
+                snap = dict(h)
+
+        # Never attach cross-exchange ticker-only data to an arbitrary dynamic
+        # token. For non-Gate dynamic alpha this collector is intentionally off.
+        if snap is None:
             not_listed += 1
+            if errors:
+                provider_errors += 1
             old_tokens.setdefault(i[3], {"symbol": sym, "identity_key": i[3]})["last_derivatives_status"] = {
-                "status": "NOT_LISTED_ON_IDENTITY_SAFE_PROVIDER",
+                "status": "NOT_LISTED_ON_IDENTITY_SAFE_PROVIDER" if not errors else "PROVIDER_LOOKUP_FAILED",
+                "errors": errors,
                 "observed_at": now(),
             }
             continue
 
-        provider_ok[snap["provider"]] = provider_ok.get(snap["provider"], 0) + 1
-        old = float(prev.get("oi_usd") or 0)
+        provider_success[snap["provider"]] = provider_success.get(snap["provider"], 0) + 1
+        old_oi = float(prev.get("oi_usd") or 0)
         same_provider = prev.get("provider") == snap.get("provider")
-        d = pct(snap["oi_usd"], old) if same_provider else None
+        d = pct(snap["oi_usd"], old_oi) if same_provider else None
+
         if d is not None and abs(d) >= 5:
             out.append(ev(
                 t,
                 "open_interest_change",
                 1 if d > 0 else -1,
                 min(100, abs(d) * 3),
-                86,
+                88,
                 snap["provider"],
                 f"OI {d:+.2f}% vs prior same-provider snapshot",
                 oi_usd=snap["oi_usd"],
                 delta_pct=round(d, 3),
                 funding_pct=snap.get("funding_pct"),
                 derivative_symbol=snap.get("derivative_symbol"),
+                derivative_identity_mapping=snap.get("mapping"),
             ))
+
         funding = float(snap.get("funding_pct") or 0)
         if abs(funding) >= 0.05:
             out.append(ev(
@@ -263,17 +324,22 @@ def main():
                 "funding_extreme",
                 -1,
                 min(100, abs(funding) * 1000),
-                82,
+                84,
                 snap["provider"],
                 f"funding {funding:+.4f}%",
                 funding_pct=funding,
                 contradicts_bullish=funding > 0,
                 derivative_symbol=snap.get("derivative_symbol"),
+                derivative_identity_mapping=snap.get("mapping"),
             ))
-        old_tokens[i[3]] = {**snap, "symbol": sym, "identity_key": i[3], "observed_at": now()}
 
-    if all(v.get("status") != "OK" for v in provider_health.values()):
-        unavailable = len(rows)
+        old_tokens[i[3]] = {
+            **snap,
+            "symbol": str(t.get("symbol") or sym).upper(),
+            "identity_key": i[3],
+            "observed_at": now(),
+            "last_derivatives_status": {"status": "OK", "observed_at": now()},
+        }
 
     merged = [e for e in (doc.get("events") or []) if isinstance(e, dict)] + [e for e in out if e]
     ded = {}
@@ -281,22 +347,30 @@ def main():
         ded[(e.get("identity_key") or "", e.get("canonical_event_id"), e.get("kind"))] = e
     doc = {"version": 3, "generated_at": now(), "events": list(ded.values())[-5000:]}
     EVENTS.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
+
+    healthy_providers = [k for k, v in provider_health.items() if v.get("status") == "OK"]
     state["updated_at"] = now()
-    state["provider_success"] = provider_ok
+    state["provider_success"] = provider_success
     state["provider_health"] = provider_health
-    state["unavailable_targets"] = unavailable
+    state["healthy_providers"] = healthy_providers
+    state["unavailable_targets"] = len(rows) if not healthy_providers else 0
     state["not_listed_targets"] = not_listed
+    state["provider_lookup_errors"] = provider_errors
+    state["mapping_rejected"] = mapping_rejected
     state["target_count"] = len(rows)
     state["http_resilience"] = resilient_http.metrics()
     STATE.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n")
+
     print(json.dumps({
         "status": "OK",
         "new_events": len([x for x in out if x]),
         "targets": len(rows),
-        "provider_success": provider_ok,
+        "provider_success": provider_success,
         "provider_health": provider_health,
+        "healthy_providers": healthy_providers,
         "not_listed": not_listed,
-        "unavailable": unavailable,
+        "provider_lookup_errors": provider_errors,
+        "unavailable": state["unavailable_targets"],
         "http": resilient_http.metrics(),
     }, ensure_ascii=False))
 
