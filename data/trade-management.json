@@ -1,7 +1,7 @@
 {
   "version": 1,
   "mode": "MANUAL_REVIEW_TRADE_MANAGEMENT_V1",
-  "generated_at": "2026-09-17T22:01:49.695873+00:00",
+  "generated_at": "2026-09-17T22:18:44.659063+00:00",
   "manual_review_only": true,
   "automatic_trade": false,
   "truth_contract": {
@@ -16,7 +16,8 @@
   },
   "managed_count": 3,
   "state_counts": {
-    "DATA_INSUFFICIENT": 3
+    "WAIT_FOR_ENTRY": 1,
+    "WAIT_FOR_RETEST": 2
   },
   "positions": [
     {
@@ -33,12 +34,57 @@
       "manual_review_only": true,
       "automatic_buy": false,
       "automatic_sell": false,
-      "observed_at": "2026-09-17T22:01:27.050355+00:00",
-      "trade_state": "DATA_INSUFFICIENT",
-      "state_label": "⚪ DATA INSUFFICIENT",
-      "decision_reason": "Exact-pair OHLCV is not yet sufficient; fail closed.",
-      "entry_plan": null,
-      "exit_plan": null
+      "observed_at": "2026-09-17T22:18:44.005847+00:00",
+      "trade_state": "WAIT_FOR_ENTRY",
+      "state_label": "🟡 WAIT FOR ENTRY",
+      "decision_reason": "Signal remains valid but no high-quality support/retest entry is confirmed yet.",
+      "market": {
+        "current_price_usd": 0.0039802303,
+        "liquidity_usd": 21598507.0985,
+        "liquidity_change_from_signal_pct": -0.066,
+        "volume_h1_usd": 253401.530900839,
+        "volume_h24_usd": 4274792.02763148,
+        "volume_vs_12h_median": 0.98,
+        "buys_h1": 2183,
+        "sells_h1": 1511,
+        "buy_ratio": 0.591,
+        "move_from_signal_pct": 0.031,
+        "drawdown_from_12h_high_pct": -2.659,
+        "source": "GECKOTERMINAL_EXACT_POOL_OHLCV"
+      },
+      "technicals_1h": {
+        "ema5": 0.0039483506,
+        "ema10": 0.0039346672,
+        "ema20": 0.0038887728,
+        "ema30": 0.0038323512,
+        "atr14": 0.0001198773,
+        "atr14_pct": 3.012,
+        "macd": 6.9719e-05,
+        "macd_signal": 7.92776e-05,
+        "macd_hist": -9.5587e-06,
+        "recent_high_12h": 0.0040889609,
+        "prior_high": 0.0040889609,
+        "candle_count": 48
+      },
+      "entry_plan": {
+        "zone_1": {
+          "low": 0.0038807224,
+          "high": 0.0039586426
+        },
+        "zone_2": {
+          "low": 0.003834828,
+          "high": 0.0039127483
+        },
+        "breakout_retest_reference": 0.0040889609,
+        "invalidation_reference": 0.0037424432,
+        "policy": "MANUAL_REVIEW_ONLY_DYNAMIC_LEVELS_NOT_ORDERS"
+      },
+      "exit_plan": {
+        "target_1_recent_high": 0.0040889609,
+        "target_2_plus_1atr": 0.0042088382,
+        "target_3_plus_2atr": 0.0043287155,
+        "policy": "PARTIAL_PROFIT_OR_EXIT_REVIEW_ONLY_NO_AUTOMATIC_SELL"
+      }
     },
     {
       "symbol": "G",
@@ -54,12 +100,57 @@
       "manual_review_only": true,
       "automatic_buy": false,
       "automatic_sell": false,
-      "observed_at": "2026-09-17T22:01:39.154387+00:00",
-      "trade_state": "DATA_INSUFFICIENT",
-      "state_label": "⚪ DATA INSUFFICIENT",
-      "decision_reason": "Exact-pair OHLCV is not yet sufficient; fail closed.",
-      "entry_plan": null,
-      "exit_plan": null
+      "observed_at": "2026-09-17T22:18:44.350556+00:00",
+      "trade_state": "WAIT_FOR_RETEST",
+      "state_label": "🟡 WAIT FOR RETEST",
+      "decision_reason": "The 7/7 signal is valid, but price is extended from dynamic support; do not chase.",
+      "market": {
+        "current_price_usd": 0.0051277004,
+        "liquidity_usd": 1177715.0974,
+        "liquidity_change_from_signal_pct": -0.967,
+        "volume_h1_usd": 41281.5808031422,
+        "volume_h24_usd": 116017.963823028,
+        "volume_vs_12h_median": 7.981,
+        "buys_h1": 33,
+        "sells_h1": 18,
+        "buy_ratio": 0.6471,
+        "move_from_signal_pct": -3.031,
+        "drawdown_from_12h_high_pct": -5.218,
+        "source": "GECKOTERMINAL_EXACT_POOL_OHLCV"
+      },
+      "technicals_1h": {
+        "ema5": 0.0049926282,
+        "ema10": 0.0047854352,
+        "ema20": 0.004583935,
+        "ema30": 0.0044863176,
+        "atr14": 0.0001587261,
+        "atr14_pct": 3.095,
+        "macd": 0.0002082433,
+        "macd_signal": 0.0001112673,
+        "macd_hist": 9.6976e-05,
+        "recent_high_12h": 0.0054100112,
+        "prior_high": 0.0054004184,
+        "candle_count": 48
+      },
+      "entry_plan": {
+        "zone_1": {
+          "low": 0.0047140085,
+          "high": 0.0048171805
+        },
+        "zone_2": {
+          "low": 0.0045125082,
+          "high": 0.0046156802
+        },
+        "breakout_retest_reference": 0.0054004184,
+        "invalidation_reference": 0.004367273,
+        "policy": "MANUAL_REVIEW_ONLY_DYNAMIC_LEVELS_NOT_ORDERS"
+      },
+      "exit_plan": {
+        "target_1_recent_high": 0.0054100112,
+        "target_2_plus_1atr": 0.0055687373,
+        "target_3_plus_2atr": 0.0057274634,
+        "policy": "PARTIAL_PROFIT_OR_EXIT_REVIEW_ONLY_NO_AUTOMATIC_SELL"
+      }
     },
     {
       "symbol": "COTI",
@@ -75,12 +166,57 @@
       "manual_review_only": true,
       "automatic_buy": false,
       "automatic_sell": false,
-      "observed_at": "2026-09-17T22:01:49.695844+00:00",
-      "trade_state": "DATA_INSUFFICIENT",
-      "state_label": "⚪ DATA INSUFFICIENT",
-      "decision_reason": "Exact-pair OHLCV is not yet sufficient; fail closed.",
-      "entry_plan": null,
-      "exit_plan": null
+      "observed_at": "2026-09-17T22:18:44.658904+00:00",
+      "trade_state": "WAIT_FOR_RETEST",
+      "state_label": "🟡 WAIT FOR RETEST",
+      "decision_reason": "The 7/7 signal is valid, but price is extended from dynamic support; do not chase.",
+      "market": {
+        "current_price_usd": 0.0254883731,
+        "liquidity_usd": 243052.097,
+        "liquidity_change_from_signal_pct": 0.849,
+        "volume_h1_usd": 40788.0861984066,
+        "volume_h24_usd": 224670.974421276,
+        "volume_vs_12h_median": 5.522,
+        "buys_h1": 66,
+        "sells_h1": 63,
+        "buy_ratio": 0.5116,
+        "move_from_signal_pct": 2.199,
+        "drawdown_from_12h_high_pct": -0.43,
+        "source": "GECKOTERMINAL_EXACT_POOL_OHLCV"
+      },
+      "technicals_1h": {
+        "ema5": 0.0237040531,
+        "ema10": 0.0222620229,
+        "ema20": 0.0206809771,
+        "ema30": 0.0197658792,
+        "atr14": 0.0011163416,
+        "atr14_pct": 4.38,
+        "macd": 0.0017621329,
+        "macd_signal": 0.0011745873,
+        "macd_hist": 0.0005875456,
+        "recent_high_12h": 0.0255985695,
+        "prior_high": 0.0250507145,
+        "candle_count": 48
+      },
+      "entry_plan": {
+        "zone_1": {
+          "low": 0.0217596691,
+          "high": 0.0224852912
+        },
+        "zone_2": {
+          "low": 0.0201786233,
+          "high": 0.0209042454
+        },
+        "breakout_retest_reference": 0.0250507145,
+        "invalidation_reference": 0.018928623,
+        "policy": "MANUAL_REVIEW_ONLY_DYNAMIC_LEVELS_NOT_ORDERS"
+      },
+      "exit_plan": {
+        "target_1_recent_high": 0.0255985695,
+        "target_2_plus_1atr": 0.0267149111,
+        "target_3_plus_2atr": 0.0278312527,
+        "policy": "PARTIAL_PROFIT_OR_EXIT_REVIEW_ONLY_NO_AUTOMATIC_SELL"
+      }
     }
   ]
 }
