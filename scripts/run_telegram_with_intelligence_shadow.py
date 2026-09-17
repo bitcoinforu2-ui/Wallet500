@@ -101,7 +101,7 @@ def shadow_lines(row: dict, index: dict[str, dict], stage: str = "REAL_ALERT") -
     updated = str(intel.get("updated_at") or "n/a")
     return [
         f"🧠 Intelligence Fusion: {score_text} — {label} (SHADOW)",
-        f"Independent positive families: {families} · current evidence: {current_evidence}",
+        f"independent positive families: {families} · current evidence: {current_evidence}",
         f"Positive family scores: {_family_summary(intel)}",
         f"Intel updated: {updated}",
         f"Freshest evidence: {freshest} · age: {age_text} · window: {window if window is not None else 'n/a'}m",
