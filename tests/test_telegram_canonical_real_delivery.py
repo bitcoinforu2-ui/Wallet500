@@ -83,8 +83,9 @@ def test_real_alert_delivers_when_legacy_candidate_file_is_empty(tmp_path, monke
     monkeypatch.setenv("WALLET500_OUTPUT_DIR", str(tmp_path))
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "123")
+    monkeypatch.setattr(telegram_alerts, "_send", lambda *args, **kwargs: (999, 1))
 
-    report = telegram_alerts.run(send_func=lambda *args, **kwargs: (999, 1))
+    report = telegram_alerts.run()
     key = telegram_alerts._pair_key(real)
     state = json.loads((tmp_path / "telegram-alert-state.json").read_text(encoding="utf-8"))
 
@@ -119,7 +120,8 @@ def test_existing_actionable_state_dedupes_but_remains_active(tmp_path, monkeypa
     def fail_send(*args, **kwargs):
         raise AssertionError("deduped REAL ALERT must not be sent twice")
 
-    report = telegram_alerts.run(send_func=fail_send)
+    monkeypatch.setattr(telegram_alerts, "_send", fail_send)
+    report = telegram_alerts.run()
     state = json.loads((tmp_path / "telegram-alert-state.json").read_text(encoding="utf-8"))
 
     assert report["eligible_count"] == 1
