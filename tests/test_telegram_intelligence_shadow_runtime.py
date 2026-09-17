@@ -119,7 +119,10 @@ def test_shadow_current_exact_pair_renders_fusion_metadata():
     assert "current evidence: 5" in text
     assert "wallet_flow 12.0" in text
     assert "derivatives" not in text
-    assert "NOT USED TO PROMOTE/SUPPRESS THIS REAL_ALERT" in text
+    # The user-facing generic Telegram lane is now BUY-only. Keep this
+    # contract aligned with the runtime stage name instead of the retired
+    # generic REAL_ALERT review label.
+    assert "NOT USED TO PROMOTE/SUPPRESS THIS BUY" in text
 
 
 def test_safe_inject_never_blocks_alert_on_malformed_shadow():
