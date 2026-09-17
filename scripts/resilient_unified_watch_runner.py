@@ -120,11 +120,19 @@ def actionable_real_alert_gate(last_alert, live, fusion, triggers, reasons, poli
     direct_live_risk = any(
         x.startswith("LOSS_") or "LIQUIDITY_DROP" in x for x in triggers
     )
-    if direct_live_risk and bool(policy.get("allow_direct_live_risk_alerts", True)):
+    hard_risks = list(fusion.get("hard_risks") or [])
+    buy_side_only = bool(policy.get("telegram_buy_side_only", True))
+
+    # User-facing Telegram is buy-side only. Risk, research, watch, sell-side and
+    # deterioration events stay inside the engine for learning/state and must
+    # never be promoted as actionable or near-buy alerts.
+    if buy_side_only and (direct_live_risk or hard_risks):
+        return False, "BUY_SIDE_ONLY_RISK_SUPPRESSED", []
+
+    if direct_live_risk and bool(policy.get("allow_direct_live_risk_alerts", False)):
         return True, "DIRECT_LIVE_RISK", ["LIVE_MARKET_RISK"]
 
-    hard_risks = list(fusion.get("hard_risks") or [])
-    if hard_risks and bool(policy.get("allow_current_hard_risk_alerts", True)):
+    if hard_risks and bool(policy.get("allow_current_hard_risk_alerts", False)):
         fresh, why = _fresh_intelligence(fusion, policy)
         if fresh:
             return True, "CURRENT_HARD_RISK", ["HARD_RISK", *hard_risks[:3]]
@@ -150,11 +158,18 @@ def actionable_real_alert_gate(last_alert, live, fusion, triggers, reasons, poli
 
     strong_score = float(policy.get("real_alert_min_fusion_score", 55.0))
     strong_families = int(policy.get("real_alert_min_positive_families", 3))
-    if score >= strong_score and families >= strong_families:
-        return True, "FUSION_CONFLUENCE", [
-            f"FUSION_{score:.1f}",
-            f"FAMILIES_{families}",
-        ]
+    strong_requires_market = bool(
+        policy.get("real_alert_require_live_market_confirmation_for_strong_path", True)
+    )
+    if (
+        score >= strong_score
+        and families >= strong_families
+        and (market_confirmed or not strong_requires_market)
+    ):
+        proof = [f"FUSION_{score:.1f}", f"FAMILIES_{families}"]
+        if market_confirmed:
+            proof.append("LIVE_MARKET_CONFIRMATION")
+        return True, "FUSION_CONFLUENCE", proof
 
     relaxed_score = float(
         policy.get("real_alert_relaxed_min_fusion_score_with_wallet_or_new_intel", 30.0)
@@ -181,6 +196,8 @@ def actionable_real_alert_gate(last_alert, live, fusion, triggers, reasons, poli
             proof.append("LIVE_MARKET_CONFIRMATION")
         return True, "INTELLIGENCE_PLUS_MARKET", proof
 
+    if buy_side_only and not market_confirmed:
+        return False, "BUY_SIDE_ONLY_NO_LIVE_MARKET_CONFIRMATION", []
     if not special_intel:
         return False, "NO_HIGH_VALUE_INTELLIGENCE_CONFIRMATION", []
     if score < relaxed_score:
@@ -344,16 +361,23 @@ def strict_send(msg):
 
     original_header = lines[0]
     risk = "| RISK" in original_header or original_header.startswith("⚠️")
-    parts = [x.strip() for x in original_header.split("|")]
-    symbol = parts[0] if parts else "🔥 WALLET500"
     if risk:
-        lines[0] = f"{symbol} | WALLET500 | REAL_ALERT | ACTIONABLE=TRUE | RISK"
-    else:
-        lines[0] = f"{symbol} | WALLET500 | REAL_ALERT | ACTIONABLE=TRUE"
+        # Defense in depth: the buy-side gate above should already suppress this.
+        # Never label or deliver a risk event as actionable.
+        print("TELEGRAM_RISK_MESSAGE_BLOCKED_DEFENSE_IN_DEPTH", original_header)
+        return None
+
+    parts = [x.strip() for x in original_header.split("|")]
+    raw_symbol = parts[0] if parts else "WALLET500"
+    symbol = raw_symbol.lstrip("🔥⚠️🟠 ").strip() or "WALLET500"
+    lines[0] = f"🟠 {symbol} | WALLET500 | NEAR_BUY"
 
     if not any(x.startswith("ACTIONABLE:") for x in lines):
         insert_at = 1 if len(lines) > 1 else len(lines)
-        lines.insert(insert_at, "ACTIONABLE: TRUE · RESEARCH_ONLY/WATCH SUPPRESSED")
+        lines.insert(
+            insert_at,
+            "ACTIONABLE: FALSE · NEAR BUY ONLY · WAIT FOR FINAL BUY CONFIRMATION",
+        )
 
     matching = next(
         (
@@ -379,10 +403,11 @@ def _write_actionability_report(policy):
     except Exception:
         report = {}
     report["version"] = max(int(report.get("version") or 0), 5)
-    report["mode"] = "REAL_ALERT_ACTIONABLE_ONLY_WITH_ON_DEMAND_DEEP_INTELLIGENCE"
-    report["telegram_mode"] = "REAL_ALERT_ACTIONABLE_ONLY"
-    report["actionable_required"] = True
+    report["mode"] = "NEAR_BUY_ONLY_WITH_ON_DEMAND_DEEP_INTELLIGENCE"
+    report["telegram_mode"] = "NEAR_BUY_ONLY_FINAL_BUY_SEPARATE"
+    report["actionable_required"] = False
     report["research_watch_telegram_suppressed"] = True
+    report["risk_telegram_suppressed"] = bool(policy.get("telegram_buy_side_only", True))
     report["actionability_policy"] = {
         "min_fusion_score": float(policy.get("real_alert_min_fusion_score", 55.0)),
         "min_positive_families": int(policy.get("real_alert_min_positive_families", 3)),
@@ -398,6 +423,12 @@ def _write_actionability_report(policy):
         ),
         "stale_positive_alerts_blocked": bool(
             policy.get("block_stale_only_positive_alerts", True)
+        ),
+        "telegram_buy_side_only": bool(policy.get("telegram_buy_side_only", True)),
+        "direct_live_risk_alerts_allowed": bool(policy.get("allow_direct_live_risk_alerts", False)),
+        "hard_risk_alerts_allowed": bool(policy.get("allow_current_hard_risk_alerts", False)),
+        "strong_path_requires_live_market_confirmation": bool(
+            policy.get("real_alert_require_live_market_confirmation_for_strong_path", True)
         ),
     }
     report["deep_investigation"] = {
@@ -459,7 +490,7 @@ def main():
                 "component": "unified_watch",
                 "strategy": "STRICT_EXACT_PAIR_PLUS_ON_DEMAND_DEEP_INTELLIGENCE_BEFORE_REAL_ALERT_GATE",
                 "metrics": resilient_http.metrics(),
-                "telegram_mode": "REAL_ALERT_ACTIONABLE_ONLY",
+                "telegram_mode": "NEAR_BUY_ONLY_FINAL_BUY_SEPARATE",
                 "deep_investigation_count": len(_DEEP_REPORTS),
                 "deep_investigation_failures": len(_DEEP_FAILURES),
                 "actionability_stats": dict(_ACTIONABILITY_STATS),
