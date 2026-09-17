@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/unified_watch_engine.py'
+      - 'scripts/spot_market_discovery_collector.py'
       - 'scripts/free_intelligence_collector.py'
       - 'scripts/derivatives_intelligence_collector.py'
       - 'scripts/public_alpha_source_collector.py'
@@ -38,12 +39,16 @@ jobs:
       - name: Validate unified watcher, collectors and intelligence fusion
         id: validate
         run: |
-          python -m py_compile scripts/unified_watch_engine.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py
+          python -m py_compile scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py
           for f in data/unified-watch-config.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json; do python -m json.tool "$f" >/dev/null; done
 
       - name: Test exact-identity intelligence fusion contract
         id: contract
         run: python scripts/test_intelligence_fusion_contract.py
+
+      - name: Discover broad non-leveraged Gate spot movers
+        id: spot_discovery
+        run: python scripts/spot_market_discovery_collector.py
 
       - name: Collect free cross-domain intelligence
         id: free_intel
@@ -83,6 +88,7 @@ jobs:
         env:
           VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
           CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
+          SPOT_DISCOVERY_OUTCOME: ${{ steps.spot_discovery.outcome }}
           FREE_INTEL_OUTCOME: ${{ steps.free_intel.outcome }}
           DERIVATIVES_OUTCOME: ${{ steps.derivatives.outcome }}
           PUBLIC_ALPHA_OUTCOME: ${{ steps.public_alpha.outcome }}
@@ -113,9 +119,11 @@ jobs:
           fusion = load('data/close-watch-intelligence.json')
           state = load('data/unified-watch-state.json')
           report = load('data/unified-watch-intelligence-report.json')
+          spot = load('data/spot-market-discovery.json')
           outcomes = {
               'validate': os.getenv('VALIDATE_OUTCOME'),
               'contract': os.getenv('CONTRACT_OUTCOME'),
+              'spot_discovery': os.getenv('SPOT_DISCOVERY_OUTCOME'),
               'free_intel': os.getenv('FREE_INTEL_OUTCOME'),
               'derivatives': os.getenv('DERIVATIVES_OUTCOME'),
               'public_alpha': os.getenv('PUBLIC_ALPHA_OUTCOME'),
@@ -124,8 +132,9 @@ jobs:
               'fusion': os.getenv('FUSION_OUTCOME'),
               'market_watch': os.getenv('MARKET_WATCH_OUTCOME'),
           }
+          spot_counts = (spot or {}).get('market_counts') if isinstance(spot, dict) else None
           manifest = {
-              'version': 1,
+              'version': 2,
               'generated_at': datetime.now(timezone.utc).isoformat(),
               'github_run_id': os.getenv('GH_RUN_ID'),
               'github_run_attempt': os.getenv('GH_RUN_ATTEMPT'),
@@ -133,6 +142,9 @@ jobs:
               'stage_outcomes': outcomes,
               'first_failed_or_skipped_stage': next((k for k,v in outcomes.items() if v not in ('success',)), None),
               'evidence': {
+                  'spot_discovery_exists': spot is not None,
+                  'spot_discovery_generated_at': (spot or {}).get('generated_at') if isinstance(spot, dict) else None,
+                  'spot_discovery_counts': spot_counts,
                   'close_watch_events_exists': (root/'data/close-watch-events.json').exists(),
                   'close_watch_event_count': len(events.get('events') or []) if isinstance(events, dict) else None,
                   'fusion_snapshot_exists': fusion is not None,
@@ -153,7 +165,7 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/unified-watch-state.json data/unified-watch-intelligence-report.json data/unified-watch-runtime-evidence.json data/derivatives-intelligence-state.json data/close-watch-intelligence.json data/close-watch-events.json data/free-intelligence-collector-state.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json || true
+          git add data/unified-watch-state.json data/unified-watch-intelligence-report.json data/unified-watch-runtime-evidence.json data/derivatives-intelligence-state.json data/close-watch-intelligence.json data/close-watch-events.json data/free-intelligence-collector-state.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/spot-market-discovery.json data/spot-market-discovery-state.json || true
           if git diff --cached --quiet; then echo 'UNIFIED_WATCH_STATE_UNCHANGED'; exit 0; fi
           git commit -m 'chore: update unified watch intelligence state [skip ci]'
           for attempt in 1 2 3; do
