@@ -1,4 +1,4 @@
-from unified_watch_engine import alpha_telegram_gate
+from scripts.unified_watch_engine import alpha_telegram_gate
 
 
 POLICY = {
