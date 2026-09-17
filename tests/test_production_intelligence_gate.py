@@ -1,6 +1,13 @@
 from datetime import datetime, timedelta, timezone
+import importlib.util
+from pathlib import Path
 
-from scripts.production_intelligence_gate import apply_gate
+MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "production_intelligence_gate.py"
+SPEC = importlib.util.spec_from_file_location("production_intelligence_gate", MODULE_PATH)
+assert SPEC is not None and SPEC.loader is not None
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+apply_gate = MODULE.apply_gate
 
 
 NOW = datetime(2026, 9, 16, 21, 30, tzinfo=timezone.utc)
