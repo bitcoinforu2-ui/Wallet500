@@ -19,7 +19,15 @@
     "wallet_holder_family_score_delta": 3.0,
     "notable_evidence_min_raw": 0.30,
     "suppress_repeated_trigger_without_delta": true,
-    "notes": "A tracked token stays silent unless something materially changes versus the last Telegram alert. New hard risks, new material intelligence evidence, unusual wallet/holder-family change, large price/liquidity/volume change, or a genuinely new trigger can reopen the alert gate."
+    "alpha_close_watch_require_confirmation": true,
+    "alpha_min_confirmations_for_telegram": 1,
+    "alpha_min_fusion_score_for_telegram": 12.0,
+    "alpha_min_positive_families_for_telegram": 2,
+    "alpha_wallet_holder_score_for_telegram": 3.0,
+    "alpha_min_volume_h1_for_telegram": 5000.0,
+    "alpha_min_buys_h1_for_telegram": 15,
+    "alpha_min_buy_sell_ratio_for_telegram": 2.0,
+    "notes": "A tracked token stays silent unless something materially changes versus the last Telegram alert. New hard risks always bypass suppression. PUBLIC_ALPHA close-watch candidates remain in engine learning/state, but Telegram requires at least one additional confirmation such as multi-family intelligence, a material wallet/holder signal, social/search/news evidence, a meaningful fusion-score rise, strong volume acceleration, or strong buy imbalance."
   },
   "experiment": {
     "first_full_collector_asset": "SOPH",
