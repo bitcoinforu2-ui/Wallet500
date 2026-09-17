@@ -9,7 +9,7 @@ from typing import Any
 
 from . import revival_90d_telegram as revival
 
-MODE = "REVIVAL_CLEAN_ENTRY_REAL_ALERT_V1"
+MODE = "REVIVAL_CLEAN_ENTRY_RESEARCH_ONLY_V2"
 SOURCE = revival.SOURCE
 STATE = "revival-clean-entry-telegram-state.json"
 REPORT = "revival-clean-entry-telegram-report.json"
@@ -210,59 +210,46 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict[str,
     active = {revival._key(meta) for _, meta in clean_rows}
     state_exists = (out / STATE).exists()
     state = revival._load(out / STATE, {}) if state_exists else {}
-    sent = state.get("sent") if isinstance(state, dict) and isinstance(state.get("sent"), dict) else {}
-    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-    chat = os.getenv("TELEGRAM_CHAT_ID", "").strip()
-    configured = bool(token and chat)
+    observed = state.get("sent") if isinstance(state, dict) and isinstance(state.get("sent"), dict) else {}
     delivered: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
     baseline_count = 0
 
-    if configured and not state_exists:
-        for row, meta in clean_rows:
-            key = revival._key(meta)
-            sent[key] = {
-                "active": True,
-                "baseline_at": now_iso,
-                "symbol": _symbol(row),
-                "pair_address": meta["pair_address"],
-                "source": "FORWARD_ONLY_BASELINE_NO_SEND",
-            }
+    # User-facing Telegram delivery is intentionally forbidden in this legacy lane.
+    # CLEAN ENTRY remains research evidence only; user-facing delivery belongs to the
+    # Unified Watch Engine and only for near-buy / buy-grade events.
+    for row, meta in clean_rows:
+        key = revival._key(meta)
+        prev = observed.get(key) if isinstance(observed.get(key), dict) else {}
+        if not prev:
             baseline_count += 1
-        revival._write(out / STATE, {"version": 1, "updated_at": now_iso, "forward_started_at": now_iso, "sent": sent})
-    elif configured:
-        for row, meta in clean_rows:
-            key = revival._key(meta)
-            prev = sent.get(key) if isinstance(sent.get(key), dict) else {}
-            if prev.get("active") is True:
-                continue
-            eid = _event_id(key, now_iso)
-            try:
-                mid, attempts = revival._send(token, chat, _message(row, meta, now_iso, eid))
-                info = {
-                    "active": True,
-                    "sent_at": now_iso,
-                    "event_id": eid,
-                    "telegram_message_id": mid,
-                    "attempts": attempts,
-                    "symbol": _symbol(row),
-                    "pair_address": meta["pair_address"],
-                    "live_price_usd": meta["live_price_usd"],
-                    "buy_sell_ratio_h1": meta["buy_sell_ratio_h1"],
-                    "actionable": True,
-                    "automatic_trade": False,
-                    "real_alert_lane": "REVIVAL_CLEAN_ENTRY",
-                }
-                sent[key] = info
-                delivered.append({"key": key, **info})
-            except Exception as exc:
-                errors.append({"key": key, "error": f"{type(exc).__name__}: {exc}"[:300]})
-        for key, info in list(sent.items()):
-            if isinstance(info, dict) and info.get("active") is True and key not in active:
-                info["active"] = False
-                info["cleared_at"] = now_iso
-                sent[key] = info
-        revival._write(out / STATE, {"version": 1, "updated_at": now_iso, "forward_started_at": state.get("forward_started_at") or now_iso, "sent": sent})
+        observed[key] = {
+            **prev,
+            "active": True,
+            "observed_at": now_iso,
+            "symbol": _symbol(row),
+            "pair_address": meta["pair_address"],
+            "live_price_usd": meta["live_price_usd"],
+            "buy_sell_ratio_h1": meta["buy_sell_ratio_h1"],
+            "source": "RESEARCH_ONLY_NO_TELEGRAM",
+        }
+    for key, info in list(observed.items()):
+        if isinstance(info, dict) and info.get("active") is True and key not in active:
+            info["active"] = False
+            info["cleared_at"] = now_iso
+            observed[key] = info
+    revival._write(
+        out / STATE,
+        {
+            "version": 2,
+            "updated_at": now_iso,
+            "forward_started_at": state.get("forward_started_at") or now_iso,
+            "sent": observed,
+            "telegram_delivery": "FORBIDDEN",
+            "delivery_lane": "UNIFIED_WATCH_ENGINE_ONLY",
+        },
+    )
+    configured = False
 
     report = {
         "version": 1,
@@ -280,8 +267,8 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict[str,
         "delivered": delivered,
         "errors": errors,
         "truth_contract": {
-            "research_only": False,
-            "actionable_only": True,
+            "research_only": True,
+            "actionable_only": False,
             "manual_decision_only": True,
             "automatic_buy": False,
             "exact_pair_live_price_required": True,
@@ -292,6 +279,8 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict[str,
             "fresh_cross_venue_price_dispersion_veto": True,
             "alert_label": "CLEAN ENTRY CANDIDATE",
             "buy_now_language_forbidden": True,
+            "telegram_delivery_forbidden": True,
+            "delivery_lane": "UNIFIED_WATCH_ENGINE_ONLY",
             "no_historical_backfill": True,
             "no_hindsight": True,
         },
