@@ -36,6 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 1
 
       - name: Validate unified watcher, collectors and intelligence fusion
@@ -85,6 +86,14 @@ jobs:
       - name: Fuse cross-domain intelligence evidence
         id: fusion
         run: python scripts/intelligence_fusion.py
+
+      - name: Refresh persisted unified alert state from latest main
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:data/unified-watch-state.json > data/unified-watch-state.json
+          python -m json.tool data/unified-watch-state.json >/dev/null
+          echo 'UNIFIED_ALERT_STATE_REFRESHED_FROM_LATEST_MAIN'
 
       - name: Run fail-closed verified market watchlist
         id: market_watch
