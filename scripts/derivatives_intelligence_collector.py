@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import urllib.parse
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+
+import resilient_http
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "data/unified-watch-config.json"
@@ -17,19 +18,6 @@ EVM = {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche"
 
 def now():
     return datetime.now(timezone.utc).isoformat()
-
-
-def get(url, timeout=9):
-    req = urllib.request.Request(url, headers={"accept": "application/json", "user-agent": "Wallet500-Derivatives/2.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
-
-
-def post(url, payload, timeout=9):
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(url, data=data, headers={"content-type": "application/json", "user-agent": "Wallet500-Derivatives/2.0"}, method="POST")
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
 
 
 def chain_name(v):
@@ -66,9 +54,14 @@ def targets():
         i = ident(t)
         if not i or i[3] in seen:
             continue
+        ctype = str(t.get("candidate_type") or "CONFIGURED").upper()
+        if ctype == "PUBLIC_ALPHA" and not (t.get("derivatives_intelligence") or t.get("derivatives_symbol")):
+            continue
+        if ctype == "CONFIGURED" and not t.get("derivatives_intelligence", False):
+            continue
         seen.add(i[3])
         out.append(t)
-    return out[:50]
+    return out[:60]
 
 
 def pct(a, b):
@@ -103,68 +96,132 @@ def ev(t, kind, direction, strength, confidence, source, subject, **extra):
     return x
 
 
-def binance_snapshot(symbol):
-    s = symbol.upper() + "USDT"
-    base = "https://fapi.binance.com"
-    oi = float(get(base + "/fapi/v1/openInterest?" + urllib.parse.urlencode({"symbol": s}))["openInterest"])
-    mark = get(base + "/fapi/v1/premiumIndex?" + urllib.parse.urlencode({"symbol": s}))
-    px = float(mark["markPrice"])
-    funding = float(mark.get("lastFundingRate") or 0) * 100
-    return {"provider": "Binance Futures", "oi_units": oi, "oi_usd": oi * px, "mark_price": px, "funding_pct": funding}
+def jget(url, cache_ttl=45):
+    return resilient_http.request_json(
+        url,
+        timeout=15,
+        attempts=5,
+        cache_ttl=cache_ttl,
+        user_agent="Wallet500-Derivatives/3.0",
+    )
 
 
-def gate_snapshot(symbol):
-    name = symbol.upper() + "_USDT"
-    d = get("https://api.gateio.ws/api/v4/futures/usdt/contracts/" + urllib.parse.quote(name, safe=""))
-    px = float(d.get("mark_price") or d.get("last_price") or 0)
-    oi = float(d.get("open_interest") or 0)
-    mult = float(d.get("quanto_multiplier") or 1)
-    funding = float(d.get("funding_rate") or 0) * 100
-    if px <= 0 or oi <= 0:
-        raise RuntimeError("GATE_FUTURES_SNAPSHOT_MISSING")
-    return {"provider": "Gate Futures", "oi_units": oi, "oi_usd": oi * px * mult, "mark_price": px, "funding_pct": funding, "quanto_multiplier": mult}
-
-
-def derivative_snapshot(symbol):
-    errors = []
-    for fn in (binance_snapshot, gate_snapshot):
+def gate_catalog():
+    rows = jget("https://api.gateio.ws/api/v4/futures/usdt/contracts", 60)
+    out = {}
+    for d in rows if isinstance(rows, list) else []:
+        name = str(d.get("name") or "").upper()
+        if not name.endswith("_USDT"):
+            continue
+        sym = name[:-5]
         try:
-            return fn(symbol)
+            px = float(d.get("mark_price") or d.get("last_price") or 0)
+            oi = float(d.get("open_interest") or 0)
+            mult = float(d.get("quanto_multiplier") or 1)
+            oi_usd = oi * px * mult
+            funding = float(d.get("funding_rate") or 0) * 100
+        except Exception:
+            continue
+        if px > 0 and oi_usd > 0:
+            out[sym] = {"provider": "Gate Futures", "oi_usd": oi_usd, "mark_price": px, "funding_pct": funding}
+    return out
+
+
+def bybit_catalog():
+    doc = jget("https://api.bybit.com/v5/market/tickers?category=linear", 60)
+    if str(doc.get("retCode", "0")) not in {"0", "None"}:
+        raise RuntimeError(f"BYBIT_RETCODE_{doc.get('retCode')}")
+    out = {}
+    for d in ((doc.get("result") or {}).get("list") or []):
+        name = str(d.get("symbol") or "").upper()
+        if not name.endswith("USDT"):
+            continue
+        sym = name[:-4]
+        try:
+            px = float(d.get("markPrice") or d.get("lastPrice") or 0)
+            oi_usd = float(d.get("openInterestValue") or 0)
+            funding = float(d.get("fundingRate") or 0) * 100
+        except Exception:
+            continue
+        if px > 0 and oi_usd > 0:
+            out[sym] = {"provider": "Bybit Perpetuals", "oi_usd": oi_usd, "mark_price": px, "funding_pct": funding}
+    return out
+
+
+def binance_catalog(configured_symbols):
+    marks = jget("https://fapi.binance.com/fapi/v1/premiumIndex", 60)
+    marks = marks if isinstance(marks, list) else [marks]
+    mark_map = {str(x.get("symbol") or "").upper(): x for x in marks if isinstance(x, dict)}
+    out = {}
+    for sym in configured_symbols:
+        pair = sym.upper() + "USDT"
+        m = mark_map.get(pair)
+        if not m:
+            continue
+        try:
+            oi = jget("https://fapi.binance.com/fapi/v1/openInterest?" + urllib.parse.urlencode({"symbol": pair}), 20)
+            px = float(m.get("markPrice") or 0)
+            units = float(oi.get("openInterest") or 0)
+            funding = float(m.get("lastFundingRate") or 0) * 100
+        except Exception:
+            continue
+        if px > 0 and units > 0:
+            out[sym] = {"provider": "Binance Futures", "oi_usd": units * px, "mark_price": px, "funding_pct": funding}
+    return out
+
+
+def provider_catalogs(rows):
+    catalogs, health = {}, {}
+    providers = (("Gate Futures", gate_catalog), ("Bybit Perpetuals", bybit_catalog))
+    for name, fn in providers:
+        try:
+            catalogs[name] = fn()
+            health[name] = {"status": "OK", "symbols": len(catalogs[name])}
         except Exception as e:
-            errors.append(type(e).__name__)
-    return {"status": "UNAVAILABLE", "reason": "+".join(errors[-2:]) or "NO_PROVIDER"}
+            catalogs[name] = {}
+            health[name] = {"status": "ERROR", "error": f"{type(e).__name__}:{str(e)[:120]}"}
+    configured_symbols = {
+        str(t.get("derivatives_symbol") or t.get("symbol") or "").upper()
+        for t in rows
+        if str(t.get("candidate_type") or "CONFIGURED").upper() == "CONFIGURED"
+    }
+    try:
+        catalogs["Binance Futures"] = binance_catalog(configured_symbols)
+        health["Binance Futures"] = {"status": "OK", "symbols": len(catalogs["Binance Futures"])}
+    except Exception as e:
+        catalogs["Binance Futures"] = {}
+        health["Binance Futures"] = {"status": "ERROR", "error": f"{type(e).__name__}:{str(e)[:120]}"}
+    return catalogs, health
 
 
-def hyper_user(address):
-    perp = post("https://api.hyperliquid.xyz/info", {"type": "clearinghouseState", "user": address})
-    spot = post("https://api.hyperliquid.xyz/info", {"type": "spotClearinghouseState", "user": address})
-    positions = []
-    for row in perp.get("assetPositions") or []:
-        p = row.get("position") or {}
-        sz = float(p.get("szi") or 0)
-        if sz:
-            positions.append({
-                "coin": p.get("coin"),
-                "signed_size": sz,
-                "side": "LONG" if sz > 0 else "SHORT",
-                "entry_px": p.get("entryPx"),
-                "position_value": p.get("positionValue"),
-                "liquidation_px": p.get("liquidationPx"),
-                "unrealized_pnl": p.get("unrealizedPnl"),
-            })
-    balances = {str(x.get("coin")): float(x.get("total") or 0) for x in (spot.get("balances") or [])}
-    return {"positions": positions, "spot_balances": balances}
+def pick_snapshot(t, catalogs):
+    sym = str(t.get("derivatives_symbol") or t.get("symbol") or "").upper()
+    ctype = str(t.get("candidate_type") or "CONFIGURED").upper()
+    if not sym:
+        return None
+    # Gate-discovered identities are contract-linked to the Gate spot symbol, so
+    # only Gate futures may be attached automatically. This prevents ticker collisions.
+    if ctype == "GATE_SPOT_DISCOVERY":
+        snap = (catalogs.get("Gate Futures") or {}).get(sym)
+        return dict(snap, derivative_symbol=sym) if snap else None
+    for provider in ("Bybit Perpetuals", "Gate Futures", "Binance Futures"):
+        snap = (catalogs.get(provider) or {}).get(sym)
+        if snap:
+            return dict(snap, derivative_symbol=sym)
+    return None
 
 
 def main():
     doc = load(EVENTS, {"version": 3, "events": []})
-    state = load(STATE, {"version": 2, "tokens": {}})
-    state["version"] = 2
+    state = load(STATE, {"version": 3, "tokens": {}})
+    state["version"] = 3
     old_tokens = state.setdefault("tokens", {})
     out = []
-    provider_ok = {"Binance Futures": 0, "Gate Futures": 0}
-    unavailable = 0
     rows = targets()
+    catalogs, provider_health = provider_catalogs(rows)
+    provider_ok = {k: 0 for k in catalogs}
+    unavailable = 0
+    not_listed = 0
 
     for t in rows:
         sym = str(t.get("symbol") or "").upper()
@@ -172,92 +229,51 @@ def main():
         if not sym or not i:
             continue
         prev = old_tokens.get(i[3]) or {}
-        snap = derivative_snapshot(sym)
-        if snap.get("oi_usd"):
-            provider_ok[snap["provider"]] = provider_ok.get(snap["provider"], 0) + 1
-            old = float(prev.get("oi_usd") or 0)
-            d = pct(snap["oi_usd"], old)
-            if d is not None and abs(d) >= 5:
-                out.append(ev(
-                    t,
-                    "open_interest_change",
-                    1 if d > 0 else -1,
-                    min(100, abs(d) * 3),
-                    85,
-                    snap["provider"],
-                    f"OI {d:+.2f}% vs prior verified snapshot",
-                    oi_usd=snap["oi_usd"],
-                    delta_pct=round(d, 3),
-                    funding_pct=snap["funding_pct"],
-                ))
-            if abs(snap["funding_pct"]) >= 0.05:
-                out.append(ev(
-                    t,
-                    "funding_extreme",
-                    -1,
-                    min(100, abs(snap["funding_pct"]) * 1000),
-                    80,
-                    snap["provider"],
-                    f"funding {snap['funding_pct']:+.4f}%",
-                    funding_pct=snap["funding_pct"],
-                    contradicts_bullish=snap["funding_pct"] > 0,
-                ))
-            old_tokens[i[3]] = {**snap, "symbol": sym, "identity_key": i[3], "observed_at": now()}
-        else:
-            unavailable += 1
-            old_tokens.setdefault(i[3], {"symbol": sym, "identity_key": i[3]})["last_unavailable"] = {**snap, "observed_at": now()}
+        snap = pick_snapshot(t, catalogs)
+        if not snap:
+            not_listed += 1
+            old_tokens.setdefault(i[3], {"symbol": sym, "identity_key": i[3]})["last_derivatives_status"] = {
+                "status": "NOT_LISTED_ON_IDENTITY_SAFE_PROVIDER",
+                "observed_at": now(),
+            }
+            continue
 
-        for w in t.get("tracked_perp_wallets") or []:
-            address = str(w.get("address") if isinstance(w, dict) else w)
-            provider = str(w.get("provider", "hyperliquid") if isinstance(w, dict) else "hyperliquid").lower()
-            if provider != "hyperliquid" or not address:
-                continue
-            try:
-                u = hyper_user(address)
-            except Exception:
-                continue
-            pos = next((p for p in u["positions"] if str(p.get("coin", "")).upper() == sym), None)
-            spot = float(u["spot_balances"].get(sym, 0))
-            if not pos:
-                continue
-            pv = abs(float(pos.get("position_value") or 0))
-            side = pos["side"]
-            spx = float(snap.get("mark_price") or 0)
-            spot_usd = spot * spx if spx else None
-            hedge_ratio = (pv / spot_usd) if spot_usd and spot_usd > 0 and side == "SHORT" else None
-            direction = 1 if side == "LONG" else -1
-            strength = min(100, 35 + (min(2.0, hedge_ratio or 0) * 25))
+        provider_ok[snap["provider"]] = provider_ok.get(snap["provider"], 0) + 1
+        old = float(prev.get("oi_usd") or 0)
+        same_provider = prev.get("provider") == snap.get("provider")
+        d = pct(snap["oi_usd"], old) if same_provider else None
+        if d is not None and abs(d) >= 5:
             out.append(ev(
                 t,
-                "verified_same_wallet_perp_exposure",
-                direction,
-                strength,
-                92,
-                "Hyperliquid public account state",
-                address,
-                wallet_address=address,
-                side=side,
-                perp_notional_usd=pv,
-                spot_units=spot,
-                spot_usd=spot_usd,
-                hedge_ratio=hedge_ratio,
-                entry_px=pos.get("entry_px"),
-                liquidation_px=pos.get("liquidation_px"),
+                "open_interest_change",
+                1 if d > 0 else -1,
+                min(100, abs(d) * 3),
+                86,
+                snap["provider"],
+                f"OI {d:+.2f}% vs prior same-provider snapshot",
+                oi_usd=snap["oi_usd"],
+                delta_pct=round(d, 3),
+                funding_pct=snap.get("funding_pct"),
+                derivative_symbol=snap.get("derivative_symbol"),
             ))
-            if side == "SHORT" and spot > 0:
-                out.append(ev(
-                    t,
-                    "spot_holder_short_hedge",
-                    -1,
-                    min(100, 45 + (min(2.0, hedge_ratio or 0) * 20)),
-                    90,
-                    "Hyperliquid public account state",
-                    address,
-                    contradicts_bullish=True,
-                    wallet_address=address,
-                    hedge_ratio=hedge_ratio,
-                    interpretation="HEDGE_OR_DISTRIBUTION_RISK_NOT_MANIPULATION_PROOF",
-                ))
+        funding = float(snap.get("funding_pct") or 0)
+        if abs(funding) >= 0.05:
+            out.append(ev(
+                t,
+                "funding_extreme",
+                -1,
+                min(100, abs(funding) * 1000),
+                82,
+                snap["provider"],
+                f"funding {funding:+.4f}%",
+                funding_pct=funding,
+                contradicts_bullish=funding > 0,
+                derivative_symbol=snap.get("derivative_symbol"),
+            ))
+        old_tokens[i[3]] = {**snap, "symbol": sym, "identity_key": i[3], "observed_at": now()}
+
+    if all(v.get("status") != "OK" for v in provider_health.values()):
+        unavailable = len(rows)
 
     merged = [e for e in (doc.get("events") or []) if isinstance(e, dict)] + [e for e in out if e]
     ded = {}
@@ -267,9 +283,22 @@ def main():
     EVENTS.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
     state["updated_at"] = now()
     state["provider_success"] = provider_ok
+    state["provider_health"] = provider_health
     state["unavailable_targets"] = unavailable
+    state["not_listed_targets"] = not_listed
+    state["target_count"] = len(rows)
+    state["http_resilience"] = resilient_http.metrics()
     STATE.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n")
-    print(json.dumps({"status": "OK", "new_events": len([x for x in out if x]), "targets": len(rows), "provider_success": provider_ok, "unavailable": unavailable}, ensure_ascii=False))
+    print(json.dumps({
+        "status": "OK",
+        "new_events": len([x for x in out if x]),
+        "targets": len(rows),
+        "provider_success": provider_ok,
+        "provider_health": provider_health,
+        "not_listed": not_listed,
+        "unavailable": unavailable,
+        "http": resilient_http.metrics(),
+    }, ensure_ascii=False))
 
 
 if __name__ == "__main__":
