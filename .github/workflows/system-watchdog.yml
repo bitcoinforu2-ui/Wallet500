@@ -94,8 +94,6 @@ jobs:
       - name: Probe Wallet500 from outside the production decision path
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m wallet500.system_watchdog
 
       - name: Add Actions capacity, publish freshness and starvation guard
@@ -119,7 +117,10 @@ jobs:
               'NO_TELEGRAM_MESSAGE_WHEN_HEALTHY',
               'INCIDENTS_ARE_DEDUPED_AND_RATE_LIMITED',
               'CURRENT_REAL_ALERTS_ARE_BASELINED_ON_FIRST_WATCHDOG_RUN',
-              'NEW_REAL_ALERT_TELEGRAM_GAPS_ARE_DETECTED_BY_EXACT_PAIR_TRANSITION',
+              'GENERIC_REAL_ALERTS_ARE_NOT_USER_TELEGRAM_EVENTS_IN_BUY_ONLY_MODE',
+              'FINAL_BUY_TELEGRAM_GAPS_REQUIRE_MATCHED_BUY_DECISION',
+              'PRE_BUY_TELEGRAM_GAPS_REQUIRE_PAPER_BUY_CANDIDATE',
+              'WATCHDOG_TECHNICAL_INCIDENTS_NEVER_GO_TO_USER_TELEGRAM',
               'GLOBAL_ACTIONS_QUEUE_AND_RUN_PRESSURE_IS_MEASURED',
               'NEWER_FAILED_REVIVAL_PUBLICATION_IS_NOT_HEALTHY',
               'SUSTAINED_ZERO_ACTIVE_WITH_QUALIFIED_SCAN_INPUT_IS_STARVATION',
