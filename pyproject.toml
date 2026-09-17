@@ -5,7 +5,10 @@ description = "Multi-Chain Early Market Intelligence Engine"
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+# Tests exercise both the installed src package and executable integration scripts.
+# Keep the repository root importable so `scripts.*` integration tests behave the
+# same in GitHub Actions as they do when executed from the checkout locally.
+pythonpath = ["src", "."]
 testpaths = ["tests"]
 
 # Recovery touch: force a fresh post-publisher-fix live scan snapshot.
