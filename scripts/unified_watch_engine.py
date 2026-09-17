@@ -19,6 +19,8 @@ CHAIN_ALIASES = {"eth": "ethereum", "bnb": "bsc"}
 ALERTWORTHY_INTEL_FAMILIES = {
     "wallet_flow",
     "holder_network",
+    "attention_social",
+    "search_discovery",
     "catalyst_news",
     "fundamental_usage",
     "supply_tokenomics",
@@ -272,6 +274,68 @@ def order_flow_ratio(snapshot):
         return 1.0
 
 
+def alpha_telegram_confirmations(live, fusion, triggers, reasons, policy):
+    confirmations = []
+    score = fusion.get("score")
+    families = int(fusion.get("families") or 0)
+
+    if families >= int(policy.get("alpha_min_positive_families_for_telegram", 2)):
+        confirmations.append(f"MULTI_FAMILY_{families}")
+
+    if score is not None and float(score) >= float(policy.get("alpha_min_fusion_score_for_telegram", 12.0)):
+        confirmations.append(f"FUSION_SCORE_{float(score):.1f}")
+
+    family_scores = fusion.get("family_scores") or {}
+    wallet_holder_min = float(policy.get("alpha_wallet_holder_score_for_telegram", 3.0))
+    for fam in ("wallet_flow", "holder_network"):
+        fam_score = float(family_scores.get(fam) or 0)
+        if fam_score >= wallet_holder_min:
+            confirmations.append(f"{fam.upper()}_{fam_score:.1f}")
+
+    for item in fusion.get("notable_evidence") or []:
+        fam = str(item).split(":", 1)[0]
+        if fam in ALERTWORTHY_INTEL_FAMILIES:
+            confirmations.append(f"INTEL_{fam.upper()}")
+
+    min_volume = float(policy.get("alpha_min_volume_h1_for_telegram", 5000.0))
+    if "PRICE_PLUS_VOLUME_ACCELERATION" in triggers and float(live.get("volume_h1") or 0) >= min_volume:
+        confirmations.append("STRONG_VOLUME_ACCELERATION")
+
+    buys = int(live.get("buys_h1") or 0)
+    sells = int(live.get("sells_h1") or 0)
+    min_buys = int(policy.get("alpha_min_buys_h1_for_telegram", 15))
+    min_ratio = float(policy.get("alpha_min_buy_sell_ratio_for_telegram", 2.0))
+    ratio = (buys + 1.0) / (sells + 1.0)
+    if buys >= min_buys and ratio >= min_ratio:
+        confirmations.append(f"STRONG_BUY_IMBALANCE_{ratio:.1f}X")
+
+    for reason in reasons or []:
+        r = str(reason)
+        if r.startswith("NEW_INTELLIGENCE:"):
+            confirmations.append("NEW_MATERIAL_INTELLIGENCE")
+        elif r.startswith("WALLET_FLOW_SHIFT_+"):
+            confirmations.append("WALLET_FLOW_SHIFT")
+        elif r.startswith("HOLDER_NETWORK_SHIFT_+"):
+            confirmations.append("HOLDER_NETWORK_SHIFT")
+        elif r.startswith("INTELLIGENCE_SCORE_+"):
+            confirmations.append("INTELLIGENCE_SCORE_RISE")
+
+    if "ALPHA_CALL_PLUS_BUY_IMBALANCE" in triggers:
+        confirmations.append("ALPHA_PLUS_BUY_IMBALANCE")
+
+    return list(dict.fromkeys(confirmations))
+
+
+def alpha_telegram_gate(live, fusion, triggers, reasons, risk, policy):
+    if risk:
+        return True, ["RISK_BYPASS"]
+    if not bool(policy.get("alpha_close_watch_require_confirmation", True)):
+        return True, ["CONFIRMATION_GATE_DISABLED"]
+    confirmations = alpha_telegram_confirmations(live, fusion, triggers, reasons, policy)
+    required = max(1, int(policy.get("alpha_min_confirmations_for_telegram", 1)))
+    return len(confirmations) >= required, confirmations
+
+
 def material_change_reasons(last_alert, live, fusion, triggers, policy):
     last_alert = last_alert or {}
     last_fusion = last_alert.get("fusion") or {}
@@ -398,6 +462,7 @@ def main():
     intel_rows = []
     sent_alerts = 0
     suppressed_alerts = 0
+    suppressed_low_confirmation_alerts = 0
 
     for t in tokens:
         sym = t["symbol"].upper()
@@ -495,6 +560,32 @@ def main():
 
         hard_risk = bool(fusion.get("hard_risks"))
         risk = hard_risk or any(x.startswith("LOSS_") or "LIQUIDITY_DROP" in x for x in tr)
+
+        alpha_confirmations = []
+        if t.get("dynamic_alpha_candidate"):
+            alpha_ok, alpha_confirmations = alpha_telegram_gate(
+                live, fusion, tr, reasons, risk, alert_policy
+            )
+            if not alpha_ok:
+                suppressed_low_confirmation_alerts += 1
+                st[key]["last_suppressed_alert"] = {
+                    "observed_at": live.get("observed_at"),
+                    "reasons": list(reasons),
+                    "triggers": list(tr),
+                    "fusion_score": fusion.get("score"),
+                    "families": fusion.get("families"),
+                    "volume_h1": live.get("volume_h1"),
+                    "buys_h1": live.get("buys_h1"),
+                    "sells_h1": live.get("sells_h1"),
+                    "reason": "LOW_ALPHA_CONFIRMATION",
+                }
+                print(
+                    key,
+                    "ALERT_SUPPRESSED_LOW_ALPHA_CONFIRMATION",
+                    {"reasons": reasons, "triggers": tr, "confirmations": alpha_confirmations},
+                )
+                continue
+
         if risk:
             label = "RISK"
         elif t.get("dynamic_alpha_candidate"):
@@ -518,6 +609,8 @@ def main():
             f"{icon} {sym} | WALLET500 UNIFIED WATCH | {label}",
             "WHY THIS ALERT: " + " | ".join(reasons[:6]),
         ]
+        if t.get("dynamic_alpha_candidate") and alpha_confirmations:
+            lines.append("CONFIRMATION: " + " | ".join(alpha_confirmations[:4]))
         if current_state.get("discovery_price") is not None:
             lines.append(f"DISCOVERY PRICE: ${float(current_state['discovery_price']):.8f}")
         lines.extend([
@@ -536,6 +629,7 @@ def main():
             str(t.get("dex_url") or ""),
         ])
         send("\n".join(lines))
+        st[key].pop("last_suppressed_alert", None)
         st[key]["last_alert"] = alert_snapshot(live, fusion, tr)
         sent_alerts += 1
 
@@ -549,6 +643,7 @@ def main():
         "fusion_snapshot_generated_at": intel_doc.get("generated_at") if isinstance(intel_doc, dict) else None,
         "sent_alerts": sent_alerts,
         "suppressed_repeated_alerts": suppressed_alerts,
+        "suppressed_low_confirmation_alerts": suppressed_low_confirmation_alerts,
         "configured_targets": len(static_tokens),
         "dynamic_alpha_targets": sum(bool(x.get("dynamic_alpha_candidate")) for x in dynamic),
         "dynamic_spot_targets": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
@@ -563,7 +658,8 @@ def main():
         "intelligence_targets": len(intel_rows),
         "sent_alerts": sent_alerts,
         "suppressed_repeated_alerts": suppressed_alerts,
-        "alert_mode": "MATERIAL_CHANGE_ONLY",
+        "suppressed_low_confirmation_alerts": suppressed_low_confirmation_alerts,
+        "alert_mode": "MATERIAL_CHANGE_PLUS_ALPHA_CONFIRMATION_GATE",
     }, ensure_ascii=False))
 
 
