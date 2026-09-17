@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from . import revival_deep_intelligence as deep_intelligence
 from .telegram_alerts import _fmt_israel_time, _fmt_money, _load, _send, _write
 
 MODE = "ACTIONABLE_REVIVAL_90D_15K_REAL_ALERT_V2"
@@ -66,12 +67,7 @@ def _expanded_identity_verified(row: dict, chain: str, token: str, pair: str) ->
 
 
 def _static_prefilter(row: object, now: datetime) -> bool:
-    """Cheap fail-closed filter before any live provider call.
-
-    The expanded Revival universe can contain hundreds of rows. Only rows that
-    already satisfy identity, age, liquidity, score and display/risk gates are
-    allowed to consume a live DexScreener request for H1 confirmation.
-    """
+    """Cheap fail-closed filter before any live provider call."""
     if not isinstance(row, dict):
         return False
     chain = _norm_chain(row.get("chain") or row.get("network"))
@@ -235,9 +231,16 @@ def _message(row: dict, m: dict[str, Any], ts: str, eid: str) -> str:
     symbol = str(row.get("base_token_symbol") or row.get("symbol") or "UNKNOWN")
     url = str(row.get("url") or row.get("dex_url") or row.get("dex_link") or "")
     price = _f((row.get("live_h1") or {}).get("price_usd") or row.get("price_usd"))
+    deep = m.get("deep_intelligence") if isinstance(m.get("deep_intelligence"), dict) else {}
+    wallet = deep.get("wallet_intel") if isinstance(deep.get("wallet_intel"), dict) else {}
+    flow = deep.get("flow_quality") if isinstance(deep.get("flow_quality"), dict) else {}
+    liq = deep.get("liquidity_quality") if isinstance(deep.get("liquidity_quality"), dict) else {}
+    security = deep.get("contract_security") if isinstance(deep.get("contract_security"), dict) else {}
+    fusion = deep.get("intelligence_context") if isinstance(deep.get("intelligence_context"), dict) else {}
+    hard = deep.get("hard_blockers") or []
     lines = [
         "🔥🔥🔥 REAL ALERT — REVIVAL 90D / 15K — WALLET500",
-        "🆕 התעוררות חדשה שעברה את מסלול ה-Revival המורחב",
+        "🆕 התעוררות חדשה שעברה Revival + Deep Intelligence אוטומטי",
         f"📅 זמן התראה (ישראל): {_fmt_israel_time(ts)}",
         f"🧾 Alert ID: {eid}",
         "✅ ACTIONABLE MANUAL DECISION — NO AUTOMATIC TRADE",
@@ -247,14 +250,23 @@ def _message(row: dict, m: dict[str, Any], ts: str, eid: str) -> str:
         f"Pair: {m['pair_address']}",
         "Exact token identity: VERIFIED ✅",
         "Exact pair: LOCKED ✅",
+        f"Deep Check: {deep.get('status', 'UNKNOWN')}",
+        f"Revival score: {m['revival_score']:.1f}/100",
+        f"Confirmation score: {_f(deep.get('confirmation_score')):.1f}/100",
+        f"Wallet Intel: {wallet.get('status', 'UNKNOWN')} | Smart Money: {wallet.get('smart_money', 'UNAVAILABLE')}",
+        f"Flow Quality: {flow.get('status', 'UNAVAILABLE')}",
+        f"Liquidity Quality: {liq.get('status', 'UNAVAILABLE')}",
+        f"Contract Security: {security.get('status', 'UNAVAILABLE')}",
+        f"Intelligence Fusion: {fusion.get('status', 'NOT_AVAILABLE')}",
+        f"Hard Blockers: {'NONE' if not hard else ', '.join(str(x) for x in hard)}",
+        f"Decision: {deep.get('decision', 'WATCH — MANUAL REVIEW')}",
         f"Market age: {m['market_age_days']:.1f}d ✅ min 90d",
         f"Liquidity: {_fmt_money(m['liquidity_usd'])} ✅ min $15K",
-        f"Revival score: {m['revival_score']:.1f}/100 ✅ min 65",
         f"Volume H1: {_fmt_money(m['volume_h1_usd'])} ✅ min $15K",
         f"Activity H1: {m['txns_h1']} tx ✅ min 30",
         f"Buy/Sell H1: {m['buys_h1']}/{m['sells_h1']}",
         "Canonical Revival lane: 90d / $15K ✅",
-        "Verified Intelligence. The Pure Truth.",
+        "Flow note: transaction-count imbalance is not claimed as organic USD flow.",
     ]
     if price > 0:
         lines.insert(11, f"Current price: ${price:.10g}")
@@ -280,7 +292,7 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
     src = _load(out / SOURCE, {})
     rows = _source_rows(src)
 
-    eligible: list[tuple[dict, dict[str, Any]]] = []
+    baseline_eligible: list[tuple[dict, dict[str, Any]]] = []
     blocked: list[dict[str, Any]] = []
     live_refresh_candidates = 0
     live_refresh_errors = 0
@@ -293,9 +305,25 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
                 live_refresh_errors += 1
         ok, m = _eligibility(row, now_dt)
         if ok:
-            eligible.append((row, m))
+            baseline_eligible.append((row, m))
         else:
-            blocked.append({"symbol": row.get("symbol"), "token": row.get("token_address"), "blockers": m.get("blockers")})
+            blocked.append({"symbol": row.get("symbol"), "token": row.get("token_address") or row.get("token"), "blockers": m.get("blockers")})
+
+    deep_report = deep_intelligence.investigate_candidates(baseline_eligible, out, now_dt)
+    deep_by_key = deep_intelligence.result_index(deep_report)
+    eligible: list[tuple[dict, dict[str, Any]]] = []
+    for row, m in baseline_eligible:
+        deep = deep_by_key.get(_key(m))
+        if isinstance(deep, dict) and deep.get("status") == "PASS" and deep.get("actionable") is True:
+            enriched = dict(m)
+            enriched["deep_intelligence"] = deep
+            eligible.append((row, enriched))
+        else:
+            blocked.append({
+                "symbol": row.get("base_token_symbol") or row.get("symbol"),
+                "token": m.get("token_address"),
+                "blockers": [f"DEEP_INTELLIGENCE_{str((deep or {}).get('status') or 'MISSING')}"] + list((deep or {}).get("hard_blockers") or []) + list((deep or {}).get("critical_missing") or []),
+            })
 
     active = {_key(m) for _, m in eligible}
     state_exists = (out / STATE).exists()
@@ -317,9 +345,10 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
                 "symbol": row.get("base_token_symbol") or row.get("symbol"),
                 "pair_address": m["pair_address"],
                 "source": "FORWARD_ONLY_BASELINE_NO_SEND",
+                "confirmation_score": (m.get("deep_intelligence") or {}).get("confirmation_score"),
             }
             baseline_count += 1
-        _write(out / STATE, {"version": 2, "updated_at": now_iso, "forward_started_at": now_iso, "sent": sent})
+        _write(out / STATE, {"version": 3, "updated_at": now_iso, "forward_started_at": now_iso, "sent": sent})
     elif configured:
         for row, m in eligible:
             k = _key(m)
@@ -339,6 +368,9 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
                     "pair_address": m["pair_address"],
                     "actionable": True,
                     "real_alert_lane": "REVIVAL_90D_15K",
+                    "deep_check": "PASS",
+                    "revival_score": m.get("revival_score"),
+                    "confirmation_score": (m.get("deep_intelligence") or {}).get("confirmation_score"),
                 }
                 sent[k] = info
                 delivered.append({"key": k, **info})
@@ -349,10 +381,10 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
                 info["active"] = False
                 info["cleared_at"] = now_iso
                 sent[k] = info
-        _write(out / STATE, {"version": 2, "updated_at": now_iso, "forward_started_at": state.get("forward_started_at") or now_iso, "sent": sent})
+        _write(out / STATE, {"version": 3, "updated_at": now_iso, "forward_started_at": state.get("forward_started_at") or now_iso, "sent": sent})
 
     report = {
-        "version": 2,
+        "version": 3,
         "mode": MODE,
         "updated_at": now_iso,
         "configured": configured,
@@ -360,6 +392,10 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
         "source_rows": len(rows),
         "live_refresh_candidates": live_refresh_candidates,
         "live_refresh_errors": live_refresh_errors,
+        "baseline_eligible_before_deep_check": len(baseline_eligible),
+        "deep_check_pass_count": deep_report.get("pass_count", 0),
+        "deep_check_watch_count": deep_report.get("watch_count", 0),
+        "deep_check_reject_count": deep_report.get("reject_count", 0),
         "eligible_count": len(eligible),
         "blocked_count": len(blocked),
         "baseline_count": baseline_count,
@@ -383,6 +419,12 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
             "expanded_source_required": SOURCE,
             "live_pair_refresh_before_delivery": True,
             "live_refresh_prefiltered": True,
+            "automatic_deep_intelligence_before_delivery": True,
+            "deep_check_pass_required_for_actionable_alert": True,
+            "revival_score_separate_from_confirmation_score": True,
+            "critical_deep_source_failure_cannot_pass": True,
+            "hard_blocker_overrides_confirmation_score": True,
+            "deep_intelligence_report": deep_intelligence.REPORT,
             "notification_marker": "🔥🔥🔥",
             "dedupe": "one alert per exact chain+token+pair active transition; re-arm after leaving eligibility",
             "no_historical_backfill": True,
