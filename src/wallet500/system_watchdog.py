@@ -16,6 +16,8 @@ REPO = "bitcoinforu2-ui/Wallet500"
 LIVE_WORKFLOW = "live-scan.yml"
 PUBLIC_ROOT = "https://bitcoinforu2-ui.github.io/Wallet500/"
 PUBLIC_REAL = PUBLIC_ROOT + "data/real-alerts.json"
+BUY_ONLY_POLICY = "NEAR_BUY_AND_BUY_ONLY_V1"
+PRE_BUY_REPORT = "stage-transition-telegram-report.json"
 
 FRESHNESS = {
     "real-alerts.json": ("generated_at", 45 * 60, "CRITICAL", "REAL_ALERT_FEED_STALE"),
@@ -75,6 +77,38 @@ def _key(row: dict[str, Any]) -> str:
 
 def _incident(code: str, severity: str, detail: str, **extra: Any) -> dict[str, Any]:
     return {"code": code, "severity": severity, "detail": detail, **extra}
+
+
+def _buy_only_mode(telegram: object) -> bool:
+    if not isinstance(telegram, dict):
+        return False
+    buy = telegram.get("buy_only_policy") if isinstance(telegram.get("buy_only_policy"), dict) else {}
+    policy = telegram.get("policy") if isinstance(telegram.get("policy"), dict) else {}
+    return buy.get("mode") == BUY_ONLY_POLICY or policy.get("user_facing_mode") == BUY_ONLY_POLICY
+
+
+def _matched_buy_keys(telegram: object) -> set[str]:
+    if not _buy_only_mode(telegram):
+        return set()
+    buy = telegram.get("buy_only_policy") if isinstance(telegram, dict) and isinstance(telegram.get("buy_only_policy"), dict) else {}
+    return {str(k).strip() for k in (buy.get("matched_keys") or []) if str(k).strip()}
+
+
+def _pre_buy_delivery_gaps(data_dir: Path) -> list[str]:
+    report = _load(data_dir / PRE_BUY_REPORT, {})
+    if not isinstance(report, dict) or report.get("mode") != "NEAR_BUY_ONLY_STAGE_TELEGRAM":
+        return []
+    eligible = {
+        str(row.get("key") or "").strip()
+        for row in (report.get("eligible") or [])
+        if isinstance(row, dict) and str(row.get("key") or "").strip()
+    }
+    delivered = {
+        str(row.get("key") or "").strip()
+        for row in (report.get("delivered") or [])
+        if isinstance(row, dict) and str(row.get("key") or "").strip() and row.get("sent_at")
+    }
+    return sorted(eligible - delivered)
 
 
 def _http_json(url: str, headers: dict[str, str] | None = None, timeout: int = 15) -> Any:
@@ -202,9 +236,51 @@ def build_report(
     entered_real = sorted(current_real - previous_real) if baseline_done else []
     telegram_state = _load(data_dir / "telegram-alert-state.json", {})
     sent = telegram_state.get("sent") if isinstance(telegram_state, dict) and isinstance(telegram_state.get("sent"), dict) else {}
-    missing_delivery = [k for k in entered_real if not (isinstance(sent.get(k), dict) and sent[k].get("actionable") is True)]
-    if missing_delivery:
-        incidents.append(_incident("NEW_REAL_ALERT_TELEGRAM_GAP", "CRITICAL", f"{len(missing_delivery)} newly-entered REAL ALERT pair(s) have no actionable Telegram state", keys=missing_delivery))
+
+    # User Telegram is intentionally restricted to PRE-BUY and final BUY. A generic
+    # REAL_ALERT transition is research/decision input and must never be treated as a
+    # missed user-facing message under the buy-only policy.
+    buy_only = _buy_only_mode(telegram)
+    matched_buy_keys = _matched_buy_keys(telegram)
+    if buy_only:
+        missing_buy_delivery = sorted(
+            k for k in matched_buy_keys
+            if not (
+                isinstance(sent.get(k), dict)
+                and sent[k].get("actionable") is True
+                and sent[k].get("buy_signal") is True
+            )
+        )
+        if missing_buy_delivery:
+            incidents.append(_incident(
+                "BUY_SIGNAL_TELEGRAM_GAP",
+                "CRITICAL",
+                f"{len(missing_buy_delivery)} final BUY signal(s) have no confirmed Telegram delivery state",
+                keys=missing_buy_delivery,
+            ))
+    else:
+        # Compatibility guard for any legacy deployment that has not activated the
+        # buy-only contract yet.
+        missing_delivery = [
+            k for k in entered_real
+            if not (isinstance(sent.get(k), dict) and sent[k].get("actionable") is True)
+        ]
+        if missing_delivery:
+            incidents.append(_incident(
+                "NEW_REAL_ALERT_TELEGRAM_GAP",
+                "CRITICAL",
+                f"{len(missing_delivery)} newly-entered REAL ALERT pair(s) have no actionable Telegram state",
+                keys=missing_delivery,
+            ))
+
+    pre_buy_missing = _pre_buy_delivery_gaps(data_dir)
+    if pre_buy_missing:
+        incidents.append(_incident(
+            "PRE_BUY_TELEGRAM_GAP",
+            "CRITICAL",
+            f"{len(pre_buy_missing)} PAPER_BUY_CANDIDATE transition(s) have no confirmed Telegram delivery",
+            keys=pre_buy_missing,
+        ))
 
     paper = _load(data_dir / "real-alert-10usd-summary.json", {})
     paper_keys = {_key(p) for p in list(paper.get("positions") or []) if isinstance(p, dict) and _key(p)} if isinstance(paper, dict) else set()
@@ -278,6 +354,9 @@ def build_report(
         "new_notifications": notify,
         "recovered_codes": recovered,
         "real_alert_transitions_entered": entered_real,
+        "buy_only_policy_active": buy_only,
+        "final_buy_keys_expected": sorted(matched_buy_keys),
+        "pre_buy_delivery_gaps": pre_buy_missing,
         "incidents": incidents,
         "checks": checks,
         "truth_contract": [
@@ -285,7 +364,10 @@ def build_report(
             "NO_TELEGRAM_MESSAGE_WHEN_HEALTHY",
             "INCIDENTS_ARE_DEDUPED_AND_RATE_LIMITED",
             "CURRENT_REAL_ALERTS_ARE_BASELINED_ON_FIRST_WATCHDOG_RUN",
-            "NEW_REAL_ALERT_TELEGRAM_GAPS_ARE_DETECTED_BY_EXACT_PAIR_TRANSITION",
+            "GENERIC_REAL_ALERTS_ARE_NOT_USER_TELEGRAM_EVENTS_IN_BUY_ONLY_MODE",
+            "FINAL_BUY_TELEGRAM_GAPS_REQUIRE_MATCHED_BUY_DECISION",
+            "PRE_BUY_TELEGRAM_GAPS_REQUIRE_PAPER_BUY_CANDIDATE",
+            "WATCHDOG_TECHNICAL_INCIDENTS_NEVER_GO_TO_USER_TELEGRAM",
             "SINGLE_LIVE_SCAN_CANCELLATION_IS_TRANSIENT_WHILE_LAST_SUCCESS_IS_FRESH",
             "PUSH_TRIGGERED_LIVE_SCAN_RUNS_ARE_CI_NOT_PRODUCTION_HEALTH",
         ],
@@ -349,7 +431,14 @@ def run(data_dir: Path = DATA) -> dict[str, Any]:
                 next_state["active_incidents"][code] = {"severity": inc["severity"], "first_seen": now.isoformat(), "last_seen": now.isoformat(), "last_notified": now.isoformat(), "detail": inc["detail"]}
                 report["new_notifications"].append(inc)
 
-    notification = send_telegram(list(report.get("new_notifications") or []), now)
+    # Technical watchdog incidents stay in the report / GitHub Actions. The user's
+    # Telegram is reserved exclusively for the dedicated PRE-BUY and BUY pipelines.
+    notification = {
+        "attempted": False,
+        "sent": False,
+        "reason": "WATCHDOG_USER_TELEGRAM_DISABLED_BY_NEAR_BUY_AND_BUY_ONLY_POLICY",
+        "suppressed_technical_notification_count": len(report.get("new_notifications") or []),
+    }
     report["notification"] = notification
     _write(data_dir / REPORT.name, report)
     _write(data_dir / STATE.name, next_state)
