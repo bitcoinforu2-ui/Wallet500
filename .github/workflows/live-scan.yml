@@ -199,8 +199,9 @@ jobs:
           print('LIVE_DECISION_SNAPSHOT_COHERENT', {'evidence_ready':ready,'verified_watch':rc.get('verified_watch_not_real'),'real_alerts':rc.get('real_alerts'),'signal_health':sh.get('status'),'learning_model':(s.get('self_learning_model') or {}).get('status')})
           PY
 
-      - name: Send gated Telegram alerts
-        run: python -m wallet500.telegram_alerts
+      # User-facing Telegram delivery is intentionally absent here. Live Scan only
+      # builds and validates decision artifacts; the verified publisher hands a
+      # coherent snapshot to the sole production Telegram delivery workflow.
       - name: Send HOT email alerts
         continue-on-error: true
         env:
