@@ -28,7 +28,7 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: wallet500-unified-verified-watch-v6
+  group: wallet500-unified-verified-watch-v7
   cancel-in-progress: false
 
 jobs:
@@ -77,7 +77,7 @@ jobs:
         id: cross_domain
         run: python scripts/cross_domain_intelligence_collector.py
 
-      - name: Collect identity-safe resilient derivatives intelligence
+      - name: Collect Gate-stat plus Hyperliquid failover derivatives intelligence
         id: derivatives
         run: python scripts/derivatives_intelligence_collector.py
 
@@ -97,7 +97,7 @@ jobs:
           python -m json.tool data/unified-watch-state.json >/dev/null
           echo 'UNIFIED_ALERT_STATE_REFRESHED_FROM_LATEST_MAIN'
 
-      - name: Run rate-limit-resilient fail-closed verified market watchlist
+      - name: Run adaptive-cooldown fail-closed exact-pair market watchlist
         id: market_watch
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -162,7 +162,7 @@ jobs:
               'market_watch': os.getenv('MARKET_WATCH_OUTCOME'),
           }
           manifest = {
-              'version': 4,
+              'version': 5,
               'generated_at': datetime.now(timezone.utc).isoformat(),
               'github_run_id': os.getenv('GH_RUN_ID'),
               'github_run_attempt': os.getenv('GH_RUN_ATTEMPT'),
@@ -179,7 +179,10 @@ jobs:
                   'derivatives_updated_at': (derivatives or {}).get('updated_at') if isinstance(derivatives, dict) else None,
                   'derivatives_provider_success': (derivatives or {}).get('provider_success') if isinstance(derivatives, dict) else None,
                   'derivatives_provider_health': (derivatives or {}).get('provider_health') if isinstance(derivatives, dict) else None,
+                  'derivatives_healthy_providers': (derivatives or {}).get('healthy_providers') if isinstance(derivatives, dict) else None,
                   'derivatives_not_listed_targets': (derivatives or {}).get('not_listed_targets') if isinstance(derivatives, dict) else None,
+                  'derivatives_provider_lookup_errors': (derivatives or {}).get('provider_lookup_errors') if isinstance(derivatives, dict) else None,
+                  'http_resilience_strategy': (http_state or {}).get('strategy') if isinstance(http_state, dict) else None,
                   'http_resilience_metrics': (http_state or {}).get('metrics') if isinstance(http_state, dict) else None,
                   'close_watch_events_exists': (root/'data/close-watch-events.json').exists(),
                   'close_watch_event_count': len(events.get('events') or []) if isinstance(events, dict) else None,
