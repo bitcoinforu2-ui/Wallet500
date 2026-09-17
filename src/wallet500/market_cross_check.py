@@ -1,13 +1,9 @@
-"""Wallet500 market-data cross-check layer.
+"""Wallet500 provider-neutral market-data cross-check layer.
 
-This module compares normalized market snapshots from independent providers for the
-same exact chain+contract/mint identity. It is deliberately advisory: agreement
-can strengthen data confidence, while disagreement creates a discrepancy flag;
-neither result bypasses Wallet500 risk/execution gates.
-
-Provider adapters should normalize their payloads into ``MarketSnapshot`` fields
-(or the equivalent JSON keys accepted by :func:`build`). This keeps vendor-specific
-API logic outside the scoring core and makes it safe to add/remove verifiers.
+Only directly comparable observations vote: same exact chain+contract/mint,
+same market scope, and (for exact-pair snapshots) the same pair/pool identity.
+Agreement is advisory evidence; disagreement or missing comparability fails closed
+and never bypasses Wallet500 promotion, risk or execution gates.
 """
 from __future__ import annotations
 
@@ -32,8 +28,10 @@ CHAIN_ALIASES = {
     "sol": "solana",
 }
 
+# Price integrity is intentionally strict. Other fields receive wider tolerances
+# because providers commonly differ in aggregation and update cadence.
 DEFAULT_TOLERANCES = {
-    "price_usd": 0.05,
+    "price_usd": 0.02,
     "market_cap_usd": 0.10,
     "fdv_usd": 0.10,
     "liquidity_usd": 0.12,
@@ -86,6 +84,14 @@ def _norm_token(token: object, chain: object) -> str:
     return value
 
 
+def _norm_pair(pair: object, chain: object) -> str | None:
+    value = str(pair or "").strip()
+    if not value:
+        return None
+    c = _norm_chain(chain)
+    return value.lower() if c in EVM_CHAINS or value.startswith("0x") else value
+
+
 def _asset_key(chain: object, token: object) -> str:
     c = _norm_chain(chain)
     return f"{c}:{_norm_token(token, c)}"
@@ -114,6 +120,13 @@ def _num(value: object) -> float | None:
         return None
 
 
+def _first(raw: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in raw and raw[key] is not None and raw[key] != "":
+            return raw[key]
+    return None
+
+
 @dataclass(frozen=True)
 class MarketSnapshot:
     chain: str
@@ -121,6 +134,8 @@ class MarketSnapshot:
     source: str
     observed_at: str
     role: str = "verifier"
+    market_scope: str = "token_aggregate"
+    pair_address: str | None = None
     price_usd: float | None = None
     market_cap_usd: float | None = None
     fdv_usd: float | None = None
@@ -136,31 +151,37 @@ class MarketSnapshot:
 
     @classmethod
     def from_mapping(cls, raw: dict[str, Any]) -> "MarketSnapshot | None":
-        chain = _norm_chain(raw.get("chain") or raw.get("network"))
-        token = _norm_token(
-            raw.get("token") or raw.get("contract") or raw.get("mint") or raw.get("token_address"),
-            chain,
-        )
-        source = str(raw.get("source") or raw.get("provider") or "").strip().lower()
-        observed_at = str(raw.get("observed_at") or raw.get("timestamp") or "").strip()
+        chain = _norm_chain(_first(raw, "chain", "network"))
+        token = _norm_token(_first(raw, "token", "contract", "mint", "token_address"), chain)
+        source = str(_first(raw, "source", "provider") or "").strip().lower()
+        observed_at = str(_first(raw, "observed_at", "timestamp") or "").strip()
         if not chain or not token or not source or _parse_ts(observed_at) is None:
             return None
         flags = raw.get("risk_flags") or []
         if not isinstance(flags, (list, tuple)):
             flags = [str(flags)]
+        scope = str(raw.get("market_scope") or raw.get("scope") or "token_aggregate").strip().lower()
+        if scope not in {"token_aggregate", "exact_pair"}:
+            scope = "unknown"
+        pair = _norm_pair(_first(raw, "pair_address", "pool_address", "pair", "pool"), chain)
+        if scope == "exact_pair" and not pair:
+            # A claimed exact-pair observation without pair identity is not comparable.
+            scope = "unknown"
         return cls(
             chain=chain,
             token=token,
             source=source,
             observed_at=observed_at,
             role=str(raw.get("role") or "verifier").strip().lower(),
+            market_scope=scope,
+            pair_address=pair,
             price_usd=_num(raw.get("price_usd")),
-            market_cap_usd=_num(raw.get("market_cap_usd") or raw.get("market_cap")),
-            fdv_usd=_num(raw.get("fdv_usd") or raw.get("fdv")),
-            liquidity_usd=_num(raw.get("liquidity_usd") or raw.get("liquidity")),
-            volume_24h_usd=_num(raw.get("volume_24h_usd") or raw.get("volume_24h")),
-            holders=_num(raw.get("holders") or raw.get("holder_count")),
-            top10_pct=_num(raw.get("top10_pct") or raw.get("top_10_pct")),
+            market_cap_usd=_num(_first(raw, "market_cap_usd", "market_cap")),
+            fdv_usd=_num(_first(raw, "fdv_usd", "fdv")),
+            liquidity_usd=_num(_first(raw, "liquidity_usd", "liquidity")),
+            volume_24h_usd=_num(_first(raw, "volume_24h_usd", "volume_24h")),
+            holders=_num(_first(raw, "holders", "holder_count")),
+            top10_pct=_num(_first(raw, "top10_pct", "top_10_pct")),
             risk_flags=tuple(sorted({str(x).strip() for x in flags if str(x).strip()})),
         )
 
@@ -187,6 +208,16 @@ def _latest_per_source(rows: list[MarketSnapshot]) -> list[MarketSnapshot]:
     return list(latest.values())
 
 
+def _comparable(primary: MarketSnapshot, verifier: MarketSnapshot) -> bool:
+    if primary.market_scope == "unknown" or verifier.market_scope == "unknown":
+        return False
+    if primary.market_scope != verifier.market_scope:
+        return False
+    if primary.market_scope == "exact_pair":
+        return bool(primary.pair_address and verifier.pair_address and primary.pair_address == verifier.pair_address)
+    return True
+
+
 def cross_check_asset(
     rows: list[MarketSnapshot],
     *,
@@ -207,12 +238,14 @@ def cross_check_asset(
             "sources": [],
             "fresh_sources": [],
             "stale_sources": [],
+            "scope_mismatch_sources": [],
             "discrepancies": [],
             "compared_fields": [],
         }
 
     primary = next((r for r in rows if r.role == "primary"), None)
     if primary is None:
+        # Without an explicit primary, use the freshest row as the comparison anchor.
         primary = max(rows, key=lambda r: _parse_ts(r.observed_at) or datetime.min.replace(tzinfo=timezone.utc))
 
     fresh: list[MarketSnapshot] = []
@@ -224,26 +257,36 @@ def cross_check_asset(
     fresh_sources = sorted(r.source for r in fresh)
     stale_sources = sorted(r.source for r in stale)
     fresh_primary = next((r for r in fresh if r.source == primary.source), None)
-    fresh_verifiers = [r for r in fresh if r.source != primary.source]
-    if fresh_primary is None or not fresh_verifiers:
-        status = "stale" if stale and len(sources) >= 2 else "insufficient"
+    candidate_verifiers = [r for r in fresh if r.source != primary.source]
+    comparable_verifiers = [r for r in candidate_verifiers if fresh_primary and _comparable(fresh_primary, r)]
+    scope_mismatch_sources = sorted(r.source for r in candidate_verifiers if not fresh_primary or not _comparable(fresh_primary, r))
+
+    if fresh_primary is None or not comparable_verifiers:
+        if fresh_primary is not None and candidate_verifiers and scope_mismatch_sources:
+            status = "scope_mismatch"
+        else:
+            status = "stale" if stale and len(sources) >= 2 else "insufficient"
+        ages = [x for x in (_freshness_seconds(r, now) for r in fresh) if x is not None]
         return {
             "status": status,
             "agreement_score": None,
             "primary_source": primary.source,
+            "primary_market_scope": primary.market_scope,
+            "primary_pair_address": primary.pair_address,
             "sources": sources,
             "fresh_sources": fresh_sources,
             "stale_sources": stale_sources,
+            "scope_mismatch_sources": scope_mismatch_sources,
             "discrepancies": [],
             "compared_fields": [],
-            "freshness_ms": int(min((_freshness_seconds(r, now) or 0) for r in rows) * 1000),
+            "freshness_ms": int(max(ages) * 1000) if ages else None,
         }
 
     discrepancies: list[dict[str, Any]] = []
     compared_fields: set[str] = set()
     score_num = 0.0
     score_den = 0.0
-    for verifier in fresh_verifiers:
+    for verifier in comparable_verifiers:
         for field_name, tolerance in tolerances.items():
             a = getattr(fresh_primary, field_name)
             b = getattr(verifier, field_name)
@@ -253,8 +296,10 @@ def cross_check_asset(
             delta = _relative_delta(float(a), float(b))
             weight = float(weights.get(field_name, 1.0))
             score_den += weight
-            # Full credit inside tolerance; outside it decays to zero at 4x tolerance.
-            metric_score = 1.0 if delta <= tolerance else max(0.0, 1.0 - (delta - tolerance) / max(3.0 * tolerance, 1e-12))
+            metric_score = 1.0 if delta <= tolerance else max(
+                0.0,
+                1.0 - (delta - tolerance) / max(3.0 * tolerance, 1e-12),
+            )
             score_num += weight * metric_score
             if delta > tolerance:
                 discrepancies.append({
@@ -280,9 +325,12 @@ def cross_check_asset(
         "status": status,
         "agreement_score": agreement,
         "primary_source": fresh_primary.source,
+        "primary_market_scope": fresh_primary.market_scope,
+        "primary_pair_address": fresh_primary.pair_address,
         "sources": sources,
         "fresh_sources": fresh_sources,
         "stale_sources": stale_sources,
+        "scope_mismatch_sources": scope_mismatch_sources,
         "compared_fields": sorted(compared_fields),
         "discrepancies": discrepancies,
         "risk_flags": all_flags,
@@ -308,14 +356,16 @@ def build(raw_snapshots: list[dict[str, Any]] | None = None, *, ts: str | None =
     now = _parse_ts(ts) or _now_dt()
     assets = {key: cross_check_asset(rows, now=now) for key, rows in grouped.items()}
     return {
-        "version": 1,
+        "version": 2,
         "updated_at": ts,
         "mode": "ADVISORY_MARKET_DATA_CROSS_CHECK",
         "automatic_trade": False,
         "policy": {
             "identity": "exact chain+contract/mint only",
+            "comparability": "same market_scope; exact_pair additionally requires identical pair/pool identity",
             "freshness": f"snapshots older than {MAX_AGE_SECONDS}s are stale and do not vote",
-            "agreement": "compare only overlapping normalized metrics from independent providers",
+            "price_integrity_tolerance": DEFAULT_TOLERANCES["price_usd"],
+            "agreement": "compare only overlapping normalized metrics from independent, comparable providers",
             "truth_boundary": "cross-check can confirm or flag data; it never bypasses Wallet500 risk/execution gates",
         },
         "counts": {
@@ -325,6 +375,7 @@ def build(raw_snapshots: list[dict[str, Any]] | None = None, *, ts: str | None =
             "ok": sum(1 for x in assets.values() if x.get("status") == "ok"),
             "diverged": sum(1 for x in assets.values() if x.get("status") == "diverged"),
             "stale": sum(1 for x in assets.values() if x.get("status") == "stale"),
+            "scope_mismatch": sum(1 for x in assets.values() if x.get("status") == "scope_mismatch"),
             "insufficient": sum(1 for x in assets.values() if x.get("status") == "insufficient"),
         },
         "assets": assets,
