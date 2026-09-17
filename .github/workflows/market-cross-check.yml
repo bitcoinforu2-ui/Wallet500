@@ -1,0 +1,142 @@
+name: Wallet500 Market Cross-Check
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_run:
+    workflows:
+      - "Wallet500 Cross-Source Correlation"
+    types: [completed]
+  pull_request:
+    paths:
+      - 'src/wallet500/market_cross_check.py'
+      - 'src/wallet500/binance_web3_market.py'
+      - 'tests/test_market_cross_check.py'
+      - 'tests/test_binance_web3_market.py'
+      - '.github/workflows/market-cross-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/market_cross_check.py'
+      - 'src/wallet500/binance_web3_market.py'
+      - 'tests/test_market_cross_check.py'
+      - 'tests/test_binance_web3_market.py'
+      - '.github/workflows/market-cross-check.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-market-cross-check
+  cancel-in-progress: false
+
+jobs:
+  verify-and-publish:
+    if: github.event_name != 'pull_request' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Wallet500 and tests
+        run: pip install -e . pytest
+      - name: Lock provider and comparability semantics
+        run: pytest -q tests/test_market_cross_check.py tests/test_binance_web3_market.py
+      - name: Refresh read-only Binance verifier and cross-check
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f data/cross-source-correlation.json || { echo '::error::missing cross-source correlation'; exit 1; }
+          export W500_MARKET_MAX_ASSETS=80
+          minute="$(date -u +%M)"
+          if (( 10#$minute % 30 == 0 )); then
+            export W500_BINANCE_AUDIT=1
+          else
+            export W500_BINANCE_AUDIT=0
+          fi
+          python -m wallet500.binance_web3_market
+          python -m wallet500.market_cross_check
+      - name: Validate advisory truth boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          snap=json.loads(Path('data/market-source-snapshots.json').read_text())
+          status=json.loads(Path('data/binance-web3-market-status.json').read_text())
+          cross=json.loads(Path('data/market-cross-check.json').read_text())
+          if status.get('automatic_trade') is not False:
+              raise SystemExit('FATAL Binance verifier automatic-trade leak')
+          if cross.get('automatic_trade') is not False:
+              raise SystemExit('FATAL market cross-check automatic-trade leak')
+          if cross.get('mode') != 'ADVISORY_MARKET_DATA_CROSS_CHECK':
+              raise SystemExit('FATAL market cross-check mode drift')
+          policy=cross.get('policy') or {}
+          if float(policy.get('price_integrity_tolerance', 99)) != 0.02:
+              raise SystemExit('FATAL price integrity tolerance drift')
+          if 'exact_pair' not in str(policy.get('comparability') or ''):
+              raise SystemExit('FATAL market scope/pair comparability contract missing')
+          for row in snap.get('snapshots') or []:
+              if str(row.get('source') or '').lower() == 'binance_web3':
+                  if row.get('market_scope') != 'token_aggregate':
+                      raise SystemExit('FATAL Binance token-level data mislabeled as pair-level')
+                  if row.get('role') != 'verifier':
+                      raise SystemExit('FATAL Binance source promoted from verifier role')
+          print('MARKET_CROSS_CHECK_OK', cross.get('counts'), {
+              'binance_ok': status.get('successful_assets'),
+              'binance_failed': status.get('failed_assets'),
+              'audit': status.get('audit_enabled'),
+          })
+          PY
+      - name: Publish verifier evidence atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wallet500-market-cross-check-bot'
+          git config user.email 'wallet500-market-cross-check-bot@users.noreply.github.com'
+          for attempt in 1 2 3 4; do
+            git fetch --depth=1 origin main
+            git reset --hard origin/main
+            source_sha="$(git rev-parse HEAD)"
+            test -f data/cross-source-correlation.json || { echo '::error::missing cross-source correlation'; exit 1; }
+            export W500_MARKET_MAX_ASSETS=80
+            minute="$(date -u +%M)"
+            if (( 10#$minute % 30 == 0 )); then export W500_BINANCE_AUDIT=1; else export W500_BINANCE_AUDIT=0; fi
+            python -m wallet500.binance_web3_market
+            python -m wallet500.market_cross_check
+            set +e
+            python scripts/atomic_publish.py \
+              --base "$source_sha" \
+              --fail-on-newer \
+              --message 'data: refresh market cross-check verifier evidence' \
+              data/market-source-snapshots.json \
+              data/binance-web3-market-status.json \
+              data/market-cross-check.json
+            rc=$?
+            set -e
+            if [ "$rc" -eq 0 ]; then exit 0; fi
+            if [ "$rc" -eq 75 ]; then
+              sleep $((attempt * attempt + 1))
+              continue
+            fi
+            exit "$rc"
+          done
+          echo '::error::MARKET_CROSS_CHECK_PUBLISH_EXHAUSTED'
+          exit 1
+
+  test-only:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_market_cross_check.py tests/test_binance_web3_market.py
