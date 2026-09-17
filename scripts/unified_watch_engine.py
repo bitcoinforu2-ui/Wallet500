@@ -16,6 +16,14 @@ INTEL = ROOT / "data/close-watch-intelligence.json"
 INTEL_REPORT = ROOT / "data/unified-watch-intelligence-report.json"
 EVM = {"ethereum", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche"}
 CHAIN_ALIASES = {"eth": "ethereum", "bnb": "bsc"}
+ALERTWORTHY_INTEL_FAMILIES = {
+    "wallet_flow",
+    "holder_network",
+    "catalyst_news",
+    "fundamental_usage",
+    "supply_tokenomics",
+    "derivatives",
+}
 
 
 def now_iso():
@@ -49,12 +57,8 @@ def load_intelligence():
 
 
 def http_json(url):
-    req = urllib.request.Request(url, headers={"accept": "application/json", "user-agent": "Wallet500-UnifiedWatch/1.2"})
+    req = urllib.request.Request(url, headers={"accept": "application/json", "user-agent": "Wallet500-UnifiedWatch/1.3"})
     return json.load(urllib.request.urlopen(req, timeout=20))
-
-
-def token_id_matches(v, c):
-    return norm_addr(chain_name(str(v or "").split("_")[0] if "_" in str(v or "") else ""), v) == c or str(v or "").lower().endswith("_" + str(c).lower())
 
 
 def live_exact_pair(t, max_spread):
@@ -62,6 +66,7 @@ def live_exact_pair(t, max_spread):
     canonical_chain = chain_name(n)
     pair = norm_addr(canonical_chain, t["pair"])
     ca = norm_addr(canonical_chain, t["contract"])
+
     gt = http_json(f"https://api.geckoterminal.com/api/v2/networks/{n}/pools/{t['pair']}")
     o = gt.get("data") or {}
     a = o.get("attributes") or {}
@@ -78,6 +83,7 @@ def live_exact_pair(t, max_spread):
         raise RuntimeError("EXACT_PAIR_IDENTITY_MISMATCH_GT")
     if gp <= 0:
         raise RuntimeError("GT_PRICE_MISSING")
+
     vol = a.get("volume_usd") or {}
     tx = a.get("transactions") or {}
     h1 = tx.get("h1") or {}
@@ -94,9 +100,18 @@ def live_exact_pair(t, max_spread):
     }
     if g["liquidity"] <= 0:
         raise RuntimeError("GT_LIQUIDITY_MISSING")
+
     dsnet = "ethereum" if n == "eth" else n
     ds = http_json(f"https://api.dexscreener.com/latest/dex/pairs/{dsnet}/{t['pair']}")
-    p = next((x for x in (ds.get("pairs") or []) if chain_name(x.get("chainId")) == canonical_chain and norm_addr(canonical_chain, x.get("pairAddress")) == pair), None)
+    p = next(
+        (
+            x
+            for x in (ds.get("pairs") or [])
+            if chain_name(x.get("chainId")) == canonical_chain
+            and norm_addr(canonical_chain, x.get("pairAddress")) == pair
+        ),
+        None,
+    )
     if not p:
         raise RuntimeError("EXACT_PAIR_MISSING_DS")
     base = norm_addr(canonical_chain, (p.get("baseToken") or {}).get("address"))
@@ -106,11 +121,19 @@ def live_exact_pair(t, max_spread):
     dp = float(p.get("priceUsd") or 0)
     if dp <= 0:
         raise RuntimeError("DS_PRICE_MISSING")
+
     med = statistics.median([gp, dp])
     spread = ((max(gp, dp) - min(gp, dp)) / med) * 100 if med else 999
     if spread > max_spread:
         raise RuntimeError(f"SOURCE_DATA_MISMATCH:{spread:.3f}%")
-    return {**g, "price": med, "gt_price": gp, "ds_price": dp, "spread_pct": spread, "observed_at": now_iso()}
+    return {
+        **g,
+        "price": med,
+        "gt_price": gp,
+        "ds_price": dp,
+        "spread_pct": spread,
+        "observed_at": now_iso(),
+    }
 
 
 def money(v):
@@ -127,8 +150,19 @@ def send(msg):
     chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
     if not bot or not chat:
         raise RuntimeError("TELEGRAM_SECRETS_NOT_CONFIGURED")
-    data = urllib.parse.urlencode({"chat_id": chat, "text": msg[:4000], "disable_web_page_preview": "true"}).encode()
-    body = json.load(urllib.request.urlopen(urllib.request.Request(f"https://api.telegram.org/bot{bot}/sendMessage", data=data, method="POST"), timeout=20))
+    data = urllib.parse.urlencode(
+        {"chat_id": chat, "text": msg[:4000], "disable_web_page_preview": "true"}
+    ).encode()
+    body = json.load(
+        urllib.request.urlopen(
+            urllib.request.Request(
+                f"https://api.telegram.org/bot{bot}/sendMessage",
+                data=data,
+                method="POST",
+            ),
+            timeout=20,
+        )
+    )
     if not body.get("ok"):
         raise RuntimeError("TELEGRAM_SEND_FAILED")
 
@@ -151,19 +185,58 @@ def dynamic_candidates():
         if not key or key in seen:
             continue
         seen.add(key)
-        out.append({"symbol": str(c.get("symbol") or "ALPHA").upper(), "network": network, "contract": ca, "pair": pair, "dex_url": c.get("dex_url") or "", "up_levels": [], "down_levels": [], "liquidity_drop_pct": 25, "volume_acceleration_multiple": 2.0, "min_volume_h1_for_momentum": 0, "dynamic_alpha_candidate": True})
+        out.append(
+            {
+                "symbol": str(c.get("symbol") or "ALPHA").upper(),
+                "network": network,
+                "contract": ca,
+                "pair": pair,
+                "dex_url": c.get("dex_url") or "",
+                "up_levels": [],
+                "down_levels": [],
+                "liquidity_drop_pct": 25,
+                "volume_acceleration_multiple": 2.0,
+                "min_volume_h1_for_momentum": 0,
+                "dynamic_alpha_candidate": True,
+            }
+        )
     return out[:100]
 
 
-def fusion_summary(row):
+def fusion_summary(row, notable_min_raw=0.30):
     if not row:
-        return {"status": "NOT_AVAILABLE", "score": None, "label": "NOT_AVAILABLE", "families": 0, "hard_risks": [], "updated_at": None, "evidence_age_minutes": None}
+        return {
+            "status": "NOT_AVAILABLE",
+            "score": None,
+            "label": "NOT_AVAILABLE",
+            "families": 0,
+            "hard_risks": [],
+            "family_scores": {},
+            "notable_evidence": [],
+            "updated_at": None,
+            "evidence_age_minutes": None,
+            "current_evidence_count": 0,
+        }
+
+    notable = set()
+    for e in row.get("evidence") or []:
+        if not isinstance(e, dict) or not e.get("current"):
+            continue
+        direction = int(e.get("direction") or 0)
+        raw = abs(float(e.get("raw") or 0))
+        fam = str(e.get("family") or "")
+        kind = str(e.get("kind") or "")
+        if direction and fam and kind and raw >= notable_min_raw:
+            notable.add(f"{fam}:{kind}:{direction}")
+
     return {
         "status": row.get("status") or "UNKNOWN",
         "score": row.get("score"),
         "label": row.get("label") or "WATCH",
         "families": int(row.get("independent_positive_families") or 0),
-        "hard_risks": list(row.get("hard_risks") or []),
+        "hard_risks": sorted(set(row.get("hard_risks") or [])),
+        "family_scores": dict(row.get("family_scores") or {}),
+        "notable_evidence": sorted(notable),
         "updated_at": row.get("updated_at"),
         "freshest_event_at": row.get("freshest_event_at"),
         "evidence_age_minutes": row.get("evidence_age_minutes"),
@@ -171,28 +244,170 @@ def fusion_summary(row):
     }
 
 
+def pct_delta(current, previous):
+    try:
+        c = float(current)
+        p = float(previous)
+    except (TypeError, ValueError):
+        return None
+    if p == 0:
+        return None
+    return (c - p) / abs(p) * 100.0
+
+
+def order_flow_ratio(snapshot):
+    try:
+        return (float(snapshot.get("buys_h1") or 0) + 1.0) / (float(snapshot.get("sells_h1") or 0) + 1.0)
+    except Exception:
+        return 1.0
+
+
+def material_change_reasons(last_alert, live, fusion, triggers, policy):
+    last_alert = last_alert or {}
+    last_fusion = last_alert.get("fusion") or {}
+    reasons = []
+
+    current_hard = set(fusion.get("hard_risks") or [])
+    previous_hard = set(last_fusion.get("hard_risks") or [])
+    new_hard = sorted(current_hard - previous_hard)
+    if new_hard:
+        reasons.append("NEW_HARD_RISK:" + ",".join(new_hard[:3]))
+
+    current_notable = set(fusion.get("notable_evidence") or [])
+    previous_notable = set(last_fusion.get("notable_evidence") or [])
+    new_notable = sorted(current_notable - previous_notable)
+    high_value_new_notable = [
+        x for x in new_notable if x.split(":", 1)[0] in ALERTWORTHY_INTEL_FAMILIES
+    ]
+
+    if not last_alert:
+        if triggers:
+            reasons.append("FIRST_MATERIAL_TRIGGER")
+        if high_value_new_notable:
+            reasons.append("NEW_INTELLIGENCE:" + ",".join(high_value_new_notable[:3]))
+        score = fusion.get("score")
+        if score is not None and float(score) >= 55 and int(fusion.get("families") or 0) >= 3:
+            reasons.append("INTELLIGENCE_CONFLUENCE")
+        return list(dict.fromkeys(reasons))
+
+    previous_triggers = set(last_alert.get("triggers") or [])
+    new_triggers = [x for x in triggers if x not in previous_triggers]
+    if new_triggers:
+        reasons.append("NEW_TRIGGER:" + ",".join(new_triggers[:3]))
+
+    price_change = pct_delta(live.get("price"), last_alert.get("price"))
+    if price_change is not None and abs(price_change) >= float(policy.get("price_change_from_last_alert_pct", 8.0)):
+        reasons.append(f"PRICE_CHANGE_{price_change:+.1f}%")
+
+    liquidity_change = pct_delta(live.get("liquidity"), last_alert.get("liquidity"))
+    if liquidity_change is not None and abs(liquidity_change) >= float(policy.get("liquidity_change_from_last_alert_pct", 20.0)):
+        reasons.append(f"LIQUIDITY_CHANGE_{liquidity_change:+.1f}%")
+
+    current_volume = float(live.get("volume_h1") or 0)
+    previous_volume = float(last_alert.get("volume_h1") or 0)
+    min_volume = float(policy.get("minimum_volume_usd_for_volume_delta", 1000.0))
+    multiple = float(policy.get("volume_multiple_from_last_alert", 2.0))
+    if previous_volume > 0 and max(current_volume, previous_volume) >= min_volume:
+        ratio = current_volume / previous_volume
+        if ratio >= multiple:
+            reasons.append(f"VOLUME_EXPANSION_{ratio:.1f}X")
+        elif ratio <= 1.0 / max(multiple, 1.01):
+            reasons.append(f"VOLUME_CONTRACTION_{ratio:.2f}X")
+
+    current_score = fusion.get("score")
+    previous_score = last_fusion.get("score")
+    if current_score is not None and previous_score is not None:
+        score_delta = float(current_score) - float(previous_score)
+        if abs(score_delta) >= float(policy.get("intelligence_score_delta", 12.0)):
+            reasons.append(f"INTELLIGENCE_SCORE_{score_delta:+.1f}")
+
+    current_label = str(fusion.get("label") or "")
+    previous_label = str(last_fusion.get("label") or "")
+    if current_label and previous_label and current_label != previous_label:
+        if max(float(current_score or 0), float(previous_score or 0)) >= 30:
+            reasons.append(f"INTELLIGENCE_LABEL_{previous_label}_TO_{current_label}")
+
+    family_threshold = float(policy.get("wallet_holder_family_score_delta", 3.0))
+    current_family_scores = fusion.get("family_scores") or {}
+    previous_family_scores = last_fusion.get("family_scores") or {}
+    for fam in ("wallet_flow", "holder_network"):
+        cur = float(current_family_scores.get(fam) or 0)
+        prev = float(previous_family_scores.get(fam) or 0)
+        delta = cur - prev
+        if abs(delta) >= family_threshold:
+            reasons.append(f"{fam.upper()}_SHIFT_{delta:+.1f}")
+
+    if high_value_new_notable:
+        reasons.append("NEW_INTELLIGENCE:" + ",".join(high_value_new_notable[:3]))
+
+    current_ratio = order_flow_ratio(live)
+    previous_ratio = order_flow_ratio(last_alert)
+    if current_ratio >= 2.5 and current_ratio >= previous_ratio * 1.8:
+        reasons.append(f"BUY_PRESSURE_SHIFT_{current_ratio:.1f}X")
+    elif current_ratio <= 0.4 and current_ratio <= previous_ratio / 1.8:
+        reasons.append(f"SELL_PRESSURE_SHIFT_{current_ratio:.2f}X")
+
+    return list(dict.fromkeys(reasons))
+
+
+def alert_snapshot(live, fusion, triggers):
+    return {
+        "sent_at": now_iso(),
+        "price": live.get("price"),
+        "liquidity": live.get("liquidity"),
+        "volume_h1": live.get("volume_h1"),
+        "buys_h1": live.get("buys_h1"),
+        "sells_h1": live.get("sells_h1"),
+        "triggers": list(triggers),
+        "fusion": {
+            "score": fusion.get("score"),
+            "label": fusion.get("label"),
+            "families": fusion.get("families"),
+            "hard_risks": list(fusion.get("hard_risks") or []),
+            "family_scores": dict(fusion.get("family_scores") or {}),
+            "notable_evidence": list(fusion.get("notable_evidence") or []),
+        },
+    }
+
+
 def main():
     cfg = json.loads(CONFIG.read_text())
-    state = json.loads(STATE.read_text()) if STATE.exists() else {"version": 1, "tokens": {}}
+    state = json.loads(STATE.read_text()) if STATE.exists() else {"version": 2, "tokens": {}}
+    state["version"] = 2
     st = state.setdefault("tokens", {})
     spread = float((cfg.get("data_integrity") or {}).get("max_price_source_spread_pct", 2))
+    alert_policy = dict(cfg.get("alert_policy") or {})
+    notable_min_raw = float(alert_policy.get("notable_evidence_min_raw", 0.30))
+
     tokens = list(cfg.get("tokens") or [])
     known = {exact_identity_key(x) for x in tokens}
     tokens += [x for x in dynamic_candidates() if exact_identity_key(x) not in known]
     intel_index, intel_doc = load_intelligence()
     intel_rows = []
+    sent_alerts = 0
+    suppressed_alerts = 0
 
     for t in tokens:
         sym = t["symbol"].upper()
         identity_key = exact_identity_key(t)
         key = sym if not t.get("dynamic_alpha_candidate") else f"ALPHA:{identity_key}"
         prev = st.get(key) or {}
-        fusion = fusion_summary(intel_index.get(identity_key))
+        last_alert = prev.get("last_alert") or {}
+        fusion = fusion_summary(intel_index.get(identity_key), notable_min_raw=notable_min_raw)
+
         try:
             live = live_exact_pair(t, spread)
         except Exception as e:
             print(key, "UNVERIFIED", str(e), "INTELLIGENCE", fusion)
-            intel_rows.append({"symbol": sym, "identity_key": identity_key, "market_verified": False, "intelligence": fusion, "error": str(e)[:240]})
+            intel_rows.append(
+                {
+                    "symbol": sym,
+                    "identity_key": identity_key,
+                    "market_verified": False,
+                    "intelligence": fusion,
+                    "error": str(e)[:240],
+                }
+            )
             continue
 
         pp = float(prev.get("price") or 0)
@@ -213,10 +428,14 @@ def main():
             minv = float(t.get("min_volume_h1_for_momentum") or 0)
             if pv > 0 and live["volume_h1"] >= max(minv, pv * mult) and live["price"] > pp:
                 tr.append("PRICE_PLUS_VOLUME_ACCELERATION")
-            if t.get("dynamic_alpha_candidate") and live["buys_h1"] >= 10 and live["buys_h1"] >= max(2 * live["sells_h1"], 10):
+            if (
+                t.get("dynamic_alpha_candidate")
+                and live["buys_h1"] >= 10
+                and live["buys_h1"] >= max(2 * live["sells_h1"], 10)
+            ):
                 tr.append("ALPHA_CALL_PLUS_BUY_IMBALANCE")
 
-        st[key] = {
+        current_state = {
             "symbol": sym,
             "network": t["network"],
             "contract": t["contract"],
@@ -232,49 +451,96 @@ def main():
             "observed_at": live["observed_at"],
             "dynamic_alpha_candidate": bool(t.get("dynamic_alpha_candidate")),
             "intelligence_fusion": fusion,
+            "last_alert": last_alert,
         }
-        intel_rows.append({"symbol": sym, "identity_key": identity_key, "market_verified": True, "intelligence": fusion})
-        print(key, "VERIFIED", st[key], "TRIGGERS", tr)
+        st[key] = current_state
+        intel_rows.append(
+            {
+                "symbol": sym,
+                "identity_key": identity_key,
+                "market_verified": True,
+                "intelligence": fusion,
+            }
+        )
 
-        if tr:
-            hard_risk = bool(fusion.get("hard_risks"))
-            risk = hard_risk or any(x.startswith("LOSS_") or "LIQUIDITY_DROP" in x for x in tr)
-            label = "RISK" if risk else ("ALPHA_CLOSE_WATCH" if t.get("dynamic_alpha_candidate") else "REVIVAL_BUILDING")
-            icon = "⚠️" if risk else "🔥"
-            score_text = "n/a" if fusion.get("score") is None else f"{float(fusion['score']):.1f}/100"
-            intel_line = f"Intelligence Fusion: {score_text} · {fusion.get('label')} · {fusion.get('families')} independent positive families · {fusion.get('status')}"
-            if fusion.get("hard_risks"):
-                intel_line += " · HARD RISK: " + ", ".join(map(str, fusion["hard_risks"]))
-            msg = "\n".join([
+        reasons = material_change_reasons(last_alert, live, fusion, tr, alert_policy)
+        print(key, "VERIFIED", current_state, "TRIGGERS", tr, "ALERT_REASONS", reasons)
+
+        if not reasons:
+            if tr:
+                suppressed_alerts += 1
+                print(key, "ALERT_SUPPRESSED_NO_MATERIAL_CHANGE", tr)
+            continue
+
+        hard_risk = bool(fusion.get("hard_risks"))
+        risk = hard_risk or any(x.startswith("LOSS_") or "LIQUIDITY_DROP" in x for x in tr)
+        if risk:
+            label = "RISK"
+        elif t.get("dynamic_alpha_candidate"):
+            label = "ALPHA_CLOSE_WATCH"
+        elif tr:
+            label = "REVIVAL_BUILDING"
+        else:
+            label = "INTELLIGENCE_MATERIAL_CHANGE"
+        icon = "⚠️" if risk else "🔥"
+        score_text = "n/a" if fusion.get("score") is None else f"{float(fusion['score']):.1f}/100"
+        intel_line = (
+            f"Intelligence Fusion: {score_text} · {fusion.get('label')} · "
+            f"{fusion.get('families')} independent positive families · {fusion.get('status')}"
+        )
+        if fusion.get("hard_risks"):
+            intel_line += " · HARD RISK: " + ", ".join(map(str, fusion["hard_risks"]))
+
+        msg = "\n".join(
+            [
                 f"{icon} {sym} | WALLET500 UNIFIED WATCH | {label}",
+                "WHY THIS ALERT: " + " | ".join(reasons[:6]),
                 f"CURRENT VERIFIED PRICE: ${live['price']:.8f}",
                 f"SOURCE: GeckoTerminal exact pair + DexScreener exact pair | spread {live['spread_pct']:.2f}%",
                 f"OBSERVED: {live['observed_at']}",
-                f"Previous verified: ${pp:.8f}",
+                f"Previous scan: ${pp:.8f}",
                 f"1H {live['change_h1']:+.2f}% | 24H {live['change_h24']:+.2f}%",
                 f"Liquidity {money(live['liquidity'])} | Vol 1H {money(live['volume_h1'])}",
                 f"Buys/Sells 1H: {live['buys_h1']}/{live['sells_h1']}",
                 intel_line,
-                "Fusion mode: SHADOW EVIDENCE — does not promote a production REAL ALERT yet.",
-                "TRIGGERS: " + ", ".join(tr),
-                "Research/close watch only — never auto-trade.",
+                "TRIGGERS: " + (", ".join(tr) if tr else "INTELLIGENCE_MATERIAL_CHANGE"),
+                "No repeat alert unless a new material change is detected.",
                 f"CA: {t['contract']}",
                 f"Pair: {t['pair']}",
                 str(t.get("dex_url") or ""),
-            ])
-            send(msg)
+            ]
+        )
+        send(msg)
+        st[key]["last_alert"] = alert_snapshot(live, fusion, tr)
+        sent_alerts += 1
 
     state["updated_at"] = now_iso()
     STATE.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n")
     report = {
-        "version": 1,
+        "version": 2,
         "updated_at": now_iso(),
-        "mode": "EXACT_PAIR_INTELLIGENCE_SHADOW",
+        "mode": "EXACT_PAIR_INTELLIGENCE_MATERIAL_CHANGE_ALERTS",
+        "alert_policy": alert_policy,
         "fusion_snapshot_generated_at": intel_doc.get("generated_at") if isinstance(intel_doc, dict) else None,
+        "sent_alerts": sent_alerts,
+        "suppressed_repeated_alerts": suppressed_alerts,
         "targets": intel_rows,
     }
     INTEL_REPORT.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
-    print(json.dumps({"status": "OK", "configured": len(cfg.get("tokens") or []), "dynamic_alpha": len(tokens) - len(cfg.get("tokens") or []), "intelligence_targets": len(intel_rows)}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "status": "OK",
+                "configured": len(cfg.get("tokens") or []),
+                "dynamic_alpha": len(tokens) - len(cfg.get("tokens") or []),
+                "intelligence_targets": len(intel_rows),
+                "sent_alerts": sent_alerts,
+                "suppressed_repeated_alerts": suppressed_alerts,
+                "alert_mode": "MATERIAL_CHANGE_ONLY",
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 if __name__ == "__main__":
