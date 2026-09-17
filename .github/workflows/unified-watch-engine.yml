@@ -9,6 +9,8 @@ on:
     paths:
       - 'scripts/unified_watch_engine.py'
       - 'scripts/spot_market_discovery_collector.py'
+      - 'scripts/unified_candidate_bridge.py'
+      - 'scripts/cross_domain_intelligence_collector.py'
       - 'scripts/free_intelligence_collector.py'
       - 'scripts/derivatives_intelligence_collector.py'
       - 'scripts/public_alpha_source_collector.py'
@@ -24,7 +26,7 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: wallet500-unified-verified-watch-v4
+  group: wallet500-unified-verified-watch-v5
   cancel-in-progress: false
 
 jobs:
@@ -39,8 +41,8 @@ jobs:
       - name: Validate unified watcher, collectors and intelligence fusion
         id: validate
         run: |
-          python -m py_compile scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py
-          for f in data/unified-watch-config.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json; do python -m json.tool "$f" >/dev/null; done
+          python -m py_compile scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py
+          for f in data/unified-watch-config.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json; do python -m json.tool "$f" >/dev/null; done
 
       - name: Test exact-identity intelligence fusion contract
         id: contract
@@ -50,15 +52,11 @@ jobs:
         id: spot_discovery
         run: python scripts/spot_market_discovery_collector.py
 
-      - name: Collect free cross-domain intelligence
+      - name: Collect configured free intelligence
         id: free_intel
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/free_intelligence_collector.py
-
-      - name: Collect derivatives and public wallet-perp intelligence
-        id: derivatives
-        run: python scripts/derivatives_intelligence_collector.py
 
       - name: Stream free public alpha discoveries
         id: public_alpha
@@ -67,6 +65,18 @@ jobs:
       - name: Gate alpha caller signals into Wallet500 evidence
         id: alpha_intake
         run: python scripts/alpha_caller_intake.py
+
+      - name: Bridge Gate and alpha into exact-identity dynamic candidates
+        id: candidate_bridge
+        run: python scripts/unified_candidate_bridge.py
+
+      - name: Collect holder wallet attention search and news intelligence
+        id: cross_domain
+        run: python scripts/cross_domain_intelligence_collector.py
+
+      - name: Collect exact-identity derivatives and public wallet-perp intelligence
+        id: derivatives
+        run: python scripts/derivatives_intelligence_collector.py
 
       - name: Update forward-only alpha caller reputation
         id: alpha_reputation
@@ -90,9 +100,11 @@ jobs:
           CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
           SPOT_DISCOVERY_OUTCOME: ${{ steps.spot_discovery.outcome }}
           FREE_INTEL_OUTCOME: ${{ steps.free_intel.outcome }}
-          DERIVATIVES_OUTCOME: ${{ steps.derivatives.outcome }}
           PUBLIC_ALPHA_OUTCOME: ${{ steps.public_alpha.outcome }}
           ALPHA_INTAKE_OUTCOME: ${{ steps.alpha_intake.outcome }}
+          CANDIDATE_BRIDGE_OUTCOME: ${{ steps.candidate_bridge.outcome }}
+          CROSS_DOMAIN_OUTCOME: ${{ steps.cross_domain.outcome }}
+          DERIVATIVES_OUTCOME: ${{ steps.derivatives.outcome }}
           ALPHA_REPUTATION_OUTCOME: ${{ steps.alpha_reputation.outcome }}
           FUSION_OUTCOME: ${{ steps.fusion.outcome }}
           MARKET_WATCH_OUTCOME: ${{ steps.market_watch.outcome }}
@@ -120,21 +132,25 @@ jobs:
           state = load('data/unified-watch-state.json')
           report = load('data/unified-watch-intelligence-report.json')
           spot = load('data/spot-market-discovery.json')
+          dynamic = load('data/unified-dynamic-candidates.json')
+          cross = load('data/cross-domain-intelligence-state.json')
+          derivatives = load('data/derivatives-intelligence-state.json')
           outcomes = {
               'validate': os.getenv('VALIDATE_OUTCOME'),
               'contract': os.getenv('CONTRACT_OUTCOME'),
               'spot_discovery': os.getenv('SPOT_DISCOVERY_OUTCOME'),
               'free_intel': os.getenv('FREE_INTEL_OUTCOME'),
-              'derivatives': os.getenv('DERIVATIVES_OUTCOME'),
               'public_alpha': os.getenv('PUBLIC_ALPHA_OUTCOME'),
               'alpha_intake': os.getenv('ALPHA_INTAKE_OUTCOME'),
+              'candidate_bridge': os.getenv('CANDIDATE_BRIDGE_OUTCOME'),
+              'cross_domain': os.getenv('CROSS_DOMAIN_OUTCOME'),
+              'derivatives': os.getenv('DERIVATIVES_OUTCOME'),
               'alpha_reputation': os.getenv('ALPHA_REPUTATION_OUTCOME'),
               'fusion': os.getenv('FUSION_OUTCOME'),
               'market_watch': os.getenv('MARKET_WATCH_OUTCOME'),
           }
-          spot_counts = (spot or {}).get('market_counts') if isinstance(spot, dict) else None
           manifest = {
-              'version': 2,
+              'version': 3,
               'generated_at': datetime.now(timezone.utc).isoformat(),
               'github_run_id': os.getenv('GH_RUN_ID'),
               'github_run_attempt': os.getenv('GH_RUN_ATTEMPT'),
@@ -144,7 +160,12 @@ jobs:
               'evidence': {
                   'spot_discovery_exists': spot is not None,
                   'spot_discovery_generated_at': (spot or {}).get('generated_at') if isinstance(spot, dict) else None,
-                  'spot_discovery_counts': spot_counts,
+                  'spot_discovery_counts': (spot or {}).get('market_counts') if isinstance(spot, dict) else None,
+                  'dynamic_candidate_counts': (dynamic or {}).get('counts') if isinstance(dynamic, dict) else None,
+                  'cross_domain_updated_at': (cross or {}).get('updated_at') if isinstance(cross, dict) else None,
+                  'cross_domain_target_count': len((cross or {}).get('tokens') or {}) if isinstance(cross, dict) else None,
+                  'derivatives_updated_at': (derivatives or {}).get('updated_at') if isinstance(derivatives, dict) else None,
+                  'derivatives_provider_success': (derivatives or {}).get('provider_success') if isinstance(derivatives, dict) else None,
                   'close_watch_events_exists': (root/'data/close-watch-events.json').exists(),
                   'close_watch_event_count': len(events.get('events') or []) if isinstance(events, dict) else None,
                   'fusion_snapshot_exists': fusion is not None,
@@ -153,6 +174,8 @@ jobs:
                   'unified_state_updated_at': (state or {}).get('updated_at') if isinstance(state, dict) else None,
                   'unified_report_exists': report is not None,
                   'unified_report_updated_at': (report or {}).get('updated_at') if isinstance(report, dict) else None,
+                  'dynamic_spot_targets_watched': (report or {}).get('dynamic_spot_targets') if isinstance(report, dict) else None,
+                  'dynamic_alpha_targets_watched': (report or {}).get('dynamic_alpha_targets') if isinstance(report, dict) else None,
               },
           }
           Path('data/unified-watch-runtime-evidence.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False)+'\n')
@@ -165,15 +188,45 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/unified-watch-state.json data/unified-watch-intelligence-report.json data/unified-watch-runtime-evidence.json data/derivatives-intelligence-state.json data/close-watch-intelligence.json data/close-watch-events.json data/free-intelligence-collector-state.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/spot-market-discovery.json data/spot-market-discovery-state.json || true
-          if git diff --cached --quiet; then echo 'UNIFIED_WATCH_STATE_UNCHANGED'; exit 0; fi
-          git commit -m 'chore: update unified watch intelligence state [skip ci]'
-          for attempt in 1 2 3; do
-            if git pull --rebase origin main && git push origin HEAD:main; then
+          files=(
+            data/unified-watch-state.json
+            data/unified-watch-intelligence-report.json
+            data/unified-watch-runtime-evidence.json
+            data/derivatives-intelligence-state.json
+            data/close-watch-intelligence.json
+            data/close-watch-events.json
+            data/free-intelligence-collector-state.json
+            data/alpha-caller-source-state.json
+            data/alpha-caller-inbox.json
+            data/alpha-caller-candidates.json
+            data/alpha-caller-reputation.json
+            data/alpha-caller-call-history.json
+            data/spot-market-discovery.json
+            data/spot-market-discovery-state.json
+            data/unified-dynamic-candidates.json
+            data/cross-domain-intelligence-state.json
+          )
+          snapshot="$(mktemp -d)"
+          for f in "${files[@]}"; do
+            if [ -f "$f" ]; then mkdir -p "$snapshot/$(dirname "$f")"; cp "$f" "$snapshot/$f"; fi
+          done
+          for attempt in 1 2 3 4; do
+            git fetch origin main
+            git reset --hard origin/main
+            for f in "${files[@]}"; do
+              if [ -f "$snapshot/$f" ]; then mkdir -p "$(dirname "$f")"; cp "$snapshot/$f" "$f"; fi
+            done
+            git add "${files[@]}" || true
+            if git diff --cached --quiet; then
+              echo 'UNIFIED_WATCH_STATE_UNCHANGED'
               echo 'UNIFIED_WATCH_PERSIST_OK'
               exit 0
             fi
-            git rebase --abort >/dev/null 2>&1 || true
+            git commit -m 'chore: update unified watch intelligence state [skip ci]'
+            if git push origin HEAD:main; then
+              echo 'UNIFIED_WATCH_PERSIST_OK'
+              exit 0
+            fi
             echo "STATE_PUSH_RETRY_${attempt}"
             sleep $((attempt * 2))
           done
