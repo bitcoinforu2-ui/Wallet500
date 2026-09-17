@@ -80,33 +80,26 @@ def test_clean_entry_blocks_fresh_cross_venue_dispersion(monkeypatch, tmp_path):
     assert "FRESH_CROSS_VENUE_PRICE_RISK" in meta["blockers"]
 
 
-def test_forward_only_baseline_rearms_and_sends_clean_transition(monkeypatch, tmp_path):
+def test_clean_entry_is_research_only_and_never_sends_telegram(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.revival, "_with_live", _fake_with_live)
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
-    messages = []
 
-    def fake_send(token, chat_id, text):
-        messages.append(text)
-        return 456, 1
+    def forbidden_send(*args, **kwargs):
+        raise AssertionError("legacy clean-entry lane must never send Telegram")
 
-    monkeypatch.setattr(mod.revival, "_send", fake_send)
+    monkeypatch.setattr(mod.revival, "_send", forbidden_send)
     src = tmp_path / mod.SOURCE
     src.write_text(json.dumps([_row()]), encoding="utf-8")
-    first = mod.run(str(tmp_path), now=NOW)
-    assert first["baseline_count"] == 1
-    assert first["delivered_count"] == 0
 
-    src.write_text(json.dumps([_row(buys=80, sells=120)]), encoding="utf-8")
-    mod.run(str(tmp_path), now=NOW)
-    src.write_text(json.dumps([_row(buys=120, sells=80)]), encoding="utf-8")
-    fired = mod.run(str(tmp_path), now=NOW)
+    first = mod.run(str(tmp_path), now=NOW)
     again = mod.run(str(tmp_path), now=NOW)
 
-    assert fired["delivered_count"] == 1
+    assert first["baseline_count"] == 1
+    assert first["delivered_count"] == 0
     assert again["delivered_count"] == 0
-    assert len(messages) == 1
-    assert messages[0].startswith("🟢 CLEAN ENTRY CANDIDATE — REVIVAL — WALLET500")
-    assert "Buy/Sell H1: 120/80 — ratio 1.50x" in messages[0]
-    assert "Signal type: CLEAN ENTRY CANDIDATE — not BUY NOW" in messages[0]
-    assert fired["truth_contract"]["automatic_buy"] is False
+    assert first["configured"] is False
+    assert first["truth_contract"]["research_only"] is True
+    assert first["truth_contract"]["actionable_only"] is False
+    assert first["truth_contract"]["telegram_delivery_forbidden"] is True
+    assert first["truth_contract"]["delivery_lane"] == "UNIFIED_WATCH_ENGINE_ONLY"
