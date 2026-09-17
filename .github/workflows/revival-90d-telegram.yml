@@ -6,6 +6,13 @@ on:
     workflows:
       - "Wallet500 Revival Solana Expanded"
     types: [completed]
+  pull_request:
+    paths:
+      - 'src/wallet500/revival_90d_telegram.py'
+      - 'src/wallet500/revival_deep_intelligence.py'
+      - 'tests/test_revival_90d_telegram.py'
+      - 'tests/test_revival_deep_intelligence.py'
+      - '.github/workflows/revival-90d-telegram.yml'
 
 permissions:
   contents: write
@@ -18,11 +25,11 @@ jobs:
   alert:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'main' }}
           fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
@@ -30,8 +37,13 @@ jobs:
       - name: Install and test 90d 15k actionable alert contract
         run: |
           pip install -e . pytest
-          python -m pytest -q tests/test_revival_90d_telegram.py
+          python -m py_compile src/wallet500/revival_90d_telegram.py src/wallet500/revival_deep_intelligence.py
+          python -m pytest -q tests/test_revival_90d_telegram.py tests/test_revival_deep_intelligence.py
+      - name: Stop after PR verification
+        if: github.event_name == 'pull_request'
+        run: echo 'REVIVAL_DEEP_INTELLIGENCE_PR_TESTS_OK'
       - name: Refuse stale or wrong Revival source
+        if: github.event_name != 'pull_request'
         run: |
           python - <<'PY'
           import json
@@ -52,10 +64,12 @@ jobs:
           if age > 45*60: raise SystemExit(f'REVIVAL_90D_EXPANDED_SOURCE_STALE age={age:.0f}s')
           print('REVIVAL_90D_EXPANDED_SOURCE_OK', {'age_seconds':round(age,1),'coins':len(d.get('coins') or [])})
           PY
-      - name: Send forward-only actionable Revival REAL ALERTs
+      - name: Send forward-only actionable Revival REAL ALERTs after deep intelligence
+        if: github.event_name != 'pull_request'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
           REVIVAL_90D_LIVE_REFRESH: '1'
         run: |
           set -euo pipefail
@@ -64,13 +78,16 @@ jobs:
             exit 1
           fi
           python -m wallet500.revival_90d_telegram
-      - name: Validate actionable alert report
+      - name: Validate actionable alert and deep intelligence reports
+        if: github.event_name != 'pull_request'
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
           d=json.loads(Path('data/revival-90d-telegram-report.json').read_text())
+          deep=json.loads(Path('data/revival-deep-intelligence-report.json').read_text())
           t=d.get('truth_contract') or {}
+          dt=deep.get('truth_contract') or {}
           if d.get('mode')!='ACTIONABLE_REVIVAL_90D_15K_REAL_ALERT_V2': raise SystemExit('REVIVAL_90D_MODE_INVALID')
           if d.get('configured') is not True: raise SystemExit('REVIVAL_90D_TELEGRAM_NOT_CONFIGURED')
           if t.get('research_only') is not False or t.get('actionable_only') is not True: raise SystemExit('REVIVAL_90D_ACTIONABILITY_INVALID')
@@ -81,17 +98,29 @@ jobs:
           if int(t.get('minimum_txns_h1') or 0)!=30: raise SystemExit('REVIVAL_90D_TXNS_H1_DRIFT')
           if t.get('exact_pair_required') is not True or t.get('exact_base_token_identity_required') is not True: raise SystemExit('REVIVAL_90D_IDENTITY_GUARD_MISSING')
           if t.get('expanded_source_required')!='revival-1000-latest.json': raise SystemExit('REVIVAL_90D_WRONG_SOURCE')
+          if t.get('automatic_deep_intelligence_before_delivery') is not True: raise SystemExit('REVIVAL_DEEP_CHECK_NOT_REQUIRED')
+          if t.get('deep_check_pass_required_for_actionable_alert') is not True: raise SystemExit('REVIVAL_DEEP_PASS_NOT_REQUIRED')
+          if t.get('revival_score_separate_from_confirmation_score') is not True: raise SystemExit('REVIVAL_CONFIRMATION_SCORE_CONFLATED')
+          if t.get('critical_deep_source_failure_cannot_pass') is not True: raise SystemExit('REVIVAL_DEEP_FAIL_OPEN')
+          if dt.get('critical_source_failure_cannot_pass') is not True or dt.get('hard_blocker_overrides_score') is not True: raise SystemExit('REVIVAL_DEEP_TRUTH_CONTRACT_INVALID')
+          if dt.get('automatic_trade') is not False or dt.get('manual_decision_only') is not True: raise SystemExit('REVIVAL_DEEP_AUTO_TRADE_LEAK')
+          for item in d.get('delivered') or []:
+              if item.get('deep_check') != 'PASS': raise SystemExit('REVIVAL_NON_PASS_DELIVERED')
+              if item.get('confirmation_score') is None: raise SystemExit('REVIVAL_DELIVERED_WITHOUT_CONFIRMATION_SCORE')
           if t.get('notification_marker')!='🔥🔥🔥': raise SystemExit('REVIVAL_90D_FIRE_MARKER_MISSING')
           if t.get('no_historical_backfill') is not True or t.get('no_hindsight') is not True: raise SystemExit('REVIVAL_90D_FORWARD_ONLY_GUARD_MISSING')
-          print('REVIVAL_90D_ACTIONABLE_OK', {'eligible':d.get('eligible_count'),'baseline':d.get('baseline_count'),'delivered':d.get('delivered_count'),'errors':d.get('error_count')})
+          print('REVIVAL_90D_DEEP_INTELLIGENCE_OK', {'baseline_eligible':d.get('baseline_eligible_before_deep_check'),'pass':d.get('deep_check_pass_count'),'watch':d.get('deep_check_watch_count'),'reject':d.get('deep_check_reject_count'),'delivered':d.get('delivered_count')})
           PY
-      - name: Publish actionable alert state atomically
+      - name: Publish actionable alert and deep-intelligence state atomically
+        if: github.event_name != 'pull_request'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python scripts/atomic_publish.py \
             --github-api-cas \
-            --message 'alerts: persist actionable 90d 15k Revival state' \
+            --message 'alerts: persist Revival deep intelligence and actionable state' \
             data/revival-90d-telegram-report.json \
-            data/revival-90d-telegram-state.json
+            data/revival-90d-telegram-state.json \
+            data/revival-deep-intelligence-report.json \
+            data/revival-deep-intelligence-state.json
