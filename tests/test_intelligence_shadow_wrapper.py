@@ -21,11 +21,14 @@ def test_shadow_exact_pair_match_and_slogan_replacement():
     index = {
         key: {
             **row,
+            "exact_identity_verified": True,
             "score": 72.5,
             "label": "CONFLUENCE",
             "status": "CURRENT",
             "independent_positive_families": 4,
+            "current_evidence_count": 5,
             "evidence_age_minutes": 3.5,
+            "window_minutes": 180,
             "hard_risks": [],
         }
     }
@@ -46,9 +49,13 @@ def test_shadow_wrong_pair_never_matches():
     index = {
         shadow.identity_key(wrong): {
             **wrong,
+            "exact_identity_verified": True,
             "score": 99,
             "label": "EXCEPTIONAL_CONFLUENCE",
             "status": "CURRENT",
+            "current_evidence_count": 5,
+            "evidence_age_minutes": 1,
+            "window_minutes": 180,
         }
     }
     text = shadow.inject("Verified Intelligence. The Pure Truth.", row, index)
