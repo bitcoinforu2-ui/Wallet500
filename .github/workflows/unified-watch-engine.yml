@@ -30,49 +30,145 @@ permissions:
 concurrency:
   group: wallet500-unified-verified-watch
   cancel-in-progress: false
+
 jobs:
   watch:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 14
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - name: Validate unified watcher, collectors and intelligence fusion
+        id: validate
         run: |
           python -m py_compile scripts/unified_watch_engine.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py
           for f in data/unified-watch-config.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json; do python -m json.tool "$f" >/dev/null; done
+
       - name: Test exact-identity intelligence fusion contract
+        id: contract
         run: python scripts/test_intelligence_fusion_contract.py
+
       - name: Collect free cross-domain intelligence
+        id: free_intel
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/free_intelligence_collector.py
+
       - name: Collect derivatives and public wallet-perp intelligence
+        id: derivatives
         run: python scripts/derivatives_intelligence_collector.py
+
       - name: Stream free public alpha discoveries
+        id: public_alpha
         run: python scripts/public_alpha_source_collector.py
+
       - name: Gate alpha caller signals into Wallet500 evidence
+        id: alpha_intake
         run: python scripts/alpha_caller_intake.py
+
       - name: Update forward-only alpha caller reputation
+        id: alpha_reputation
         run: python scripts/alpha_caller_reputation.py
+
       - name: Fuse cross-domain intelligence evidence
+        id: fusion
         run: python scripts/intelligence_fusion.py
+
       - name: Run fail-closed verified market watchlist
+        id: market_watch
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scripts/unified_watch_engine.py
+
+      - name: Build unified runtime evidence manifest
+        if: always()
+        env:
+          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
+          CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
+          FREE_INTEL_OUTCOME: ${{ steps.free_intel.outcome }}
+          DERIVATIVES_OUTCOME: ${{ steps.derivatives.outcome }}
+          PUBLIC_ALPHA_OUTCOME: ${{ steps.public_alpha.outcome }}
+          ALPHA_INTAKE_OUTCOME: ${{ steps.alpha_intake.outcome }}
+          ALPHA_REPUTATION_OUTCOME: ${{ steps.alpha_reputation.outcome }}
+          FUSION_OUTCOME: ${{ steps.fusion.outcome }}
+          MARKET_WATCH_OUTCOME: ${{ steps.market_watch.outcome }}
+          GH_RUN_ID: ${{ github.run_id }}
+          GH_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GH_SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          root = Path('.')
+          def load(path):
+              p = root / path
+              if not p.exists():
+                  return None
+              try:
+                  return json.loads(p.read_text())
+              except Exception as e:
+                  return {"_read_error": type(e).__name__}
+
+          events = load('data/close-watch-events.json') or {}
+          fusion = load('data/close-watch-intelligence.json')
+          state = load('data/unified-watch-state.json')
+          report = load('data/unified-watch-intelligence-report.json')
+          outcomes = {
+              'validate': os.getenv('VALIDATE_OUTCOME'),
+              'contract': os.getenv('CONTRACT_OUTCOME'),
+              'free_intel': os.getenv('FREE_INTEL_OUTCOME'),
+              'derivatives': os.getenv('DERIVATIVES_OUTCOME'),
+              'public_alpha': os.getenv('PUBLIC_ALPHA_OUTCOME'),
+              'alpha_intake': os.getenv('ALPHA_INTAKE_OUTCOME'),
+              'alpha_reputation': os.getenv('ALPHA_REPUTATION_OUTCOME'),
+              'fusion': os.getenv('FUSION_OUTCOME'),
+              'market_watch': os.getenv('MARKET_WATCH_OUTCOME'),
+          }
+          manifest = {
+              'version': 1,
+              'generated_at': datetime.now(timezone.utc).isoformat(),
+              'github_run_id': os.getenv('GH_RUN_ID'),
+              'github_run_attempt': os.getenv('GH_RUN_ATTEMPT'),
+              'github_sha': os.getenv('GH_SHA'),
+              'stage_outcomes': outcomes,
+              'first_failed_or_skipped_stage': next((k for k,v in outcomes.items() if v not in ('success',)), None),
+              'evidence': {
+                  'close_watch_events_exists': (root/'data/close-watch-events.json').exists(),
+                  'close_watch_event_count': len(events.get('events') or []) if isinstance(events, dict) else None,
+                  'fusion_snapshot_exists': fusion is not None,
+                  'fusion_token_count': len((fusion or {}).get('tokens') or []) if isinstance(fusion, dict) else None,
+                  'fusion_generated_at': (fusion or {}).get('generated_at') if isinstance(fusion, dict) else None,
+                  'unified_state_updated_at': (state or {}).get('updated_at') if isinstance(state, dict) else None,
+                  'unified_report_exists': report is not None,
+                  'unified_report_updated_at': (report or {}).get('updated_at') if isinstance(report, dict) else None,
+              },
+          }
+          Path('data/unified-watch-runtime-evidence.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False)+'\n')
+          print('UNIFIED_RUNTIME_EVIDENCE', json.dumps(manifest, ensure_ascii=False))
+          PY
+
       - name: Persist verified forward-only state, evidence and intelligence snapshot
+        if: always()
         run: |
           set -euo pipefail
           git config user.name 'wallet500-bot'
           git config user.email 'wallet500-bot@users.noreply.github.com'
-          git add data/unified-watch-state.json data/unified-watch-intelligence-report.json data/derivatives-intelligence-state.json data/close-watch-intelligence.json data/close-watch-events.json data/free-intelligence-collector-state.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json || true
+          git add data/unified-watch-state.json data/unified-watch-intelligence-report.json data/unified-watch-runtime-evidence.json data/derivatives-intelligence-state.json data/close-watch-intelligence.json data/close-watch-events.json data/free-intelligence-collector-state.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json || true
           if git diff --cached --quiet; then echo 'UNIFIED_WATCH_STATE_UNCHANGED'; exit 0; fi
           git commit -m 'chore: update unified watch intelligence state [skip ci]'
           for attempt in 1 2 3; do
-            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
-            echo "STATE_PUSH_RETRY_${attempt}"; sleep $((attempt * 2))
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo 'UNIFIED_WATCH_PERSIST_OK'
+              exit 0
+            fi
+            git rebase --abort >/dev/null 2>&1 || true
+            echo "STATE_PUSH_RETRY_${attempt}"
+            sleep $((attempt * 2))
           done
-          echo 'STATE_PERSIST_FAILED_AFTER_RETRIES'; exit 1
+          echo 'STATE_PERSIST_FAILED_AFTER_RETRIES'
+          exit 1
