@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "data/unified-watch-config.json"
 STATE = ROOT / "data/unified-watch-state.json"
-CAND = ROOT / "data/alpha-caller-candidates.json"
+DYNAMIC = ROOT / "data/unified-dynamic-candidates.json"
 INTEL = ROOT / "data/close-watch-intelligence.json"
 INTEL_REPORT = ROOT / "data/unified-watch-intelligence-report.json"
 EVM = {"ethereum", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche"}
@@ -57,7 +57,7 @@ def load_intelligence():
 
 
 def http_json(url):
-    req = urllib.request.Request(url, headers={"accept": "application/json", "user-agent": "Wallet500-UnifiedWatch/1.3"})
+    req = urllib.request.Request(url, headers={"accept": "application/json", "user-agent": "Wallet500-UnifiedWatch/1.4"})
     return json.load(urllib.request.urlopen(req, timeout=20))
 
 
@@ -168,13 +168,17 @@ def send(msg):
 
 
 def dynamic_candidates():
-    if not CAND.exists():
+    if not DYNAMIC.exists():
         return []
-    d = json.loads(CAND.read_text())
+    try:
+        d = json.loads(DYNAMIC.read_text())
+    except Exception:
+        return []
     out = []
     seen = set()
     for c in d.get("candidates") or []:
-        if c.get("status") != "GATED_RESEARCH_CANDIDATE":
+        ctype = str(c.get("candidate_type") or "").upper()
+        if ctype not in {"PUBLIC_ALPHA", "GATE_SPOT_DISCOVERY"}:
             continue
         ca = str(c.get("contract") or "")
         pair = str(c.get("pair") or "")
@@ -187,7 +191,7 @@ def dynamic_candidates():
         seen.add(key)
         out.append(
             {
-                "symbol": str(c.get("symbol") or "ALPHA").upper(),
+                "symbol": str(c.get("symbol") or "DYNAMIC").upper(),
                 "network": network,
                 "contract": ca,
                 "pair": pair,
@@ -197,10 +201,16 @@ def dynamic_candidates():
                 "liquidity_drop_pct": 25,
                 "volume_acceleration_multiple": 2.0,
                 "min_volume_h1_for_momentum": 0,
-                "dynamic_alpha_candidate": True,
+                "dynamic_alpha_candidate": ctype == "PUBLIC_ALPHA",
+                "dynamic_spot_candidate": ctype == "GATE_SPOT_DISCOVERY",
+                "candidate_type": ctype,
+                "source": c.get("source") or "",
+                "first_seen_at": c.get("first_seen_at"),
+                "discovery_price": c.get("discovery_price"),
+                "positive_gainer_rank": c.get("positive_gainer_rank"),
             }
         )
-    return out[:100]
+    return out[:120]
 
 
 def fusion_summary(row, notable_min_raw=0.30):
@@ -372,16 +382,18 @@ def alert_snapshot(live, fusion, triggers):
 
 def main():
     cfg = json.loads(CONFIG.read_text())
-    state = json.loads(STATE.read_text()) if STATE.exists() else {"version": 2, "tokens": {}}
-    state["version"] = 2
+    state = json.loads(STATE.read_text()) if STATE.exists() else {"version": 3, "tokens": {}}
+    state["version"] = 3
     st = state.setdefault("tokens", {})
     spread = float((cfg.get("data_integrity") or {}).get("max_price_source_spread_pct", 2))
     alert_policy = dict(cfg.get("alert_policy") or {})
     notable_min_raw = float(alert_policy.get("notable_evidence_min_raw", 0.30))
 
-    tokens = list(cfg.get("tokens") or [])
+    static_tokens = list(cfg.get("tokens") or [])
+    tokens = list(static_tokens)
     known = {exact_identity_key(x) for x in tokens}
-    tokens += [x for x in dynamic_candidates() if exact_identity_key(x) not in known]
+    dynamic = [x for x in dynamic_candidates() if exact_identity_key(x) not in known]
+    tokens += dynamic
     intel_index, intel_doc = load_intelligence()
     intel_rows = []
     sent_alerts = 0
@@ -390,7 +402,12 @@ def main():
     for t in tokens:
         sym = t["symbol"].upper()
         identity_key = exact_identity_key(t)
-        key = sym if not t.get("dynamic_alpha_candidate") else f"ALPHA:{identity_key}"
+        if t.get("dynamic_alpha_candidate"):
+            key = f"ALPHA:{identity_key}"
+        elif t.get("dynamic_spot_candidate"):
+            key = f"SPOT:{identity_key}"
+        else:
+            key = sym
         prev = st.get(key) or {}
         last_alert = prev.get("last_alert") or {}
         fusion = fusion_summary(intel_index.get(identity_key), notable_min_raw=notable_min_raw)
@@ -399,15 +416,14 @@ def main():
             live = live_exact_pair(t, spread)
         except Exception as e:
             print(key, "UNVERIFIED", str(e), "INTELLIGENCE", fusion)
-            intel_rows.append(
-                {
-                    "symbol": sym,
-                    "identity_key": identity_key,
-                    "market_verified": False,
-                    "intelligence": fusion,
-                    "error": str(e)[:240],
-                }
-            )
+            intel_rows.append({
+                "symbol": sym,
+                "identity_key": identity_key,
+                "candidate_type": t.get("candidate_type") or "CONFIGURED",
+                "market_verified": False,
+                "intelligence": fusion,
+                "error": str(e)[:240],
+            })
             continue
 
         pp = float(prev.get("price") or 0)
@@ -449,19 +465,24 @@ def main():
             "sells_h1": live["sells_h1"],
             "spread_pct": live["spread_pct"],
             "observed_at": live["observed_at"],
+            "candidate_type": t.get("candidate_type") or "CONFIGURED",
             "dynamic_alpha_candidate": bool(t.get("dynamic_alpha_candidate")),
+            "dynamic_spot_candidate": bool(t.get("dynamic_spot_candidate")),
+            "first_seen_at": t.get("first_seen_at") or prev.get("first_seen_at"),
+            "discovery_price": t.get("discovery_price") if t.get("discovery_price") is not None else prev.get("discovery_price"),
             "intelligence_fusion": fusion,
             "last_alert": last_alert,
         }
         st[key] = current_state
-        intel_rows.append(
-            {
-                "symbol": sym,
-                "identity_key": identity_key,
-                "market_verified": True,
-                "intelligence": fusion,
-            }
-        )
+        intel_rows.append({
+            "symbol": sym,
+            "identity_key": identity_key,
+            "candidate_type": current_state["candidate_type"],
+            "market_verified": True,
+            "discovery_price": current_state.get("discovery_price"),
+            "first_seen_at": current_state.get("first_seen_at"),
+            "intelligence": fusion,
+        })
 
         reasons = material_change_reasons(last_alert, live, fusion, tr, alert_policy)
         print(key, "VERIFIED", current_state, "TRIGGERS", tr, "ALERT_REASONS", reasons)
@@ -478,6 +499,8 @@ def main():
             label = "RISK"
         elif t.get("dynamic_alpha_candidate"):
             label = "ALPHA_CLOSE_WATCH"
+        elif t.get("dynamic_spot_candidate"):
+            label = "SPOT_CLOSE_WATCH"
         elif tr:
             label = "REVIVAL_BUILDING"
         else:
@@ -491,56 +514,57 @@ def main():
         if fusion.get("hard_risks"):
             intel_line += " · HARD RISK: " + ", ".join(map(str, fusion["hard_risks"]))
 
-        msg = "\n".join(
-            [
-                f"{icon} {sym} | WALLET500 UNIFIED WATCH | {label}",
-                "WHY THIS ALERT: " + " | ".join(reasons[:6]),
-                f"CURRENT VERIFIED PRICE: ${live['price']:.8f}",
-                f"SOURCE: GeckoTerminal exact pair + DexScreener exact pair | spread {live['spread_pct']:.2f}%",
-                f"OBSERVED: {live['observed_at']}",
-                f"Previous scan: ${pp:.8f}",
-                f"1H {live['change_h1']:+.2f}% | 24H {live['change_h24']:+.2f}%",
-                f"Liquidity {money(live['liquidity'])} | Vol 1H {money(live['volume_h1'])}",
-                f"Buys/Sells 1H: {live['buys_h1']}/{live['sells_h1']}",
-                intel_line,
-                "TRIGGERS: " + (", ".join(tr) if tr else "INTELLIGENCE_MATERIAL_CHANGE"),
-                "No repeat alert unless a new material change is detected.",
-                f"CA: {t['contract']}",
-                f"Pair: {t['pair']}",
-                str(t.get("dex_url") or ""),
-            ]
-        )
-        send(msg)
+        lines = [
+            f"{icon} {sym} | WALLET500 UNIFIED WATCH | {label}",
+            "WHY THIS ALERT: " + " | ".join(reasons[:6]),
+        ]
+        if current_state.get("discovery_price") is not None:
+            lines.append(f"DISCOVERY PRICE: ${float(current_state['discovery_price']):.8f}")
+        lines.extend([
+            f"CURRENT VERIFIED PRICE: ${live['price']:.8f}",
+            f"SOURCE: GeckoTerminal exact pair + DexScreener exact pair | spread {live['spread_pct']:.2f}%",
+            f"OBSERVED: {live['observed_at']}",
+            f"Previous scan: ${pp:.8f}",
+            f"1H {live['change_h1']:+.2f}% | 24H {live['change_h24']:+.2f}%",
+            f"Liquidity {money(live['liquidity'])} | Vol 1H {money(live['volume_h1'])}",
+            f"Buys/Sells 1H: {live['buys_h1']}/{live['sells_h1']}",
+            intel_line,
+            "TRIGGERS: " + (", ".join(tr) if tr else "INTELLIGENCE_MATERIAL_CHANGE"),
+            "No repeat alert unless a new material change is detected.",
+            f"CA: {t['contract']}",
+            f"Pair: {t['pair']}",
+            str(t.get("dex_url") or ""),
+        ])
+        send("\n".join(lines))
         st[key]["last_alert"] = alert_snapshot(live, fusion, tr)
         sent_alerts += 1
 
     state["updated_at"] = now_iso()
     STATE.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n")
     report = {
-        "version": 2,
+        "version": 3,
         "updated_at": now_iso(),
         "mode": "EXACT_PAIR_INTELLIGENCE_MATERIAL_CHANGE_ALERTS",
         "alert_policy": alert_policy,
         "fusion_snapshot_generated_at": intel_doc.get("generated_at") if isinstance(intel_doc, dict) else None,
         "sent_alerts": sent_alerts,
         "suppressed_repeated_alerts": suppressed_alerts,
+        "configured_targets": len(static_tokens),
+        "dynamic_alpha_targets": sum(bool(x.get("dynamic_alpha_candidate")) for x in dynamic),
+        "dynamic_spot_targets": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
         "targets": intel_rows,
     }
     INTEL_REPORT.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
-    print(
-        json.dumps(
-            {
-                "status": "OK",
-                "configured": len(cfg.get("tokens") or []),
-                "dynamic_alpha": len(tokens) - len(cfg.get("tokens") or []),
-                "intelligence_targets": len(intel_rows),
-                "sent_alerts": sent_alerts,
-                "suppressed_repeated_alerts": suppressed_alerts,
-                "alert_mode": "MATERIAL_CHANGE_ONLY",
-            },
-            ensure_ascii=False,
-        )
-    )
+    print(json.dumps({
+        "status": "OK",
+        "configured": len(static_tokens),
+        "dynamic_alpha": sum(bool(x.get("dynamic_alpha_candidate")) for x in dynamic),
+        "dynamic_spot": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
+        "intelligence_targets": len(intel_rows),
+        "sent_alerts": sent_alerts,
+        "suppressed_repeated_alerts": suppressed_alerts,
+        "alert_mode": "MATERIAL_CHANGE_ONLY",
+    }, ensure_ascii=False))
 
 
 if __name__ == "__main__":
