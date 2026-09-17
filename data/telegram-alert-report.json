@@ -1,44 +1,21 @@
 {
   "version": 13,
-  "updated_at": "2026-09-17T21:49:04.865388+00:00",
-  "updated_at_israel": "18/09/2026 00:49:04",
+  "updated_at": "2026-09-17T21:53:11.286031+00:00",
+  "updated_at_israel": "18/09/2026 00:53:11",
   "configured": true,
   "candidate_count": 0,
-  "real_alert_count": 2,
+  "real_alert_count": 0,
   "pre_wave_alert_count": 0,
-  "eligible_count": 2,
+  "eligible_count": 0,
   "delivered_count": 0,
   "error_count": 0,
-  "eligible": [
-    {
-      "alert_type": "REAL_ALERT",
-      "key": "ethereum:0x9c7beba8f6ef6643abd725e45a4e8387ef260649:0xc4dbe30fecc148a8755c970f3b8b0c9af0db81f5",
-      "tier": "QUALIFIED",
-      "symbol": "G",
-      "pair_address": "0xC4Dbe30FEcc148a8755c970f3b8b0c9aF0Db81F5",
-      "market_age_min_days": 791,
-      "promotion": "VERIFIED_TO_ACTIONABLE",
-      "dex_url": "https://dexscreener.com/ethereum/0xc4dbe30fecc148a8755c970f3b8b0c9af0db81f5",
-      "delivery_truth_source": "CANONICAL_REAL_ALERT"
-    },
-    {
-      "alert_type": "REAL_ALERT",
-      "key": "ethereum:0xddb3422497e61e13543bea06989c0789117555c5:0xa2b04f8133fc25887a436812eae384e32a8a84f2",
-      "tier": "QUALIFIED",
-      "symbol": "COTI",
-      "pair_address": "0xa2b04f8133fc25887a436812eae384e32a8a84f2",
-      "market_age_min_days": 2506,
-      "promotion": "VERIFIED_TO_ACTIONABLE",
-      "dex_url": "https://www.geckoterminal.com/eth/pools/0xa2b04f8133fc25887a436812eae384e32a8a84f2",
-      "delivery_truth_source": "CANONICAL_REAL_ALERT"
-    }
-  ],
+  "eligible": [],
   "delivered": [],
   "errors": [],
   "policy": {
-    "source": "pre-alert-forensics-real-alerts.json",
+    "source": "telegram-buy-only-real-alerts.json",
     "legacy_candidate_context_source": "active-qualified-candidates.json",
-    "real_alert_source": "pre-alert-forensics-real-alerts.json",
+    "real_alert_source": "telegram-buy-only-real-alerts.json",
     "lane": "PRODUCTION_CANONICAL_REAL_ALERT_PLUS_PRE_WAVE_TELEGRAM_V13",
     "canonical_policy_source": "wallet500.policy",
     "transition_rule": "send once when an exact-pair canonical REAL_ALERT passes the published fail-closed readiness contract; legacy active candidates enrich but never suppress it; PRE_WAVE remains separate",
@@ -76,6 +53,27 @@
     "telegram_timestamp": "every delivered message includes explicit Asia/Jerusalem send date/time plus original signal T0",
     "delivery_retries": "up to 3 attempts on transient Telegram/network failures",
     "audit_id": "each delivery has a stable alert_event_id derived from exact-pair stage key plus send timestamp",
-    "state_writer": "only configured production lanes may write Telegram state/report; unconfigured scan lanes are read-only no-ops"
+    "state_writer": "only configured production lanes may write Telegram state/report; unconfigured scan lanes are read-only no-ops",
+    "user_facing_mode": "NEAR_BUY_AND_BUY_ONLY_V1",
+    "near_buy_stage": "PAPER_BUY_CANDIDATE_ONLY",
+    "final_buy_gate": "DECISION_ENGINE_V1_BUY_ZONE_EXACT_PAIR",
+    "pre_wave_user_delivery": "DISABLED",
+    "generic_real_alert_user_delivery": "DISABLED"
+  },
+  "buy_only_policy": {
+    "mode": "NEAR_BUY_AND_BUY_ONLY_V1",
+    "decision_snapshot_status": "VALID",
+    "decision_snapshot_age_seconds": 0.0,
+    "source_real_alert_count": 3,
+    "source_pre_wave_count": 0,
+    "eligible_buy_decision_count": 0,
+    "matched_buy_alert_count": 0,
+    "suppressed_generic_real_alert_count": 3,
+    "suppressed_pre_wave_count": 0,
+    "matched_keys": [],
+    "migrated_old_generic_state_rows": 0,
+    "near_buy_lane": "PAPER_BUY_CANDIDATE_ONLY",
+    "pre_wave_telegram": "DISABLED",
+    "generic_real_alert_telegram": "DISABLED_UNLESS_DECISION_ENGINE_BUY"
   }
 }
