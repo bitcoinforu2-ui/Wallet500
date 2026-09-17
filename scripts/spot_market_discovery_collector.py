@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data/spot-market-discovery.json"
 STATE = ROOT / "data/spot-market-discovery-state.json"
+CONFIG = ROOT / "data/unified-watch-config.json"
 GATE = "https://api.gateio.ws/api/v4"
 UA = "Wallet500-SpotDiscovery/1.0"
 
@@ -142,6 +143,23 @@ def resolve_identity(symbol: str) -> dict:
     return {"identity_status": "RESOLVED_EXACT", "identity_reason": "EXACT_CHAIN_CONTRACT_PAIR", **best}
 
 
+def configured_cex_watch_pairs() -> set[str]:
+    try:
+        doc = json.loads(CONFIG.read_text()) if CONFIG.exists() else {}
+    except Exception:
+        return set()
+    out = set()
+    for row in doc.get("cex_research_watch_targets") or []:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("exchange") or "").strip().lower() != "gate":
+            continue
+        pair = str(row.get("currency_pair") or "").strip().upper()
+        if pair:
+            out.add(pair)
+    return out
+
+
 def load_state() -> dict:
     if not STATE.exists():
         return {"version": 1, "pairs": {}}
@@ -159,6 +177,7 @@ def run() -> dict:
         raise RuntimeError("GATE_SPOT_MARKET_DATA_UNAVAILABLE")
 
     pair_map = {str(p.get("id") or ""): p for p in pairs if isinstance(p, dict)}
+    configured_watch = configured_cex_watch_pairs()
     eligible = []
     ignored_leveraged = []
     for t in tickers:
@@ -200,6 +219,7 @@ def run() -> dict:
             "leveraged": False,
         })
 
+    eligible_by_pair = {r["currency_pair"]: r for r in eligible}
     positive = sorted((r for r in eligible if r["change_24h_pct"] > 0), key=lambda r: (r["change_24h_pct"], r["quote_volume_24h_usd"]), reverse=True)
     rank = {r["currency_pair"]: i for i, r in enumerate(positive, 1)}
     ts = now_dt()
@@ -221,10 +241,20 @@ def run() -> dict:
             selected.append(row)
             seen.add(row["currency_pair"])
 
+    # Configured CEX research watches are sticky: keep observing the exact Gate
+    # market every run even if momentum fades or the pair leaves the top gainers.
+    # This is state/research only. Exact on-chain identity is still mandatory
+    # before promotion into the actionable Unified Watch path or Telegram.
+    for pair_id in sorted(configured_watch):
+        row = eligible_by_pair.get(pair_id)
+        if row and pair_id not in seen:
+            selected.append(row)
+            seen.add(pair_id)
+
     state = load_state()
     old_pairs = state.get("pairs") or {}
     new_pairs = {}
-    selected.sort(key=lambda r: (rank.get(r["currency_pair"], 999999), -r["change_24h_pct"]))
+    selected.sort(key=lambda r: (0 if r["currency_pair"] in configured_watch else 1, rank.get(r["currency_pair"], 999999), -r["change_24h_pct"]))
 
     # Resolve the strongest movers/new listings first. Unresolved rows are still
     # retained as CEX discoveries so the engine can never silently miss them.
@@ -238,6 +268,7 @@ def run() -> dict:
         row["first_seen_at"] = first_seen
         row["observed_at"] = ts.isoformat()
         row["new_first_seen"] = is_new
+        row["forced_cex_watch"] = key in configured_watch
         row["status"] = "DISCOVERED_CEX_SPOT"
         if idx < resolution_budget:
             ident = resolve_identity(row["symbol"])
@@ -256,6 +287,7 @@ def run() -> dict:
             "last_change_24h_pct": row["change_24h_pct"],
             "peak_change_24h_pct": max(old_peak if old_peak is not None else row["change_24h_pct"], row["change_24h_pct"]),
             "identity_status": row.get("identity_status"),
+            "forced_cex_watch": bool(row.get("forced_cex_watch")),
         }
 
     resolved = [r for r in selected if r.get("status") == "IDENTITY_RESOLVED"]
@@ -270,6 +302,7 @@ def run() -> dict:
             "minimum_positive_change_pct": 3.0,
             "new_listing_window_days": 14,
             "identity_resolution_budget": resolution_budget,
+            "configured_cex_research_watch_pairs": sorted(configured_watch),
             "leveraged_products_excluded": True,
             "st_risk_pairs_excluded": True,
         },
@@ -278,6 +311,7 @@ def run() -> dict:
             "ignored_leveraged": len(ignored_leveraged),
             "discovered": len(selected),
             "identity_resolved": len(resolved),
+            "configured_cex_watch_present": sum(1 for r in selected if r.get("forced_cex_watch")),
         },
         "ignored_leveraged_examples": ignored_leveraged[:25],
         "candidates": selected,
