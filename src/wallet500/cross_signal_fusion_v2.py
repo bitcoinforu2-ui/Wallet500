@@ -5,6 +5,19 @@ import math
 from datetime import datetime, timezone
 from pathlib import Path
 
+try:
+    from wallet500.smart_buyer_conviction import (
+        build as build_smart_buyer_conviction,
+        index as index_smart_buyer_conviction,
+        run as run_smart_buyer_conviction,
+    )
+except ImportError:  # Keep direct script execution working from src/wallet500.
+    from smart_buyer_conviction import (  # type: ignore
+        build as build_smart_buyer_conviction,
+        index as index_smart_buyer_conviction,
+        run as run_smart_buyer_conviction,
+    )
+
 DATA = Path("data")
 OUTPUT = DATA / "cross-signal-fusion-v2.json"
 MODE = "RESEARCH_ONLY_CROSS_SIGNAL_FUSION_V2"
@@ -29,6 +42,10 @@ def _n(v, default=0.0):
         return x if math.isfinite(x) else default
     except Exception:
         return default
+
+
+def _clamp(v, low=0.0, high=100.0):
+    return max(low, min(high, _n(v)))
 
 
 def _norm_chain(v: object) -> str:
@@ -57,8 +74,35 @@ def _social_map(payload: dict) -> dict[str, dict]:
     return out
 
 
-def score_row(row: dict, social: dict | None) -> dict:
+def _smart_buyer_map(data_dir: Path) -> dict[str, dict]:
+    try:
+        return index_smart_buyer_conviction(build_smart_buyer_conviction(data_dir))
+    except Exception:
+        # Optional evidence must never break the fusion lane.
+        return {}
+
+
+def _smart_buyer_public(buyer: dict | None) -> dict:
+    buyer = buyer or {}
+    available = buyer.get("available") is True
+    confidence = max(0.0, min(1.0, _n(buyer.get("confidence"))))
+    return {
+        "available": available,
+        "score": round(_clamp(buyer.get("score"), 0.0, 100.0), 1) if available else 50.0,
+        "confidence": round(confidence * 100.0, 1),
+        "wallet_count": int(max(0.0, _n(buyer.get("wallet_count")))),
+        "qualified_wallets": int(max(0.0, _n(buyer.get("qualified_wallets")))),
+        "components": buyer.get("components") or {},
+        "reasons": buyer.get("reasons") or [],
+        "warnings": buyer.get("warnings") or [],
+        "fused_into": "wallets",
+        "independent_fusion_weight": 0.0,
+    }
+
+
+def score_row(row: dict, social: dict | None, smart_buyer: dict | None = None) -> dict:
     social = social or {}
+    smart_buyer = smart_buyer or {}
     market = row.get("market") or {}
     adaptive = row.get("adaptive_discovery") or {}
     families = row.get("families") or {}
@@ -81,14 +125,49 @@ def score_row(row: dict, social: dict | None) -> dict:
 
     wallet_verified = wallet.get("verified") is True
     wm = wallet.get("metrics") or {}
-    wallet_score = 0.0
+    legacy_wallet_score = 0.0
     if wallet_verified:
-        wallet_score += min(45.0, _n(wm.get("first_seen_buyers_h1")) * 7.5)
-        wallet_score += min(35.0, max(0.0, _n(wm.get("net_accumulating_wallets_h1"))) * 7.0)
+        legacy_wallet_score += min(45.0, _n(wm.get("first_seen_buyers_h1")) * 7.5)
+        legacy_wallet_score += min(35.0, max(0.0, _n(wm.get("net_accumulating_wallets_h1"))) * 7.0)
         ratio = _n(wm.get("wallet_buy_sell_ratio_h1"))
-        if ratio >= 1.5: wallet_score += 10.0
-        if ratio >= 2.0: wallet_score += 10.0
-    channels["wallets"] = {"available": wallet_verified, "score": min(100.0, wallet_score), "weight": 20.0}
+        if ratio >= 1.5:
+            legacy_wallet_score += 10.0
+        if ratio >= 2.0:
+            legacy_wallet_score += 10.0
+    legacy_wallet_score = min(100.0, legacy_wallet_score)
+
+    buyer_available = smart_buyer.get("available") is True
+    buyer_score = _clamp(smart_buyer.get("score"), 0.0, 100.0)
+    buyer_confidence = max(0.0, min(1.0, _n(smart_buyer.get("confidence"))))
+    buyer_usable = buyer_available and buyer_confidence >= 0.25
+
+    if wallet_verified and buyer_usable:
+        # Correlated wallet evidence stays in one lane. Confidence controls how much
+        # Smart Buyer Conviction can alter the existing wallet-accumulation score.
+        buyer_blend_weight = 0.40 * buyer_confidence
+        wallet_score = (
+            legacy_wallet_score * (1.0 - buyer_blend_weight)
+            + buyer_score * buyer_blend_weight
+        )
+        wallet_weight = 20.0
+    elif wallet_verified:
+        wallet_score = legacy_wallet_score
+        wallet_weight = 20.0
+    elif buyer_usable:
+        # With no legacy wallet lane, shrink conviction toward neutral and let
+        # confidence reduce coverage rather than pretending a full 20% channel exists.
+        wallet_score = 50.0 + (buyer_score - 50.0) * buyer_confidence
+        wallet_weight = 20.0 * buyer_confidence
+    else:
+        wallet_score = 0.0
+        wallet_weight = 20.0
+
+    wallet_available = wallet_verified or buyer_usable
+    channels["wallets"] = {
+        "available": wallet_available,
+        "score": min(100.0, wallet_score),
+        "weight": wallet_weight,
+    }
 
     smart_verified = smart.get("verified") is True
     smart_score = 65.0 if smart_verified and smart.get("positive") is True else (15.0 if smart_verified else 0.0)
@@ -135,16 +214,30 @@ def score_row(row: dict, social: dict | None) -> dict:
         status = "FUSION_QUIET"
 
     why = []
-    if _n(adaptive.get("velocity_score")) >= 40: why.append(f"MARKET_VELOCITY_{_n(adaptive.get('velocity_score')):.0f}")
-    if _n(adaptive.get("persistence_score")) >= 60: why.append(f"PERSISTENCE_{_n(adaptive.get('persistence_score')):.0f}")
-    if holder_verified and holder_score >= 40: why.append(f"HOLDER_GROWTH_SCORE_{holder_score:.0f}")
-    if wallet_verified and wallet_score >= 40: why.append(f"WALLET_ACCUMULATION_{wallet_score:.0f}")
-    if narrative_available and social_confidence >= 40 and _n(s.get("social_momentum")) >= 50: why.append(f"SOCIAL_{_n(s.get('social_momentum')):.0f}")
-    if narrative_available and social_confidence >= 40 and _n(s.get("kol_quality")) >= 35: why.append(f"KOL_{_n(s.get('kol_quality')):.0f}")
-    if narrative_available and social_confidence >= 40 and _n(s.get("news_catalyst")) >= 35: why.append(f"NEWS_{_n(s.get('news_catalyst')):.0f}")
-    if narrative_available and narrative_raw >= 60 and social_confidence < 40: why.append(f"NARRATIVE_LOW_CONFIDENCE_{social_confidence:.0f}")
-    if manipulation >= 40: why.append(f"HYPE_RISK_{manipulation:.0f}")
-    if not why: why.append("NO_MULTI_SIGNAL_CONVERGENCE_YET")
+    if _n(adaptive.get("velocity_score")) >= 40:
+        why.append(f"MARKET_VELOCITY_{_n(adaptive.get('velocity_score')):.0f}")
+    if _n(adaptive.get("persistence_score")) >= 60:
+        why.append(f"PERSISTENCE_{_n(adaptive.get('persistence_score')):.0f}")
+    if holder_verified and holder_score >= 40:
+        why.append(f"HOLDER_GROWTH_SCORE_{holder_score:.0f}")
+    if wallet_verified and legacy_wallet_score >= 40:
+        why.append(f"WALLET_ACCUMULATION_{legacy_wallet_score:.0f}")
+    if buyer_usable and buyer_score >= 70 and buyer_confidence >= 0.50:
+        why.append(
+            f"SMART_BUYER_CONVICTION_{buyer_score:.0f}_C{buyer_confidence * 100.0:.0f}"
+        )
+    if narrative_available and social_confidence >= 40 and _n(s.get("social_momentum")) >= 50:
+        why.append(f"SOCIAL_{_n(s.get('social_momentum')):.0f}")
+    if narrative_available and social_confidence >= 40 and _n(s.get("kol_quality")) >= 35:
+        why.append(f"KOL_{_n(s.get('kol_quality')):.0f}")
+    if narrative_available and social_confidence >= 40 and _n(s.get("news_catalyst")) >= 35:
+        why.append(f"NEWS_{_n(s.get('news_catalyst')):.0f}")
+    if narrative_available and narrative_raw >= 60 and social_confidence < 40:
+        why.append(f"NARRATIVE_LOW_CONFIDENCE_{social_confidence:.0f}")
+    if manipulation >= 40:
+        why.append(f"HYPE_RISK_{manipulation:.0f}")
+    if not why:
+        why.append("NO_MULTI_SIGNAL_CONVERGENCE_YET")
 
     change = {
         "pair_volume_change_pct": market.get("pair_volume_change_pct"),
@@ -152,6 +245,8 @@ def score_row(row: dict, social: dict | None) -> dict:
         "holder_growth_24h_pct": hg if holder_verified else None,
         "first_seen_buyers_h1": wm.get("first_seen_buyers_h1") if wallet_verified else None,
         "net_accumulating_wallets_h1": wm.get("net_accumulating_wallets_h1") if wallet_verified else None,
+        "smart_buyer_wallet_count": smart_buyer.get("wallet_count") if buyer_available else None,
+        "smart_buyer_qualified_wallets": smart_buyer.get("qualified_wallets") if buyer_available else None,
         "social_acceleration_vs_6h": (social.get("organic") or {}).get("acceleration_vs_prior_6h") if narrative_available else None,
     }
 
@@ -161,6 +256,7 @@ def score_row(row: dict, social: dict | None) -> dict:
         if k == "narrative":
             public_channels[k]["raw_score"] = round(v["raw_score"], 1)
             public_channels[k]["confidence"] = round(v["confidence"], 1)
+    public_channels["smart_buyer_conviction"] = _smart_buyer_public(smart_buyer)
 
     chain = _norm_chain(row.get("chain") or row.get("network")) or None
     return {
@@ -188,17 +284,24 @@ def build(data_dir: Path = DATA) -> dict:
     envelope = _load(data_dir / "candidate-evidence-envelope.json", {})
     social_payload = _load(data_dir / "social-intelligence-v2.json", {})
     social = _social_map(social_payload)
+    smart_buyers = _smart_buyer_map(data_dir)
     rows = []
     for row in envelope.get("candidates") or []:
         if not isinstance(row, dict):
             continue
         key = _identity_key(row.get("chain") or row.get("network"), row.get("token_address"))
-        rows.append(score_row(row, social.get(key) if key else None))
-    priority = {"FUSION_HOT":0,"FUSION_WARM":1,"FUSION_WATCH":2,"FUSION_QUIET":3,"INSUFFICIENT_COVERAGE":4,"HARD_TRUTH_BLOCKED":5}
-    rows.sort(key=lambda x:(priority.get(x["fusion_status"],9),-x["fusion_score"],-x["coverage_weight_pct"]))
+        rows.append(
+            score_row(
+                row,
+                social.get(key) if key else None,
+                smart_buyers.get(key) if key else None,
+            )
+        )
+    priority = {"FUSION_HOT": 0, "FUSION_WARM": 1, "FUSION_WATCH": 2, "FUSION_QUIET": 3, "INSUFFICIENT_COVERAGE": 4, "HARD_TRUTH_BLOCKED": 5}
+    rows.sort(key=lambda x: (priority.get(x["fusion_status"], 9), -x["fusion_score"], -x["coverage_weight_pct"]))
     chains = sorted({str(x.get("chain")) for x in rows if x.get("chain")})
     return {
-        "version": 3,
+        "version": 4,
         "mode": MODE,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "network": chains[0] if len(chains) == 1 else None,
@@ -215,6 +318,9 @@ def build(data_dir: Path = DATA) -> dict:
             "narrative_is_confidence_weighted_before_fusion": True,
             "chain_token_identity_key_required": True,
             "token_only_cross_chain_join_forbidden": True,
+            "smart_buyer_score_and_confidence_are_separate": True,
+            "smart_buyer_is_fused_into_wallet_lane_to_avoid_double_counting": True,
+            "single_whale_cannot_create_high_smart_buyer_confidence": True,
         },
         "counts": {
             "tokens": len(rows),
@@ -222,6 +328,11 @@ def build(data_dir: Path = DATA) -> dict:
             "warm": sum(1 for x in rows if x["fusion_status"] == "FUSION_WARM"),
             "watch": sum(1 for x in rows if x["fusion_status"] == "FUSION_WATCH"),
             "insufficient_coverage": sum(1 for x in rows if x["fusion_status"] == "INSUFFICIENT_COVERAGE"),
+            "smart_buyer_available": sum(
+                1
+                for x in rows
+                if (x.get("channels") or {}).get("smart_buyer_conviction", {}).get("available")
+            ),
         },
         "tokens": rows,
     }
@@ -229,6 +340,11 @@ def build(data_dir: Path = DATA) -> dict:
 
 def run(data_dir: str | Path = "data") -> dict:
     data = Path(data_dir)
+    try:
+        run_smart_buyer_conviction(data)
+    except Exception:
+        # Diagnostics are useful, but optional evidence must not stop fusion.
+        pass
     p = build(data)
     _write(data / OUTPUT.name, p)
     return p
