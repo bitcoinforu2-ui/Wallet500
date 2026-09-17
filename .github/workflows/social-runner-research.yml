@@ -6,13 +6,17 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/social_runner_research.py'
+      - 'src/wallet500/social_runner_feed.py'
       - 'tests/test_social_runner_research.py'
+      - 'tests/test_social_runner_feed.py'
       - '.github/workflows/social-runner-research.yml'
   push:
     branches: [main]
     paths:
       - 'src/wallet500/social_runner_research.py'
+      - 'src/wallet500/social_runner_feed.py'
       - 'tests/test_social_runner_research.py'
+      - 'tests/test_social_runner_feed.py'
       - '.github/workflows/social-runner-research.yml'
   schedule:
     - cron: '17 * * * *'
@@ -40,7 +44,12 @@ jobs:
       - name: Install and test Social Runner Research
         run: |
           pip install -e . pytest
-          python -m pytest -q tests/test_social_runner_research.py
+          python -m pytest -q \
+            tests/test_social_runner_research.py \
+            tests/test_social_runner_feed.py
+
+      - name: Build native no-hindsight social feed
+        run: python -m wallet500.social_runner_feed
 
       - name: Build research-only social runner cohort
         run: python -m wallet500.social_runner_research
@@ -50,7 +59,12 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
+          f=json.loads(Path('data/social-runner-research-feed.json').read_text())
           d=json.loads(Path('data/social-runner-research.json').read_text())
+          if f.get('mode')!='RESEARCH_ONLY_SOCIAL_RUNNER_NATIVE_FEED_V1': raise SystemExit('SOCIAL_RUNNER_FEED_MODE_DRIFT')
+          if f.get('research_only') is not True or f.get('production_effect') is not False or f.get('automatic_buy') is not False: raise SystemExit('SOCIAL_RUNNER_FEED_PRODUCTION_LEAK')
+          truth=f.get('truth_contract') or {}
+          if truth.get('no_undocumented_tgmetrics_scraping') is not True: raise SystemExit('SOCIAL_RUNNER_TGMETRICS_TRUTH_LOST')
           if d.get('mode')!='RESEARCH_ONLY_SOCIAL_RUNNER_INTELLIGENCE_V1': raise SystemExit('SOCIAL_RUNNER_MODE_DRIFT')
           if d.get('research_only') is not True: raise SystemExit('SOCIAL_RUNNER_NOT_RESEARCH_ONLY')
           if d.get('production_effect') is not False: raise SystemExit('SOCIAL_RUNNER_PRODUCTION_LEAK')
@@ -58,7 +72,7 @@ jobs:
           targets=d.get('target_definitions') or {}
           for key in ('RUNNER_24H','RUNNER_72H','MOONSHOT_7D'):
               if key not in targets: raise SystemExit('SOCIAL_RUNNER_TARGET_MISSING:'+key)
-          print('SOCIAL_RUNNER_RESEARCH_VALID', d.get('counts'), d.get('input_status'))
+          print('SOCIAL_RUNNER_RESEARCH_VALID', f.get('sources'), d.get('counts'), d.get('input_status'))
           PY
 
       - name: Publish forward research snapshots
