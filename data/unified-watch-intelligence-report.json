@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "updated_at": "2026-09-17T20:09:38.909811+00:00",
+  "updated_at": "2026-09-17T20:29:22.213259+00:00",
   "mode": "REAL_ALERT_ACTIONABLE_ONLY_WITH_ON_DEMAND_DEEP_INTELLIGENCE",
   "alert_policy": {
     "significant_change_only": true,
@@ -23,21 +23,19 @@
     "alpha_min_buy_sell_ratio_for_telegram": 2.0,
     "notes": "A tracked token stays silent unless something materially changes versus the last Telegram alert. New hard risks always bypass suppression. PUBLIC_ALPHA close-watch candidates remain in engine learning/state, but Telegram requires at least one additional confirmation such as multi-family intelligence, a material wallet/holder signal, social/search/news evidence, a meaningful fusion-score rise, strong volume acceleration, or strong buy imbalance."
   },
-  "fusion_snapshot_generated_at": "2026-09-17T20:02:19.449384+00:00",
+  "fusion_snapshot_generated_at": "2026-09-17T20:20:43.579731+00:00",
   "sent_alerts": 0,
   "suppressed_repeated_alerts": 2,
   "suppressed_low_confirmation_alerts": 0,
   "configured_targets": 5,
   "dynamic_alpha_targets": 32,
-  "dynamic_spot_targets": 17,
+  "dynamic_spot_targets": 16,
   "targets": [
     {
       "symbol": "SOPH",
       "identity_key": "ethereum:0x6b7774cb12ed7573a7586e7d0e62a2a563ddd3f0:0xc511ff68ae3a1379e8ef3f599f88559c9ec77d9c",
       "candidate_type": "CONFIGURED",
-      "market_verified": true,
-      "discovery_price": null,
-      "first_seen_at": null,
+      "market_verified": false,
       "intelligence": {
         "status": "CURRENT",
         "score": 0.0,
@@ -59,26 +57,29 @@
         "notable_evidence": [
           "holder_network:holder_concentration:-1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T20:02:16.544761+00:00",
-        "evidence_age_minutes": 0.05,
-        "current_evidence_count": 19,
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T20:20:41.122931+00:00",
+        "evidence_age_minutes": 0.04,
+        "current_evidence_count": 17,
         "_identity_key": "ethereum:0x6b7774cb12ed7573a7586e7d0e62a2a563ddd3f0:0xc511ff68ae3a1379e8ef3f599f88559c9ec77d9c"
-      }
+      },
+      "error": "HTTP Error 429: Too Many Requests"
     },
     {
       "symbol": "RAY",
       "identity_key": "solana:4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R:6UmmUiYoBjSrhakAobJw8BvkmJtDVxaeBtbt7rxWo1mg",
       "candidate_type": "CONFIGURED",
-      "market_verified": false,
+      "market_verified": true,
+      "discovery_price": null,
+      "first_seen_at": null,
       "intelligence": {
         "status": "CURRENT",
-        "score": 0.0,
+        "score": 3.4,
         "label": "WATCH",
-        "families": 0,
+        "families": 1,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": -2.81,
+          "market_microstructure": 3.4,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
@@ -90,13 +91,12 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T20:01:47.031676+00:00",
-        "evidence_age_minutes": 0.54,
-        "current_evidence_count": 19,
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T20:20:05.572787+00:00",
+        "evidence_age_minutes": 0.63,
+        "current_evidence_count": 17,
         "_identity_key": "solana:4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R:6UmmUiYoBjSrhakAobJw8BvkmJtDVxaeBtbt7rxWo1mg"
-      },
-      "error": "HTTP Error 429: Too Many Requests"
+      }
     },
     {
       "symbol": "ARB",
@@ -110,7 +110,7 @@
         "families": 1,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": -0.34,
+          "market_microstructure": -0.32,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
@@ -124,10 +124,10 @@
         "notable_evidence": [
           "search_discovery:geckoterminal_trending_pool:1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T20:02:16.544833+00:00",
-        "evidence_age_minutes": 0.05,
-        "current_evidence_count": 24,
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T20:20:41.123022+00:00",
+        "evidence_age_minutes": 0.04,
+        "current_evidence_count": 22,
         "_identity_key": "arbitrum:0x912ce59144191c1204e64559fe8253a0e49e6548:0xc6f780497a95e246eb9449f5e4770916dcd6396a"
       },
       "error": "HTTP Error 429: Too Many Requests"
@@ -136,15 +136,17 @@
       "symbol": "DUSD",
       "identity_key": "solana:B8RHrVBxSjBGKqAbn1tXo6CWjvt5jFkkqjbCZtuDpump:2z2uBDXaAFishs6XRz2atV2Ro7jL8hfdUcKxTTfhjHDw",
       "candidate_type": "CONFIGURED",
-      "market_verified": false,
+      "market_verified": true,
+      "discovery_price": null,
+      "first_seen_at": null,
       "intelligence": {
         "status": "CURRENT",
-        "score": 10.8,
+        "score": 10.1,
         "label": "WATCH",
         "families": 1,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": 10.85,
+          "market_microstructure": 10.11,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
@@ -158,30 +160,31 @@
         "notable_evidence": [
           "market_microstructure:volume_acceleration:1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T20:01:47.670107+00:00",
-        "evidence_age_minutes": 0.53,
-        "current_evidence_count": 19,
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T20:20:06.209774+00:00",
+        "evidence_age_minutes": 0.62,
+        "current_evidence_count": 17,
         "_identity_key": "solana:B8RHrVBxSjBGKqAbn1tXo6CWjvt5jFkkqjbCZtuDpump:2z2uBDXaAFishs6XRz2atV2Ro7jL8hfdUcKxTTfhjHDw"
-      },
-      "error": "HTTP Error 429: Too Many Requests"
+      }
     },
     {
       "symbol": "ZDOG",
       "identity_key": "solana:EbT2jpoeRJVFNWAFJE97EGfQF3iwHsEY8sh17fGbL5ER:9TRKbpkWfbR6dmFAX1kGx1MReZ48K1j9VPcjUBMM4Toq",
       "candidate_type": "CONFIGURED",
-      "market_verified": false,
+      "market_verified": true,
+      "discovery_price": null,
+      "first_seen_at": null,
       "intelligence": {
         "status": "CURRENT",
-        "score": 8.3,
+        "score": 5.7,
         "label": "WATCH",
         "families": 2,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": 5.83,
+          "market_microstructure": 3.36,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
-          "attention_social": 2.45,
+          "attention_social": 2.29,
           "search_discovery": 0.0,
           "catalyst_news": 0.0,
           "fundamental_usage": 0.0,
@@ -189,23 +192,54 @@
           "developer_project": 0.0,
           "derivatives": 0.0
         },
-        "notable_evidence": [
-          "market_microstructure:buy_sell_imbalance:1"
-        ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T20:01:47.890891+00:00",
-        "evidence_age_minutes": 0.53,
-        "current_evidence_count": 6,
+        "notable_evidence": [],
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T20:20:06.382146+00:00",
+        "evidence_age_minutes": 0.62,
+        "current_evidence_count": 7,
         "_identity_key": "solana:EbT2jpoeRJVFNWAFJE97EGfQF3iwHsEY8sh17fGbL5ER:9TRKbpkWfbR6dmFAX1kGx1MReZ48K1j9VPcjUBMM4Toq"
+      }
+    },
+    {
+      "symbol": "METAN",
+      "identity_key": "bsc:0x879d239bcc0356cf9df8c90442488bce99554c66:0xe5a2bddd641f320821288a57246749ec3771d163",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": false,
+      "intelligence": {
+        "status": "CURRENT",
+        "score": 3.5,
+        "label": "WATCH",
+        "families": 1,
+        "hard_risks": [],
+        "family_scores": {
+          "market_microstructure": 0.0,
+          "wallet_flow": 0.0,
+          "holder_network": 0.0,
+          "attention_social": 0.0,
+          "search_discovery": 3.46,
+          "catalyst_news": 0.0,
+          "fundamental_usage": 0.0,
+          "supply_tokenomics": 0.0,
+          "developer_project": 0.0,
+          "derivatives": 0.0
+        },
+        "notable_evidence": [
+          "search_discovery:cex_spot_mover:1"
+        ],
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T20:19:37.275930+00:00",
+        "evidence_age_minutes": 1.11,
+        "current_evidence_count": 1,
+        "_identity_key": "bsc:0x879d239bcc0356cf9df8c90442488bce99554c66:0xe5a2bddd641f320821288a57246749ec3771d163"
       },
-      "error": "SOURCE_DATA_MISMATCH:4.309%"
+      "error": "HTTP Error 429: Too Many Requests"
     },
     {
       "symbol": "R2",
       "identity_key": "bsc:0x223a20e1b83aa3832e78d4b7b132df022e739222:0xfdbeffa804bc58e9edd720165f41a62b2ee251b6",
       "candidate_type": "GATE_SPOT_DISCOVERY",
       "market_verified": true,
-      "discovery_price": 0.0040574,
+      "discovery_price": 0.00388,
       "first_seen_at": "2026-09-17T14:39:45.519920+00:00",
       "intelligence": {
         "status": "STALE_ONLY",
@@ -226,9 +260,9 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:39:45.519920+00:00",
-        "evidence_age_minutes": 322.57,
+        "evidence_age_minutes": 340.97,
         "current_evidence_count": 0,
         "_identity_key": "bsc:0x223a20e1b83aa3832e78d4b7b132df022e739222:0xfdbeffa804bc58e9edd720165f41a62b2ee251b6"
       }
@@ -237,7 +271,9 @@
       "symbol": "AVA",
       "identity_key": "ethereum:0xa6c0c097741d55ecd9a3a7def3a8253fd022ceb9:0x41e570fc65d0f9efe89a6145306e2ba7b8a0fa6b",
       "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": false,
+      "market_verified": true,
+      "discovery_price": 0.2784,
+      "first_seen_at": "2026-09-17T14:39:45.519920+00:00",
       "intelligence": {
         "status": "CURRENT",
         "score": 0.0,
@@ -247,7 +283,7 @@
         "family_scores": {
           "market_microstructure": 0.0,
           "wallet_flow": 0.0,
-          "holder_network": -3.08,
+          "holder_network": -3.09,
           "attention_social": 0.0,
           "search_discovery": 0.0,
           "catalyst_news": 0.0,
@@ -259,21 +295,18 @@
         "notable_evidence": [
           "holder_network:holder_concentration:-1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T20:02:16.544862+00:00",
-        "evidence_age_minutes": 0.05,
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T20:20:41.123065+00:00",
+        "evidence_age_minutes": 0.04,
         "current_evidence_count": 1,
         "_identity_key": "ethereum:0xa6c0c097741d55ecd9a3a7def3a8253fd022ceb9:0x41e570fc65d0f9efe89a6145306e2ba7b8a0fa6b"
-      },
-      "error": "HTTP Error 429: Too Many Requests"
+      }
     },
     {
       "symbol": "UDS",
       "identity_key": "ethereum:0x712bd4beb54c6b958267d9db0259abdbb0bff606:0xa9de9685d373763b424d42a9b01bb87999e110d9",
       "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": true,
-      "discovery_price": 0.1849,
-      "first_seen_at": "2026-09-17T14:39:45.519920+00:00",
+      "market_verified": false,
       "intelligence": {
         "status": "CURRENT",
         "score": 0.0,
@@ -295,20 +328,21 @@
         "notable_evidence": [
           "holder_network:holder_concentration:-1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T20:02:16.544874+00:00",
-        "evidence_age_minutes": 0.05,
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T20:20:41.123082+00:00",
+        "evidence_age_minutes": 0.04,
         "current_evidence_count": 1,
         "_identity_key": "ethereum:0x712bd4beb54c6b958267d9db0259abdbb0bff606:0xa9de9685d373763b424d42a9b01bb87999e110d9"
-      }
+      },
+      "error": "HTTP Error 429: Too Many Requests"
     },
     {
-      "symbol": "DEGO",
-      "identity_key": "bsc:0x3da932456d082cba208feb0b096d49b202bf89c8:0x2175dedba189bc81871be80d5a698c24a6ab3e4a",
+      "symbol": "CNPY",
+      "identity_key": "bsc:0xc69b16cf18cea1e5d0bb6a1a9db802097790ddd2:0x230124d8169a7463f6992337d87ead698f8f7983",
       "candidate_type": "GATE_SPOT_DISCOVERY",
       "market_verified": true,
-      "discovery_price": 0.004293,
-      "first_seen_at": "2026-09-17T16:20:34.188803+00:00",
+      "discovery_price": 0.62014,
+      "first_seen_at": "2026-09-17T14:39:45.519920+00:00",
       "intelligence": {
         "status": "STALE_ONLY",
         "score": 0.0,
@@ -328,16 +362,16 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T16:20:34.188803+00:00",
-        "evidence_age_minutes": 221.75,
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T14:39:45.519920+00:00",
+        "evidence_age_minutes": 340.97,
         "current_evidence_count": 0,
-        "_identity_key": "bsc:0x3da932456d082cba208feb0b096d49b202bf89c8:0x2175dedba189bc81871be80d5a698c24a6ab3e4a"
+        "_identity_key": "bsc:0xc69b16cf18cea1e5d0bb6a1a9db802097790ddd2:0x230124d8169a7463f6992337d87ead698f8f7983"
       }
     },
     {
-      "symbol": "CNPY",
-      "identity_key": "bsc:0xc69b16cf18cea1e5d0bb6a1a9db802097790ddd2:0x230124d8169a7463f6992337d87ead698f8f7983",
+      "symbol": "DEGO",
+      "identity_key": "bsc:0x3da932456d082cba208feb0b096d49b202bf89c8:0x2175dedba189bc81871be80d5a698c24a6ab3e4a",
       "candidate_type": "GATE_SPOT_DISCOVERY",
       "market_verified": false,
       "intelligence": {
@@ -359,53 +393,20 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T14:39:45.519920+00:00",
-        "evidence_age_minutes": 322.57,
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T16:20:34.188803+00:00",
+        "evidence_age_minutes": 240.16,
         "current_evidence_count": 0,
-        "_identity_key": "bsc:0xc69b16cf18cea1e5d0bb6a1a9db802097790ddd2:0x230124d8169a7463f6992337d87ead698f8f7983"
+        "_identity_key": "bsc:0x3da932456d082cba208feb0b096d49b202bf89c8:0x2175dedba189bc81871be80d5a698c24a6ab3e4a"
       },
       "error": "HTTP Error 429: Too Many Requests"
-    },
-    {
-      "symbol": "CROSS",
-      "identity_key": "bsc:0x6bf62ca91e397b5a7d1d6bce97d9092065d7a510:0xe6e51ea572502dbdf8b40834d0619f9a9144d3a5",
-      "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": true,
-      "discovery_price": 0.17822,
-      "first_seen_at": "2026-09-17T14:39:45.519920+00:00",
-      "intelligence": {
-        "status": "STALE_ONLY",
-        "score": 0.0,
-        "label": "WATCH",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 0.0,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T14:39:45.519920+00:00",
-        "evidence_age_minutes": 322.57,
-        "current_evidence_count": 0,
-        "_identity_key": "bsc:0x6bf62ca91e397b5a7d1d6bce97d9092065d7a510:0xe6e51ea572502dbdf8b40834d0619f9a9144d3a5"
-      }
     },
     {
       "symbol": "COTI",
       "identity_key": "ethereum:0xddb3422497e61e13543bea06989c0789117555c5:0xa2b04f8133fc25887a436812eae384e32a8a84f2",
       "candidate_type": "GATE_SPOT_DISCOVERY",
       "market_verified": true,
-      "discovery_price": 0.023036,
+      "discovery_price": 0.023929,
       "first_seen_at": "2026-09-17T14:39:45.519920+00:00",
       "intelligence": {
         "status": "CURRENT",
@@ -429,51 +430,19 @@
           "market_microstructure:buy_sell_imbalance:1",
           "market_microstructure:volume_acceleration:1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T19:45:05.877126+00:00",
-        "evidence_age_minutes": 17.23,
+        "evidence_age_minutes": 35.63,
         "current_evidence_count": 5,
         "_identity_key": "ethereum:0xddb3422497e61e13543bea06989c0789117555c5:0xa2b04f8133fc25887a436812eae384e32a8a84f2"
       }
     },
     {
-      "symbol": "ZCAT",
-      "identity_key": "solana:HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR:BTccxxTFi7a9xJTE1exKn38Jgie35s6gNeRxd8DM61Rc",
-      "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": false,
-      "intelligence": {
-        "status": "STALE_ONLY",
-        "score": 0.0,
-        "label": "WATCH",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 0.0,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T14:39:45.519920+00:00",
-        "evidence_age_minutes": 322.57,
-        "current_evidence_count": 0,
-        "_identity_key": "solana:HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR:BTccxxTFi7a9xJTE1exKn38Jgie35s6gNeRxd8DM61Rc"
-      },
-      "error": "HTTP Error 429: Too Many Requests"
-    },
-    {
-      "symbol": "SIN",
-      "identity_key": "bsc:0x6397de0f9aedc0f7a8fa8b438dde883b9c201010:0x916a67639642cb61b1826cae46b879a0ca5740a6",
+      "symbol": "CROSS",
+      "identity_key": "bsc:0x6bf62ca91e397b5a7d1d6bce97d9092065d7a510:0xe6e51ea572502dbdf8b40834d0619f9a9144d3a5",
       "candidate_type": "GATE_SPOT_DISCOVERY",
       "market_verified": true,
-      "discovery_price": 0.00016193,
+      "discovery_price": 0.17837,
       "first_seen_at": "2026-09-17T14:39:45.519920+00:00",
       "intelligence": {
         "status": "STALE_ONLY",
@@ -494,16 +463,16 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:39:45.519920+00:00",
-        "evidence_age_minutes": 322.57,
+        "evidence_age_minutes": 340.97,
         "current_evidence_count": 0,
-        "_identity_key": "bsc:0x6397de0f9aedc0f7a8fa8b438dde883b9c201010:0x916a67639642cb61b1826cae46b879a0ca5740a6"
+        "_identity_key": "bsc:0x6bf62ca91e397b5a7d1d6bce97d9092065d7a510:0xe6e51ea572502dbdf8b40834d0619f9a9144d3a5"
       }
     },
     {
-      "symbol": "MARSCOIN",
-      "identity_key": "bsc:0xfe189e97832da1573e4e4ff034f4ffc3a15c7777:0x94f3ed36706c746ad59fadcaf271b7431ab1d8f1",
+      "symbol": "SIN",
+      "identity_key": "bsc:0x6397de0f9aedc0f7a8fa8b438dde883b9c201010:0x916a67639642cb61b1826cae46b879a0ca5740a6",
       "candidate_type": "GATE_SPOT_DISCOVERY",
       "market_verified": false,
       "intelligence": {
@@ -525,21 +494,54 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:39:45.519920+00:00",
-        "evidence_age_minutes": 322.57,
+        "evidence_age_minutes": 340.97,
         "current_evidence_count": 0,
-        "_identity_key": "bsc:0xfe189e97832da1573e4e4ff034f4ffc3a15c7777:0x94f3ed36706c746ad59fadcaf271b7431ab1d8f1"
+        "_identity_key": "bsc:0x6397de0f9aedc0f7a8fa8b438dde883b9c201010:0x916a67639642cb61b1826cae46b879a0ca5740a6"
       },
       "error": "HTTP Error 429: Too Many Requests"
+    },
+    {
+      "symbol": "MARSCOIN",
+      "identity_key": "bsc:0xfe189e97832da1573e4e4ff034f4ffc3a15c7777:0x94f3ed36706c746ad59fadcaf271b7431ab1d8f1",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.11701,
+      "first_seen_at": "2026-09-17T14:39:45.519920+00:00",
+      "intelligence": {
+        "status": "CURRENT",
+        "score": 13.5,
+        "label": "WATCH",
+        "families": 1,
+        "hard_risks": [],
+        "family_scores": {
+          "market_microstructure": 13.5,
+          "wallet_flow": 0.0,
+          "holder_network": 0.0,
+          "attention_social": 0.0,
+          "search_discovery": 0.0,
+          "catalyst_news": 0.0,
+          "fundamental_usage": 0.0,
+          "supply_tokenomics": 0.0,
+          "developer_project": 0.0,
+          "derivatives": 0.0
+        },
+        "notable_evidence": [
+          "market_microstructure:buy_sell_imbalance:1"
+        ],
+        "updated_at": "2026-09-17T20:22:52.333226+00:00",
+        "freshest_event_at": "2026-09-17T20:22:52.016993+00:00",
+        "evidence_age_minutes": 0.01,
+        "current_evidence_count": 3,
+        "_identity_key": "bsc:0xfe189e97832da1573e4e4ff034f4ffc3a15c7777:0x94f3ed36706c746ad59fadcaf271b7431ab1d8f1"
+      }
     },
     {
       "symbol": "FOREX",
       "identity_key": "ethereum:0xdb298285fe4c5410b05390ca80e8fbe9de1f259b:0x36fe014abd6f9fd2a922f944411be187bd961447",
       "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": true,
-      "discovery_price": 0.0007799,
-      "first_seen_at": "2026-09-17T15:19:18.817497+00:00",
+      "market_verified": false,
       "intelligence": {
         "status": "CURRENT",
         "score": 0.0,
@@ -561,23 +563,126 @@
         "notable_evidence": [
           "holder_network:holder_concentration:-1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T20:02:16.544923+00:00",
-        "evidence_age_minutes": 0.05,
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T20:20:41.123122+00:00",
+        "evidence_age_minutes": 0.04,
         "current_evidence_count": 1,
         "_identity_key": "ethereum:0xdb298285fe4c5410b05390ca80e8fbe9de1f259b:0x36fe014abd6f9fd2a922f944411be187bd961447"
+      },
+      "error": "HTTP Error 429: Too Many Requests"
+    },
+    {
+      "symbol": "AGI",
+      "identity_key": "bsc:0x818835503f55283cd51a4399f595e295a9338753:0x27795f5310232b241934ab4e1ec520d17a8b16b9",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.005696,
+      "first_seen_at": "2026-09-17T14:39:45.519920+00:00",
+      "intelligence": {
+        "status": "CURRENT",
+        "score": 0.0,
+        "label": "WATCH",
+        "families": 1,
+        "hard_risks": [],
+        "family_scores": {
+          "market_microstructure": 6.45,
+          "wallet_flow": 0.0,
+          "holder_network": 0.0,
+          "attention_social": 0.0,
+          "search_discovery": 0.0,
+          "catalyst_news": 0.0,
+          "fundamental_usage": 0.0,
+          "supply_tokenomics": 0.0,
+          "developer_project": 0.0,
+          "derivatives": 0.0
+        },
+        "notable_evidence": [
+          "market_microstructure:volume_acceleration:1"
+        ],
+        "updated_at": "2026-09-17T20:23:11.001177+00:00",
+        "freshest_event_at": "2026-09-17T20:23:10.849311+00:00",
+        "evidence_age_minutes": 0.0,
+        "current_evidence_count": 4,
+        "_identity_key": "bsc:0x818835503f55283cd51a4399f595e295a9338753:0x27795f5310232b241934ab4e1ec520d17a8b16b9"
       }
+    },
+    {
+      "symbol": "ZCAT",
+      "identity_key": "solana:HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR:BTccxxTFi7a9xJTE1exKn38Jgie35s6gNeRxd8DM61Rc",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.14885,
+      "first_seen_at": "2026-09-17T14:39:45.519920+00:00",
+      "intelligence": {
+        "status": "CURRENT",
+        "score": 9.4,
+        "label": "WATCH",
+        "families": 1,
+        "hard_risks": [],
+        "family_scores": {
+          "market_microstructure": 9.45,
+          "wallet_flow": 0.0,
+          "holder_network": 0.0,
+          "attention_social": 0.0,
+          "search_discovery": 0.0,
+          "catalyst_news": 0.0,
+          "fundamental_usage": 0.0,
+          "supply_tokenomics": 0.0,
+          "developer_project": 0.0,
+          "derivatives": 0.0
+        },
+        "notable_evidence": [
+          "market_microstructure:buy_sell_imbalance:1"
+        ],
+        "updated_at": "2026-09-17T20:23:14.842950+00:00",
+        "freshest_event_at": "2026-09-17T20:23:14.831875+00:00",
+        "evidence_age_minutes": 0.0,
+        "current_evidence_count": 4,
+        "_identity_key": "solana:HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR:BTccxxTFi7a9xJTE1exKn38Jgie35s6gNeRxd8DM61Rc"
+      }
+    },
+    {
+      "symbol": "CREO",
+      "identity_key": "bsc:0x9521728bf66a867bc65a93ece4a543d817871eb7:0xf69760e797a7ccb8dde867ced92c32ee92b9e78b",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": false,
+      "intelligence": {
+        "status": "CURRENT",
+        "score": 0.0,
+        "label": "WATCH",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {
+          "market_microstructure": 0.0,
+          "wallet_flow": 0.0,
+          "holder_network": 0.0,
+          "attention_social": 0.0,
+          "search_discovery": 0.0,
+          "catalyst_news": 0.0,
+          "fundamental_usage": 0.0,
+          "supply_tokenomics": 0.0,
+          "developer_project": 0.0,
+          "derivatives": 0.0
+        },
+        "notable_evidence": [],
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T18:37:22.121221+00:00",
+        "evidence_age_minutes": 103.36,
+        "current_evidence_count": 2,
+        "_identity_key": "bsc:0x9521728bf66a867bc65a93ece4a543d817871eb7:0xf69760e797a7ccb8dde867ced92c32ee92b9e78b"
+      },
+      "error": "HTTP Error 429: Too Many Requests"
     },
     {
       "symbol": "RJV",
       "identity_key": "ethereum:0xa1f410f13b6007fca76833ee7eb58478d47bc5ef:0xe5fee9f12c35b5eb26350126bac2a006a192a992",
       "candidate_type": "GATE_SPOT_DISCOVERY",
       "market_verified": true,
-      "discovery_price": 0.0003314,
+      "discovery_price": 0.0003211,
       "first_seen_at": "2026-09-17T17:29:41.494580+00:00",
       "intelligence": {
         "status": "CURRENT",
-        "score": 15.9,
+        "score": 15.8,
         "label": "WATCH",
         "families": 2,
         "hard_risks": [],
@@ -586,7 +691,7 @@
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
-          "search_discovery": 0.88,
+          "search_discovery": 0.83,
           "catalyst_news": 0.0,
           "fundamental_usage": 0.0,
           "supply_tokenomics": 0.0,
@@ -597,76 +702,11 @@
           "market_microstructure:price_structure:1",
           "market_microstructure:volume_acceleration:1"
         ],
-        "updated_at": "2026-09-17T20:04:48.831335+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T20:04:48.078639+00:00",
-        "evidence_age_minutes": 0.01,
+        "evidence_age_minutes": 15.93,
         "current_evidence_count": 6,
         "_identity_key": "ethereum:0xa1f410f13b6007fca76833ee7eb58478d47bc5ef:0xe5fee9f12c35b5eb26350126bac2a006a192a992"
-      }
-    },
-    {
-      "symbol": "AGI",
-      "identity_key": "bsc:0x818835503f55283cd51a4399f595e295a9338753:0x27795f5310232b241934ab4e1ec520d17a8b16b9",
-      "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": false,
-      "intelligence": {
-        "status": "STALE_ONLY",
-        "score": 0.0,
-        "label": "WATCH",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 0.0,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T14:39:45.519920+00:00",
-        "evidence_age_minutes": 322.57,
-        "current_evidence_count": 0,
-        "_identity_key": "bsc:0x818835503f55283cd51a4399f595e295a9338753:0x27795f5310232b241934ab4e1ec520d17a8b16b9"
-      },
-      "error": "HTTP Error 429: Too Many Requests"
-    },
-    {
-      "symbol": "CREO",
-      "identity_key": "bsc:0x9521728bf66a867bc65a93ece4a543d817871eb7:0xf69760e797a7ccb8dde867ced92c32ee92b9e78b",
-      "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": true,
-      "discovery_price": 0.0018834,
-      "first_seen_at": "2026-09-17T14:39:45.519920+00:00",
-      "intelligence": {
-        "status": "CURRENT",
-        "score": 0.0,
-        "label": "WATCH",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 0.0,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T18:37:22.121221+00:00",
-        "evidence_age_minutes": 84.96,
-        "current_evidence_count": 2,
-        "_identity_key": "bsc:0x9521728bf66a867bc65a93ece4a543d817871eb7:0xf69760e797a7ccb8dde867ced92c32ee92b9e78b"
       }
     },
     {
@@ -695,95 +735,29 @@
         "notable_evidence": [
           "holder_network:holder_concentration:-1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T20:02:16.544948+00:00",
-        "evidence_age_minutes": 0.05,
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T20:20:41.123155+00:00",
+        "evidence_age_minutes": 0.04,
         "current_evidence_count": 2,
         "_identity_key": "ethereum:0x65ef703f5594d2573eb71aaf55bc0cb548492df4:0x82917fb0dd65b0e5c85eea66e4f5c1ed484bc629"
       },
       "error": "HTTP Error 429: Too Many Requests"
     },
     {
-      "symbol": "GENIUS",
-      "identity_key": "bsc:0x1f12b85aac097e43aa1555b2881e98a51090e9a6:0xd77865e605049bb362e9a6c5a1df7b033c376811",
-      "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": true,
-      "discovery_price": 0.3612,
-      "first_seen_at": "2026-09-17T14:39:45.519920+00:00",
-      "intelligence": {
-        "status": "CURRENT",
-        "score": 14.4,
-        "label": "WATCH",
-        "families": 1,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 14.36,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [
-          "market_microstructure:volume_acceleration:1"
-        ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T19:04:12.240982+00:00",
-        "evidence_age_minutes": 58.12,
-        "current_evidence_count": 4,
-        "_identity_key": "bsc:0x1f12b85aac097e43aa1555b2881e98a51090e9a6:0xd77865e605049bb362e9a6c5a1df7b033c376811"
-      }
-    },
-    {
-      "symbol": "CAPS",
-      "identity_key": "ethereum:0x03be5c903c727ee2c8c4e9bc0acc860cca4715e2:0x1c9930a95925838bcd0a8fc48db4c233ea45d031",
-      "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": true,
-      "discovery_price": 0.0004251,
-      "first_seen_at": "2026-09-17T14:39:45.519920+00:00",
-      "intelligence": {
-        "status": "STALE_ONLY",
-        "score": 0.0,
-        "label": "WATCH",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 0.0,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T14:39:45.519920+00:00",
-        "evidence_age_minutes": 322.57,
-        "current_evidence_count": 0,
-        "_identity_key": "ethereum:0x03be5c903c727ee2c8c4e9bc0acc860cca4715e2:0x1c9930a95925838bcd0a8fc48db4c233ea45d031"
-      }
-    },
-    {
       "symbol": "STONK",
       "identity_key": "solana:6GmAFSYs4gk3FDao5FzzySQpPZaWsa4rUJHacpMpUNgx:7a8xxAJBELDo6P9dikSYctdw6ce8F4mWr3ahcAD8Ao49",
       "candidate_type": "PUBLIC_ALPHA",
-      "market_verified": false,
+      "market_verified": true,
+      "discovery_price": null,
+      "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
       "intelligence": {
         "status": "CURRENT",
-        "score": 11.9,
+        "score": 11.7,
         "label": "WATCH",
         "families": 2,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": 3.92,
+          "market_microstructure": 3.65,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
@@ -797,13 +771,12 @@
         "notable_evidence": [
           "search_discovery:geckoterminal_trending_pool:1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T20:02:16.544973+00:00",
-        "evidence_age_minutes": 0.05,
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T20:20:41.123174+00:00",
+        "evidence_age_minutes": 0.04,
         "current_evidence_count": 10,
         "_identity_key": "solana:6GmAFSYs4gk3FDao5FzzySQpPZaWsa4rUJHacpMpUNgx:7a8xxAJBELDo6P9dikSYctdw6ce8F4mWr3ahcAD8Ao49"
-      },
-      "error": "HTTP Error 429: Too Many Requests"
+      }
     },
     {
       "symbol": "CATE",
@@ -814,12 +787,12 @@
       "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
       "intelligence": {
         "status": "CURRENT",
-        "score": 8.0,
+        "score": 21.5,
         "label": "WATCH",
-        "families": 1,
+        "families": 2,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": 0.0,
+          "market_microstructure": 13.5,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
@@ -831,12 +804,13 @@
           "derivatives": 0.0
         },
         "notable_evidence": [
+          "market_microstructure:buy_sell_imbalance:1",
           "search_discovery:geckoterminal_trending_pool:1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T20:02:16.544986+00:00",
-        "evidence_age_minutes": 0.05,
-        "current_evidence_count": 8,
+        "updated_at": "2026-09-17T20:23:56.717963+00:00",
+        "freshest_event_at": "2026-09-17T20:23:56.706605+00:00",
+        "evidence_age_minutes": 0.0,
+        "current_evidence_count": 13,
         "_identity_key": "solana:Ai66LHZG9MCzg1WKdawwqduVAXpNDUuV8M3uyq5ppump:HMzvsEEmtzHhvZNw9uwbaG85HCTmFnkbhzUx16cy7ca3"
       }
     },
@@ -844,9 +818,7 @@
       "symbol": "ALLINU",
       "identity_key": "solana:4MMQY9bwkxxTtsK3W227Q5ABT6yFY8Pmn9Ze7wmAXKY8:7VKhbFtkc7APwuPYTL38c3XtktPJxphY4ECLR4ozXNbQ",
       "candidate_type": "PUBLIC_ALPHA",
-      "market_verified": true,
-      "discovery_price": null,
-      "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
+      "market_verified": false,
       "intelligence": {
         "status": "CURRENT",
         "score": 0.0,
@@ -854,7 +826,7 @@
         "families": 0,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": -5.27,
+          "market_microstructure": -4.98,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
@@ -871,26 +843,29 @@
           "market_microstructure:price_structure:1",
           "market_microstructure:volume_acceleration:1"
         ],
-        "updated_at": "2026-09-17T20:05:53.421011+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T20:05:53.413299+00:00",
-        "evidence_age_minutes": 0.0,
+        "evidence_age_minutes": 14.84,
         "current_evidence_count": 23,
         "_identity_key": "solana:4MMQY9bwkxxTtsK3W227Q5ABT6yFY8Pmn9Ze7wmAXKY8:7VKhbFtkc7APwuPYTL38c3XtktPJxphY4ECLR4ozXNbQ"
-      }
+      },
+      "error": "HTTP Error 429: Too Many Requests"
     },
     {
       "symbol": "JIMOTHY",
       "identity_key": "solana:Ge87EtsjwRQbHaqQmKRno69RFTwh9bfSsm99XNxTpump:5PGhKctym6odbHGo2tKMST2AjmJsb2uZBQrKkn4ZuFT5",
       "candidate_type": "PUBLIC_ALPHA",
-      "market_verified": false,
+      "market_verified": true,
+      "discovery_price": null,
+      "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
       "intelligence": {
         "status": "CURRENT",
-        "score": 11.7,
+        "score": 10.9,
         "label": "WATCH",
         "families": 1,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": 11.67,
+          "market_microstructure": 10.87,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
@@ -904,13 +879,12 @@
         "notable_evidence": [
           "market_microstructure:buy_sell_imbalance:1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T19:56:25.497854+00:00",
-        "evidence_age_minutes": 5.9,
+        "evidence_age_minutes": 24.3,
         "current_evidence_count": 4,
         "_identity_key": "solana:Ge87EtsjwRQbHaqQmKRno69RFTwh9bfSsm99XNxTpump:5PGhKctym6odbHGo2tKMST2AjmJsb2uZBQrKkn4ZuFT5"
-      },
-      "error": "HTTP Error 429: Too Many Requests"
+      }
     },
     {
       "symbol": "FONE",
@@ -921,16 +895,16 @@
       "first_seen_at": "2026-09-17T20:02:00.989466+00:00",
       "intelligence": {
         "status": "CURRENT",
-        "score": 1.7,
+        "score": 3.0,
         "label": "WATCH",
         "families": 3,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": 8.18,
+          "market_microstructure": 7.62,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
-          "attention_social": 1.35,
-          "search_discovery": 7.08,
+          "attention_social": 1.26,
+          "search_discovery": 8.0,
           "catalyst_news": 0.0,
           "fundamental_usage": 0.0,
           "supply_tokenomics": 0.0,
@@ -940,10 +914,10 @@
         "notable_evidence": [
           "market_microstructure:volume_acceleration:1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T20:02:16.545005+00:00",
-        "evidence_age_minutes": 0.05,
-        "current_evidence_count": 10,
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T20:20:41.123217+00:00",
+        "evidence_age_minutes": 0.04,
+        "current_evidence_count": 11,
         "_identity_key": "solana:CTPoyCwkjMvoJwU4xvZZqoD8tiYk6yDchySiN5gGpump:3dcwhqJp6JBTJPq8ga335HWgSQVS7uQmdmeX7iGjMNpj"
       }
     },
@@ -971,19 +945,21 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
+        "evidence_age_minutes": 346.84,
         "current_evidence_count": 0,
         "_identity_key": "solana:6UtY9iTZMQQ5QZVrbzFnNaJntV7oySm9k97mvwnuZcxr:G19cwhvY4teiUm3jgjrDX5RfzfCnSXe1s5upRXVmTQki"
       },
-      "error": "SOURCE_DATA_MISMATCH:8.809%"
+      "error": "HTTP Error 429: Too Many Requests"
     },
     {
       "symbol": "OTC",
       "identity_key": "solana:MukLDtJ8Cx9DxLbeyLRSWPSposTMWuwHANbuaudpump:DA4pM4xSDY4M9V4CgAKKBVH1pw1yscTQQa5nEkGHuKpt",
       "candidate_type": "PUBLIC_ALPHA",
-      "market_verified": false,
+      "market_verified": true,
+      "discovery_price": null,
+      "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
       "intelligence": {
         "status": "STALE_ONLY",
         "score": 0.0,
@@ -1003,13 +979,12 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
+        "evidence_age_minutes": 346.84,
         "current_evidence_count": 0,
         "_identity_key": "solana:MukLDtJ8Cx9DxLbeyLRSWPSposTMWuwHANbuaudpump:DA4pM4xSDY4M9V4CgAKKBVH1pw1yscTQQa5nEkGHuKpt"
-      },
-      "error": "HTTP Error 429: Too Many Requests"
+      }
     },
     {
       "symbol": "GP",
@@ -1020,7 +995,7 @@
       "first_seen_at": "2026-09-17T19:29:27.338403+00:00",
       "intelligence": {
         "status": "CURRENT",
-        "score": 1.2,
+        "score": 1.1,
         "label": "WATCH",
         "families": 1,
         "hard_risks": [],
@@ -1028,7 +1003,7 @@
           "market_microstructure": 0.0,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
-          "attention_social": 1.19,
+          "attention_social": 1.11,
           "search_discovery": 0.0,
           "catalyst_news": 0.0,
           "fundamental_usage": 0.0,
@@ -1037,9 +1012,9 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T19:29:27.338403+00:00",
-        "evidence_age_minutes": 32.87,
+        "evidence_age_minutes": 51.27,
         "current_evidence_count": 1,
         "_identity_key": "solana:HTmQz7My6MehV7bjhJ6jde8nDND1yvsz68d24LP7YgUQ:6fNtUWWpf9VckoZXce7pFUyxA9wPRVPpe83txqdYFiCn"
       }
@@ -1068,22 +1043,24 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
+        "evidence_age_minutes": 346.84,
         "current_evidence_count": 0,
         "_identity_key": "solana:AGi2s9zPRPHs3zEDPhPTroumTEXK5ufymYSfEFndCSSW:CsjcF4mEmJsXZDWzBtuviVEV7JiKTY4NAJ1rdcHhVxi3"
       },
-      "error": "SOURCE_DATA_MISMATCH:4.609%"
+      "error": "HTTP Error 429: Too Many Requests"
     },
     {
       "symbol": "PILL",
       "identity_key": "solana:DvdmEnztCmXwBnAbedD48XVGZJSxq31zNvnyftXdpump:Bof2XL9zAbLZ15kzAXcXy39wDeZFgKwyvb3UVkv3FhsX",
       "candidate_type": "PUBLIC_ALPHA",
-      "market_verified": false,
+      "market_verified": true,
+      "discovery_price": null,
+      "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
       "intelligence": {
         "status": "CURRENT",
-        "score": 6.3,
+        "score": 6.0,
         "label": "WATCH",
         "families": 1,
         "hard_risks": [],
@@ -1091,7 +1068,7 @@
           "market_microstructure": 0.0,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
-          "attention_social": 6.31,
+          "attention_social": 6.01,
           "search_discovery": 0.0,
           "catalyst_news": 0.0,
           "fundamental_usage": 0.0,
@@ -1100,27 +1077,28 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T20:02:16.545038+00:00",
-        "evidence_age_minutes": 0.05,
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T20:20:41.123253+00:00",
+        "evidence_age_minutes": 0.04,
         "current_evidence_count": 4,
         "_identity_key": "solana:DvdmEnztCmXwBnAbedD48XVGZJSxq31zNvnyftXdpump:Bof2XL9zAbLZ15kzAXcXy39wDeZFgKwyvb3UVkv3FhsX"
-      },
-      "error": "HTTP Error 429: Too Many Requests"
+      }
     },
     {
       "symbol": "LOOM",
       "identity_key": "solana:CB1YQfUzgsnaCd93cZLdiX1uASW7utWBaYMUsvcwNUBV:9VcGzbpvLTy5EVt4f1h9NvfYfKSJwbJdhUuGkhVuXbw",
       "candidate_type": "PUBLIC_ALPHA",
-      "market_verified": false,
+      "market_verified": true,
+      "discovery_price": null,
+      "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
       "intelligence": {
         "status": "CURRENT",
-        "score": 14.7,
+        "score": 13.7,
         "label": "WATCH",
         "families": 1,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": 14.68,
+          "market_microstructure": 13.67,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
@@ -1134,19 +1112,20 @@
         "notable_evidence": [
           "market_microstructure:buy_sell_imbalance:1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T19:06:49.257436+00:00",
-        "evidence_age_minutes": 55.5,
+        "evidence_age_minutes": 73.91,
         "current_evidence_count": 6,
         "_identity_key": "solana:CB1YQfUzgsnaCd93cZLdiX1uASW7utWBaYMUsvcwNUBV:9VcGzbpvLTy5EVt4f1h9NvfYfKSJwbJdhUuGkhVuXbw"
-      },
-      "error": "SOURCE_DATA_MISMATCH:2.617%"
+      }
     },
     {
       "symbol": "TILCAYO",
       "identity_key": "solana:AyYNfPtftg2zDP4ZbgcoQMggQtwLh4zpfVVmUJs2thto:ASgoadVEDL8zJn6KLUiMSh9m8x2yYAEZPsUSpvxHj3LY",
       "candidate_type": "PUBLIC_ALPHA",
-      "market_verified": false,
+      "market_verified": true,
+      "discovery_price": null,
+      "first_seen_at": "2026-09-17T19:17:37.962300+00:00",
       "intelligence": {
         "status": "NOT_AVAILABLE",
         "score": null,
@@ -1159,45 +1138,11 @@
         "evidence_age_minutes": null,
         "current_evidence_count": 0,
         "_identity_key": "solana:AyYNfPtftg2zDP4ZbgcoQMggQtwLh4zpfVVmUJs2thto:ASgoadVEDL8zJn6KLUiMSh9m8x2yYAEZPsUSpvxHj3LY"
-      },
-      "error": "SOURCE_DATA_MISMATCH:4.626%"
+      }
     },
     {
       "symbol": "ALL",
       "identity_key": "solana:ASoQZA3Dee2HU34Vwx3b5SAtTaczJtZcyx1T413nDALL:uzAK8txfJAvqS9VHtDaYAWfBiYbzwq4BzxdiFJTQEnJ",
-      "candidate_type": "PUBLIC_ALPHA",
-      "market_verified": true,
-      "discovery_price": null,
-      "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
-      "intelligence": {
-        "status": "STALE_ONLY",
-        "score": 0.0,
-        "label": "WATCH",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 0.0,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
-        "current_evidence_count": 0,
-        "_identity_key": "solana:ASoQZA3Dee2HU34Vwx3b5SAtTaczJtZcyx1T413nDALL:uzAK8txfJAvqS9VHtDaYAWfBiYbzwq4BzxdiFJTQEnJ"
-      }
-    },
-    {
-      "symbol": "PINK",
-      "identity_key": "solana:AVBN6kXdaw27ySuvMevKYzNTL8d39b7sGQFDCmsvpump:6SyCrkBegBRNRP5rVHn6G1bPsbyoBStZneS2wpiCw1db",
       "candidate_type": "PUBLIC_ALPHA",
       "market_verified": false,
       "intelligence": {
@@ -1219,46 +1164,13 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
+        "evidence_age_minutes": 346.84,
         "current_evidence_count": 0,
-        "_identity_key": "solana:AVBN6kXdaw27ySuvMevKYzNTL8d39b7sGQFDCmsvpump:6SyCrkBegBRNRP5rVHn6G1bPsbyoBStZneS2wpiCw1db"
+        "_identity_key": "solana:ASoQZA3Dee2HU34Vwx3b5SAtTaczJtZcyx1T413nDALL:uzAK8txfJAvqS9VHtDaYAWfBiYbzwq4BzxdiFJTQEnJ"
       },
-      "error": "HTTP Error 429: Too Many Requests"
-    },
-    {
-      "symbol": "MARTIANS",
-      "identity_key": "solana:7nLukVng5teXze14rum9v57juXLjUp7JJnCveko1pump:42SrahWLALtSf9uHs8JsjvwjJXj5gLbEnQCjXkyK4Eho",
-      "candidate_type": "PUBLIC_ALPHA",
-      "market_verified": true,
-      "discovery_price": null,
-      "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
-      "intelligence": {
-        "status": "CURRENT",
-        "score": 2.2,
-        "label": "WATCH",
-        "families": 1,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 0.0,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 2.23,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T19:07:11.977449+00:00",
-        "evidence_age_minutes": 55.12,
-        "current_evidence_count": 5,
-        "_identity_key": "solana:7nLukVng5teXze14rum9v57juXLjUp7JJnCveko1pump:42SrahWLALtSf9uHs8JsjvwjJXj5gLbEnQCjXkyK4Eho"
-      }
+      "error": "The read operation timed out"
     },
     {
       "symbol": "MUCHWOW",
@@ -1269,12 +1181,12 @@
       "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
       "intelligence": {
         "status": "CURRENT",
-        "score": 11.8,
+        "score": 11.2,
         "label": "WATCH",
         "families": 1,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": 11.76,
+          "market_microstructure": 11.18,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
@@ -1288,11 +1200,77 @@
         "notable_evidence": [
           "market_microstructure:buy_sell_imbalance:1"
         ],
-        "updated_at": "2026-09-17T20:07:29.182687+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T20:07:29.174123+00:00",
-        "evidence_age_minutes": 0.0,
+        "evidence_age_minutes": 13.24,
         "current_evidence_count": 5,
         "_identity_key": "solana:GLRyB95LzCyyY8TVfwZVDyrVcZuSJPJJoaPTnyWs89mv:FBCbzdFqSJa3qahrjkAR5fdr7HMeKSGUwYpdK4CucS5L"
+      }
+    },
+    {
+      "symbol": "MARTIANS",
+      "identity_key": "solana:7nLukVng5teXze14rum9v57juXLjUp7JJnCveko1pump:42SrahWLALtSf9uHs8JsjvwjJXj5gLbEnQCjXkyK4Eho",
+      "candidate_type": "PUBLIC_ALPHA",
+      "market_verified": true,
+      "discovery_price": null,
+      "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
+      "intelligence": {
+        "status": "CURRENT",
+        "score": 2.1,
+        "label": "WATCH",
+        "families": 1,
+        "hard_risks": [],
+        "family_scores": {
+          "market_microstructure": 0.0,
+          "wallet_flow": 0.0,
+          "holder_network": 0.0,
+          "attention_social": 2.08,
+          "search_discovery": 0.0,
+          "catalyst_news": 0.0,
+          "fundamental_usage": 0.0,
+          "supply_tokenomics": 0.0,
+          "developer_project": 0.0,
+          "derivatives": 0.0
+        },
+        "notable_evidence": [],
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T19:07:11.977449+00:00",
+        "evidence_age_minutes": 73.53,
+        "current_evidence_count": 5,
+        "_identity_key": "solana:7nLukVng5teXze14rum9v57juXLjUp7JJnCveko1pump:42SrahWLALtSf9uHs8JsjvwjJXj5gLbEnQCjXkyK4Eho"
+      }
+    },
+    {
+      "symbol": "PINK",
+      "identity_key": "solana:AVBN6kXdaw27ySuvMevKYzNTL8d39b7sGQFDCmsvpump:6SyCrkBegBRNRP5rVHn6G1bPsbyoBStZneS2wpiCw1db",
+      "candidate_type": "PUBLIC_ALPHA",
+      "market_verified": true,
+      "discovery_price": null,
+      "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
+      "intelligence": {
+        "status": "STALE_ONLY",
+        "score": 0.0,
+        "label": "WATCH",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {
+          "market_microstructure": 0.0,
+          "wallet_flow": 0.0,
+          "holder_network": 0.0,
+          "attention_social": 0.0,
+          "search_discovery": 0.0,
+          "catalyst_news": 0.0,
+          "fundamental_usage": 0.0,
+          "supply_tokenomics": 0.0,
+          "developer_project": 0.0,
+          "derivatives": 0.0
+        },
+        "notable_evidence": [],
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
+        "evidence_age_minutes": 346.84,
+        "current_evidence_count": 0,
+        "_identity_key": "solana:AVBN6kXdaw27ySuvMevKYzNTL8d39b7sGQFDCmsvpump:6SyCrkBegBRNRP5rVHn6G1bPsbyoBStZneS2wpiCw1db"
       }
     },
     {
@@ -1319,13 +1297,13 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
+        "evidence_age_minutes": 346.84,
         "current_evidence_count": 0,
         "_identity_key": "solana:ELYfhvSgsdkLvhG9b6ZByrzgwPebegbdX9rLBNH2VNRp:AMW81xitws7wUwEEGzL1TGvy5s6v7p7H1mSAoX7D4Tnf"
       },
-      "error": "HTTP Error 429: Too Many Requests"
+      "error": "SOURCE_DATA_MISMATCH:3.826%"
     },
     {
       "symbol": "APP",
@@ -1353,9 +1331,9 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
+        "evidence_age_minutes": 346.84,
         "current_evidence_count": 0,
         "_identity_key": "solana:49nkLrXi8nCZBVKsShDNasEtPe4Vn1mx9Xbr3kTa8pTL:95xZPagGKdaZgFDeNx1dxfkUYzFVk53geU7mFa58qffW"
       }
@@ -1364,17 +1342,15 @@
       "symbol": "SEND",
       "identity_key": "solana:2XuQnYQ1q3oTjPL9j4PfhV1AEqcZ6Hq2PzPzuxaASEND:DkK9eQQZdavVd8NLo7xxoi7cYAgDEzK9JB32bX1tcfne",
       "candidate_type": "PUBLIC_ALPHA",
-      "market_verified": true,
-      "discovery_price": null,
-      "first_seen_at": "2026-09-17T16:21:03.583856+00:00",
+      "market_verified": false,
       "intelligence": {
         "status": "CURRENT",
-        "score": 17.7,
+        "score": 17.1,
         "label": "WATCH",
         "families": 2,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": 9.74,
+          "market_microstructure": 9.07,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
@@ -1389,12 +1365,13 @@
           "market_microstructure:price_structure:1",
           "search_discovery:geckoterminal_trending_pool:1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T19:52:59.123234+00:00",
-        "evidence_age_minutes": 9.34,
-        "current_evidence_count": 11,
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T20:20:41.123304+00:00",
+        "evidence_age_minutes": 0.04,
+        "current_evidence_count": 12,
         "_identity_key": "solana:2XuQnYQ1q3oTjPL9j4PfhV1AEqcZ6Hq2PzPzuxaASEND:DkK9eQQZdavVd8NLo7xxoi7cYAgDEzK9JB32bX1tcfne"
-      }
+      },
+      "error": "HTTP Error 429: Too Many Requests"
     },
     {
       "symbol": "TOKEN",
@@ -1420,9 +1397,9 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
+        "evidence_age_minutes": 346.84,
         "current_evidence_count": 0,
         "_identity_key": "solana:Hos282xmdMJHwMjhni91fNqdjDsgWjgSckxuGc1Bpump:7ManjzDS3TfcGnht9ZHRdaTgYu6sQxGrAMHrzRRtpLXj"
       },
@@ -1452,13 +1429,13 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
+        "evidence_age_minutes": 346.84,
         "current_evidence_count": 0,
         "_identity_key": "solana:GZik7vJSnDAao9tbbcLrMGKfxLu7VCjoAtkDhsv8A3iE:GiGnJziraB1L5iYQbqtowL13TUrTXw5UgDYaWHWCJayg"
       },
-      "error": "SOURCE_DATA_MISMATCH:8.321%"
+      "error": "HTTP Error 429: Too Many Requests"
     },
     {
       "symbol": "COG",
@@ -1486,9 +1463,9 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
+        "evidence_age_minutes": 346.84,
         "current_evidence_count": 0,
         "_identity_key": "solana:7rSpKgASuXN5hfw3jsKNZN6ysNCR1Eixb2PD2Nd9pump:B9ytARDJvsMfuJZziMy92BFJ6LMm2wynzHzZ4anLMCzJ"
       }
@@ -1496,6 +1473,39 @@
     {
       "symbol": "SPCX",
       "identity_key": "ethereum:0xa17f383786cf2241affe41b130d8c373fdb34574:0xb2896002662372b95086a4fcaaf7dfa6c7727b4a",
+      "candidate_type": "PUBLIC_ALPHA",
+      "market_verified": true,
+      "discovery_price": null,
+      "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
+      "intelligence": {
+        "status": "STALE_ONLY",
+        "score": 0.0,
+        "label": "WATCH",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {
+          "market_microstructure": 0.0,
+          "wallet_flow": 0.0,
+          "holder_network": 0.0,
+          "attention_social": 0.0,
+          "search_discovery": 0.0,
+          "catalyst_news": 0.0,
+          "fundamental_usage": 0.0,
+          "supply_tokenomics": 0.0,
+          "developer_project": 0.0,
+          "derivatives": 0.0
+        },
+        "notable_evidence": [],
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
+        "evidence_age_minutes": 346.84,
+        "current_evidence_count": 0,
+        "_identity_key": "ethereum:0xa17f383786cf2241affe41b130d8c373fdb34574:0xb2896002662372b95086a4fcaaf7dfa6c7727b4a"
+      }
+    },
+    {
+      "symbol": "MORTY",
+      "identity_key": "solana:GUmbtfjSZkybSFgPibBcvwExEBdXwewJHR5PkTjzpump:8wA7x9EWDfvKikqrECmr3oMwLjmAqkS2CSjXw1PwS7dH",
       "candidate_type": "PUBLIC_ALPHA",
       "market_verified": false,
       "intelligence": {
@@ -1517,46 +1527,13 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
-        "current_evidence_count": 0,
-        "_identity_key": "ethereum:0xa17f383786cf2241affe41b130d8c373fdb34574:0xb2896002662372b95086a4fcaaf7dfa6c7727b4a"
-      },
-      "error": "HTTP Error 429: Too Many Requests"
-    },
-    {
-      "symbol": "MORTY",
-      "identity_key": "solana:GUmbtfjSZkybSFgPibBcvwExEBdXwewJHR5PkTjzpump:8wA7x9EWDfvKikqrECmr3oMwLjmAqkS2CSjXw1PwS7dH",
-      "candidate_type": "PUBLIC_ALPHA",
-      "market_verified": true,
-      "discovery_price": null,
-      "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
-      "intelligence": {
-        "status": "STALE_ONLY",
-        "score": 0.0,
-        "label": "WATCH",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 0.0,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
+        "evidence_age_minutes": 346.84,
         "current_evidence_count": 0,
         "_identity_key": "solana:GUmbtfjSZkybSFgPibBcvwExEBdXwewJHR5PkTjzpump:8wA7x9EWDfvKikqrECmr3oMwLjmAqkS2CSjXw1PwS7dH"
-      }
+      },
+      "error": "HTTP Error 429: Too Many Requests"
     },
     {
       "symbol": "BCAT",
@@ -1567,12 +1544,12 @@
       "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
       "intelligence": {
         "status": "CURRENT",
-        "score": 9.6,
+        "score": 9.0,
         "label": "WATCH",
         "families": 1,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": 9.64,
+          "market_microstructure": 8.98,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
@@ -1586,9 +1563,9 @@
         "notable_evidence": [
           "market_microstructure:volume_acceleration:1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T19:36:10.821337+00:00",
-        "evidence_age_minutes": 26.14,
+        "evidence_age_minutes": 44.55,
         "current_evidence_count": 5,
         "_identity_key": "solana:5whR534GcEEmrVPedDPZgWLXKQX3shhHMcdZ1FXCAMzi:HpGgM1iQiY2waKTzV7d4RcAU4Vrxvc9sfXMLncq7q6LS"
       }
@@ -1600,12 +1577,12 @@
       "market_verified": false,
       "intelligence": {
         "status": "CURRENT",
-        "score": 14.5,
+        "score": 13.5,
         "label": "WATCH",
         "families": 1,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": 14.52,
+          "market_microstructure": 13.53,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
@@ -1619,9 +1596,9 @@
         "notable_evidence": [
           "market_microstructure:volume_acceleration:1"
         ],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T19:36:14.930731+00:00",
-        "evidence_age_minutes": 26.08,
+        "evidence_age_minutes": 44.48,
         "current_evidence_count": 5,
         "_identity_key": "solana:7fmHqRpJLgpVsJFTvrv24CEjkz9c4o5uVX4Zdur1hz35:FvsZohWNdVpSDQk4gCyU9YrkLRsfeEpSmzVUSQsjDaxG"
       },
@@ -1653,9 +1630,9 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
+        "evidence_age_minutes": 346.84,
         "current_evidence_count": 0,
         "_identity_key": "solana:73DRYB2YpoHiZUdq37hQmHTR7Yvg5qJKsxxaYrsJSBCJ:FXh1NZwvGnk9qwzfCvqEkzUysdCuG7KPEUiGUZ6mUSWB"
       }
@@ -1663,38 +1640,6 @@
     {
       "symbol": "BUNKEE",
       "identity_key": "solana:23LGuH8WeZYVXRUSvqHcxzAZpSZT1PzTG8yYJfXPpump:6VSergbMXTBvqJC8rpDaERhKpXc94WKgN48NSHHjJeju",
-      "candidate_type": "PUBLIC_ALPHA",
-      "market_verified": false,
-      "intelligence": {
-        "status": "STALE_ONLY",
-        "score": 0.0,
-        "label": "WATCH",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 0.0,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
-        "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
-        "current_evidence_count": 0,
-        "_identity_key": "solana:23LGuH8WeZYVXRUSvqHcxzAZpSZT1PzTG8yYJfXPpump:6VSergbMXTBvqJC8rpDaERhKpXc94WKgN48NSHHjJeju"
-      },
-      "error": "HTTP Error 429: Too Many Requests"
-    },
-    {
-      "symbol": "YOMOGI",
-      "identity_key": "solana:4978aTN9W3CDuUREGxAQaBYqhPXt8142N4o4Sfgzpump:6wbrYQVrcL3sxtKEaXWMopqy5WQUXo5uJEv8W7xYUNGB",
       "candidate_type": "PUBLIC_ALPHA",
       "market_verified": true,
       "discovery_price": null,
@@ -1718,12 +1663,44 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
+        "evidence_age_minutes": 346.84,
+        "current_evidence_count": 0,
+        "_identity_key": "solana:23LGuH8WeZYVXRUSvqHcxzAZpSZT1PzTG8yYJfXPpump:6VSergbMXTBvqJC8rpDaERhKpXc94WKgN48NSHHjJeju"
+      }
+    },
+    {
+      "symbol": "YOMOGI",
+      "identity_key": "solana:4978aTN9W3CDuUREGxAQaBYqhPXt8142N4o4Sfgzpump:6wbrYQVrcL3sxtKEaXWMopqy5WQUXo5uJEv8W7xYUNGB",
+      "candidate_type": "PUBLIC_ALPHA",
+      "market_verified": false,
+      "intelligence": {
+        "status": "STALE_ONLY",
+        "score": 0.0,
+        "label": "WATCH",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {
+          "market_microstructure": 0.0,
+          "wallet_flow": 0.0,
+          "holder_network": 0.0,
+          "attention_social": 0.0,
+          "search_discovery": 0.0,
+          "catalyst_news": 0.0,
+          "fundamental_usage": 0.0,
+          "supply_tokenomics": 0.0,
+          "developer_project": 0.0,
+          "derivatives": 0.0
+        },
+        "notable_evidence": [],
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
+        "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
+        "evidence_age_minutes": 346.84,
         "current_evidence_count": 0,
         "_identity_key": "solana:4978aTN9W3CDuUREGxAQaBYqhPXt8142N4o4Sfgzpump:6wbrYQVrcL3sxtKEaXWMopqy5WQUXo5uJEv8W7xYUNGB"
-      }
+      },
+      "error": "HTTP Error 429: Too Many Requests"
     },
     {
       "symbol": "FRANK",
@@ -1751,9 +1728,9 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
+        "evidence_age_minutes": 346.84,
         "current_evidence_count": 0,
         "_identity_key": "solana:3aqXuwp6HuVXs9vdD9Gpg4dzJaUx443RjK7GXzphpump:Bm7uQqEanV8xnLBci1XKQipzxugZTC4vQFsQVc3Zoomk"
       }
@@ -1762,10 +1739,12 @@
       "symbol": "MEMENOTE",
       "identity_key": "solana:2vBS6D5mTPbQHChbZevmJ3Ck4uyrmdhbt1LkbyLopump:5zA2Q4gfzWToznTRB8etYW3AtC1zwGzY8ucgafUeDrLW",
       "candidate_type": "PUBLIC_ALPHA",
-      "market_verified": false,
+      "market_verified": true,
+      "discovery_price": null,
+      "first_seen_at": "2026-09-17T19:02:18.454171+00:00",
       "intelligence": {
         "status": "CURRENT",
-        "score": 1.1,
+        "score": 1.0,
         "label": "WATCH",
         "families": 1,
         "hard_risks": [],
@@ -1773,7 +1752,7 @@
           "market_microstructure": 0.0,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
-          "attention_social": 1.07,
+          "attention_social": 1.0,
           "search_discovery": 0.0,
           "catalyst_news": 0.0,
           "fundamental_usage": 0.0,
@@ -1782,21 +1761,18 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T19:02:18.454171+00:00",
-        "evidence_age_minutes": 60.02,
+        "evidence_age_minutes": 78.42,
         "current_evidence_count": 1,
         "_identity_key": "solana:2vBS6D5mTPbQHChbZevmJ3Ck4uyrmdhbt1LkbyLopump:5zA2Q4gfzWToznTRB8etYW3AtC1zwGzY8ucgafUeDrLW"
-      },
-      "error": "HTTP Error 429: Too Many Requests"
+      }
     },
     {
       "symbol": "POLLY",
       "identity_key": "solana:AdfCFpku5yhixaJXvxdNpJcHqEWX4iMstueY4us2h3eJ:CpDw9f2jmzcHbYNjCi2CYYzjpJ3tYr388Mrjahs4Pefu",
       "candidate_type": "PUBLIC_ALPHA",
-      "market_verified": true,
-      "discovery_price": null,
-      "first_seen_at": "2026-09-17T14:33:53.448966+00:00",
+      "market_verified": false,
       "intelligence": {
         "status": "STALE_ONLY",
         "score": 0.0,
@@ -1816,12 +1792,13 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-17T20:02:19.449384+00:00",
+        "updated_at": "2026-09-17T20:20:43.579731+00:00",
         "freshest_event_at": "2026-09-17T14:33:53.448966+00:00",
-        "evidence_age_minutes": 328.43,
+        "evidence_age_minutes": 346.84,
         "current_evidence_count": 0,
         "_identity_key": "solana:AdfCFpku5yhixaJXvxdNpJcHqEWX4iMstueY4us2h3eJ:CpDw9f2jmzcHbYNjCi2CYYzjpJ3tYr388Mrjahs4Pefu"
-      }
+      },
+      "error": "HTTP Error 429: Too Many Requests"
     }
   ],
   "telegram_mode": "REAL_ALERT_ACTIONABLE_ONLY",
@@ -1839,23 +1816,21 @@
   "deep_investigation": {
     "mode": "ON_DEMAND_BEFORE_ALERT_GATE",
     "max_targets_per_cycle": 8,
-    "investigated": 3,
+    "investigated": 4,
     "failed": 0,
     "targets": [
       {
-        "symbol": "RJV",
-        "identity_key": "ethereum:0xa1f410f13b6007fca76833ee7eb58478d47bc5ef:0xe5fee9f12c35b5eb26350126bac2a006a192a992",
+        "symbol": "MARSCOIN",
+        "identity_key": "bsc:0xfe189e97832da1573e4e4ff034f4ffc3a15c7777:0x94f3ed36706c746ad59fadcaf271b7431ab1d8f1",
         "candidate_type": "GATE_SPOT_DISCOVERY",
         "qualification": [
-          "POSITIVE_MARKET_TRIGGER"
+          "BUY_FLOW_IMBALANCE_3.1X"
         ],
-        "market_triggers": [
-          "PRICE_PLUS_VOLUME_ACCELERATION"
-        ],
-        "new_evidence": 5,
+        "market_triggers": [],
+        "new_evidence": 3,
         "providers": {
           "market": "OK_EXACT_PAIR_CONSENSUS",
-          "holder_wallet": "OK",
+          "holder_wallet": "NO_DATA",
           "news": "OK",
           "search_social_attention": "NO_MATCH",
           "security_tokenomics": "CHECKED",
@@ -1864,14 +1839,38 @@
           "derivatives": "PRECOLLECTED_THIS_WORKFLOW_WHEN_IDENTITY_SAFE"
         },
         "fusion_refreshed": true,
-        "generated_at": "2026-09-17T20:04:48.846317+00:00"
+        "generated_at": "2026-09-17T20:22:52.361722+00:00"
       },
       {
-        "symbol": "ALLINU",
-        "identity_key": "solana:4MMQY9bwkxxTtsK3W227Q5ABT6yFY8Pmn9Ze7wmAXKY8:7VKhbFtkc7APwuPYTL38c3XtktPJxphY4ECLR4ozXNbQ",
-        "candidate_type": "PUBLIC_ALPHA",
+        "symbol": "AGI",
+        "identity_key": "bsc:0x818835503f55283cd51a4399f595e295a9338753:0x27795f5310232b241934ab4e1ec520d17a8b16b9",
+        "candidate_type": "GATE_SPOT_DISCOVERY",
         "qualification": [
-          "PRICE_CHANGE_+20.4%"
+          "POSITIVE_MARKET_TRIGGER"
+        ],
+        "market_triggers": [
+          "PRICE_PLUS_VOLUME_ACCELERATION"
+        ],
+        "new_evidence": 4,
+        "providers": {
+          "market": "OK_EXACT_PAIR_CONSENSUS",
+          "holder_wallet": "NO_DATA",
+          "news": "OK",
+          "search_social_attention": "NO_MATCH",
+          "security_tokenomics": "CHECKED",
+          "developer": "NOT_MAPPED",
+          "fundamental": "NOT_MAPPED",
+          "derivatives": "PRECOLLECTED_THIS_WORKFLOW_WHEN_IDENTITY_SAFE"
+        },
+        "fusion_refreshed": true,
+        "generated_at": "2026-09-17T20:23:11.030024+00:00"
+      },
+      {
+        "symbol": "ZCAT",
+        "identity_key": "solana:HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR:BTccxxTFi7a9xJTE1exKn38Jgie35s6gNeRxd8DM61Rc",
+        "candidate_type": "GATE_SPOT_DISCOVERY",
+        "qualification": [
+          "BUY_FLOW_IMBALANCE_2.0X"
         ],
         "market_triggers": [],
         "new_evidence": 4,
@@ -1886,19 +1885,22 @@
           "derivatives": "PRECOLLECTED_THIS_WORKFLOW_WHEN_IDENTITY_SAFE"
         },
         "fusion_refreshed": true,
-        "generated_at": "2026-09-17T20:05:53.435905+00:00"
+        "generated_at": "2026-09-17T20:23:14.871360+00:00"
       },
       {
-        "symbol": "MUCHWOW",
-        "identity_key": "solana:GLRyB95LzCyyY8TVfwZVDyrVcZuSJPJJoaPTnyWs89mv:FBCbzdFqSJa3qahrjkAR5fdr7HMeKSGUwYpdK4CucS5L",
+        "symbol": "CATE",
+        "identity_key": "solana:Ai66LHZG9MCzg1WKdawwqduVAXpNDUuV8M3uyq5ppump:HMzvsEEmtzHhvZNw9uwbaG85HCTmFnkbhzUx16cy7ca3",
         "candidate_type": "PUBLIC_ALPHA",
         "qualification": [
-          "POSITIVE_MARKET_TRIGGER"
+          "POSITIVE_MARKET_TRIGGER",
+          "BUY_FLOW_IMBALANCE_2.7X",
+          "NEW_TRIGGER:ALPHA_CALL_PLUS_BUY_IMBALANCE",
+          "BUY_PRESSURE_SHIFT_2.7X"
         ],
         "market_triggers": [
           "ALPHA_CALL_PLUS_BUY_IMBALANCE"
         ],
-        "new_evidence": 5,
+        "new_evidence": 4,
         "providers": {
           "market": "OK_EXACT_PAIR_CONSENSUS",
           "holder_wallet": "OK",
@@ -1910,23 +1912,22 @@
           "derivatives": "PRECOLLECTED_THIS_WORKFLOW_WHEN_IDENTITY_SAFE"
         },
         "fusion_refreshed": true,
-        "generated_at": "2026-09-17T20:07:29.200169+00:00"
+        "generated_at": "2026-09-17T20:23:56.749312+00:00"
       }
     ],
     "failures": []
   },
   "actionability_stats": {
-    "suppressed_non_actionable": 8,
-    "suppressed:INTELLIGENCE_STATUS_STALE_ONLY": 3,
-    "suppressed:CURRENT_EVIDENCE_1_LT_2": 1,
-    "suppressed:NO_HIGH_VALUE_INTELLIGENCE_CONFIRMATION": 4
+    "suppressed_non_actionable": 5,
+    "suppressed:INTELLIGENCE_STATUS_STALE_ONLY": 2,
+    "suppressed:NO_HIGH_VALUE_INTELLIGENCE_CONFIRMATION": 3
   },
   "suppressed_non_actionable_examples": [
     {
       "gate_reason": "INTELLIGENCE_STATUS_STALE_ONLY",
       "material_reasons": [
-        "PRICE_CHANGE_-21.3%",
-        "VOLUME_CONTRACTION_0.50X"
+        "PRICE_CHANGE_-27.0%",
+        "VOLUME_CONTRACTION_0.47X"
       ],
       "triggers": [],
       "fusion_score": 0.0,
@@ -1937,22 +1938,9 @@
       "deep_investigation": false
     },
     {
-      "gate_reason": "CURRENT_EVIDENCE_1_LT_2",
-      "material_reasons": [
-        "PRICE_CHANGE_-11.3%"
-      ],
-      "triggers": [],
-      "fusion_score": 0.0,
-      "fusion_label": "WATCH",
-      "fusion_status": "CURRENT",
-      "positive_families": 0,
-      "current_evidence_count": 1,
-      "deep_investigation": false
-    },
-    {
       "gate_reason": "INTELLIGENCE_STATUS_STALE_ONLY",
       "material_reasons": [
-        "VOLUME_CONTRACTION_0.43X"
+        "VOLUME_CONTRACTION_0.36X"
       ],
       "triggers": [],
       "fusion_score": 0.0,
@@ -1970,65 +1958,42 @@
       "triggers": [
         "PRICE_PLUS_VOLUME_ACCELERATION"
       ],
-      "fusion_score": 15.9,
+      "fusion_score": 0.0,
       "fusion_label": "WATCH",
       "fusion_status": "CURRENT",
-      "positive_families": 2,
-      "current_evidence_count": 6,
+      "positive_families": 1,
+      "current_evidence_count": 4,
       "deep_investigation": true
     },
     {
       "gate_reason": "NO_HIGH_VALUE_INTELLIGENCE_CONFIRMATION",
       "material_reasons": [
-        "PRICE_CHANGE_+20.4%"
-      ],
-      "triggers": [],
-      "fusion_score": 0.0,
-      "fusion_label": "WATCH",
-      "fusion_status": "CURRENT",
-      "positive_families": 0,
-      "current_evidence_count": 23,
-      "deep_investigation": true
-    },
-    {
-      "gate_reason": "INTELLIGENCE_STATUS_STALE_ONLY",
-      "material_reasons": [
-        "PRICE_CHANGE_-15.6%"
-      ],
-      "triggers": [],
-      "fusion_score": 0.0,
-      "fusion_label": "WATCH",
-      "fusion_status": "STALE_ONLY",
-      "positive_families": 0,
-      "current_evidence_count": 0,
-      "deep_investigation": false
-    },
-    {
-      "gate_reason": "NO_HIGH_VALUE_INTELLIGENCE_CONFIRMATION",
-      "material_reasons": [
-        "FIRST_MATERIAL_TRIGGER"
+        "NEW_TRIGGER:ALPHA_CALL_PLUS_BUY_IMBALANCE",
+        "INTELLIGENCE_SCORE_+13.5",
+        "BUY_PRESSURE_SHIFT_2.7X"
       ],
       "triggers": [
         "ALPHA_CALL_PLUS_BUY_IMBALANCE"
       ],
-      "fusion_score": 11.8,
+      "fusion_score": 21.5,
       "fusion_label": "WATCH",
       "fusion_status": "CURRENT",
-      "positive_families": 1,
-      "current_evidence_count": 5,
+      "positive_families": 2,
+      "current_evidence_count": 13,
       "deep_investigation": true
     },
     {
       "gate_reason": "NO_HIGH_VALUE_INTELLIGENCE_CONFIRMATION",
       "material_reasons": [
-        "PRICE_CHANGE_-28.4%"
+        "VOLUME_CONTRACTION_0.08X",
+        "SELL_PRESSURE_SHIFT_0.24X"
       ],
       "triggers": [],
-      "fusion_score": 17.7,
+      "fusion_score": 6.0,
       "fusion_label": "WATCH",
       "fusion_status": "CURRENT",
-      "positive_families": 2,
-      "current_evidence_count": 11,
+      "positive_families": 1,
+      "current_evidence_count": 4,
       "deep_investigation": false
     }
   ]
