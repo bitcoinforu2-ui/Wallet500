@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CFG = ROOT / "data/unified-watch-config.json"
 EVENTS = ROOT / "data/close-watch-events.json"
 STATE = ROOT / "data/free-intelligence-collector-state.json"
-UA = "Wallet500-FreeIntel/2.0"
+UA = "Wallet500-FreeIntel/2.1"
 EVM = {"ethereum", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche"}
 CHAIN_ALIASES = {"eth": "ethereum", "bnb": "bsc"}
 
@@ -87,27 +87,19 @@ def event(t, fam, kind, direction, strength, confidence, source, subject="", url
 
 
 def ds_collect(t, prev):
-    chain, contract, pair, _ = identity(t)
+    chain, contract, pair, identity_key = identity(t)
     data = get_json("https://api.dexscreener.com/latest/dex/tokens/" + contract)
     out = []
     if not data:
         return out, {}
     pairs = data.get("pairs") or []
-    exact = next(
-        (
-            p
-            for p in pairs
-            if chain_name(p.get("chainId")) == chain and same_addr(chain, p.get("pairAddress"), pair)
-        ),
-        None,
-    )
+    exact = next((p for p in pairs if chain_name(p.get("chainId")) == chain and same_addr(chain, p.get("pairAddress"), pair)), None)
     if not exact:
-        return [event(t, "market_microstructure", "identity_mismatch", -1, 100, 95, "DexScreener", extra={"hard_risk": True})], {}
+        return [event(t, "market_microstructure", "identity_mismatch", -1, 100, 95, "DexScreener", extra={"hard_risk": True, "identity_verified": False})], {}
 
     base = (exact.get("baseToken") or {}).get("address")
-    quote = (exact.get("quoteToken") or {}).get("address")
-    if not (same_addr(chain, base, contract) or same_addr(chain, quote, contract)):
-        return [event(t, "market_microstructure", "identity_mismatch", -1, 100, 98, "DexScreener", extra={"hard_risk": True})], {}
+    if not same_addr(chain, base, contract):
+        return [event(t, "market_microstructure", "price_source_mismatch", -1, 100, 98, "DexScreener", extra={"hard_risk": True, "identity_verified": False, "reason": "TRACKED_TOKEN_NOT_DEXSCREENER_BASE_TOKEN"})], {}
 
     liq = num((exact.get("liquidity") or {}).get("usd"))
     vol = num((exact.get("volume") or {}).get("h1"))
@@ -117,54 +109,48 @@ def ds_collect(t, prev):
     price = num(exact.get("priceUsd"))
     snap = {"price": price, "liquidity": liq, "volume_h1": vol, "buys_h1": buys, "sells_h1": sells}
 
-    out.append(
-        event(
-            t,
-            "market_microstructure",
-            "verified_market_snapshot",
-            0,
-            0,
-            100,
-            "DexScreener",
-            url=str(exact.get("url") or ""),
-            cid=f"dexsnapshot:{identity(t)[3]}:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}",
-            extra={"price_usd": price, "liquidity_usd": liq, "volume_h1_usd": vol, "buys_h1": buys, "sells_h1": sells},
-        )
-    )
+    out.append(event(t, "market_microstructure", "verified_market_snapshot", 0, 0, 100, "DexScreener", url=str(exact.get("url") or ""), cid=f"dexsnapshot:{identity_key}:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}", extra={"identity_verified": True, "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR", "price_usd": price, "liquidity_usd": liq, "volume_h1_usd": vol, "buys_h1": buys, "sells_h1": sells}))
 
     if buys is not None and sells is not None and buys + sells >= 20:
         ratio = (buys + 1) / (sells + 1)
         strength = min(100, abs(ratio - 1) * 90)
         if ratio >= 1.25:
-            out.append(event(t, "market_microstructure", "buy_sell_imbalance", 1, strength, 82, "DexScreener", extra={"value": ratio}))
+            out.append(event(t, "market_microstructure", "buy_sell_imbalance", 1, strength, 82, "DexScreener", extra={"identity_verified": True, "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR", "value": ratio}))
         elif ratio <= 0.8:
-            out.append(event(t, "market_microstructure", "buy_sell_imbalance", -1, strength, 82, "DexScreener", extra={"value": ratio, "contradicts_bullish": True}))
+            out.append(event(t, "market_microstructure", "buy_sell_imbalance", -1, strength, 82, "DexScreener", extra={"identity_verified": True, "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR", "value": ratio, "contradicts_bullish": True}))
 
     pv = num(prev.get("volume_h1"))
     pl = num(prev.get("liquidity"))
     if vol is not None and pv and pv > 0:
         multiple = vol / pv
         if multiple >= 1.5:
-            out.append(event(t, "market_microstructure", "volume_acceleration", 1, min(100, (multiple - 1) * 55), 78, "DexScreener", extra={"multiple": round(multiple, 3)}))
+            out.append(event(t, "market_microstructure", "volume_acceleration", 1, min(100, (multiple - 1) * 55), 78, "DexScreener", extra={"identity_verified": True, "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR", "multiple": round(multiple, 3)}))
     if liq is not None and pl and pl > 0:
         change = (liq - pl) / pl * 100
         if change <= -20:
-            out.append(event(t, "market_microstructure", "liquidity_change", -1, min(100, abs(change) * 2), 88, "DexScreener", extra={"change_pct": round(change, 2), "contradicts_bullish": True, "hard_risk": change <= -45}))
+            out.append(event(t, "market_microstructure", "liquidity_change", -1, min(100, abs(change) * 2), 88, "DexScreener", extra={"identity_verified": True, "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR", "change_pct": round(change, 2), "contradicts_bullish": True, "hard_risk": change <= -45}))
         elif change >= 15:
-            out.append(event(t, "market_microstructure", "liquidity_change", 1, min(100, change * 1.5), 80, "DexScreener", extra={"change_pct": round(change, 2)}))
+            out.append(event(t, "market_microstructure", "liquidity_change", 1, min(100, change * 1.5), 80, "DexScreener", extra={"identity_verified": True, "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR", "change_pct": round(change, 2)}))
     return out, snap
 
 
 def trending(tokens):
+    eligible = []
+    for t in tokens:
+        cg_id = str(t.get("coingecko_id") or (t.get("free_intel") or {}).get("coingecko_id") or "").strip().lower()
+        if cg_id:
+            eligible.append((t, cg_id))
+    if not eligible:
+        return []
     data = get_json("https://api.coingecko.com/api/v3/search/trending") or {}
     coins = data.get("coins") or []
     out = []
     for rank, row in enumerate(coins, 1):
         item = row.get("item") or {}
-        sym = str(item.get("symbol") or "").upper()
-        for t in tokens:
-            if sym == str(t.get("symbol") or "").upper():
-                out.append(event(t, "search_discovery", "coingecko_trending_rank", 1, max(35, 100 - rank * 7), 72, "CoinGecko Trending", url="https://www.coingecko.com/", cid=f"coingecko-trending:{identity(t)[3]}:{datetime.now(timezone.utc).date()}", extra={"rank": rank}))
+        item_id = str(item.get("id") or "").strip().lower()
+        for t, cg_id in eligible:
+            if item_id == cg_id:
+                out.append(event(t, "search_discovery", "coingecko_trending_rank", 1, max(35, 100 - rank * 7), 82, "CoinGecko Trending", url="https://www.coingecko.com/", cid=f"coingecko-trending:{identity(t)[3]}:{cg_id}:{datetime.now(timezone.utc).date()}", extra={"identity_verified": True, "identity_scope": "EXPLICIT_COINGECKO_ID_TO_CONFIGURED_EXACT_PAIR", "coingecko_id": cg_id, "rank": rank}))
     return out
 
 
@@ -181,10 +167,10 @@ def honeypot(t):
     bt = num(sim.get("buyTax"))
     st = num(sim.get("sellTax"))
     if hp is True:
-        out.append(event(t, "supply_tokenomics", "honeypot_or_transfer_block", -1, 100, 95, "Honeypot.is", extra={"hard_risk": True}))
+        out.append(event(t, "supply_tokenomics", "honeypot_or_transfer_block", -1, 100, 95, "Honeypot.is", extra={"identity_verified": True, "identity_scope": "EXACT_CONTRACT_CONFIGURED_PAIR_CONTEXT", "hard_risk": True}))
     tax = max([x for x in (bt, st) if x is not None], default=None)
     if tax is not None and tax >= 15:
-        out.append(event(t, "supply_tokenomics", "extreme_tax", -1, min(100, tax * 3), 90, "Honeypot.is", extra={"buy_tax": bt, "sell_tax": st, "hard_risk": tax >= 30}))
+        out.append(event(t, "supply_tokenomics", "extreme_tax", -1, min(100, tax * 3), 90, "Honeypot.is", extra={"identity_verified": True, "identity_scope": "EXACT_CONTRACT_CONFIGURED_PAIR_CONTEXT", "buy_tax": bt, "sell_tax": st, "hard_risk": tax >= 30}))
     return out
 
 
@@ -201,9 +187,9 @@ def github_collect(t, prev):
     snap = {"pushed_at": d.get("pushed_at"), "updated_at": d.get("updated_at"), "release": (rel or {}).get("tag_name")}
     out = []
     if snap["pushed_at"] and snap["pushed_at"] != prev.get("pushed_at"):
-        out.append(event(t, "developer_project", "repo_activity", 1, 45, 65, "GitHub", subject=repo, url="https://github.com/" + repo, cid=f"github-push:{identity(t)[3]}:{repo}:{snap['pushed_at']}"))
+        out.append(event(t, "developer_project", "repo_activity", 1, 45, 65, "GitHub", subject=repo, url="https://github.com/" + repo, cid=f"github-push:{identity(t)[3]}:{repo}:{snap['pushed_at']}", extra={"identity_verified": True, "identity_scope": "EXPLICIT_CONFIG_PROJECT_MAPPING"}))
     if snap["release"] and snap["release"] != prev.get("release"):
-        out.append(event(t, "developer_project", "github_release", 1, 65, 80, "GitHub", subject=snap["release"], url="https://github.com/" + repo + "/releases", cid=f"github-release:{identity(t)[3]}:{repo}:{snap['release']}"))
+        out.append(event(t, "developer_project", "github_release", 1, 65, 80, "GitHub", subject=snap["release"], url="https://github.com/" + repo + "/releases", cid=f"github-release:{identity(t)[3]}:{repo}:{snap['release']}", extra={"identity_verified": True, "identity_scope": "EXPLICIT_CONFIG_PROJECT_MAPPING"}))
     return out, snap
 
 
@@ -221,7 +207,7 @@ def defillama(t, prev):
     if tvl is not None and old and old > 0:
         change = (tvl - old) / old * 100
         if abs(change) >= 5:
-            out.append(event(t, "fundamental_usage", "tvl_change", 1 if change > 0 else -1, min(100, abs(change) * 5), 80, "DefiLlama", url="https://defillama.com/protocol/" + slug, extra={"change_pct": round(change, 2), "contradicts_bullish": change < 0}))
+            out.append(event(t, "fundamental_usage", "tvl_change", 1 if change > 0 else -1, min(100, abs(change) * 5), 80, "DefiLlama", url="https://defillama.com/protocol/" + slug, extra={"identity_verified": True, "identity_scope": "EXPLICIT_CONFIG_PROTOCOL_MAPPING", "change_pct": round(change, 2), "contradicts_bullish": change < 0}))
     return out, snap
 
 
