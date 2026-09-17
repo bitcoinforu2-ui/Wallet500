@@ -1,0 +1,147 @@
+name: Wallet500 Solana 500 Full-Year Context Lab
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/solana_500_year_context_lab.py'
+      - '.github/workflows/solana-500-year-context-lab.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wallet500-solana-500-year-context-lab
+  cancel-in-progress: true
+
+jobs:
+  universe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate full-year lab
+        run: python -m py_compile scripts/resilient_http.py scripts/solana_500_year_context_lab.py
+      - name: Build clean Solana ranks 100 through 599 cohort
+        env:
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: python scripts/solana_500_year_context_lab.py --phase universe
+      - name: Validate cohort isolation
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('data/research/solana-500-year-universe.json').read_text())
+          rows=d.get('tokens') or []
+          ranks=[x.get('solana_market_cap_rank') for x in rows]
+          assert d.get('research_only') is True
+          assert d.get('production_effect') is False
+          assert len(rows)==500, len(rows)
+          assert min(ranks)==100 and max(ranks)==599, (min(ranks),max(ranks))
+          print('YEAR_COHORT_VALID', d.get('coverage'))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: solana-500-year-universe
+          path: data/research/solana-500-year-universe.json
+          retention-days: 2
+
+  history:
+    needs: universe
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        batch: [0,1,2,3,4,5,6,7,8,9]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: solana-500-year-universe
+          path: data/research
+      - name: Fetch 365-day daily market history
+        env:
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: python scripts/solana_500_year_context_lab.py --phase history --batch ${{ matrix.batch }} --batch-count 10
+      - name: Validate batch
+        run: python -m json.tool data/research/solana-500-year-batch-$(printf '%02d' ${{ matrix.batch }}).json >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: solana-year-history-${{ matrix.batch }}
+          path: data/research/solana-500-year-batch-*.json
+          retention-days: 2
+
+  aggregate:
+    needs: history
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: solana-500-year-universe
+          path: data/research
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: solana-year-history-*
+          path: data/research/year-batches
+          merge-multiple: true
+      - name: Run 365-day walk-forward plus SOL-context analysis
+        env:
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: python scripts/solana_500_year_context_lab.py --phase aggregate
+      - name: Validate research-only output
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          out=json.loads(Path('data/research/solana-500-year-context-backtest.json').read_text())
+          cand=json.loads(Path('data/research/solana-500-year-learning-candidates.json').read_text())
+          lessons=json.loads(Path('data/research/solana-500-year-context-lessons.json').read_text())
+          assert out.get('research_only') is True
+          assert out.get('production_effect') is False
+          assert out.get('automatic_buy') is False
+          assert out.get('cohort_count') == 500
+          assert cand.get('telegram_eligible') is False
+          assert cand.get('buy_signal') is False
+          print('YEAR_RESEARCH_VALID', {
+            'usable': out.get('history_usable_count'),
+            'robust': len(out.get('robust_context_patterns') or []),
+            'reproduced': len(out.get('cross_source_reproduced_patterns') or []),
+            'learning_candidates': out.get('learning_candidates_count'),
+            'dominant_features': (lessons.get('dominant_features') or [])[:5],
+          })
+          PY
+      - name: Publish full-year research snapshot
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/atomic_publish.py \
+            --github-api-cas \
+            --message 'research: publish Solana 500 full-year context snapshot' \
+            data/research/solana-500-year-universe.json \
+            data/research/solana-500-year-context-backtest.json \
+            data/research/solana-500-year-context-patterns.json \
+            data/research/solana-500-year-learning-candidates.json \
+            data/research/solana-500-year-context-lessons.json
