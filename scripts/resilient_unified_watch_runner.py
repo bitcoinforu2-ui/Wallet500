@@ -6,6 +6,7 @@ import urllib.parse
 from collections import Counter
 from pathlib import Path
 
+import deep_investigation_refresh
 import resilient_http
 import unified_watch_engine as engine
 
@@ -13,10 +14,45 @@ ROOT = Path(__file__).resolve().parents[1]
 HTTP_STATE = ROOT / "data/http-resilience-state.json"
 REPORT = ROOT / "data/unified-watch-intelligence-report.json"
 
+_ORIGINAL_LOAD_INTELLIGENCE = engine.load_intelligence
+_ORIGINAL_FUSION_SUMMARY = engine.fusion_summary
 _ORIGINAL_MATERIAL_CHANGE_REASONS = engine.material_change_reasons
 _ORIGINAL_SEND = engine.send
 _ACTIONABILITY_STATS = Counter()
 _ACTIONABILITY_EXAMPLES = []
+_DEEP_REPORTS = []
+_DEEP_FAILURES = []
+_DEEP_DONE = set()
+_TARGETS_BY_IDENTITY = {}
+_PREVIOUS_STATE = {"tokens": {}}
+
+
+class _IdentityAwareIntelIndex(dict):
+    def get(self, key, default=None):
+        row = super().get(key)
+        if row is None and key:
+            return {"_identity_key": key, "_placeholder": True}
+        return row if row is not None else default
+
+
+def identity_aware_load_intelligence():
+    index, doc = _ORIGINAL_LOAD_INTELLIGENCE()
+    return _IdentityAwareIntelIndex(index), doc
+
+
+def identity_aware_fusion_summary(row, notable_min_raw=0.30):
+    placeholder = isinstance(row, dict) and row.get("_placeholder")
+    fusion = _ORIGINAL_FUSION_SUMMARY(
+        None if placeholder else row,
+        notable_min_raw=notable_min_raw,
+    )
+    if isinstance(row, dict):
+        identity_key = row.get("_identity_key") or row.get("identity_key")
+        if not identity_key and not placeholder:
+            identity_key = engine.exact_identity_key(row)
+        if identity_key:
+            fusion["_identity_key"] = identity_key
+    return fusion
 
 
 def resilient_http_json(url):
@@ -31,14 +67,14 @@ def resilient_http_json(url):
             attempts=1,
             cache_ttl=15,
             min_interval=4.0,
-            user_agent="Wallet500-UnifiedWatch/3.1",
+            user_agent="Wallet500-UnifiedWatch/3.2-DeepIntel",
         )
     return resilient_http.request_json(
         url,
         timeout=20,
         attempts=3,
         cache_ttl=15,
-        user_agent="Wallet500-UnifiedWatch/3.1",
+        user_agent="Wallet500-UnifiedWatch/3.2-DeepIntel",
     )
 
 
@@ -156,10 +192,85 @@ def actionable_real_alert_gate(last_alert, live, fusion, triggers, reasons, poli
     return False, "NOT_ACTIONABLE", []
 
 
+def _state_key(t):
+    identity_key = engine.exact_identity_key(t)
+    if t.get("dynamic_alpha_candidate"):
+        return f"ALPHA:{identity_key}"
+    if t.get("dynamic_spot_candidate"):
+        return f"SPOT:{identity_key}"
+    return str(t.get("symbol") or "").upper()
+
+
+def _refresh_deep_intelligence(last_alert, live, fusion, triggers, base_reasons, policy):
+    identity_key = str(fusion.get("_identity_key") or "")
+    if not identity_key or identity_key in _DEEP_DONE:
+        return False
+
+    qualification = deep_investigation_refresh.positive_investigation_reasons(
+        live, triggers, base_reasons, policy
+    )
+    if not qualification:
+        return False
+
+    max_targets = max(1, int(policy.get("deep_investigation_max_targets_per_cycle", 8)))
+    if len(_DEEP_DONE) >= max_targets:
+        print("DEEP_INVESTIGATION_CAP_REACHED", identity_key, qualification)
+        return False
+
+    t = _TARGETS_BY_IDENTITY.get(identity_key)
+    if not t:
+        print("DEEP_INVESTIGATION_TARGET_NOT_RESOLVED", identity_key)
+        return False
+
+    previous_scan = (_PREVIOUS_STATE.get("tokens") or {}).get(_state_key(t)) or {}
+    _DEEP_DONE.add(identity_key)
+    try:
+        result = deep_investigation_refresh.run_one(
+            engine,
+            policy,
+            t,
+            live,
+            previous_scan,
+            triggers,
+            base_reasons,
+        )
+        if not result:
+            return False
+        report, row = result
+        _DEEP_REPORTS.append(report)
+        if row:
+            notable_min_raw = float(policy.get("notable_evidence_min_raw", 0.30))
+            refreshed = identity_aware_fusion_summary(
+                row, notable_min_raw=notable_min_raw
+            )
+            fusion.clear()
+            fusion.update(refreshed)
+            return True
+    except Exception as exc:
+        failure = {
+            "identity_key": identity_key,
+            "qualification": qualification,
+            "error": f"{type(exc).__name__}:{str(exc)[:200]}",
+        }
+        _DEEP_FAILURES.append(failure)
+        print("DEEP_INVESTIGATION_FAILED", json.dumps(failure, ensure_ascii=False))
+    return False
+
+
 def strict_material_change_reasons(last_alert, live, fusion, triggers, policy):
-    reasons = _ORIGINAL_MATERIAL_CHANGE_REASONS(
+    base_reasons = _ORIGINAL_MATERIAL_CHANGE_REASONS(
         last_alert, live, fusion, triggers, policy
     )
+
+    refreshed = _refresh_deep_intelligence(
+        last_alert, live, fusion, triggers, base_reasons, policy
+    )
+    reasons = (
+        _ORIGINAL_MATERIAL_CHANGE_REASONS(last_alert, live, fusion, triggers, policy)
+        if refreshed
+        else base_reasons
+    )
+
     if not bool(policy.get("telegram_real_alert_only", True)):
         return reasons
 
@@ -180,6 +291,7 @@ def strict_material_change_reasons(last_alert, live, fusion, triggers, policy):
                     "score": fusion.get("score"),
                     "families": fusion.get("families"),
                     "status": fusion.get("status"),
+                    "deep_investigation": identity_key_in_deep(fusion),
                 },
                 ensure_ascii=False,
             ),
@@ -200,6 +312,7 @@ def strict_material_change_reasons(last_alert, live, fusion, triggers, policy):
                     "fusion_status": fusion.get("status"),
                     "positive_families": fusion.get("families"),
                     "current_evidence_count": fusion.get("current_evidence_count"),
+                    "deep_investigation": identity_key_in_deep(fusion),
                 }
             )
         print(
@@ -212,6 +325,7 @@ def strict_material_change_reasons(last_alert, live, fusion, triggers, policy):
                     "score": fusion.get("score"),
                     "families": fusion.get("families"),
                     "status": fusion.get("status"),
+                    "deep_investigation": identity_key_in_deep(fusion),
                 },
                 ensure_ascii=False,
             ),
@@ -219,13 +333,18 @@ def strict_material_change_reasons(last_alert, live, fusion, triggers, policy):
     return []
 
 
+def identity_key_in_deep(fusion):
+    return str(fusion.get("_identity_key") or "") in _DEEP_DONE
+
+
 def strict_send(msg):
     lines = str(msg).splitlines()
     if not lines:
         return _ORIGINAL_SEND(msg)
 
-    risk = "| RISK" in lines[0] or lines[0].startswith("⚠️")
-    parts = [x.strip() for x in lines[0].split("|")]
+    original_header = lines[0]
+    risk = "| RISK" in original_header or original_header.startswith("⚠️")
+    parts = [x.strip() for x in original_header.split("|")]
     symbol = parts[0] if parts else "🔥 WALLET500"
     if risk:
         lines[0] = f"{symbol} | WALLET500 | REAL_ALERT | ACTIONABLE=TRUE | RISK"
@@ -235,6 +354,22 @@ def strict_send(msg):
     if not any(x.startswith("ACTIONABLE:") for x in lines):
         insert_at = 1 if len(lines) > 1 else len(lines)
         lines.insert(insert_at, "ACTIONABLE: TRUE · RESEARCH_ONLY/WATCH SUPPRESSED")
+
+    matching = next(
+        (
+            r
+            for r in reversed(_DEEP_REPORTS)
+            if f" {str(r.get('symbol') or '').upper()} |" in original_header.upper()
+        ),
+        None,
+    )
+    if matching and not any(x.startswith("DEEP INTELLIGENCE:") for x in lines):
+        lines.insert(
+            min(2, len(lines)),
+            "DEEP INTELLIGENCE: REFRESHED BEFORE ALERT · "
+            f"{matching.get('new_evidence', 0)} fresh evidence items · "
+            + ", ".join(matching.get("qualification") or [])[:180],
+        )
     return _ORIGINAL_SEND("\n".join(lines))
 
 
@@ -243,8 +378,8 @@ def _write_actionability_report(policy):
         report = json.loads(REPORT.read_text()) if REPORT.exists() else {}
     except Exception:
         report = {}
-    report["version"] = max(int(report.get("version") or 0), 4)
-    report["mode"] = "REAL_ALERT_ACTIONABLE_ONLY"
+    report["version"] = max(int(report.get("version") or 0), 5)
+    report["mode"] = "REAL_ALERT_ACTIONABLE_ONLY_WITH_ON_DEMAND_DEEP_INTELLIGENCE"
     report["telegram_mode"] = "REAL_ALERT_ACTIONABLE_ONLY"
     report["actionable_required"] = True
     report["research_watch_telegram_suppressed"] = True
@@ -265,34 +400,68 @@ def _write_actionability_report(policy):
             policy.get("block_stale_only_positive_alerts", True)
         ),
     }
+    report["deep_investigation"] = {
+        "mode": "ON_DEMAND_BEFORE_ALERT_GATE",
+        "max_targets_per_cycle": int(policy.get("deep_investigation_max_targets_per_cycle", 8)),
+        "investigated": len(_DEEP_REPORTS),
+        "failed": len(_DEEP_FAILURES),
+        "targets": list(_DEEP_REPORTS),
+        "failures": list(_DEEP_FAILURES),
+    }
     report["actionability_stats"] = dict(_ACTIONABILITY_STATS)
     report["suppressed_non_actionable_examples"] = list(_ACTIONABILITY_EXAMPLES)
     REPORT.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
 
 
+def _build_target_index():
+    cfg = json.loads(engine.CONFIG.read_text())
+    static = list(cfg.get("tokens") or [])
+    known = {engine.exact_identity_key(x) for x in static}
+    dynamic = [
+        x for x in engine.dynamic_candidates()
+        if engine.exact_identity_key(x) not in known
+    ]
+    return {
+        engine.exact_identity_key(x): x
+        for x in static + dynamic
+        if engine.exact_identity_key(x)
+    }
+
+
 def main():
+    global _TARGETS_BY_IDENTITY, _PREVIOUS_STATE
     # Give the previous collector stage a short quiet period, then use a
     # process-shared per-host limiter/cooldown. Exact identity/spread checks in
-    # unified_watch_engine are intentionally unchanged and remain fail-closed.
+    # unified_watch_engine remain fail-closed. Positive material market changes
+    # are upgraded into a targeted deep-intelligence refresh before alert gating.
     time.sleep(4)
     engine.http_json = resilient_http_json
+    engine.load_intelligence = identity_aware_load_intelligence
+    engine.fusion_summary = identity_aware_fusion_summary
     engine.material_change_reasons = strict_material_change_reasons
     engine.send = strict_send
 
     cfg = json.loads(engine.CONFIG.read_text())
     policy = dict(cfg.get("alert_policy") or {})
+    _TARGETS_BY_IDENTITY = _build_target_index()
+    try:
+        _PREVIOUS_STATE = json.loads(engine.STATE.read_text()) if engine.STATE.exists() else {"tokens": {}}
+    except Exception:
+        _PREVIOUS_STATE = {"tokens": {}}
 
     rc = engine.main()
     _write_actionability_report(policy)
     HTTP_STATE.write_text(
         json.dumps(
             {
-                "version": 3,
+                "version": 4,
                 "updated_at": engine.now_iso(),
                 "component": "unified_watch",
-                "strategy": "STRICT_EXACT_PAIR_4S_GECKO_PACING_429_CIRCUIT_BREAKER_PLUS_REAL_ALERT_ACTIONABLE_GATE",
+                "strategy": "STRICT_EXACT_PAIR_PLUS_ON_DEMAND_DEEP_INTELLIGENCE_BEFORE_REAL_ALERT_GATE",
                 "metrics": resilient_http.metrics(),
                 "telegram_mode": "REAL_ALERT_ACTIONABLE_ONLY",
+                "deep_investigation_count": len(_DEEP_REPORTS),
+                "deep_investigation_failures": len(_DEEP_FAILURES),
                 "actionability_stats": dict(_ACTIONABILITY_STATS),
             },
             indent=2,
