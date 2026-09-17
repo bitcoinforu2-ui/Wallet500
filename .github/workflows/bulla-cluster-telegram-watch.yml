@@ -55,14 +55,14 @@ jobs:
             sha="$(gh api "repos/${GITHUB_REPOSITORY}/contents/${STATE}?ref=main" --jq '.sha' 2>/dev/null || true)"
             encoded="$(base64 -w0 "$STATE")"
             payload="$(python - "$sha" "$encoded" <<'PY'
-import json, sys
-sha, content = sys.argv[1], sys.argv[2]
-p = {"message": "chore: update BULLA cluster watch state [skip ci]", "content": content, "branch": "main"}
-if sha:
-    p["sha"] = sha
-print(json.dumps(p))
-PY
-)"
+          import json, sys
+          sha, content = sys.argv[1], sys.argv[2]
+          p = {"message": "chore: update BULLA cluster watch state [skip ci]", "content": content, "branch": "main"}
+          if sha:
+              p["sha"] = sha
+          print(json.dumps(p))
+          PY
+          )"
             if printf '%s' "$payload" | gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/${STATE}" --input - >/tmp/bulla-put.json 2>/tmp/bulla-put.err; then
               echo "BULLA_STATE_PERSISTED_CONTENTS_API attempt=${attempt} commit=$(jq -r '.commit.sha' /tmp/bulla-put.json)"
               exit 0
