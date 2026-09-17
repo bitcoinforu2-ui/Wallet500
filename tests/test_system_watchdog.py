@@ -15,7 +15,21 @@ def seed(root: Path, now: datetime):
     write(root, "real-alerts.json", {"generated_at": ts, "counts": {"real_alerts": 1}, "alerts": [{"symbol": "OLD", "chain": "solana", "token_address": "mint-old", "pair_address": "pair-old", "status": "REAL_ALERT"}]})
     write(root, "system-health.json", {"updated_at": ts, "failure_summary": {"system_production_blockers": 0}, "failures": []})
     write(root, "scheduler-health.json", {"updated_at": ts})
-    write(root, "telegram-alert-report.json", {"updated_at": ts, "configured": True, "error_count": 0, "delivered": []})
+    write(root, "telegram-alert-report.json", {
+        "updated_at": ts,
+        "configured": True,
+        "error_count": 0,
+        "delivered": [],
+        "policy": {"user_facing_mode": "NEAR_BUY_AND_BUY_ONLY_V1"},
+        "buy_only_policy": {"mode": "NEAR_BUY_AND_BUY_ONLY_V1", "matched_keys": []},
+    })
+    write(root, "stage-transition-telegram-report.json", {
+        "updated_at": ts,
+        "mode": "NEAR_BUY_ONLY_STAGE_TELEGRAM",
+        "eligible": [],
+        "delivered": [],
+        "errors": [],
+    })
     write(root, "telegram-alert-state.json", {"updated_at": ts, "sent": {}})
     write(root, "real-alert-10usd-summary.json", {"updated_at": ts, "positions": []})
 
@@ -33,7 +47,7 @@ def test_first_run_baselines_existing_real_alerts_without_fake_gap(tmp_path):
     assert state["active_real_keys"] == ["solana:mint-old:pair-old"]
 
 
-def test_new_real_alert_transition_without_telegram_is_critical(tmp_path):
+def test_generic_real_alert_transition_is_silent_under_buy_only_policy(tmp_path):
     now = datetime(2026, 9, 5, 16, 0, tzinfo=timezone.utc)
     seed(tmp_path, now)
     _, baseline = build_report(tmp_path, now=now, state={})
@@ -41,7 +55,67 @@ def test_new_real_alert_transition_without_telegram_is_critical(tmp_path):
     real["alerts"].append({"symbol": "NEW", "chain": "solana", "token_address": "mint-new", "pair_address": "pair-new", "status": "REAL_ALERT"})
     write(tmp_path, "real-alerts.json", real)
     report, _ = build_report(tmp_path, now=now, state=baseline)
-    assert "NEW_REAL_ALERT_TELEGRAM_GAP" in codes(report)
+    assert "NEW_REAL_ALERT_TELEGRAM_GAP" not in codes(report)
+    assert "BUY_SIGNAL_TELEGRAM_GAP" not in codes(report)
+    assert report["buy_only_policy_active"] is True
+
+
+def test_final_buy_without_confirmed_telegram_delivery_is_critical(tmp_path):
+    now = datetime(2026, 9, 5, 16, 0, tzinfo=timezone.utc)
+    seed(tmp_path, now)
+    key = "solana:mint-new:pair-new"
+    write(tmp_path, "telegram-alert-report.json", {
+        "updated_at": now.isoformat(),
+        "configured": True,
+        "error_count": 0,
+        "delivered": [],
+        "policy": {"user_facing_mode": "NEAR_BUY_AND_BUY_ONLY_V1"},
+        "buy_only_policy": {"mode": "NEAR_BUY_AND_BUY_ONLY_V1", "matched_keys": [key]},
+    })
+    report, _ = build_report(tmp_path, now=now, state={})
+    assert "BUY_SIGNAL_TELEGRAM_GAP" in codes(report)
+    assert report["final_buy_keys_expected"] == [key]
+    assert report["overall"] == "CRITICAL"
+
+
+def test_final_buy_with_buy_signal_delivery_state_has_no_gap(tmp_path):
+    now = datetime(2026, 9, 5, 16, 0, tzinfo=timezone.utc)
+    seed(tmp_path, now)
+    key = "solana:mint-new:pair-new"
+    write(tmp_path, "telegram-alert-report.json", {
+        "updated_at": now.isoformat(),
+        "configured": True,
+        "error_count": 0,
+        "delivered": [{"key": key, "sent_at": now.isoformat()}],
+        "policy": {"user_facing_mode": "NEAR_BUY_AND_BUY_ONLY_V1"},
+        "buy_only_policy": {"mode": "NEAR_BUY_AND_BUY_ONLY_V1", "matched_keys": [key]},
+    })
+    write(tmp_path, "telegram-alert-state.json", {
+        "updated_at": now.isoformat(),
+        "sent": {key: {"actionable": True, "buy_signal": True}},
+    })
+    write(tmp_path, "real-alert-10usd-summary.json", {
+        "updated_at": now.isoformat(),
+        "positions": [{"chain": "solana", "token_address": "mint-new", "pair_address": "pair-new"}],
+    })
+    report, _ = build_report(tmp_path, now=now, state={})
+    assert "BUY_SIGNAL_TELEGRAM_GAP" not in codes(report)
+
+
+def test_pre_buy_eligible_without_delivery_is_critical(tmp_path):
+    now = datetime(2026, 9, 5, 16, 0, tzinfo=timezone.utc)
+    seed(tmp_path, now)
+    key = "mint-near|pair-near"
+    write(tmp_path, "stage-transition-telegram-report.json", {
+        "updated_at": now.isoformat(),
+        "mode": "NEAR_BUY_ONLY_STAGE_TELEGRAM",
+        "eligible": [{"key": key, "to_stage": "PAPER_BUY_CANDIDATE"}],
+        "delivered": [],
+        "errors": [{"key": key, "error": "Timeout"}],
+    })
+    report, _ = build_report(tmp_path, now=now, state={})
+    assert "PRE_BUY_TELEGRAM_GAP" in codes(report)
+    assert report["pre_buy_delivery_gaps"] == [key]
     assert report["overall"] == "CRITICAL"
 
 
