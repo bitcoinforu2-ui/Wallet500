@@ -9,6 +9,8 @@ on:
     paths:
       - 'scripts/unified_watch_engine.py'
       - 'scripts/resilient_unified_watch_runner.py'
+      - 'scripts/deep_investigation_refresh.py'
+      - 'scripts/narrative_dependency_collector.py'
       - 'scripts/resilient_http.py'
       - 'scripts/spot_market_discovery_collector.py'
       - 'scripts/unified_candidate_bridge.py'
@@ -44,8 +46,8 @@ jobs:
       - name: Validate unified watcher, collectors and intelligence fusion
         id: validate
         run: |
-          python -m py_compile scripts/resilient_http.py scripts/resilient_unified_watch_runner.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py
-          for f in data/unified-watch-config.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/http-resilience-state.json; do python -m json.tool "$f" >/dev/null; done
+          python -m py_compile scripts/resilient_http.py scripts/resilient_unified_watch_runner.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py
+          for f in data/unified-watch-config.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/narrative-dependency-state.json data/http-resilience-state.json; do python -m json.tool "$f" >/dev/null; done
 
       - name: Test exact-identity intelligence fusion contract
         id: contract
@@ -76,6 +78,10 @@ jobs:
       - name: Collect holder wallet attention search and news intelligence
         id: cross_domain
         run: python scripts/cross_domain_intelligence_collector.py
+
+      - name: Collect verified narrative dependency rotation intelligence
+        id: narrative_dependency
+        run: python scripts/narrative_dependency_collector.py
 
       - name: Collect Gate-stat plus Hyperliquid failover derivatives intelligence
         id: derivatives
@@ -115,6 +121,7 @@ jobs:
           ALPHA_INTAKE_OUTCOME: ${{ steps.alpha_intake.outcome }}
           CANDIDATE_BRIDGE_OUTCOME: ${{ steps.candidate_bridge.outcome }}
           CROSS_DOMAIN_OUTCOME: ${{ steps.cross_domain.outcome }}
+          NARRATIVE_OUTCOME: ${{ steps.narrative_dependency.outcome }}
           DERIVATIVES_OUTCOME: ${{ steps.derivatives.outcome }}
           ALPHA_REPUTATION_OUTCOME: ${{ steps.alpha_reputation.outcome }}
           FUSION_OUTCOME: ${{ steps.fusion.outcome }}
@@ -145,6 +152,7 @@ jobs:
           spot = load('data/spot-market-discovery.json')
           dynamic = load('data/unified-dynamic-candidates.json')
           cross = load('data/cross-domain-intelligence-state.json')
+          narrative = load('data/narrative-dependency-state.json')
           derivatives = load('data/derivatives-intelligence-state.json')
           http_state = load('data/http-resilience-state.json')
           outcomes = {
@@ -156,13 +164,14 @@ jobs:
               'alpha_intake': os.getenv('ALPHA_INTAKE_OUTCOME'),
               'candidate_bridge': os.getenv('CANDIDATE_BRIDGE_OUTCOME'),
               'cross_domain': os.getenv('CROSS_DOMAIN_OUTCOME'),
+              'narrative_dependency': os.getenv('NARRATIVE_OUTCOME'),
               'derivatives': os.getenv('DERIVATIVES_OUTCOME'),
               'alpha_reputation': os.getenv('ALPHA_REPUTATION_OUTCOME'),
               'fusion': os.getenv('FUSION_OUTCOME'),
               'market_watch': os.getenv('MARKET_WATCH_OUTCOME'),
           }
           manifest = {
-              'version': 5,
+              'version': 6,
               'generated_at': datetime.now(timezone.utc).isoformat(),
               'github_run_id': os.getenv('GH_RUN_ID'),
               'github_run_attempt': os.getenv('GH_RUN_ATTEMPT'),
@@ -176,6 +185,8 @@ jobs:
                   'dynamic_candidate_counts': (dynamic or {}).get('counts') if isinstance(dynamic, dict) else None,
                   'cross_domain_updated_at': (cross or {}).get('updated_at') if isinstance(cross, dict) else None,
                   'cross_domain_target_count': len((cross or {}).get('tokens') or {}) if isinstance(cross, dict) else None,
+                  'narrative_dependency_updated_at': (narrative or {}).get('updated_at') if isinstance(narrative, dict) else None,
+                  'narrative_dependency_reports': (narrative or {}).get('reports') if isinstance(narrative, dict) else None,
                   'derivatives_updated_at': (derivatives or {}).get('updated_at') if isinstance(derivatives, dict) else None,
                   'derivatives_provider_success': (derivatives or {}).get('provider_success') if isinstance(derivatives, dict) else None,
                   'derivatives_provider_health': (derivatives or {}).get('provider_health') if isinstance(derivatives, dict) else None,
@@ -224,6 +235,7 @@ jobs:
             data/spot-market-discovery-state.json
             data/unified-dynamic-candidates.json
             data/cross-domain-intelligence-state.json
+            data/narrative-dependency-state.json
           )
           snapshot="$(mktemp -d)"
           for f in "${files[@]}"; do
