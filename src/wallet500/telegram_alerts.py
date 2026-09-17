@@ -193,7 +193,6 @@ def _canonical_real_tier(row: object) -> str | None:
     if risk in {"HIGH", "CRITICAL"}:
         return None
 
-    # Concentrated pools remain fail-closed unless real execution depth was verified.
     if row.get("concentrated_liquidity_pool") is True and row.get("execution_depth_verified") is not True:
         return None
     activity_truth = row.get("dex_activity_truth") if isinstance(row.get("dex_activity_truth"), dict) else {}
@@ -388,7 +387,7 @@ def _send(bot_token: str, chat_id: str, text: str, max_attempts: int = 3) -> tup
     raise RuntimeError(f"Telegram delivery failed after {max_attempts} attempts: {last_error}")
 
 
-def run() -> dict:
+def run(send_func=None) -> dict:
     out = Path(os.getenv("WALLET500_OUTPUT_DIR", "data"))
     source_name = os.getenv("WALLET500_ALERT_INPUT", "active-qualified-candidates.json")
     real_source_name = os.getenv("WALLET500_REAL_ALERT_INPUT", "real-alerts.json")
@@ -420,15 +419,13 @@ def run() -> dict:
         print(json.dumps(skipped, indent=2, ensure_ascii=False))
         return existing if isinstance(existing, dict) else skipped
 
+    sender = send_func if callable(send_func) else _send
     now = datetime.now(timezone.utc).isoformat()
     now_israel = _fmt_israel_time(now)
     delivered, eligible, errors = [], [], []
     active_real_now: set[str] = set()
     active_pre_wave_now: set[str] = set()
 
-    # Canonical REAL ALERTs are the transition source. Legacy production candidates
-    # may enrich the message/tier when present, but their absence must never suppress
-    # a fully validated canonical REAL ALERT.
     for real in real_rows:
         if not isinstance(real, dict) or not _is_actionable_real_alert(real):
             continue
@@ -462,7 +459,7 @@ def run() -> dict:
             continue
         event_id = _alert_event_id(key, now)
         try:
-            telegram_message_id, attempts = _send(bot_token, chat_id, _message(display, tier, sent_at=now, alert_event_id=event_id))
+            telegram_message_id, attempts = sender(bot_token, chat_id, _message(display, tier, sent_at=now, alert_event_id=event_id))
             sent[key] = {
                 "fingerprint": fingerprint,
                 "alert_event_id": event_id,
@@ -515,7 +512,7 @@ def run() -> dict:
             continue
         event_id = _alert_event_id(state_key, now)
         try:
-            telegram_message_id, attempts = _send(bot_token, chat_id, _pre_wave_message(row, sent_at=now, alert_event_id=event_id))
+            telegram_message_id, attempts = sender(bot_token, chat_id, _pre_wave_message(row, sent_at=now, alert_event_id=event_id))
             sent[state_key] = {
                 "fingerprint": f"PRE_WAVE:{_norm_addr(row.get('pair_address'))}",
                 "alert_event_id": event_id,
