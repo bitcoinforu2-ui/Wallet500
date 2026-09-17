@@ -35,8 +35,10 @@ jobs:
       - name: Install and verify Telegram plus $10 tracking truth contracts
         run: |
           pip install -e . pytest
-          python -m py_compile scripts/run_telegram_with_intelligence_shadow.py
+          python -m py_compile scripts/run_telegram_production_safe.py scripts/run_telegram_with_intelligence_shadow.py
           python -m pytest -q \
+            tests/test_delivery_architecture_contract.py \
+            tests/test_safe_json_state.py \
             tests/test_telegram_exact_pair.py \
             tests/test_real_alerts.py \
             tests/test_real_alert_10usd_tracker.py \
@@ -121,7 +123,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           WALLET500_ALERT_INPUT: active-qualified-candidates.json
           WALLET500_REAL_ALERT_INPUT: pre-alert-forensics-real-alerts.json
-        run: python scripts/run_telegram_with_intelligence_shadow.py
+        run: python scripts/run_telegram_production_safe.py
       - name: Persist Telegram dedupe, pre-alert evidence and delivery report atomically
         shell: bash
         env:
