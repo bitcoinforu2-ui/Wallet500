@@ -131,7 +131,7 @@ jobs:
           for attempt in $(seq 1 12); do
             git fetch origin main; git reset --hard origin/main; mkdir -p data; cp "$SNAP" data/pit-rizo-close-watch.json
             git add data/pit-rizo-close-watch.json; python scripts/serialized_publish_staged.py --github-api-cas --message 'data: refresh PIT RIZO close watch'; exit $?
-            if false; then # legacy direct push disabled exit 0; fi
+            if false; then exit 0; fi
             sleep $(( attempt < 5 ? attempt : 5 ))
           done
           echo 'Fail closed: could not publish PIT/RIZO watch state'; exit 1
