@@ -182,26 +182,9 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
             event_id = _event_id(key, now_iso)
             item["alert_event_id"] = event_id
             item["promoted_at"] = now_iso
-            if configured:
-                try:
-                    message_id, attempts = _send(token, chat_id, _message(row, item, now_iso, event_id))
-                    delivered.append({
-                        "key": key,
-                        "symbol": item.get("symbol"),
-                        "event_id": event_id,
-                        "telegram_message_id": message_id,
-                        "attempts": attempts,
-                        "promoted_at": now_iso,
-                        "lane": "CURRENT_WATCH_STRICT_IDENTITY_BYPASS",
-                    })
-                    info["sent_at"] = now_iso
-                    info["event_id"] = event_id
-                    info["telegram_message_id"] = message_id
-                    sends_this_run += 1
-                except Exception as exc:
-                    errors.append({"key": key, "symbol": item.get("symbol"), "error": f"{type(exc).__name__}: {exc}"[:300]})
-            else:
-                errors.append({"key": key, "symbol": item.get("symbol"), "error": "TELEGRAM_NOT_CONFIGURED"})
+            # Keep the bypass candidate in the engine, but never deliver it directly.
+            info["telegram_suppressed_by_policy"] = True
+            info["suppression_policy"] = "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE"
         active_now[key] = info
 
     current_keys = set(active_now)
@@ -224,7 +207,8 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
         "current_watch_bypass_requires_strict_dex_identity": True,
         "current_watch_bypass_symbol_only_never_actionable": True,
         "current_watch_strict_resolve_limit_per_run": MAX_STRICT_RESOLVES_PER_RUN,
-        "current_watch_max_telegram_deliveries_per_run": MAX_DELIVER_PER_RUN,
+        "current_watch_max_telegram_deliveries_per_run": 0,
+        "direct_telegram_delivery_disabled": True,
     })
     alert_payload["truth_contract"] = truth
     _write(out / OUTPUT_FILE, alert_payload)
@@ -238,7 +222,8 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
         "resolve_failures": resolve_failures[:30],
         "errors": errors,
         "resolve_limit": MAX_STRICT_RESOLVES_PER_RUN,
-        "delivery_cap": MAX_DELIVER_PER_RUN,
+        "delivery_cap": 0,
+        "telegram_delivery_enabled": False,
     }
     report["eligible_count"] = int(report.get("eligible_count") or 0) + len([
         1 for _, item in eligible if _identity_key(item) not in set()
@@ -247,6 +232,8 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
     report["error_count"] = int(report.get("error_count") or 0) + len(errors)
     report["delivered"] = list(report.get("delivered") or []) + delivered
     report["errors"] = list(report.get("errors") or []) + errors
+    report["telegram_delivery_enabled"] = False
+    report["telegram_delivery_policy"] = "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE"
     report["truth_contract"] = truth
     _write(out / REPORT_FILE, report)
 

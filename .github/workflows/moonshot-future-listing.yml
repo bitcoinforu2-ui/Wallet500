@@ -66,13 +66,13 @@ jobs:
       - name: Detect official Moonshot future listings and recheck canonical Wallet500 gate
         env:
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
         run: python -m wallet500.moonshot_future_listing_watch
       - name: Send Moonshot exact-contract Telegram immediately after source detection
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
         run: python -m wallet500.moonshot_instant_alert
       - name: Validate future-listing truth boundary
         run: |

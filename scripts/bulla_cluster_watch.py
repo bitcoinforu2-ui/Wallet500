@@ -236,7 +236,8 @@ def send_telegram(message):
     bot = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
     if not bot or not chat:
-        raise SystemExit("TELEGRAM_SECRETS_NOT_CONFIGURED")
+        print("BULLA_TELEGRAM_SUPPRESSED_FINAL_BUY_ONLY")
+        return False
     payload = urllib.parse.urlencode({
         "chat_id": chat,
         "text": message[:3900],
@@ -252,6 +253,7 @@ def send_telegram(message):
         if not (200 <= r.status < 300 and body.get("ok") is True):
             raise SystemExit(f"BULLA_TELEGRAM_SEND_FAILED status={r.status} ok={body.get('ok')}")
     print("BULLA_MATERIAL_EVENT_DELIVERED_TO_TELEGRAM")
+    return True
 
 
 def classify_event(src, dst, amount, cluster, src_label, dst_label, state):

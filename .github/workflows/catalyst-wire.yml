@@ -59,13 +59,13 @@ jobs:
           PY
       - name: Run exact-market Focus and Telegram market alerts
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
         run: python -m wallet500.catalyst_focus_binance
       - name: Telegram immediate discovery notice for new exact future/multi-CEX cases
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
         run: |
           python - <<'PY'
           import json,os,urllib.parse,urllib.request

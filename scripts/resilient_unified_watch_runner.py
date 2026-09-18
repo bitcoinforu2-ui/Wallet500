@@ -288,6 +288,18 @@ def strict_material_change_reasons(last_alert, live, fusion, triggers, policy):
         else base_reasons
     )
 
+    # Unified Watch keeps scanning, learning and refreshing deep intelligence,
+    # but it never sends user-facing Telegram messages. Final BUY delivery is
+    # owned exclusively by the canonical Decision Engine BUY / BUY_ZONE lane.
+    if bool(policy.get("telegram_final_buy_only", True)):
+        if reasons:
+            _ACTIONABILITY_STATS["suppressed_final_buy_only"] += 1
+            print(
+                "TELEGRAM_SUPPRESSED_FINAL_BUY_ONLY",
+                json.dumps({"material_reasons": reasons, "triggers": triggers}, ensure_ascii=False),
+            )
+        return []
+
     if not bool(policy.get("telegram_real_alert_only", True)):
         return reasons
 
@@ -355,46 +367,12 @@ def identity_key_in_deep(fusion):
 
 
 def strict_send(msg):
-    lines = str(msg).splitlines()
-    if not lines:
-        return _ORIGINAL_SEND(msg)
-
-    original_header = lines[0]
-    risk = "| RISK" in original_header or original_header.startswith("⚠️")
-    if risk:
-        # Defense in depth: the buy-side gate above should already suppress this.
-        # Never label or deliver a risk event as actionable.
-        print("TELEGRAM_RISK_MESSAGE_BLOCKED_DEFENSE_IN_DEPTH", original_header)
-        return None
-
-    parts = [x.strip() for x in original_header.split("|")]
-    raw_symbol = parts[0] if parts else "WALLET500"
-    symbol = raw_symbol.lstrip("🔥⚠️🟠 ").strip() or "WALLET500"
-    lines[0] = f"🟠 {symbol} | WALLET500 | NEAR_BUY"
-
-    if not any(x.startswith("ACTIONABLE:") for x in lines):
-        insert_at = 1 if len(lines) > 1 else len(lines)
-        lines.insert(
-            insert_at,
-            "ACTIONABLE: FALSE · NEAR BUY ONLY · WAIT FOR FINAL BUY CONFIRMATION",
-        )
-
-    matching = next(
-        (
-            r
-            for r in reversed(_DEEP_REPORTS)
-            if f" {str(r.get('symbol') or '').upper()} |" in original_header.upper()
-        ),
-        None,
-    )
-    if matching and not any(x.startswith("DEEP INTELLIGENCE:") for x in lines):
-        lines.insert(
-            min(2, len(lines)),
-            "DEEP INTELLIGENCE: REFRESHED BEFORE ALERT · "
-            f"{matching.get('new_evidence', 0)} fresh evidence items · "
-            + ", ".join(matching.get("qualification") or [])[:180],
-        )
-    return _ORIGINAL_SEND("\n".join(lines))
+    # Defense in depth: this runner has no authority to deliver Telegram.
+    # Even if a future code path reaches send(), fail closed and keep the event internal.
+    header = str(msg).splitlines()[0] if str(msg).splitlines() else "WALLET500"
+    print("TELEGRAM_SEND_BLOCKED_FINAL_BUY_ONLY", header)
+    _ACTIONABILITY_STATS["send_blocked_final_buy_only"] += 1
+    return None
 
 
 def _write_actionability_report(policy):
@@ -403,8 +381,8 @@ def _write_actionability_report(policy):
     except Exception:
         report = {}
     report["version"] = max(int(report.get("version") or 0), 5)
-    report["mode"] = "NEAR_BUY_ONLY_WITH_ON_DEMAND_DEEP_INTELLIGENCE"
-    report["telegram_mode"] = "NEAR_BUY_ONLY_FINAL_BUY_SEPARATE"
+    report["mode"] = "ENGINE_ONLY_FINAL_BUY_TELEGRAM_SUPPRESSED"
+    report["telegram_mode"] = "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE"
     report["actionable_required"] = False
     report["research_watch_telegram_suppressed"] = True
     report["risk_telegram_suppressed"] = bool(policy.get("telegram_buy_side_only", True))
@@ -490,7 +468,7 @@ def main():
                 "component": "unified_watch",
                 "strategy": "STRICT_EXACT_PAIR_PLUS_ON_DEMAND_DEEP_INTELLIGENCE_BEFORE_REAL_ALERT_GATE",
                 "metrics": resilient_http.metrics(),
-                "telegram_mode": "NEAR_BUY_ONLY_FINAL_BUY_SEPARATE",
+                "telegram_mode": "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE",
                 "deep_investigation_count": len(_DEEP_REPORTS),
                 "deep_investigation_failures": len(_DEEP_FAILURES),
                 "actionability_stats": dict(_ACTIONABILITY_STATS),

@@ -67,16 +67,13 @@ jobs:
       - name: Send forward-only actionable Revival REAL ALERTs after deep intelligence
         if: github.event_name != 'pull_request'
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
           REVIVAL_90D_LIVE_REFRESH: '1'
         run: |
           set -euo pipefail
-          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
-            echo 'REVIVAL_90D_TELEGRAM_SECRETS_MISSING'
-            exit 1
-          fi
+          echo 'REVIVAL_90D_DIRECT_TELEGRAM_DISABLED_FINAL_BUY_ONLY'
           python -m wallet500.revival_90d_telegram
       - name: Validate actionable alert and deep intelligence reports
         if: github.event_name != 'pull_request'
@@ -89,7 +86,8 @@ jobs:
           t=d.get('truth_contract') or {}
           dt=deep.get('truth_contract') or {}
           if d.get('mode')!='ACTIONABLE_REVIVAL_90D_15K_REAL_ALERT_V2': raise SystemExit('REVIVAL_90D_MODE_INVALID')
-          if d.get('configured') is not True: raise SystemExit('REVIVAL_90D_TELEGRAM_NOT_CONFIGURED')
+          if d.get('configured') is not False: raise SystemExit('REVIVAL_90D_DIRECT_TELEGRAM_MUST_BE_DISABLED')
+          if int(d.get('delivered_count') or 0) != 0: raise SystemExit('REVIVAL_90D_DIRECT_TELEGRAM_DELIVERY_LEAK')
           if t.get('research_only') is not False or t.get('actionable_only') is not True: raise SystemExit('REVIVAL_90D_ACTIONABILITY_INVALID')
           if t.get('real_alert_lane')!='REVIVAL_90D_15K': raise SystemExit('REVIVAL_90D_REAL_ALERT_LANE_INVALID')
           if t.get('automatic_buy') is not False: raise SystemExit('REVIVAL_90D_AUTO_BUY_LEAK')

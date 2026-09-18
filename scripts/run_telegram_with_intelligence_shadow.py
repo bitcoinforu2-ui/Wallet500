@@ -14,7 +14,7 @@ ALIASES = {"eth": "ethereum", "bnb": "bsc"}
 CURRENT_STATUS = "CURRENT"
 STALE_STATUS = "STALE_ONLY"
 SLOGAN = "Verified Intelligence. The Pure Truth."
-BUY_POLICY = "NEAR_BUY_AND_BUY_ONLY_V1"
+BUY_POLICY = "BUY_ONLY_V2"
 
 
 def chain_name(value: object) -> str:
@@ -297,14 +297,14 @@ def main() -> int:
         report["buy_only_policy"] = {
             **buy_audit,
             "migrated_old_generic_state_rows": migrated_state_rows,
-            "near_buy_lane": "PAPER_BUY_CANDIDATE_ONLY",
+            "near_buy_lane": "DISABLED",
             "pre_wave_telegram": "DISABLED",
             "generic_real_alert_telegram": "DISABLED_UNLESS_DECISION_ENGINE_BUY",
         }
         policy = dict(report.get("policy") or {})
         policy.update({
             "user_facing_mode": BUY_POLICY,
-            "near_buy_stage": "PAPER_BUY_CANDIDATE_ONLY",
+            "near_buy_stage": "DISABLED",
             "final_buy_gate": "DECISION_ENGINE_V1_BUY_ZONE_EXACT_PAIR",
             "pre_wave_user_delivery": "DISABLED",
             "generic_real_alert_user_delivery": "DISABLED",
