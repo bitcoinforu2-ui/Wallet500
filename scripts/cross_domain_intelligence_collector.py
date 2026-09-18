@@ -136,9 +136,15 @@ def ev(t, family, kind, direction, strength, confidence, source, **extra):
 def targets():
     cfg = load(CONFIG, {"tokens": []})
     dyn = load(DYNAMIC, {"candidates": []})
+    dynamic_rows = [x for x in (dyn.get("candidates") or []) if isinstance(x, dict)]
+    buy_rows = [x for x in dynamic_rows if str(x.get("candidate_type") or "").upper() == "BUY_ZONE"]
+    other_dynamic = [x for x in dynamic_rows if str(x.get("candidate_type") or "").upper() != "BUY_ZONE"]
+
+    # BUY_ZONE identities are always first so holder/news/social coverage cannot
+    # be displaced by the ordinary 40-target research cap.
     rows = []
     seen = set()
-    for x in list(cfg.get("tokens") or []) + list(dyn.get("candidates") or []):
+    for x in buy_rows + list(cfg.get("tokens") or []) + other_dynamic:
         if not isinstance(x, dict):
             continue
         i = ident(x)
@@ -146,7 +152,8 @@ def targets():
             continue
         seen.add(i[3])
         rows.append(x)
-    return rows[:40]
+    buy_count = len([x for x in rows if str(x.get("candidate_type") or "").upper() == "BUY_ZONE"])
+    return rows[:max(40, buy_count)]
 
 
 def global_attention_maps():
@@ -319,7 +326,9 @@ def main():
     news_targets = sorted(
         rows,
         key=lambda x: (
-            0 if x.get("candidate_type") == "GATE_SPOT_DISCOVERY" else 1,
+            0 if str(x.get("candidate_type") or "").upper() == "BUY_ZONE"
+            else 1 if x.get("candidate_type") == "GATE_SPOT_DISCOVERY"
+            else 2,
             x.get("positive_gainer_rank") or 999999,
         ),
     )[:12]
