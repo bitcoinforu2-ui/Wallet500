@@ -25,86 +25,56 @@ def _row(status="VERIFIED_WATCH", pair="PairA"):
     }
 
 
+def _never_send(*_args):
+    raise AssertionError("stage Telegram must stay silent under FINAL_BUY_ONLY policy")
+
+
 def test_first_run_baselines_without_historical_spam(tmp_path, monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
     _write(tmp_path, [_row("PAPER_BUY_CANDIDATE")])
-    sent = []
-    report = run(str(tmp_path), NOW, sender=lambda *args: sent.append(args))
+    report = run(str(tmp_path), NOW, sender=_never_send)
     assert report["baseline_only"] is True
     assert report["eligible_count"] == 0
-    assert sent == []
-
-
-def test_watch_to_evidence_ready_stays_silent(tmp_path, monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
-    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
-    _write(tmp_path, [_row("VERIFIED_WATCH")])
-    run(str(tmp_path), NOW, sender=lambda *args: (1, 1))
-    _write(tmp_path, [_row("EVIDENCE_READY")])
-    report = run(str(tmp_path), NOW, sender=lambda *args: (_ for _ in ()).throw(AssertionError("orange alert must stay silent")))
-    assert report["eligible_count"] == 0
-    assert report["delivered_count"] == 0
-    assert report["policy"]["evidence_ready_notifications"] is False
-    assert report["policy"]["minimum_user_facing_stage"] == "PAPER_BUY_CANDIDATE"
-
-
-def test_evidence_ready_to_prebuy_sends_once(tmp_path, monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
-    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
-    _write(tmp_path, [_row("EVIDENCE_READY")])
-    run(str(tmp_path), NOW, sender=lambda *args: (1, 1))
-    _write(tmp_path, [_row("PAPER_BUY_CANDIDATE")])
-    sent = []
-    report = run(str(tmp_path), NOW, sender=lambda *args: (sent.append(args) or (55, 1)))
-    assert report["eligible_count"] == 1
-    assert report["delivered_count"] == 1
-    assert "EVIDENCE_READY → PAPER_BUY_CANDIDATE" in sent[0][2]
-    assert "PRE-BUY STAGE" in sent[0][2]
-    report2 = run(str(tmp_path), NOW, sender=lambda *args: (_ for _ in ()).throw(AssertionError("duplicate")))
-    assert report2["eligible_count"] == 0
-
-
-def test_raw_research_changes_stay_silent(tmp_path, monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
-    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
-    _write(tmp_path, [_row("VERIFIED_WATCH")])
-    run(str(tmp_path), NOW, sender=lambda *args: (1, 1))
-    _write(tmp_path, [_row("BLOCKED_TRUTH")])
-    report = run(str(tmp_path), NOW, sender=lambda *args: (_ for _ in ()).throw(AssertionError("research spam")))
-    assert report["eligible_count"] == 0
-
-
-def test_exact_pair_change_below_prebuy_stays_silent(tmp_path, monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
-    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
-    _write(tmp_path, [_row("EVIDENCE_READY", "PairA")])
-    run(str(tmp_path), NOW, sender=lambda *args: (1, 1))
-    _write(tmp_path, [_row("EVIDENCE_READY", "PairB")])
-    report = run(str(tmp_path), NOW, sender=lambda *args: (_ for _ in ()).throw(AssertionError("new pair orange alert must stay silent")))
-    assert report["eligible_count"] == 0
     assert report["delivered_count"] == 0
 
 
-def test_exact_pair_change_at_prebuy_is_user_facing(tmp_path, monkeypatch):
+def test_all_stage_transitions_are_internal_only(tmp_path, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+    _write(tmp_path, [_row("VERIFIED_WATCH")])
+    run(str(tmp_path), NOW, sender=_never_send)
+
+    for status in ("EVIDENCE_READY", "PAPER_BUY_CANDIDATE", "STRONG_GENESIS", "EXCEPTIONAL_GENESIS"):
+        _write(tmp_path, [_row(status)])
+        report = run(str(tmp_path), NOW, sender=_never_send)
+        assert report["eligible_count"] == 0
+        assert report["delivered_count"] == 0
+        assert report["error_count"] == 0
+        assert report["policy"]["telegram_delivery_enabled"] is False
+        assert report["policy"]["final_buy_only"] is True
+        assert report["policy"]["minimum_user_facing_stage"] == "DISABLED_FINAL_BUY_ONLY"
+
+
+def test_exact_pair_change_never_creates_stage_alert(tmp_path, monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
     _write(tmp_path, [_row("EVIDENCE_READY", "PairA")])
-    run(str(tmp_path), NOW, sender=lambda *args: (1, 1))
+    run(str(tmp_path), NOW, sender=_never_send)
     _write(tmp_path, [_row("PAPER_BUY_CANDIDATE", "PairB")])
-    sent = []
-    report = run(str(tmp_path), NOW, sender=lambda *args: (sent.append(args) or (2, 1)))
-    assert report["eligible_count"] == 1
-    assert report["delivered_count"] == 1
+    report = run(str(tmp_path), NOW, sender=_never_send)
+    assert report["eligible_count"] == 0
+    assert report["delivered_count"] == 0
 
 
-def test_delivery_failure_does_not_consume_prebuy_transition(tmp_path, monkeypatch):
+def test_stage_state_still_tracks_engine_progress(tmp_path, monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
     _write(tmp_path, [_row("EVIDENCE_READY")])
-    run(str(tmp_path), NOW, sender=lambda *args: (1, 1))
+    run(str(tmp_path), NOW, sender=_never_send)
     _write(tmp_path, [_row("PAPER_BUY_CANDIDATE")])
-    report = run(str(tmp_path), NOW, sender=lambda *args: (_ for _ in ()).throw(RuntimeError("boom")))
-    assert report["error_count"] == 1
-    retry = run(str(tmp_path), NOW, sender=lambda *args: (99, 1))
-    assert retry["delivered_count"] == 1
+    report = run(str(tmp_path), NOW, sender=_never_send)
+    assert report["delivered_count"] == 0
+    state = json.loads((tmp_path / "stage-transition-telegram-state.json").read_text())
+    key = "MintA|paira"
+    assert state["candidates"][key]["stage"] == "PAPER_BUY_CANDIDATE"
