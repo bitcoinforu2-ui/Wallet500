@@ -55,8 +55,8 @@ jobs:
             cp "$tmp/arbitrum-revival-universe.json" data/; cp "$tmp/arbitrum-revival-state.json" data/
             git add data/arbitrum-revival-universe.json data/arbitrum-revival-state.json
             if git diff --cached --quiet; then echo ARBITRUM_NO_CHANGE; exit 0; fi
-            git commit -m 'data: refresh Arbitrum revival universe'
-            if git push origin HEAD:main; then echo ARBITRUM_PUBLISH_OK; exit 0; fi
+            python scripts/serialized_publish_staged.py --github-api-cas --message 'data: refresh Arbitrum revival universe'; exit $?
+            if false; then # legacy direct push disabled echo ARBITRUM_PUBLISH_OK; exit 0; fi
             sleep 2
           done
           exit 1
