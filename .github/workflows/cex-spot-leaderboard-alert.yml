@@ -108,55 +108,27 @@ jobs:
           PY
       - name: Record CEX research telemetry without user-facing Telegram delivery
         run: python -m wallet500.cex_spot_watch_telegram
-      - name: Publish fresh research state with bounded retries
+      - name: Publish fresh research state with bounded retries via serialized CAS
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          base="$GITHUB_SHA"
-          targets=(
-            data/cex-spot-revival-radar.json
-            data/cex-spot-identity-radar.json
-            data/cex-spot-leaderboard.json
-            data/cex-spot-telegram-report.json
-            data/cex-spot-state.json
-            data/cex-spot-state.json.gz
+          set +e
+          python scripts/serialized_publish.py \
+            --github-api-cas \
+            --fail-on-newer \
+            --message 'data: refresh CEX leaderboard research state [skip ci]' \
+            data/cex-spot-revival-radar.json \\
+            data/cex-spot-identity-radar.json \\
+            data/cex-spot-leaderboard.json \\
+            data/cex-spot-telegram-report.json \\
+            data/cex-spot-state.json \\
+            data/cex-spot-state.json.gz \\
             data/cex-identity-registry.json
-          )
-          snap="$(mktemp -d)"
-          for f in "${targets[@]}"; do
-            if [ -f "$f" ]; then
-              mkdir -p "$snap/$(dirname "$f")"
-              cp -a "$f" "$snap/$f"
-            fi
-          done
-          for attempt in $(seq 1 20); do
-            git fetch origin main
-            latest="$(git rev-parse origin/main)"
-            conflict=0
-            for f in "${targets[@]}"; do
-              if ! git diff --quiet "$base" "$latest" -- "$f"; then
-                echo "Newer main changed $f; preserving newer state and skipping stale publish"
-                conflict=1
-              fi
-            done
-            if [ "$conflict" -ne 0 ]; then exit 0; fi
-            git reset --hard "$latest"
-            for f in "${targets[@]}"; do
-              if [ -f "$snap/$f" ]; then
-                mkdir -p "$(dirname "$f")"
-                cp -a "$snap/$f" "$f"
-              elif git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
-                rm -f "$f"
-              fi
-            done
-            for f in "${targets[@]}"; do
-              if [ -e "$f" ] || git ls-files --error-unmatch "$f" >/dev/null 2>&1; then git add -A -- "$f"; fi
-            done
-            if git diff --cached --quiet; then echo "No CEX leaderboard state changes"; exit 0; fi
-            git commit -m "data: refresh CEX leaderboard research state"
-            if git push origin HEAD:main; then echo "CEX leaderboard research state published"; exit 0; fi
-            sleep 1
-          done
-          echo "CEX leaderboard publisher failed after bounded retries"
-          exit 1
+          rc=$?
+          set -e
+          if [ "$rc" -eq 75 ]; then
+            echo 'PUBLISH_SUPERSEDED_BY_NEWER_STATE'
+            exit 0
+          fi
+          exit "$rc"
