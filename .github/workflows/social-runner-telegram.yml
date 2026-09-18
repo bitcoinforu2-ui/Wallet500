@@ -68,8 +68,8 @@ jobs:
       - name: Deliver only joint CONFIRMED_RUNNER plus PAPER_BUY_CANDIDATE transitions
         if: github.event_name != 'pull_request'
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
         run: python -m wallet500.social_runner_telegram
 
       - name: Persist social pre-buy Telegram dedupe and report atomically
