@@ -78,15 +78,21 @@ jobs:
           assert d['exact_pair']['identity_verified'] is True
           assert d['production_portfolio_impact']=='NONE' and d['automatic_buy'] is False
           PY
-      - name: Publish DUSD live snapshot safely
+      - name: Publish DUSD live snapshot safely via serialized CAS
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          SNAP="$(mktemp)"; cp data/dusd-live-market.json "$SNAP"
-          git config user.name wallet500-bot; git config user.email wallet500-bot@users.noreply.github.com
-          for attempt in $(seq 1 12); do
-            git fetch origin main; git reset --hard origin/main; cp "$SNAP" data/dusd-live-market.json
-            git add data/dusd-live-market.json; git commit -m 'data: refresh DUSD exact-pair live market' || exit 0
-            if git push origin HEAD:main; then exit 0; fi
-            sleep $(( attempt < 5 ? attempt : 5 ))
-          done
-          echo 'Fail closed: could not publish DUSD live snapshot after bounded retries'; exit 1
+          set +e
+          python scripts/serialized_publish.py \
+            --github-api-cas \
+            --fail-on-newer \
+            --message 'data: refresh DUSD exact-pair live market [skip ci]' \
+            data/dusd-live-market.json
+          rc=$?
+          set -e
+          if [ "$rc" -eq 75 ]; then
+            echo 'PUBLISH_SUPERSEDED_BY_NEWER_STATE'
+            exit 0
+          fi
+          exit "$rc"
