@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 CFG = ROOT / "data/unified-watch-config.json"
+DYNAMIC = ROOT / "data/unified-dynamic-candidates.json"
 EVENTS = ROOT / "data/close-watch-events.json"
 STATE = ROOT / "data/free-intelligence-collector-state.json"
 UA = "Wallet500-FreeIntel/2.1"
@@ -213,7 +214,29 @@ def defillama(t, prev):
 
 def main():
     cfg = json.loads(CFG.read_text())
-    tokens = [t for t in (cfg.get("tokens") or []) if isinstance(t, dict) and all(identity(t)[:3])]
+    try:
+        dyn = json.loads(DYNAMIC.read_text()) if DYNAMIC.exists() else {"candidates": []}
+    except Exception:
+        dyn = {"candidates": []}
+
+    # Final BUY targets get full free-intelligence coverage immediately, even
+    # when they were not part of the static watch configuration beforehand.
+    buy_targets = [
+        t for t in (dyn.get("candidates") or [])
+        if isinstance(t, dict) and str(t.get("candidate_type") or "").upper() == "BUY_ZONE"
+    ]
+    raw_targets = buy_targets + [t for t in (cfg.get("tokens") or []) if isinstance(t, dict)]
+    tokens = []
+    seen = set()
+    for t in raw_targets:
+        if not isinstance(t, dict) or not all(identity(t)[:3]):
+            continue
+        key = identity(t)[3]
+        if key in seen:
+            continue
+        seen.add(key)
+        tokens.append(t)
+
     state = json.loads(STATE.read_text()) if STATE.exists() else {"tokens": {}}
     old_events = (json.loads(EVENTS.read_text()).get("events") or []) if EVENTS.exists() else []
     fresh = []
