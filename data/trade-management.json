@@ -1,7 +1,7 @@
 {
   "version": 1,
   "mode": "MANUAL_REVIEW_TRADE_MANAGEMENT_V1",
-  "generated_at": "2026-09-18T09:35:18.765984+00:00",
+  "generated_at": "2026-09-18T09:48:58.552775+00:00",
   "manual_review_only": true,
   "automatic_trade": false,
   "truth_contract": {
@@ -16,7 +16,9 @@
   },
   "managed_count": 3,
   "state_counts": {
-    "DATA_INSUFFICIENT": 3
+    "BUY_ZONE": 1,
+    "DATA_INSUFFICIENT": 1,
+    "WAIT_FOR_RETEST": 1
   },
   "positions": [
     {
@@ -24,21 +26,66 @@
       "chain": "solana",
       "token_address": "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
       "pair_address": "6UmmUiYoBjSrhakAobJw8BvkmJtDVxaeBtbt7rxWo1mg",
-      "dex_url": "https://dexscreener.com/solana/6ummuiyobjsrhakaobjw8bvkmjtdvxaebtbt7rxwo1mg",
+      "dex_url": "https://www.geckoterminal.com/solana/pools/6UmmUiYoBjSrhakAobJw8BvkmJtDVxaeBtbt7rxWo1mg",
       "alert_id": null,
       "signal_price_usd": 1.79,
-      "signal_liquidity_usd": 6379260.91,
+      "signal_liquidity_usd": 6363440.83,
       "signal_generated_at": null,
       "readiness": "7/7",
       "manual_review_only": true,
       "automatic_buy": false,
       "automatic_sell": false,
-      "observed_at": "2026-09-18T09:34:32.305872+00:00",
-      "trade_state": "DATA_INSUFFICIENT",
-      "state_label": "⚪ DATA INSUFFICIENT",
-      "decision_reason": "Exact-pair OHLCV is not yet sufficient; fail closed.",
-      "entry_plan": null,
-      "exit_plan": null
+      "observed_at": "2026-09-18T09:48:58.118658+00:00",
+      "trade_state": "WAIT_FOR_RETEST",
+      "state_label": "🟡 WAIT FOR RETEST",
+      "decision_reason": "The 7/7 signal is valid, but price is extended from dynamic support; do not chase.",
+      "market": {
+        "current_price_usd": 1.782856307,
+        "liquidity_usd": 6335185.5688,
+        "liquidity_change_from_signal_pct": -0.444,
+        "volume_h1_usd": 324902.664037631,
+        "volume_h24_usd": 2614714.20002045,
+        "volume_vs_12h_median": 3.001,
+        "buys_h1": 487,
+        "sells_h1": 384,
+        "buy_ratio": 0.5591,
+        "move_from_signal_pct": -0.399,
+        "drawdown_from_12h_high_pct": -3.769,
+        "source": "GECKOTERMINAL_EXACT_POOL_OHLCV"
+      },
+      "technicals_1h": {
+        "ema5": 1.7233050226,
+        "ema10": 1.6640337666,
+        "ema20": 1.5904671417,
+        "ema30": 1.5434554731,
+        "atr14": 0.0604664369,
+        "atr14_pct": 3.392,
+        "macd": 0.0848924476,
+        "macd_signal": 0.061124792,
+        "macd_hist": 0.0237676556,
+        "recent_high_12h": 1.8526859486,
+        "prior_high": 1.7503053101,
+        "candle_count": 48
+      },
+      "entry_plan": {
+        "zone_1": {
+          "low": 1.6368238699,
+          "high": 1.6761270539
+        },
+        "zone_2": {
+          "low": 1.5632572451,
+          "high": 1.6025604291
+        },
+        "breakout_retest_reference": 1.7503053101,
+        "invalidation_reference": 1.4981056454,
+        "policy": "MANUAL_REVIEW_ONLY_DYNAMIC_LEVELS_NOT_ORDERS"
+      },
+      "exit_plan": {
+        "target_1_recent_high": 1.8526859486,
+        "target_2_plus_1atr": 1.9131523855,
+        "target_3_plus_2atr": 1.9736188224,
+        "policy": "PARTIAL_PROFIT_OR_EXIT_REVIEW_ONLY_NO_AUTOMATIC_SELL"
+      }
     },
     {
       "symbol": "ARB",
@@ -47,35 +94,80 @@
       "pair_address": "0xC6F780497A95e246EB9449f5e4770916DCd6396A",
       "dex_url": "https://dexscreener.com/arbitrum/0xc6f780497a95e246eb9449f5e4770916dcd6396a",
       "alert_id": null,
-      "signal_price_usd": 0.2094,
-      "signal_liquidity_usd": 1567514.7,
+      "signal_price_usd": 0.2074,
+      "signal_liquidity_usd": 1567981.39,
       "signal_generated_at": null,
       "readiness": "7/7",
       "manual_review_only": true,
       "automatic_buy": false,
       "automatic_sell": false,
-      "observed_at": "2026-09-18T09:34:55.894488+00:00",
-      "trade_state": "DATA_INSUFFICIENT",
-      "state_label": "⚪ DATA INSUFFICIENT",
-      "decision_reason": "Exact-pair OHLCV is not yet sufficient; fail closed.",
-      "entry_plan": null,
-      "exit_plan": null
+      "observed_at": "2026-09-18T09:48:58.419900+00:00",
+      "trade_state": "BUY_ZONE",
+      "state_label": "🟢 BUY ZONE",
+      "decision_reason": "Price retested dynamic support while liquidity and transaction balance remain acceptable.",
+      "market": {
+        "current_price_usd": 0.2066664196,
+        "liquidity_usd": 1562821.0565,
+        "liquidity_change_from_signal_pct": -0.329,
+        "volume_h1_usd": 1374944.79731837,
+        "volume_h24_usd": 15811505.7860337,
+        "volume_vs_12h_median": 2.083,
+        "buys_h1": 1219,
+        "sells_h1": 1314,
+        "buy_ratio": 0.4812,
+        "move_from_signal_pct": -0.354,
+        "drawdown_from_12h_high_pct": -11.707,
+        "source": "GECKOTERMINAL_EXACT_POOL_OHLCV"
+      },
+      "technicals_1h": {
+        "ema5": 0.2088614814,
+        "ema10": 0.2047299595,
+        "ema20": 0.1950736331,
+        "ema30": 0.188385459,
+        "atr14": 0.0107994511,
+        "atr14_pct": 5.226,
+        "macd": 0.0118511307,
+        "macd_signal": 0.0104709214,
+        "macd_hist": 0.0013802094,
+        "recent_high_12h": 0.2340698317,
+        "prior_high": 0.2340698317,
+        "candle_count": 48
+      },
+      "entry_plan": {
+        "zone_1": {
+          "low": 0.1998702065,
+          "high": 0.2068898497
+        },
+        "zone_2": {
+          "low": 0.1902138801,
+          "high": 0.1972335233
+        },
+        "breakout_retest_reference": 0.2340698317,
+        "invalidation_reference": 0.1802858706,
+        "policy": "MANUAL_REVIEW_ONLY_DYNAMIC_LEVELS_NOT_ORDERS"
+      },
+      "exit_plan": {
+        "target_1_recent_high": 0.2340698317,
+        "target_2_plus_1atr": 0.2448692828,
+        "target_3_plus_2atr": 0.2556687339,
+        "policy": "PARTIAL_PROFIT_OR_EXIT_REVIEW_ONLY_NO_AUTOMATIC_SELL"
+      }
     },
     {
       "symbol": "G",
       "chain": "ethereum",
       "token_address": "0x9c7beba8f6ef6643abd725e45a4e8387ef260649",
       "pair_address": "0xC4Dbe30FEcc148a8755c970f3b8b0c9aF0Db81F5",
-      "dex_url": "https://dexscreener.com/ethereum/0xc4dbe30fecc148a8755c970f3b8b0c9af0db81f5",
+      "dex_url": "https://www.geckoterminal.com/eth/pools/0xc4dbe30fecc148a8755c970f3b8b0c9af0db81f5",
       "alert_id": null,
-      "signal_price_usd": 0.008086,
-      "signal_liquidity_usd": 1434735.62,
+      "signal_price_usd": 0.00745,
+      "signal_liquidity_usd": 1409559.94,
       "signal_generated_at": null,
       "readiness": "7/7",
       "manual_review_only": true,
       "automatic_buy": false,
       "automatic_sell": false,
-      "observed_at": "2026-09-18T09:35:18.765951+00:00",
+      "observed_at": "2026-09-18T09:48:58.552750+00:00",
       "trade_state": "DATA_INSUFFICIENT",
       "state_label": "⚪ DATA INSUFFICIENT",
       "decision_reason": "Exact-pair OHLCV is not yet sufficient; fail closed.",
