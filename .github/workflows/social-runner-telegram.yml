@@ -96,8 +96,10 @@ jobs:
           r=json.loads(Path('data/social-runner-telegram-report.json').read_text())
           if r.get('mode')!='JOINT_PREBUY_SOCIAL_TELEGRAM_V1':
               raise SystemExit('SOCIAL_RUNNER_TELEGRAM_MODE_DRIFT')
-          if r.get('configured') is not True:
-              raise SystemExit('SOCIAL_RUNNER_TELEGRAM_NOT_CONFIGURED')
+          if r.get('configured') is not False:
+              raise SystemExit('SOCIAL_RUNNER_DIRECT_TELEGRAM_MUST_BE_DISABLED')
+          if int(r.get('delivered_count') or 0) != 0:
+              raise SystemExit('SOCIAL_RUNNER_DIRECT_TELEGRAM_DELIVERY_LEAK')
           if int(r.get('error_count') or 0)>0:
               raise SystemExit(f"SOCIAL_RUNNER_TELEGRAM_ERRORS={r.get('error_count')}")
           p=r.get('policy') or {}
