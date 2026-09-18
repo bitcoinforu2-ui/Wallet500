@@ -75,8 +75,8 @@ jobs:
               exit 0
             fi
             git add data/research-decision-engine.json
-            git commit -m 'research: refresh decision engine advisory'
-            if git push origin HEAD:main; then
+            python scripts/serialized_publish_staged.py --github-api-cas --message 'research: refresh decision engine advisory'; exit $?
+            if false; then # legacy direct push disabled
               echo 'Fresh research decision output published'
               exit 0
             fi
