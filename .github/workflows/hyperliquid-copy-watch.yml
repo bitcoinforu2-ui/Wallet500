@@ -74,8 +74,8 @@ jobs:
             cp "$tmp/ledger.json" data/hyperliquid-copy-watch-ledger.json
             git add data/hyperliquid-copy-watch-summary.json data/hyperliquid-copy-watch-ledger.json
             if git diff --cached --quiet; then exit 0; fi
-            git commit -m 'research: refresh Hyperliquid copy watch'
-            if git push origin HEAD:main; then exit 0; fi
+            python scripts/serialized_publish_staged.py --github-api-cas --message 'research: refresh Hyperliquid copy watch'; exit $?
+            if false; then # legacy direct push disabled exit 0; fi
             sleep 3
           done
           exit 1
