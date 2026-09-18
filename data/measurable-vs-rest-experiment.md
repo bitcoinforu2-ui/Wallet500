@@ -1,7 +1,7 @@
 # Wallet500 — Measurable vs Rest Experiment
 
 {
-  "generated_at": "2026-09-18T10:53:26.937802+00:00",
+  "generated_at": "2026-09-18T11:03:38.016187+00:00",
   "method": "MEASURABLE_VS_REST_BIAS_EXPERIMENT_V1",
   "production_change": false,
   "truth_rule": "Do not interpret measurability as alpha until technical/data-coverage bias is separated from market-feature differences.",
