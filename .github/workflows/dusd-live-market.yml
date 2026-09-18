@@ -86,7 +86,7 @@ jobs:
           for attempt in $(seq 1 12); do
             git fetch origin main; git reset --hard origin/main; cp "$SNAP" data/dusd-live-market.json
             git add data/dusd-live-market.json; python scripts/serialized_publish_staged.py --github-api-cas --message 'data: refresh DUSD exact-pair live market'; exit $?
-            if false; then # legacy direct push disabled exit 0; fi
+            if false; then exit 0; fi
             sleep $(( attempt < 5 ? attempt : 5 ))
           done
           echo 'Fail closed: could not publish DUSD live snapshot after bounded retries'; exit 1
