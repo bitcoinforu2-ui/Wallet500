@@ -16,7 +16,7 @@ REPO = "bitcoinforu2-ui/Wallet500"
 LIVE_WORKFLOW = "live-scan.yml"
 PUBLIC_ROOT = "https://bitcoinforu2-ui.github.io/Wallet500/"
 PUBLIC_REAL = PUBLIC_ROOT + "data/real-alerts.json"
-BUY_ONLY_POLICY = "NEAR_BUY_AND_BUY_ONLY_V1"
+BUY_ONLY_POLICY = "BUY_ONLY_V2"
 PRE_BUY_REPORT = "stage-transition-telegram-report.json"
 
 FRESHNESS = {
@@ -273,7 +273,10 @@ def build_report(
                 keys=missing_delivery,
             ))
 
-    pre_buy_missing = _pre_buy_delivery_gaps(data_dir)
+    # BUY_ONLY_V2 retired the near-buy user lane. Preserve the legacy checker for
+    # old snapshots, but never create a production incident from it once BUY-only
+    # is active.
+    pre_buy_missing = [] if buy_only else _pre_buy_delivery_gaps(data_dir)
     if pre_buy_missing:
         incidents.append(_incident(
             "PRE_BUY_TELEGRAM_GAP",
@@ -366,7 +369,7 @@ def build_report(
             "CURRENT_REAL_ALERTS_ARE_BASELINED_ON_FIRST_WATCHDOG_RUN",
             "GENERIC_REAL_ALERTS_ARE_NOT_USER_TELEGRAM_EVENTS_IN_BUY_ONLY_MODE",
             "FINAL_BUY_TELEGRAM_GAPS_REQUIRE_MATCHED_BUY_DECISION",
-            "PRE_BUY_TELEGRAM_GAPS_REQUIRE_PAPER_BUY_CANDIDATE",
+            "PRE_BUY_TELEGRAM_GAPS_DISABLED_WHEN_BUY_ONLY_V2_ACTIVE",
             "WATCHDOG_TECHNICAL_INCIDENTS_NEVER_GO_TO_USER_TELEGRAM",
             "SINGLE_LIVE_SCAN_CANCELLATION_IS_TRANSIENT_WHILE_LAST_SUCCESS_IS_FRESH",
             "PUSH_TRIGGERED_LIVE_SCAN_RUNS_ARE_CI_NOT_PRODUCTION_HEALTH",
@@ -436,7 +439,7 @@ def run(data_dir: Path = DATA) -> dict[str, Any]:
     notification = {
         "attempted": False,
         "sent": False,
-        "reason": "WATCHDOG_USER_TELEGRAM_DISABLED_BY_NEAR_BUY_AND_BUY_ONLY_POLICY",
+        "reason": "WATCHDOG_USER_TELEGRAM_DISABLED_BY_BUY_ONLY_POLICY",
         "suppressed_technical_notification_count": len(report.get("new_notifications") or []),
     }
     report["notification"] = notification
