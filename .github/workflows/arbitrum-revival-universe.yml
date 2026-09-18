@@ -44,19 +44,22 @@ jobs:
             if not x.get('blockers') and (x.get('market_age_verified') is not True or x.get('exact_pair_verified') is not True or float(x.get('liquidity_usd') or 0)<15000): raise SystemExit('ARBITRUM_FILTER_FALSE_PASS')
           print('ARBITRUM_FILTER_OK',d.get('counts'))
           PY
-      - name: Publish Arbitrum research feed
+      - name: Publish Arbitrum research feed via serialized CAS
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-truth-bot'
-          git config user.email 'wallet500-truth-bot@users.noreply.github.com'
-          tmp="$(mktemp -d)"; cp data/arbitrum-revival-universe.json data/arbitrum-revival-state.json "$tmp/"
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main; git reset --hard origin/main
-            cp "$tmp/arbitrum-revival-universe.json" data/; cp "$tmp/arbitrum-revival-state.json" data/
-            git add data/arbitrum-revival-universe.json data/arbitrum-revival-state.json
-            if git diff --cached --quiet; then echo ARBITRUM_NO_CHANGE; exit 0; fi
-            git commit -m 'data: refresh Arbitrum revival universe'
-            if git push origin HEAD:main; then echo ARBITRUM_PUBLISH_OK; exit 0; fi
-            sleep 2
-          done
-          exit 1
+          set +e
+          python scripts/serialized_publish.py \
+            --github-api-cas \
+            --fail-on-newer \
+            --message 'data: refresh Arbitrum revival universe [skip ci]' \
+            data/arbitrum-revival-universe.json \\
+            data/arbitrum-revival-state.json
+          rc=$?
+          set -e
+          if [ "$rc" -eq 75 ]; then
+            echo 'PUBLISH_SUPERSEDED_BY_NEWER_STATE'
+            exit 0
+          fi
+          exit "$rc"
