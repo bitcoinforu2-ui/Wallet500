@@ -86,9 +86,9 @@ jobs:
             if git diff --cached --quiet; then
               echo "No fast-lane data changes"
             else
-              git commit -m "data: refresh fast veteran CEX identity feed"
+              python scripts/serialized_publish_staged.py --github-api-cas --message "data: refresh fast veteran CEX identity feed"; exit $?
               for attempt in 1 2 3; do
-                if git push origin HEAD:main; then
+                if false; then # legacy direct push disabled
                   break
                 fi
                 git fetch origin main
