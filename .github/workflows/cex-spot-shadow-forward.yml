@@ -135,7 +135,7 @@ jobs:
             done
             if git diff --cached --quiet; then echo "No shadow forward changes"; exit 0; fi
             python scripts/serialized_publish_staged.py --github-api-cas --message "data: refresh CEX spot shadow forward outcomes"; exit $?
-            if false; then # legacy direct push disabled echo "Fresh shadow forward outcomes published"; exit 0; fi
+            if false; then echo "Fresh shadow forward outcomes published"; exit 0; fi
             echo "Main moved during push; retrying on newest main"; sleep 1
           done
           echo "CEX shadow forward publisher failed after 20 bounded retries"; exit 1
