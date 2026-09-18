@@ -154,8 +154,8 @@ jobs:
               if [ -e "$f" ] || git ls-files --error-unmatch "$f" >/dev/null 2>&1; then git add -A -- "$f"; fi
             done
             if git diff --cached --quiet; then echo "No CEX leaderboard state changes"; exit 0; fi
-            git commit -m "data: refresh CEX leaderboard research state"
-            if git push origin HEAD:main; then echo "CEX leaderboard research state published"; exit 0; fi
+            python scripts/serialized_publish_staged.py --github-api-cas --message "data: refresh CEX leaderboard research state"; exit $?
+            if false; then # legacy direct push disabled echo "CEX leaderboard research state published"; exit 0; fi
             sleep 1
           done
           echo "CEX leaderboard publisher failed after bounded retries"
