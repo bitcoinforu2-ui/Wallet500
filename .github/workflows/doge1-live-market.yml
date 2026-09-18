@@ -75,21 +75,21 @@ jobs:
           print(json.dumps(out,indent=2))
           PY
 
-      - name: Publish live snapshot without overwriting unrelated writers
+      - name: Publish live snapshot without overwriting unrelated writers via serialized CAS
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          SNAP="$(mktemp)"
-          cp data/doge1-live-market.json "$SNAP"
-          git config user.name wallet500-bot
-          git config user.email wallet500-bot@users.noreply.github.com
-          for attempt in $(seq 1 12); do
-            git fetch origin main
-            git reset --hard origin/main
-            cp "$SNAP" data/doge1-live-market.json
-            git add data/doge1-live-market.json
-            git commit -m "data: refresh DOGE1 exact-pair live market" || exit 0
-            if git push origin HEAD:main; then exit 0; fi
-            sleep $(( attempt < 5 ? attempt : 5 ))
-          done
-          echo 'Fail closed: could not publish DOGE1 live snapshot after bounded retries'
-          exit 1
+          set +e
+          python scripts/serialized_publish.py \
+            --github-api-cas \
+            --fail-on-newer \
+            --message 'data: refresh DOGE1 exact-pair live market [skip ci]' \
+            data/doge1-live-market.json
+          rc=$?
+          set -e
+          if [ "$rc" -eq 75 ]; then
+            echo 'PUBLISH_SUPERSEDED_BY_NEWER_STATE'
+            exit 0
+          fi
+          exit "$rc"
