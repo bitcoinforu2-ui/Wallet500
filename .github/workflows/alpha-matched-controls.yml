@@ -72,7 +72,7 @@ jobs:
             git add data/alpha-matched-controls.json data/alpha-matched-control-state.json
             if git diff --cached --quiet; then exit 0; fi
             python scripts/serialized_publish_staged.py --github-api-cas --message 'alpha: refresh matched-control diagnostics'; exit $?
-            if false; then # legacy direct push disabled exit 0; fi
+            if false; then exit 0; fi
             sleep 3
           done
           exit 1
