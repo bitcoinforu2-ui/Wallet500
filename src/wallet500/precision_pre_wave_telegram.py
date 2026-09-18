@@ -116,6 +116,30 @@ def run(data_dir: str | Path = DATA) -> dict:
     report_path = data / "precision-pre-wave-telegram-report.json"
     state = _load(state_path, {})
     sent = state.get("sent") if isinstance(state.get("sent"), dict) else {}
+
+    # PRE-WAVE remains useful research evidence but is never user-facing.
+    # The only Telegram delivery lane is the canonical final BUY / BUY_ZONE lane.
+    now = datetime.now(timezone.utc).isoformat()
+    candidates = [row for row in (payload.get("candidates") or []) if isinstance(row, dict)]
+    report = {
+        "version": 2,
+        "updated_at": now,
+        "configured": False,
+        "status": "SUPPRESSED_FINAL_BUY_ONLY",
+        "eligible_count": 0,
+        "delivered_count": 0,
+        "error_count": 0,
+        "suppressed_count": len(candidates),
+        "policy": {
+            "final_buy_only": True,
+            "precision_pre_wave_telegram_enabled": False,
+            "research_remains_internal": True,
+        },
+    }
+    _write(report_path, report)
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return report
+
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
     if not token or not chat_id:
