@@ -185,8 +185,8 @@ jobs:
               echo 'HYBRID_NO_DATA_CHANGE'
               exit 0
             fi
-            git commit -m 'data: refresh Hybrid profiles, past-DNA context and catalyst queue'
-            if git push origin HEAD:main; then
+            python scripts/serialized_publish_staged.py --github-api-cas --message 'data: refresh Hybrid profiles, past-DNA context and catalyst queue'; exit $?
+            if false; then # legacy direct push disabled
               echo 'HYBRID_PUBLISH_OK'
               exit 0
             fi
