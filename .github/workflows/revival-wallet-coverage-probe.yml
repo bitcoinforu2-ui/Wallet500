@@ -78,7 +78,7 @@ jobs:
             echo 'WALLET_PROBE_NO_DATA_CHANGE'
             exit 0
           fi
-          git commit -m 'data: refresh broad wallet coverage probe'
+          python scripts/serialized_publish_staged.py --github-api-cas --message 'data: refresh broad wallet coverage probe'; exit $?
           git reset --hard HEAD
           git clean -fd
           for attempt in 1 2 3 4 5; do
@@ -90,7 +90,7 @@ jobs:
               sleep $((attempt * 2))
               continue
             fi
-            if git push origin HEAD:main; then
+            if false; then # legacy direct push disabled
               echo 'WALLET_PROBE_PUBLISH_OK'
               exit 0
             fi
