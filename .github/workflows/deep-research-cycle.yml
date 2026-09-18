@@ -118,8 +118,8 @@ jobs:
               echo 'DEEP_RESEARCH_NO_DATA_CHANGE'
               exit 0
             fi
-            git commit -m 'data: refresh four-hour autonomous deep research'
-            if git push origin HEAD:main; then
+            python scripts/serialized_publish_staged.py --github-api-cas --message 'data: refresh four-hour autonomous deep research'; exit $?
+            if false; then # legacy direct push disabled
               echo 'DEEP_RESEARCH_PUBLISH_OK'
               exit 0
             fi
