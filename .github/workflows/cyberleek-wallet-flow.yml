@@ -57,36 +57,24 @@ jobs:
               assert c.get('coverage_gap') is True
           print('CYBERLEEK_WALLET_FLOW_TRUTH_OK', c.get('rpc_resolution_pct'), c.get('trade_attribution_pct'))
           PY
-      - name: Commit forward wallet-flow state
+      - name: Publish forward wallet-flow state without main-ref races
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name "wallet500-research-bot"
-          git config user.email "wallet500-research-bot@users.noreply.github.com"
           git restore --worktree -- src/wallet500.egg-info || true
-          git add data/cyberleek-wallet-flow.json
-          if [ -f data/cyberleek-wallet-flow-state.json ]; then git add data/cyberleek-wallet-flow-state.json; fi
-          if git diff --cached --quiet; then
-            echo 'No wallet-flow data change'
+          set +e
+          python scripts/serialized_publish.py \
+            --github-api-cas \
+            --fail-on-newer \
+            --message 'data: refresh CYBERLEEK real wallet flow [skip ci]' \
+            data/cyberleek-wallet-flow.json \
+            data/cyberleek-wallet-flow-state.json
+          rc=$?
+          set -e
+          if [ "$rc" -eq 75 ]; then
+            echo 'CYBERLEEK_WALLET_FLOW_SUPERSEDED_BY_NEWER_STATE'
             exit 0
           fi
-          git commit -m 'data: refresh CYBERLEEK real wallet flow'
-          git reset --hard HEAD
-          git clean -fd
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            if ! git rebase origin/main; then
-              git rebase --abort || true
-              echo "Wallet-flow rebase contention on attempt ${attempt}"
-              [ "$attempt" -eq 5 ] && exit 1
-              sleep $((attempt * 2))
-              continue
-            fi
-            if git push origin HEAD:main; then
-              echo 'CYBERLEEK_WALLET_FLOW_PUBLISH_OK'
-              exit 0
-            fi
-            sleep $((attempt * 2))
-          done
-          echo 'CYBERLEEK_WALLET_FLOW_PUBLISH_RACE_EXHAUSTED' >&2
-          exit 1
+          exit "$rc"
