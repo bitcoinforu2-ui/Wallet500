@@ -216,53 +216,28 @@ jobs:
 
       - name: Persist verified forward-only state, evidence and intelligence snapshot
         if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name 'wallet500-bot'
-          git config user.email 'wallet500-bot@users.noreply.github.com'
-          files=(
-            data/unified-watch-state.json
-            data/unified-watch-intelligence-report.json
-            data/unified-watch-runtime-evidence.json
-            data/derivatives-intelligence-state.json
-            data/http-resilience-state.json
-            data/close-watch-intelligence.json
-            data/close-watch-events.json
-            data/free-intelligence-collector-state.json
-            data/alpha-caller-source-state.json
-            data/alpha-caller-inbox.json
-            data/alpha-caller-candidates.json
-            data/alpha-caller-reputation.json
-            data/alpha-caller-call-history.json
-            data/spot-market-discovery.json
-            data/spot-market-discovery-state.json
-            data/unified-dynamic-candidates.json
-            data/cross-domain-intelligence-state.json
+          python scripts/serialized_publish.py \
+            --message 'chore: update unified watch intelligence state [skip ci]' \
+            data/unified-watch-state.json \
+            data/unified-watch-intelligence-report.json \
+            data/unified-watch-runtime-evidence.json \
+            data/derivatives-intelligence-state.json \
+            data/http-resilience-state.json \
+            data/close-watch-intelligence.json \
+            data/close-watch-events.json \
+            data/free-intelligence-collector-state.json \
+            data/alpha-caller-source-state.json \
+            data/alpha-caller-inbox.json \
+            data/alpha-caller-candidates.json \
+            data/alpha-caller-reputation.json \
+            data/alpha-caller-call-history.json \
+            data/spot-market-discovery.json \
+            data/spot-market-discovery-state.json \
+            data/unified-dynamic-candidates.json \
+            data/cross-domain-intelligence-state.json \
             data/narrative-dependency-state.json
-          )
-          snapshot="$(mktemp -d)"
-          for f in "${files[@]}"; do
-            if [ -f "$f" ]; then mkdir -p "$snapshot/$(dirname "$f")"; cp "$f" "$snapshot/$f"; fi
-          done
-          for attempt in 1 2 3 4; do
-            git fetch origin main
-            git reset --hard origin/main
-            for f in "${files[@]}"; do
-              if [ -f "$snapshot/$f" ]; then mkdir -p "$(dirname "$f")"; cp "$snapshot/$f" "$f"; fi
-            done
-            git add "${files[@]}" || true
-            if git diff --cached --quiet; then
-              echo 'UNIFIED_WATCH_STATE_UNCHANGED'
-              echo 'UNIFIED_WATCH_PERSIST_OK'
-              exit 0
-            fi
-            git commit -m 'chore: update unified watch intelligence state [skip ci]'
-            if git push origin HEAD:main; then
-              echo 'UNIFIED_WATCH_PERSIST_OK'
-              exit 0
-            fi
-            echo "STATE_PUSH_RETRY_${attempt}"
-            sleep $((attempt * 2))
-          done
-          echo 'STATE_PERSIST_FAILED_AFTER_RETRIES'
-          exit 1
+          echo 'UNIFIED_WATCH_PERSIST_OK'
