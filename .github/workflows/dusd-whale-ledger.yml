@@ -156,7 +156,7 @@ jobs:
             cp "$D/dusd-whale-ledger.json" data/; cp "$D/dusd-whale-current.json" data/
             git add data/dusd-whale-ledger.json data/dusd-whale-current.json
             python scripts/serialized_publish_staged.py --github-api-cas --message 'data: refresh DUSD holder whale and supply ledger'; exit $?
-            if false; then # legacy direct push disabled exit 0; fi
+            if false; then exit 0; fi
             sleep $(( attempt < 5 ? attempt : 5 ))
           done
           echo 'Fail closed: could not publish DUSD onchain ledger'; exit 1
