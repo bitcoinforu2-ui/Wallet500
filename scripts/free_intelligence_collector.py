@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 CFG = ROOT / "data/unified-watch-config.json"
 DYNAMIC = ROOT / "data/unified-dynamic-candidates.json"
+BUY_REGISTRY = ROOT / "data/buy-zone-close-watch-registry.json"
 EVENTS = ROOT / "data/close-watch-events.json"
 STATE = ROOT / "data/free-intelligence-collector-state.json"
 UA = "Wallet500-FreeIntel/2.1"
@@ -218,14 +219,23 @@ def main():
         dyn = json.loads(DYNAMIC.read_text()) if DYNAMIC.exists() else {"candidates": []}
     except Exception:
         dyn = {"candidates": []}
+    try:
+        registry = json.loads(BUY_REGISTRY.read_text()) if BUY_REGISTRY.exists() else {"entries": {}}
+    except Exception:
+        registry = {"entries": {}}
 
-    # Final BUY targets get full free-intelligence coverage immediately, even
-    # when they were not part of the static watch configuration beforehand.
-    buy_targets = [
+    # Read the durable BUY registry directly so a newly persisted BUY gets full
+    # intelligence in this same workflow even before the dynamic bridge refresh.
+    registry_entries = registry.get("entries") if isinstance(registry, dict) and isinstance(registry.get("entries"), dict) else {}
+    registry_buy_targets = [
+        t for t in registry_entries.values()
+        if isinstance(t, dict) and t.get("active") is True
+    ]
+    dynamic_buy_targets = [
         t for t in (dyn.get("candidates") or [])
         if isinstance(t, dict) and str(t.get("candidate_type") or "").upper() == "BUY_ZONE"
     ]
-    raw_targets = buy_targets + [t for t in (cfg.get("tokens") or []) if isinstance(t, dict)]
+    raw_targets = registry_buy_targets + dynamic_buy_targets + [t for t in (cfg.get("tokens") or []) if isinstance(t, dict)]
     tokens = []
     seen = set()
     for t in raw_targets:
