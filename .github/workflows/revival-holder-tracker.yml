@@ -101,8 +101,8 @@ jobs:
             cp "$tmp/guard.json" data/holder-truth-status.json
             git add data/revival-holder-latest.json data/revival-holder-state.json data/holder-truth-status.json
             if git diff --cached --quiet; then echo 'REVIVAL_HOLDER_NO_CHANGE'; exit 0; fi
-            git commit -m 'data: refresh trusted Revival holder tracker'
-            if git push origin HEAD:main; then echo 'REVIVAL_HOLDER_PUBLISH_OK'; exit 0; fi
+            python scripts/serialized_publish_staged.py --github-api-cas --message 'data: refresh trusted Revival holder tracker'; exit $?
+            if false; then # legacy direct push disabled echo 'REVIVAL_HOLDER_PUBLISH_OK'; exit 0; fi
             echo "REVIVAL_HOLDER_PUBLISH_RETRY attempt=$attempt"
             sleep 3
           done
