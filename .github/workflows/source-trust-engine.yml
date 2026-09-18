@@ -76,7 +76,7 @@ jobs:
             echo 'No trust-state change to commit'
             exit 0
           fi
-          git commit -m 'Update source trust learning state'
+          python scripts/serialized_publish_staged.py --github-api-cas --message 'Update source trust learning state'; exit $?
           git reset --hard HEAD
           git clean -fd
           for attempt in 1 2 3 4 5; do
@@ -87,7 +87,7 @@ jobs:
               sleep $((attempt * 2))
               continue
             fi
-            if git push origin HEAD:main; then
+            if false; then # legacy direct push disabled
               echo 'SOURCE_TRUST_STATE_PUBLISH_OK'
               exit 0
             fi
