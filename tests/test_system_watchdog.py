@@ -20,8 +20,8 @@ def seed(root: Path, now: datetime):
         "configured": True,
         "error_count": 0,
         "delivered": [],
-        "policy": {"user_facing_mode": "NEAR_BUY_AND_BUY_ONLY_V1"},
-        "buy_only_policy": {"mode": "NEAR_BUY_AND_BUY_ONLY_V1", "matched_keys": []},
+        "policy": {"user_facing_mode": "BUY_ONLY_V2"},
+        "buy_only_policy": {"mode": "BUY_ONLY_V2", "matched_keys": []},
     })
     write(root, "stage-transition-telegram-report.json", {
         "updated_at": ts,
@@ -69,8 +69,8 @@ def test_final_buy_without_confirmed_telegram_delivery_is_critical(tmp_path):
         "configured": True,
         "error_count": 0,
         "delivered": [],
-        "policy": {"user_facing_mode": "NEAR_BUY_AND_BUY_ONLY_V1"},
-        "buy_only_policy": {"mode": "NEAR_BUY_AND_BUY_ONLY_V1", "matched_keys": [key]},
+        "policy": {"user_facing_mode": "BUY_ONLY_V2"},
+        "buy_only_policy": {"mode": "BUY_ONLY_V2", "matched_keys": [key]},
     })
     report, _ = build_report(tmp_path, now=now, state={})
     assert "BUY_SIGNAL_TELEGRAM_GAP" in codes(report)
@@ -87,8 +87,8 @@ def test_final_buy_with_buy_signal_delivery_state_has_no_gap(tmp_path):
         "configured": True,
         "error_count": 0,
         "delivered": [{"key": key, "sent_at": now.isoformat()}],
-        "policy": {"user_facing_mode": "NEAR_BUY_AND_BUY_ONLY_V1"},
-        "buy_only_policy": {"mode": "NEAR_BUY_AND_BUY_ONLY_V1", "matched_keys": [key]},
+        "policy": {"user_facing_mode": "BUY_ONLY_V2"},
+        "buy_only_policy": {"mode": "BUY_ONLY_V2", "matched_keys": [key]},
     })
     write(tmp_path, "telegram-alert-state.json", {
         "updated_at": now.isoformat(),
@@ -102,7 +102,7 @@ def test_final_buy_with_buy_signal_delivery_state_has_no_gap(tmp_path):
     assert "BUY_SIGNAL_TELEGRAM_GAP" not in codes(report)
 
 
-def test_pre_buy_eligible_without_delivery_is_critical(tmp_path):
+def test_pre_buy_legacy_gap_is_silent_when_buy_only_v2_is_active(tmp_path):
     now = datetime(2026, 9, 5, 16, 0, tzinfo=timezone.utc)
     seed(tmp_path, now)
     key = "mint-near|pair-near"
@@ -114,9 +114,8 @@ def test_pre_buy_eligible_without_delivery_is_critical(tmp_path):
         "errors": [{"key": key, "error": "Timeout"}],
     })
     report, _ = build_report(tmp_path, now=now, state={})
-    assert "PRE_BUY_TELEGRAM_GAP" in codes(report)
-    assert report["pre_buy_delivery_gaps"] == [key]
-    assert report["overall"] == "CRITICAL"
+    assert "PRE_BUY_TELEGRAM_GAP" not in codes(report)
+    assert report["pre_buy_delivery_gaps"] == []
 
 
 def test_delivered_alert_missing_from_10usd_tracker_is_critical(tmp_path):
