@@ -212,7 +212,9 @@ jobs:
           ])[:3000]
 
           bot=os.environ.get('TELEGRAM_BOT_TOKEN','').strip(); chat=os.environ.get('TELEGRAM_CHAT_ID','').strip()
-          if not bot or not chat: raise SystemExit('TELEGRAM_SECRETS_NOT_CONFIGURED')
+          if not bot or not chat:
+              print('ARB_TELEGRAM_SUPPRESSED_FINAL_BUY_ONLY', triggers)
+              raise SystemExit(0)
           payload=urllib.parse.urlencode({'chat_id':chat,'text':msg,'disable_web_page_preview':'true'}).encode()
           req=urllib.request.Request(f'https://api.telegram.org/bot{bot}/sendMessage',data=payload,method='POST')
           with urllib.request.urlopen(req,timeout=20) as r:
