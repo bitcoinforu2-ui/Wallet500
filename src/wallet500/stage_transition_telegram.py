@@ -12,10 +12,9 @@ SOURCE = "candidate-evidence-envelope.json"
 STATE = "stage-transition-telegram-state.json"
 REPORT = "stage-transition-telegram-report.json"
 
-# Telegram has exactly two market-decision levels:
-# 1) this lane: PAPER_BUY_CANDIDATE = very close to buy;
-# 2) the production Telegram lane: final Decision Engine BUY.
-# Research, WATCH, EVIDENCE_READY and stronger research/genesis labels stay silent.
+# Stage transitions remain internal engine evidence only.
+# User-facing Telegram delivery is reserved exclusively for the canonical
+# Decision Engine BUY / BUY_ZONE lane.
 STAGE_RANK = {
     "RESEARCH": 0,
     "WATCH": 0,
@@ -24,8 +23,8 @@ STAGE_RANK = {
     "STRONG_GENESIS": 3,
     "EXCEPTIONAL_GENESIS": 4,
 }
-MIN_USER_FACING_RANK = STAGE_RANK["PAPER_BUY_CANDIDATE"]
-MIN_USER_FACING_STAGE = "PAPER_BUY_CANDIDATE"
+MIN_USER_FACING_RANK = 10_000
+MIN_USER_FACING_STAGE = "DISABLED_FINAL_BUY_ONLY"
 
 
 def _load(path: Path, default: Any) -> Any:
@@ -123,9 +122,8 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
         # First execution establishes a baseline and never replays historical research.
         if not state_exists:
             continue
-        # Only the exact near-buy state is user-facing in this lane. Higher research
-        # labels are intentionally silent so Telegram does not become a stage feed.
-        if rank <= old_rank or stage != MIN_USER_FACING_STAGE:
+        # No research/stage transition is user-facing. Keep state for learning only.
+        if True:
             continue
         event = {"key": key, "from_stage": old_stage, "to_stage": stage, "rank": rank}
         eligible.append(event)
@@ -147,7 +145,7 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
     state_payload = {"version": 3, "updated_at": reference.isoformat(), "candidates": current}
     report = {
         "version": 3,
-        "mode": "NEAR_BUY_ONLY_STAGE_TELEGRAM",
+        "mode": "FINAL_BUY_ONLY_STAGE_TELEGRAM_DISABLED",
         "updated_at": reference.isoformat(),
         "source": SOURCE,
         "configured": configured,
@@ -171,6 +169,8 @@ def run(output_dir: str | None = None, now: datetime | None = None, sender=_send
             "automatic_buy": False,
             "real_alert_pipeline_unchanged": True,
             "final_buy_pipeline_separate": True,
+            "telegram_delivery_enabled": False,
+            "final_buy_only": True,
         },
     }
     _write(out / STATE, state_payload)
