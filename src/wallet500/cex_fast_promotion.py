@@ -757,24 +757,10 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
             event_id = _event_id(key, now_iso)
             item["alert_event_id"] = event_id
             item["promoted_at"] = now_iso
-            if configured:
-                try:
-                    message_id, attempts = _send(token, chat_id, _message(row, item, now_iso, event_id))
-                    delivered.append({
-                        "key": key,
-                        "symbol": item.get("symbol"),
-                        "event_id": event_id,
-                        "telegram_message_id": message_id,
-                        "attempts": attempts,
-                        "promoted_at": now_iso,
-                    })
-                    active_info["sent_at"] = now_iso
-                    active_info["event_id"] = event_id
-                    active_info["telegram_message_id"] = message_id
-                except Exception as exc:
-                    errors.append({"key": key, "symbol": item.get("symbol"), "error": f"{type(exc).__name__}: {exc}"[:300]})
-            else:
-                errors.append({"key": key, "symbol": item.get("symbol"), "error": "TELEGRAM_NOT_CONFIGURED"})
+            # CEX promotion remains internal evidence. Direct Telegram delivery is
+            # disabled; only the canonical Decision Engine BUY lane may notify.
+            active_info["telegram_suppressed_by_policy"] = True
+            active_info["suppression_policy"] = "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE"
         active_now[key] = active_info
 
     for key, old in previous.items():
@@ -810,6 +796,7 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
             "canonical_180d_50k_pipeline_unchanged": True,
             "usdc_quote_coverage_enabled": True,
             "no_symbol_only_promotion": True,
+            "direct_telegram_delivery_disabled": True,
         },
     }
     _write(out / OUTPUT_FILE, alert_payload)
@@ -819,6 +806,8 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
         "generated_at": now_iso,
         "mode": MODE,
         "configured": configured,
+        "telegram_delivery_enabled": False,
+        "telegram_delivery_policy": "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE",
         "identity_source_generated_at": identity_payload.get("generated_at") if isinstance(identity_payload, dict) else None,
         "identity_rows_seen": len(identity_payload.get("candidates") or []) if isinstance(identity_payload, dict) else 0,
         "usdc_markets_seen": len(usdc_rows),
