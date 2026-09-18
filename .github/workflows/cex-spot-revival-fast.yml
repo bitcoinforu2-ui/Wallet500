@@ -200,7 +200,7 @@ jobs:
             done
             if git diff --cached --quiet; then echo "No Spot research changes"; exit 0; fi
             python scripts/serialized_publish_staged.py --github-api-cas --message "data: refresh independent CEX spot revival fast lane"; exit $?
-            if false; then # legacy direct push disabled echo "Fresh CEX Spot research state published"; exit 0; fi
+            if false; then echo "Fresh CEX Spot research state published"; exit 0; fi
             echo "Main moved during push; retrying on newest main"; sleep 1
           done
           echo "CEX Spot publisher failed after 20 bounded retries"; exit 1
