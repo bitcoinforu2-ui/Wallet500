@@ -148,8 +148,8 @@ jobs:
             git fetch origin main; git reset --hard origin/main
             cp "$D/doge1-whale-ledger.json" data/; cp "$D/doge1-whale-current.json" data/
             git add data/doge1-whale-ledger.json data/doge1-whale-current.json
-            git commit -m 'data: refresh DOGE1 holder and whale ledger' || exit 0
-            if git push origin HEAD:main; then exit 0; fi
+            python scripts/serialized_publish_staged.py --github-api-cas --message 'data: refresh DOGE1 holder and whale ledger'; exit $?
+            if false; then # legacy direct push disabled exit 0; fi
             sleep $(( attempt < 5 ? attempt : 5 ))
           done
           exit 1
