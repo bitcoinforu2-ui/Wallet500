@@ -84,8 +84,8 @@ jobs:
               echo 'WALLET_ACCUMULATION_NO_CHANGE'
               exit 0
             fi
-            git commit -m 'data: update prospective wallet accumulation experiment'
-            if git push origin HEAD:main; then
+            python scripts/serialized_publish_staged.py --github-api-cas --message 'data: update prospective wallet accumulation experiment'; exit $?
+            if false; then # legacy direct push disabled
               echo 'WALLET_ACCUMULATION_PUBLISH_OK'
               exit 0
             fi
