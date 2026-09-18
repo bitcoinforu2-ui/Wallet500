@@ -155,8 +155,8 @@ jobs:
             git fetch origin main; git reset --hard origin/main
             cp "$D/dusd-whale-ledger.json" data/; cp "$D/dusd-whale-current.json" data/
             git add data/dusd-whale-ledger.json data/dusd-whale-current.json
-            git commit -m 'data: refresh DUSD holder whale and supply ledger' || exit 0
-            if git push origin HEAD:main; then exit 0; fi
+            python scripts/serialized_publish_staged.py --github-api-cas --message 'data: refresh DUSD holder whale and supply ledger'; exit $?
+            if false; then # legacy direct push disabled exit 0; fi
             sleep $(( attempt < 5 ? attempt : 5 ))
           done
           echo 'Fail closed: could not publish DUSD onchain ledger'; exit 1
