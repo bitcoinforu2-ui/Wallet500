@@ -176,7 +176,8 @@ def dynamic_candidates():
         d = json.loads(DYNAMIC.read_text())
     except Exception:
         return []
-    out = []
+
+    rows = []
     seen = set()
     for c in d.get("candidates") or []:
         ctype = str(c.get("candidate_type") or "").upper()
@@ -191,12 +192,51 @@ def dynamic_candidates():
         if not key or key in seen:
             continue
         seen.add(key)
+        row = dict(c)
+        row["_identity_key"] = key
+        row["_candidate_type"] = ctype
+        rows.append(row)
+
+    # Keep discovery broad, but bound the expensive exact-pair market watcher.
+    # All Gate spot movers are retained. Public-alpha gets a balanced slice:
+    # freshest calls (early-signal value) plus highest-liquidity calls
+    # (execution quality). The collector/reputation layers still track every call.
+    gate = [x for x in rows if x["_candidate_type"] == "GATE_SPOT_DISCOVERY"]
+    alpha = [x for x in rows if x["_candidate_type"] == "PUBLIC_ALPHA"]
+    dynamic_cap = 36
+    alpha_budget = max(0, dynamic_cap - len(gate))
+
+    def _liq(x):
+        try:
+            return float(x.get("dex_liquidity_usd") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    newest = sorted(alpha, key=lambda x: str(x.get("first_seen_at") or ""), reverse=True)
+    liquid = sorted(alpha, key=_liq, reverse=True)
+    chosen = []
+    chosen_ids = set()
+    fresh_budget = min(alpha_budget, max(8, (alpha_budget * 2) // 3))
+    for bucket, limit in ((newest, fresh_budget), (liquid, alpha_budget)):
+        for x in bucket:
+            if len(chosen) >= alpha_budget or (bucket is newest and len(chosen) >= limit):
+                break
+            key = x["_identity_key"]
+            if key in chosen_ids:
+                continue
+            chosen_ids.add(key)
+            chosen.append(x)
+
+    selected = gate + chosen
+    out = []
+    for c in selected:
+        ctype = c["_candidate_type"]
         out.append(
             {
                 "symbol": str(c.get("symbol") or "DYNAMIC").upper(),
-                "network": network,
-                "contract": ca,
-                "pair": pair,
+                "network": str(c.get("network") or ""),
+                "contract": str(c.get("contract") or ""),
+                "pair": str(c.get("pair") or ""),
                 "dex_url": c.get("dex_url") or "",
                 "up_levels": [],
                 "down_levels": [],
@@ -210,10 +250,10 @@ def dynamic_candidates():
                 "first_seen_at": c.get("first_seen_at"),
                 "discovery_price": c.get("discovery_price"),
                 "positive_gainer_rank": c.get("positive_gainer_rank"),
+                "dex_liquidity_usd": c.get("dex_liquidity_usd"),
             }
         )
-    return out[:120]
-
+    return out
 
 def fusion_summary(row, notable_min_raw=0.30):
     if not row:
