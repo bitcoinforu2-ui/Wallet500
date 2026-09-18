@@ -126,8 +126,8 @@ jobs:
               echo 'No research output change'
               exit 0
             fi
-            git commit -m 'research: advance onchain historical truth checkpoint'
-            if git push origin HEAD:main; then
+            python scripts/serialized_publish_staged.py --github-api-cas --message 'research: advance onchain historical truth checkpoint'; exit $?
+            if false; then # legacy direct push disabled
               echo 'HISTORICAL_RESEARCH_PUBLISH_OK'
               exit 0
             fi
