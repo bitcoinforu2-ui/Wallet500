@@ -147,7 +147,7 @@ def test_buy_message_is_explicit_and_not_a_research_review():
     assert "MANUAL DECISION ONLY — NO AUTOMATIC TRADE" in message
 
 
-def test_stage_lane_sends_only_exact_paper_buy_candidate(monkeypatch, tmp_path):
+def test_stage_lane_is_silent_even_for_paper_buy_candidate(monkeypatch, tmp_path):
     source_path = tmp_path / stage.SOURCE
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
@@ -174,11 +174,16 @@ def test_stage_lane_sends_only_exact_paper_buy_candidate(monkeypatch, tmp_path):
     assert first["baseline_only"] is True
     assert first["delivered_count"] == 0
 
-    stronger = dict(base)
-    stronger["status"] = "STRONG_GENESIS"
-    source_path.write_text(json.dumps({"candidates": [stronger]}), encoding="utf-8")
-    second = stage.run(str(tmp_path), now=NOW + timedelta(minutes=1), sender=sender)
+    weaker = dict(base)
+    weaker["status"] = "EVIDENCE_READY"
+    source_path.write_text(json.dumps({"candidates": [weaker]}), encoding="utf-8")
+    stage.run(str(tmp_path), now=NOW + timedelta(minutes=1), sender=sender)
+
+    source_path.write_text(json.dumps({"candidates": [base]}), encoding="utf-8")
+    second = stage.run(str(tmp_path), now=NOW + timedelta(minutes=2), sender=sender)
 
     assert second["eligible_count"] == 0
     assert second["delivered_count"] == 0
+    assert second["policy"]["telegram_delivery_enabled"] is False
+    assert second["policy"]["final_buy_only"] is True
     assert sent == []
