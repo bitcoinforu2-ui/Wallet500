@@ -61,9 +61,12 @@ def targets():
             continue
         if ctype == "CONFIGURED" and not t.get("derivatives_intelligence", False):
             continue
+        if ctype == "BUY_ZONE" and not t.get("derivatives_symbol"):
+            continue
         # Gate spot candidates are identity-safe on Gate because their symbol was
         # resolved from that exchange into this exact chain+contract+pair.
-        if ctype == "GATE_SPOT_DISCOVERY" or ctype == "CONFIGURED":
+        # BUY_ZONE derivatives are allowed only with an explicit derivatives_symbol.
+        if ctype in {"GATE_SPOT_DISCOVERY", "CONFIGURED", "BUY_ZONE"}:
             seen.add(i[3])
             out.append(t)
     return out[:60]
@@ -271,6 +274,8 @@ def main():
                     snap["mapping"] = (
                         "GATE_SPOT_CONTRACT_RESOLUTION_TO_SAME_GATE_SYMBOL_PERP"
                         if ctype == "GATE_SPOT_DISCOVERY"
+                        else "EXPLICIT_BUY_ZONE_DERIVATIVES_SYMBOL_TO_GATE_PERP"
+                        if ctype == "BUY_ZONE"
                         else "CONFIGURED_SYMBOL_TO_GATE_PERP"
                     )
             except urllib.error.HTTPError as e:
@@ -278,7 +283,7 @@ def main():
             except Exception as e:
                 errors.append(f"Gate:{type(e).__name__}")
 
-        if snap is None and ctype == "CONFIGURED":
+        if snap is None and ctype in {"CONFIGURED", "BUY_ZONE"}:
             h = hyper.get(sym)
             if h:
                 snap = dict(h)
