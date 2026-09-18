@@ -84,7 +84,9 @@ jobs:
           alerts=json.loads(Path('data/cex-fast-real-alerts.json').read_text())
           report=json.loads(Path('data/cex-fast-promotion-report.json').read_text())
           truth=alerts.get('truth_contract') or {}
-          if report.get('configured') is not True: raise SystemExit('CEX_FAST_TELEGRAM_NOT_CONFIGURED')
+          if report.get('configured') is not False: raise SystemExit('CEX_FAST_DIRECT_TELEGRAM_MUST_BE_DISABLED')
+          if report.get('telegram_delivery_enabled') is not False: raise SystemExit('CEX_FAST_DIRECT_TELEGRAM_POLICY_DRIFT')
+          if int(report.get('delivered_count') or 0) != 0: raise SystemExit('CEX_FAST_DIRECT_TELEGRAM_DELIVERY_LEAK')
           if truth.get('research_only_alerts_never_delivered') is not True: raise SystemExit('CEX_FAST_RESEARCH_ALERT_LEAK_GUARD_MISSING')
           if truth.get('exact_chain_contract_pair_required') is not True: raise SystemExit('CEX_FAST_EXACT_IDENTITY_GUARD_MISSING')
           if truth.get('cex_dex_current_price_coherence_required') is not True: raise SystemExit('CEX_FAST_PRICE_COHERENCE_GUARD_MISSING')
