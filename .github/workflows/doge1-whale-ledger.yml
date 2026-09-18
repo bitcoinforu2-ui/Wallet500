@@ -139,17 +139,22 @@ jobs:
           assert c['whale_method']=='DERIVED_FROM_COMPLETE_POSITIVE_TOKEN_ACCOUNT_SCAN'
           assert c['rpc_source'] in {'SECRET_RPC','SOLANA_MAINNET_PUBLIC','SOLANA_MAINNET_BETA_PUBLIC','PUBLICNODE_FALLBACK'}
           PY
-      - name: Publish ledger safely
+      - name: Publish ledger safely via serialized CAS
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          D="$(mktemp -d)"; cp data/doge1-whale-ledger.json data/doge1-whale-current.json "$D/"
-          git config user.name wallet500-bot; git config user.email wallet500-bot@users.noreply.github.com
-          for attempt in $(seq 1 12); do
-            git fetch origin main; git reset --hard origin/main
-            cp "$D/doge1-whale-ledger.json" data/; cp "$D/doge1-whale-current.json" data/
-            git add data/doge1-whale-ledger.json data/doge1-whale-current.json
-            git commit -m 'data: refresh DOGE1 holder and whale ledger' || exit 0
-            if git push origin HEAD:main; then exit 0; fi
-            sleep $(( attempt < 5 ? attempt : 5 ))
-          done
-          exit 1
+          set +e
+          python scripts/serialized_publish.py \
+            --github-api-cas \
+            --fail-on-newer \
+            --message 'data: refresh DOGE1 holder and whale ledger [skip ci]' \
+            data/doge1-whale-ledger.json \\
+            data/doge1-whale-current.json
+          rc=$?
+          set -e
+          if [ "$rc" -eq 75 ]; then
+            echo 'PUBLISH_SUPERSEDED_BY_NEWER_STATE'
+            exit 0
+          fi
+          exit "$rc"
