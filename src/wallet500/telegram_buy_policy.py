@@ -110,7 +110,7 @@ def filter_buy_only_payload(
 
     Research, PRE_WAVE, generic REAL_ALERT and review/actionable stages remain in
     the engine data, but they are not user-facing Telegram events in this lane.
-    "PAPER_BUY_CANDIDATE" is delivered by the separate near-buy stage lane.
+    Near-buy and stage-transition alerts are intentionally not user-facing.
     """
     reference = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     source = dict(real_payload) if isinstance(real_payload, dict) else {}
@@ -147,9 +147,9 @@ def filter_buy_only_payload(
     counts["telegram_pre_wave_alerts_suppressed"] = len(source_pre_wave)
     source["counts"] = counts
     source["telegram_delivery_policy"] = {
-        "mode": "NEAR_BUY_AND_BUY_ONLY_V1",
+        "mode": "BUY_ONLY_V2",
         "this_lane": "BUY_ONLY",
-        "near_buy_lane": "PAPER_BUY_CANDIDATE_ONLY",
+        "near_buy_lane": "DISABLED",
         "generic_real_alert_delivery": False,
         "pre_wave_delivery": False,
         "research_review_delivery": False,
@@ -165,7 +165,7 @@ def filter_buy_only_payload(
     }
 
     audit = {
-        "mode": "NEAR_BUY_AND_BUY_ONLY_V1",
+        "mode": "BUY_ONLY_V2",
         "decision_snapshot_status": status,
         "decision_snapshot_age_seconds": round(age_seconds, 1) if age_seconds is not None else None,
         "source_real_alert_count": len(source_alerts),
