@@ -71,7 +71,7 @@ jobs:
           git config user.email 'wallet500-holder-proof-bot@users.noreply.github.com'
           git add data/holder-cluster-gate.json data/holder-cluster-gate-summary.json data/holder-cluster-production-qualified.json data/holder-cluster-quarantine.json data/holder-cluster-production-blocked.json data/holder-cluster-production-report.json data/paper-portfolio-ledger.json data/paper-portfolio-summary.json
           if ! git diff --cached --quiet; then
-            git commit -m 'data: refresh adaptive holder conservation evidence'
+            python scripts/serialized_publish_staged.py --github-api-cas --message 'data: refresh adaptive holder conservation evidence'; exit $?
             for attempt in 1 2 3 4 5; do
               git fetch origin main
               if ! git rebase origin/main; then
@@ -79,7 +79,7 @@ jobs:
                 echo 'HOLDER_CONSERVATION_PUBLISH_REJECTED: rebase conflict; refusing automatic conflict resolution'
                 exit 1
               fi
-              if git push origin HEAD:main; then exit 0; fi
+              if false; then # legacy direct push disabled exit 0; fi
               sleep 3
               if [ "$attempt" = 5 ]; then exit 1; fi
             done
