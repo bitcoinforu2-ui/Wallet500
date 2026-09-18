@@ -24,6 +24,7 @@ the lower-level publisher to guess directory semantics.
 """
 from __future__ import annotations
 
+import base64
 import os
 import random
 import re
@@ -44,13 +45,31 @@ _LOCK_RE = re.compile(r"\bcreated_epoch=(\d+)\b")
 _VALUE_OPTIONS = {"--base", "--message", "--attempts"}
 
 
+def _checkout_token() -> str:
+    """Read checkout's persisted credential without ever printing it."""
+    extra = atomic_publish.git(
+        "config", "--get", "http.https://github.com/.extraheader", check=False
+    ).stdout.strip()
+    prefix = "AUTHORIZATION: basic "
+    if not extra.lower().startswith(prefix.lower()):
+        return ""
+    encoded = extra[len(prefix):].strip()
+    try:
+        decoded = base64.b64decode(encoded).decode("utf-8")
+    except Exception:
+        return ""
+    if ":" not in decoded:
+        return ""
+    return decoded.split(":", 1)[1].strip()
+
+
 def _identity() -> tuple[str, str, str, str]:
-    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    token = os.environ.get("GITHUB_TOKEN", "").strip() or _checkout_token()
     repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
     run_id = os.environ.get("GITHUB_RUN_ID", "local").strip() or "local"
     run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1").strip() or "1"
     if not token or not repo or "/" not in repo:
-        raise RuntimeError("SERIALIZED_PUBLISH_REQUIRES_GITHUB_TOKEN_AND_REPOSITORY")
+        raise RuntimeError("SERIALIZED_PUBLISH_REQUIRES_GITHUB_CREDENTIAL_AND_REPOSITORY")
     return token, repo, run_id, run_attempt
 
 
