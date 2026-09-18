@@ -1,13 +1,25 @@
 {
   "version": 1,
-  "generated_at": "2026-09-18T03:34:41.828537+00:00",
+  "generated_at": "2026-09-18T03:44:53.320231+00:00",
   "mode": "CEX_FAST_PROMOTION_V1",
   "configured": true,
-  "identity_source_generated_at": "2026-09-18T03:30:12.778785+00:00",
+  "identity_source_generated_at": "2026-09-18T03:44:01.367099+00:00",
   "identity_rows_seen": 0,
   "usdc_markets_seen": 1074,
-  "usdc_groups_seen": 11,
+  "usdc_groups_seen": 12,
   "usdc_source_health": {
+    "kucoin": {
+      "ok": true,
+      "markets": 57
+    },
+    "okx": {
+      "ok": true,
+      "markets": 291
+    },
+    "mexc": {
+      "ok": true,
+      "markets": 224
+    },
     "bybit": {
       "ok": false,
       "markets": 0,
@@ -24,13 +36,19 @@
       "official_endpoint_only": true,
       "fallback_pool_size": 2
     },
-    "mexc": {
+    "bitget": {
       "ok": true,
-      "markets": 224
-    },
-    "okx": {
-      "ok": true,
-      "markets": 291
+      "markets": 31,
+      "endpoint": "https://api.bitget.com/api/v2/spot/market/tickers",
+      "endpoint_fallback_used": false,
+      "endpoint_attempts": [
+        {
+          "endpoint": "https://api.bitget.com/api/v2/spot/market/tickers",
+          "ok": true
+        }
+      ],
+      "official_endpoint_only": true,
+      "fallback_pool_size": 2
     },
     "coinex": {
       "ok": true,
@@ -45,24 +63,6 @@
       ],
       "official_endpoint_only": true,
       "fallback_pool_size": 1
-    },
-    "kucoin": {
-      "ok": true,
-      "markets": 57
-    },
-    "bitget": {
-      "ok": true,
-      "markets": 31,
-      "endpoint": "https://api.bitget.com/api/v2/spot/market/tickers",
-      "endpoint_fallback_used": false,
-      "endpoint_attempts": [
-        {
-          "endpoint": "https://api.bitget.com/api/v2/spot/market/tickers",
-          "ok": true
-        }
-      ],
-      "official_endpoint_only": true,
-      "fallback_pool_size": 2
     },
     "gate": {
       "ok": true,
@@ -100,7 +100,7 @@
       "truth_note": "Direct Bybit stays fail-closed; Bitget and CoinEx compensate market-visibility loss without being mislabeled as Bybit."
     }
   },
-  "evaluated_count": 1,
+  "evaluated_count": 2,
   "eligible_count": 0,
   "delivered_count": 0,
   "error_count": 0,
@@ -111,9 +111,9 @@
       "symbol": "OPUSDT",
       "chain": "optimism",
       "token_address": "0x4200000000000000000000000000000000000042",
-      "pair_address": "0xB533c12fB4e7b53b5524EAb9b47d93fF6C7A456F",
-      "dex": "uniswap",
-      "dex_url": "https://dexscreener.com/optimism/0xb533c12fb4e7b53b5524eab9b47d93ff6c7a456f",
+      "pair_address": "0x47029bc8f5CBe3b464004E87eF9c9419a48018cd",
+      "dex": "velodrome",
+      "dex_url": "https://dexscreener.com/optimism/0x47029bc8f5cbe3b464004e87ef9c9419a48018cd",
       "status": "BLOCKED",
       "alert_class": "CEX_FAST_BLOCKED",
       "research_only": true,
@@ -122,14 +122,14 @@
       "manual_decision_only": true,
       "automatic_buy": false,
       "signal_score": 21,
-      "signal_change_24h_pct": 18.257,
-      "current_change_24h_pct": 18.83,
+      "signal_change_24h_pct": 18.38,
+      "current_change_24h_pct": 18.4473,
       "signal_price": 0.114,
-      "signal_at": "2026-09-18T03:34:43.436767+00:00",
-      "current_price": 0.11401,
-      "cex_turnover_usd": 555930.245812,
-      "market_age_days": 1089.0,
-      "execution_liquidity_usd": 67776.06,
+      "signal_at": "2026-09-18T03:44:54.752669+00:00",
+      "current_price": 0.11395,
+      "cex_turnover_usd": 574876.356448,
+      "market_age_days": 1569.0,
+      "execution_liquidity_usd": 10978.87,
       "exchanges": [
         "binance",
         "bitget",
@@ -147,9 +147,10 @@
       "single_exchange_exception": false,
       "blockers": [
         "ACTION_SCORE_LT_50",
+        "EXECUTION_LIQUIDITY_LT_15K",
         "SIGNAL_SCORE_LT_35"
       ],
-      "since_discovery_pct": 0.0088,
+      "since_discovery_pct": -0.0439,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
       "signal_age_hours": 0.0,
       "signal_freshness": "FRESH",
@@ -160,7 +161,58 @@
         "bitget",
         "okx"
       ],
-      "fresh_reactivation_turnover_usd": 692679.7591,
+      "fresh_reactivation_turnover_usd": 712184.5344,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "action_state": "WAIT_OR_REJECT",
+      "action_basis": "BLOCKED"
+    },
+    {
+      "symbol": "RAYUSDT",
+      "chain": "solana",
+      "token_address": "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+      "pair_address": "6UmmUiYoBjSrhakAobJw8BvkmJtDVxaeBtbt7rxWo1mg",
+      "dex": "raydium",
+      "dex_url": "https://dexscreener.com/solana/6ummuiyobjsrhakaobjw8bvkmjtdvxaebtbt7rxwo1mg",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 21,
+      "signal_change_24h_pct": 16.5819,
+      "current_change_24h_pct": 16.5819,
+      "signal_price": 1.6508,
+      "signal_at": "2026-09-18T03:44:54.752680+00:00",
+      "current_price": 1.6508,
+      "cex_turnover_usd": 524929.8470723808,
+      "market_age_days": 1390.0,
+      "execution_liquidity_usd": 6064266.47,
+      "exchanges": [
+        "okx"
+      ],
+      "coherent_confirmations": 1,
+      "leaderboard_best_rank": 8,
+      "leaderboard_exchanges": [
+        "okx"
+      ],
+      "single_exchange_exception": false,
+      "blockers": [
+        "ACTION_SCORE_LT_50",
+        "CEX_CONFIRMATION_INSUFFICIENT",
+        "SIGNAL_SCORE_LT_35"
+      ],
+      "since_discovery_pct": 0.0,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 0.0,
+      "signal_freshness": "FRESH",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 1,
+      "fresh_reactivation_exchanges": [
+        "okx"
+      ],
+      "fresh_reactivation_turnover_usd": 524929.8471,
       "fresh_reactivation_required_for_stale_signal": true,
       "action_state": "WAIT_OR_REJECT",
       "action_basis": "BLOCKED"
@@ -195,16 +247,16 @@
   },
   "current_watch_bypass": {
     "priority_candidates": 16,
-    "strict_resolved": 7,
+    "strict_resolved": 5,
     "eligible": 0,
     "delivered": 0,
     "resolve_failures": [
       {
-        "symbol": "ARBUSDT",
+        "symbol": "UNIUSDT",
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
-        "symbol": "NEARUSDT",
+        "symbol": "ARBUSDT",
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
@@ -212,7 +264,23 @@
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
+        "symbol": "NEARUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "MARSCOINUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
         "symbol": "CHIPUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "ZROUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "WLDUSDT",
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
@@ -220,19 +288,11 @@
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
-        "symbol": "ONEUSDT",
+        "symbol": "TIAUSDT",
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
-        "symbol": "GEODUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "UNIUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "COTIUSDT",
+        "symbol": "KATUSDT",
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       }
     ],
@@ -242,7 +302,7 @@
   },
   "reactivation_hold_state": {
     "version": 1,
-    "updated_at": "2026-09-18T03:34:44.855708+00:00",
+    "updated_at": "2026-09-18T03:44:56.222379+00:00",
     "assets": {
       "bsc:0xa0c56a8c0692bd10b3fa8f8ba79cf5332b7107f9": {
         "triggered_at": "2026-09-16T22:55:45.771739+00:00",
