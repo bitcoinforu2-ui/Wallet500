@@ -185,7 +185,9 @@ jobs:
 
           text='\n'.join(lines)[:1900]
           bot=os.environ.get('TELEGRAM_BOT_TOKEN','').strip(); chat=os.environ.get('TELEGRAM_CHAT_ID','').strip()
-          if not bot or not chat: raise SystemExit('Telegram secrets are not configured')
+          if not bot or not chat:
+              print('DOGE1_TELEGRAM_SUPPRESSED_FINAL_BUY_ONLY')
+              raise SystemExit(0)
           data=urllib.parse.urlencode({'chat_id':chat,'text':text,'disable_web_page_preview':'true'}).encode()
           req=urllib.request.Request(f'https://api.telegram.org/bot{bot}/sendMessage',data=data,method='POST')
           with urllib.request.urlopen(req,timeout=20) as r:
