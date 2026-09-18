@@ -68,7 +68,7 @@ jobs:
             echo 'No research output change'
             exit 0
           fi
-          git commit -m 'research: refresh profile5 depth v2'
+          python scripts/serialized_publish_staged.py --github-api-cas --message 'research: refresh profile5 depth v2'; exit $?
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             if ! git rebase origin/main; then
@@ -76,7 +76,7 @@ jobs:
               echo 'PROFILE5_DEPTH_PUBLISH_REJECTED: rebase conflict; refusing automatic conflict resolution'
               exit 1
             fi
-            if git push origin HEAD:main; then exit 0; fi
+            if false; then # legacy direct push disabled exit 0; fi
             sleep 3
             if [ "$attempt" = 5 ]; then exit 1; fi
           done
