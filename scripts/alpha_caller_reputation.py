@@ -1,61 +1,188 @@
 from __future__ import annotations
-import json, math
+
+import json
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
-ROOT=Path(__file__).resolve().parents[1]
-EVENTS=ROOT/'data/close-watch-events.json'
-REP=ROOT/'data/alpha-caller-reputation.json'
-CALLS=ROOT/'data/alpha-caller-call-history.json'
-UA='Wallet500-AlphaCallerReputation/1.0'
+ROOT = Path(__file__).resolve().parents[1]
+EVENTS = ROOT / "data/close-watch-events.json"
+REP = ROOT / "data/alpha-caller-reputation.json"
+CALLS = ROOT / "data/alpha-caller-call-history.json"
+UA = "Wallet500-AlphaCallerReputation/1.1"
 
-def now(): return datetime.now(timezone.utc).isoformat()
-def get_json(url,timeout=12):
+
+def now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def get_json(url: str, timeout: int = 12):
     try:
-        with urlopen(Request(url,headers={'User-Agent':UA,'Accept':'application/json'}),timeout=timeout) as r:return json.loads(r.read().decode())
-    except (HTTPError,URLError,TimeoutError,ValueError,OSError): return None
+        with urlopen(Request(url, headers={"User-Agent": UA, "Accept": "application/json"}), timeout=timeout) as r:
+            return json.loads(r.read().decode())
+    except (HTTPError, URLError, TimeoutError, ValueError, OSError):
+        return None
 
-def n(v):
-    try:return float(v)
-    except (TypeError,ValueError):return None
 
-def main():
-    bus=json.loads(EVENTS.read_text()) if EVENTS.exists() else {'events':[]}
-    rep=json.loads(REP.read_text()) if REP.exists() else {'version':1,'callers':{},'policy':{}}
-    hist=json.loads(CALLS.read_text()) if CALLS.exists() else {'version':1,'calls':{}}
-    callers=rep.setdefault('callers',{}); calls=hist.setdefault('calls',{})
-    for e in bus.get('events') or []:
-        if e.get('kind')!='verified_alpha_caller_call':continue
-        cid=e.get('canonical_event_id'); caller=str(e.get('subject') or 'UNKNOWN'); source=str(e.get('source') or 'UNKNOWN')
+def n(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def dt(value):
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def minutes_between(start, end):
+    a, b = dt(start), dt(end)
+    if not a or not b:
+        return None
+    return max(0.0, (b - a).total_seconds() / 60.0)
+
+
+def median(values):
+    xs = sorted(x for x in values if x is not None)
+    if not xs:
+        return None
+    return xs[len(xs) // 2]
+
+
+def main() -> None:
+    bus = json.loads(EVENTS.read_text()) if EVENTS.exists() else {"events": []}
+    rep = json.loads(REP.read_text()) if REP.exists() else {"version": 1, "callers": {}, "policy": {}}
+    hist = json.loads(CALLS.read_text()) if CALLS.exists() else {"version": 1, "calls": {}}
+    callers = rep.setdefault("callers", {})
+    calls = hist.setdefault("calls", {})
+
+    for event in bus.get("events") or []:
+        if event.get("kind") != "verified_alpha_caller_call":
+            continue
+        cid = event.get("canonical_event_id")
+        caller = str(event.get("subject") or "UNKNOWN")
+        source = str(event.get("source") or "UNKNOWN")
         if cid not in calls:
-            calls[cid]={'caller':caller,'source':source,'symbol':e.get('symbol'),'network':e.get('network'),'contract':e.get('contract'),'pair':e.get('pair'),'called_at':e.get('event_time'),'entry_price':None,'entry_liquidity':e.get('liquidity_usd_at_intake'),'peak_price':None,'latest_price':None,'max_multiple':None,'status':'TRACKING','last_observed_at':now()}
-        c=calls[cid]; contract=c.get('contract')
-        d=get_json('https://api.dexscreener.com/latest/dex/tokens/'+str(contract)) if contract else None
-        pairs=(d or {}).get('pairs') or []; pair=next((p for p in pairs if str(p.get('pairAddress','')).lower()==str(c.get('pair','')).lower()),None)
-        if not pair:continue
-        px=n(pair.get('priceUsd'))
-        if px is None or px<=0:continue
-        if c.get('entry_price') is None:c['entry_price']=px
-        c['latest_price']=px;c['peak_price']=max(px,n(c.get('peak_price')) or px);c['last_observed_at']=now()
-        if n(c.get('entry_price')):c['max_multiple']=round(c['peak_price']/c['entry_price'],4)
-    # Reputation is descriptive and forward-only. No caller gets credit from unverifiable marketing claims.
-    grouped={}
-    for c in calls.values():grouped.setdefault((c['source'],c['caller']),[]).append(c)
-    for (source,caller),xs in grouped.items():
-        resolved=[x for x in xs if n(x.get('max_multiple')) is not None]
-        hits5=sum((n(x.get('max_multiple')) or 0)>=5 for x in resolved); hits10=sum((n(x.get('max_multiple')) or 0)>=10 for x in resolved)
-        mults=[n(x.get('max_multiple')) for x in resolved if n(x.get('max_multiple')) is not None]
-        median=sorted(mults)[len(mults)//2] if mults else None
-        count=len(resolved); hit5=hits5/count if count else 0
-        # Bayesian shrinkage prevents tiny samples from dominating.
-        shrunk=(hits5+1)/(count+4) if count else .25
-        confidence=min(90,35+count*2) if count>=5 else min(55,30+count*5)
-        strength=min(90,25+65*shrunk)
-        key=source+'::'+caller
-        callers[key]={'source':source,'caller':caller,'calls_seen':len(xs),'resolved_calls':count,'hits_5x':hits5,'hits_10x':hits10,'hit_rate_5x':round(hit5,4),'bayesian_hit_rate_5x':round(shrunk,4),'median_max_multiple':median,'reputation_strength':round(strength,1),'reputation_confidence':round(confidence,1),'status':'ESTABLISHED' if count>=20 else ('EMERGING' if count>=5 else 'UNPROVEN'),'updated_at':now()}
-    rep['updated_at']=now();hist['updated_at']=now()
-    REP.write_text(json.dumps(rep,indent=2,ensure_ascii=False)+'\n');CALLS.write_text(json.dumps(hist,indent=2,ensure_ascii=False)+'\n')
-    print(json.dumps({'status':'OK','callers':len(callers),'calls_tracking':len(calls),'forward_only':True}))
-if __name__=='__main__':main()
+            calls[cid] = {
+                "caller": caller,
+                "source": source,
+                "symbol": event.get("symbol"),
+                "network": event.get("network"),
+                "contract": event.get("contract"),
+                "pair": event.get("pair"),
+                "called_at": event.get("event_time"),
+                "entry_price": None,
+                "entry_liquidity": event.get("liquidity_usd_at_intake"),
+                "peak_price": None,
+                "latest_price": None,
+                "max_multiple": None,
+                "first_2x_at": None,
+                "first_5x_at": None,
+                "first_10x_at": None,
+                "status": "TRACKING",
+                "last_observed_at": now(),
+            }
+
+        call = calls[cid]
+        contract = call.get("contract")
+        data = get_json("https://api.dexscreener.com/latest/dex/tokens/" + str(contract)) if contract else None
+        pairs = (data or {}).get("pairs") or []
+        pair = next(
+            (
+                p
+                for p in pairs
+                if str(p.get("pairAddress", "")).lower() == str(call.get("pair", "")).lower()
+            ),
+            None,
+        )
+        if not pair:
+            continue
+        price = n(pair.get("priceUsd"))
+        if price is None or price <= 0:
+            continue
+        observed_at = now()
+        if call.get("entry_price") is None:
+            call["entry_price"] = price
+        call["latest_price"] = price
+        call["peak_price"] = max(price, n(call.get("peak_price")) or price)
+        call["last_observed_at"] = observed_at
+        if n(call.get("entry_price")):
+            call["max_multiple"] = round(call["peak_price"] / call["entry_price"], 4)
+            multiple = n(call.get("max_multiple")) or 0
+            if multiple >= 2 and not call.get("first_2x_at"):
+                call["first_2x_at"] = observed_at
+            if multiple >= 5 and not call.get("first_5x_at"):
+                call["first_5x_at"] = observed_at
+            if multiple >= 10 and not call.get("first_10x_at"):
+                call["first_10x_at"] = observed_at
+
+    # Reputation is prospective and descriptive. Marketing claims and historical self-reported wins do not count.
+    grouped = {}
+    for call in calls.values():
+        grouped.setdefault((call["source"], call["caller"]), []).append(call)
+
+    for (source, caller), xs in grouped.items():
+        resolved = [x for x in xs if n(x.get("max_multiple")) is not None]
+        count = len(resolved)
+        hits2 = sum((n(x.get("max_multiple")) or 0) >= 2 for x in resolved)
+        hits5 = sum((n(x.get("max_multiple")) or 0) >= 5 for x in resolved)
+        hits10 = sum((n(x.get("max_multiple")) or 0) >= 10 for x in resolved)
+        mults = [n(x.get("max_multiple")) for x in resolved if n(x.get("max_multiple")) is not None]
+
+        times2 = [minutes_between(x.get("called_at"), x.get("first_2x_at")) for x in resolved if x.get("first_2x_at")]
+        times5 = [minutes_between(x.get("called_at"), x.get("first_5x_at")) for x in resolved if x.get("first_5x_at")]
+        early2_60 = sum(t is not None and t <= 60 for t in times2)
+        early2_180 = sum(t is not None and t <= 180 for t in times2)
+
+        hit5_rate = hits5 / count if count else 0
+        early2_rate_60 = early2_60 / count if count else 0
+        shrunk_5x = (hits5 + 1) / (count + 4) if count else 0.25
+        shrunk_early = (early2_60 + 1) / (count + 4) if count else 0.25
+        confidence = min(90, 35 + count * 2) if count >= 5 else min(55, 30 + count * 5)
+        strength = min(90, 25 + 45 * shrunk_5x + 20 * shrunk_early)
+
+        key = source + "::" + caller
+        callers[key] = {
+            "source": source,
+            "caller": caller,
+            "calls_seen": len(xs),
+            "resolved_calls": count,
+            "hits_2x": hits2,
+            "hits_5x": hits5,
+            "hits_10x": hits10,
+            "hit_rate_5x": round(hit5_rate, 4),
+            "early_2x_within_60m": early2_60,
+            "early_2x_within_180m": early2_180,
+            "early_hit_rate_2x_60m": round(early2_rate_60, 4),
+            "bayesian_hit_rate_5x": round(shrunk_5x, 4),
+            "bayesian_early_2x_60m": round(shrunk_early, 4),
+            "median_max_multiple": median(mults),
+            "median_minutes_to_2x": median(times2),
+            "median_minutes_to_5x": median(times5),
+            "reputation_strength": round(strength, 1),
+            "reputation_confidence": round(confidence, 1),
+            "status": "ESTABLISHED" if count >= 20 else ("EMERGING" if count >= 5 else "UNPROVEN"),
+            "updated_at": now(),
+        }
+
+    rep["version"] = max(2, int(rep.get("version") or 1))
+    rep["policy"] = {
+        "forward_only": True,
+        "historical_marketing_claims_count": False,
+        "early_signal_metric": "Wallet500 first-seen to first observed 2x; scan cadence makes timing approximate",
+        "minimum_status_samples": {"EMERGING": 5, "ESTABLISHED": 20},
+    }
+    rep["updated_at"] = now()
+    hist["version"] = max(2, int(hist.get("version") or 1))
+    hist["updated_at"] = now()
+    REP.write_text(json.dumps(rep, indent=2, ensure_ascii=False) + "\n")
+    CALLS.write_text(json.dumps(hist, indent=2, ensure_ascii=False) + "\n")
+    print(json.dumps({"status": "OK", "callers": len(callers), "calls_tracking": len(calls), "forward_only": True}))
+
+
+if __name__ == "__main__":
+    main()
