@@ -100,7 +100,9 @@ jobs:
 
           if alerts:
             bot=os.environ.get('TELEGRAM_BOT_TOKEN','').strip(); chat=os.environ.get('TELEGRAM_CHAT_ID','').strip()
-            if not bot or not chat: raise SystemExit('Material change found but Telegram secrets are not configured')
+            if not bot or not chat:
+              print('PIT_RIZO_TELEGRAM_SUPPRESSED_FINAL_BUY_ONLY', [r['symbol'] for r in alerts])
+              bot=''; chat=''
             for r in alerts:
               text='\n'.join([
                 f"🔔 Wallet500 CLOSE WATCH | {r['symbol']}",
@@ -110,11 +112,14 @@ jobs:
                 '⚡ '+' | '.join(r['material_reasons']),
                 f"🔒 exact CA: {r['ca']}",
               ])[:1900]
-              data=urllib.parse.urlencode({'chat_id':chat,'text':text,'disable_web_page_preview':'true'}).encode()
-              req=urllib.request.Request(f'https://api.telegram.org/bot{bot}/sendMessage',data=data,method='POST')
-              with urllib.request.urlopen(req,timeout=20) as resp:
-                if not 200 <= resp.status < 300: raise SystemExit(f'Telegram HTTP {resp.status}')
-              print(f"Telegram material-change alert delivered for {r['symbol']}")
+              if bot and chat:
+                data=urllib.parse.urlencode({'chat_id':chat,'text':text,'disable_web_page_preview':'true'}).encode()
+                req=urllib.request.Request(f'https://api.telegram.org/bot{bot}/sendMessage',data=data,method='POST')
+                with urllib.request.urlopen(req,timeout=20) as resp:
+                  if not 200 <= resp.status < 300: raise SystemExit(f'Telegram HTTP {resp.status}')
+                print(f"Telegram material-change alert delivered for {r['symbol']}")
+              else:
+                print(f"Telegram suppressed by FINAL_BUY_ONLY policy for {r['symbol']}")
           else: print('No material PIT/RIZO change; Telegram quiet')
           PY
 
