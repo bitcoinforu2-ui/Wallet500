@@ -23,6 +23,7 @@ on:
       - 'scripts/intelligence_fusion.py'
       - 'scripts/test_intelligence_fusion_contract.py'
       - 'data/unified-watch-config.json'
+      - 'data/buy-zone-close-watch-registry.json'
       - 'data/alpha-caller-sources.json'
       - 'data/close-watch-intelligence-policy.json'
       - '.github/workflows/unified-watch-engine.yml'
@@ -47,7 +48,7 @@ jobs:
         id: validate
         run: |
           python -m py_compile scripts/resilient_http.py scripts/resilient_unified_watch_runner.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py
-          for f in data/unified-watch-config.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/narrative-dependency-state.json data/http-resilience-state.json; do python -m json.tool "$f" >/dev/null; done
+          for f in data/unified-watch-config.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/buy-zone-close-watch-registry.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/narrative-dependency-state.json data/http-resilience-state.json; do python -m json.tool "$f" >/dev/null; done
 
       - name: Test exact-identity intelligence fusion contract
         id: contract
@@ -57,7 +58,7 @@ jobs:
         id: spot_discovery
         run: python scripts/spot_market_discovery_collector.py
 
-      - name: Collect configured free intelligence
+      - name: Collect configured plus final-BUY free intelligence
         id: free_intel
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -71,7 +72,7 @@ jobs:
         id: alpha_intake
         run: python scripts/alpha_caller_intake.py
 
-      - name: Bridge Gate and alpha into exact-identity dynamic candidates
+      - name: Bridge final BUY, Gate and alpha into exact-identity dynamic candidates
         id: candidate_bridge
         run: python scripts/unified_candidate_bridge.py
 
@@ -151,6 +152,7 @@ jobs:
           report = load('data/unified-watch-intelligence-report.json')
           spot = load('data/spot-market-discovery.json')
           dynamic = load('data/unified-dynamic-candidates.json')
+          buy_registry = load('data/buy-zone-close-watch-registry.json')
           cross = load('data/cross-domain-intelligence-state.json')
           narrative = load('data/narrative-dependency-state.json')
           derivatives = load('data/derivatives-intelligence-state.json')
@@ -183,6 +185,7 @@ jobs:
                   'spot_discovery_generated_at': (spot or {}).get('generated_at') if isinstance(spot, dict) else None,
                   'spot_discovery_counts': (spot or {}).get('market_counts') if isinstance(spot, dict) else None,
                   'dynamic_candidate_counts': (dynamic or {}).get('counts') if isinstance(dynamic, dict) else None,
+                  'buy_close_watch_active': (buy_registry or {}).get('active_count') if isinstance(buy_registry, dict) else None,
                   'cross_domain_updated_at': (cross or {}).get('updated_at') if isinstance(cross, dict) else None,
                   'cross_domain_target_count': len((cross or {}).get('tokens') or {}) if isinstance(cross, dict) else None,
                   'narrative_dependency_updated_at': (narrative or {}).get('updated_at') if isinstance(narrative, dict) else None,
