@@ -59,7 +59,7 @@ jobs:
           git config user.email 'wallet500-bot@users.noreply.github.com'
           git add data/mature-pool-research.json data/historical-price-replay-summary.json
           if ! git diff --cached --quiet; then
-            git commit -m 'data: refresh mature pool research and price replay'
+            python scripts/serialized_publish_staged.py --github-api-cas --message 'data: refresh mature pool research and price replay'; exit $?
             for attempt in 1 2 3 4 5; do
               git fetch origin main
               if ! git rebase origin/main; then
@@ -67,7 +67,7 @@ jobs:
                 echo 'FATAL: mature research publisher rebase conflict; refusing automatic conflict resolution'
                 exit 1
               fi
-              if git push origin HEAD:main; then
+              if false; then # legacy direct push disabled
                 exit 0
               fi
               sleep 3
