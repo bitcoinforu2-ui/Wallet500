@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from wallet500 import telegram_alerts as alerts
+from wallet500.buy_close_watch_registry import upsert_buy_zone_registry
 from wallet500.decision_engine_v1 import run as run_decision_engine
 from wallet500.telegram_buy_policy import filter_buy_only_payload
 
@@ -262,6 +263,7 @@ def main() -> int:
     alerts._write(out / filtered_name, filtered_payload)
 
     filtered_rows = [x for x in filtered_payload.get("alerts") or [] if isinstance(x, dict)]
+    buy_watch_registry = upsert_buy_zone_registry(out, filtered_rows)
     configured = bool(os.getenv("TELEGRAM_BOT_TOKEN", "").strip() and os.getenv("TELEGRAM_CHAT_ID", "").strip())
     migrated_state_rows = _prepare_buy_state(out, filtered_rows) if configured else 0
 
@@ -320,6 +322,8 @@ def main() -> int:
         "suppressed_generic_real_alerts": buy_audit.get("suppressed_generic_real_alert_count"),
         "suppressed_pre_wave": buy_audit.get("suppressed_pre_wave_count"),
         "matched_final_buy_alerts": buy_audit.get("matched_buy_alert_count"),
+        "buy_close_watch_active": buy_watch_registry.get("active_count"),
+        "buy_close_watch_activated_this_run": len(buy_watch_registry.get("activated_this_run") or []),
         "decision_snapshot_status": buy_audit.get("decision_snapshot_status"),
         "telegram_report_status": report.get("status") if isinstance(report, dict) else None,
         "production_real_alert_gate_changed": False,

@@ -35,13 +35,15 @@ jobs:
       - name: Install and verify Telegram plus $10 tracking truth contracts
         run: |
           pip install -e . pytest
-          python -m py_compile scripts/run_telegram_with_intelligence_shadow.py
+          python -m py_compile scripts/run_telegram_with_intelligence_shadow.py src/wallet500/buy_close_watch_registry.py
           python -m pytest -q \
             tests/test_telegram_exact_pair.py \
             tests/test_real_alerts.py \
             tests/test_real_alert_10usd_tracker.py \
             tests/test_pre_alert_forensics.py \
-            tests/test_telegram_buy_only_policy.py
+            tests/test_telegram_buy_only_policy.py \
+            tests/test_buy_close_watch_registry.py \
+            tests/test_unified_buy_zone_close_watch.py
       - name: Verify fresh coherent production decision snapshot before user-facing delivery
         run: |
           python - <<'PY'
@@ -138,7 +140,8 @@ jobs:
             data/telegram-alert-report.json \
             data/pre-alert-forensics-state.json \
             data/pre-alert-forensics-report.json \
-            data/pre-alert-forensics-real-alerts.json
+            data/pre-alert-forensics-real-alerts.json \
+            data/buy-zone-close-watch-registry.json
       - name: Reconcile $10 paper cohort from newly delivered REAL ALERTs and mark all open positions
         run: python -m wallet500.real_alert_10usd_tracker
       - name: Persist $10 tracker state atomically
@@ -161,10 +164,15 @@ jobs:
           from pathlib import Path
           report=json.loads(Path('data/telegram-alert-report.json').read_text())
           summary=json.loads(Path('data/real-alert-10usd-summary.json').read_text())
+          registry=json.loads(Path('data/buy-zone-close-watch-registry.json').read_text())
           if report.get('configured') is not True: raise SystemExit('TELEGRAM_NOT_CONFIGURED_IN_PRODUCTION_LANE')
           if int(report.get('error_count') or 0) > 0: raise SystemExit(f"TELEGRAM_DELIVERY_ERRORS={report.get('error_count')}")
           if summary.get('mode') != 'PAPER_ONLY_NO_REAL_MONEY': raise SystemExit('REAL_ALERT_10USD_MODE_DRIFT')
           if float(summary.get('position_size_usd') or 0) != 10.0: raise SystemExit('REAL_ALERT_10USD_SIZE_DRIFT')
+          rt=registry.get('truth_contract') or {}
+          if rt.get('source_requires_final_buy_zone') is not True or rt.get('deep_intelligence_required') is not True: raise SystemExit('BUY_CLOSE_WATCH_REGISTRY_CONTRACT_DRIFT')
+          for key,item in (registry.get('entries') or {}).items():
+              if item.get('active') is True and (item.get('close_watch')!='HIGHEST' or item.get('deep_investigation') is not True): raise SystemExit(f'BUY_CLOSE_WATCH_PRIORITY_DRIFT:{key}')
           if summary.get('new_entry_trigger') != 'SUCCESSFULLY_DELIVERED_NEW_TELEGRAM_REAL_ALERT_AFTER_ACTIVATION_ONLY': raise SystemExit('REAL_ALERT_10USD_TRIGGER_DRIFT')
-          print('TELEGRAM_AND_10USD_PIPELINE_OK', {'delivered':report.get('delivered_count'),'positions':summary.get('positions_total'),'roi_pct':summary.get('roi_pct')})
+          print('TELEGRAM_AND_10USD_PIPELINE_OK', {'delivered':report.get('delivered_count'),'positions':summary.get('positions_total'),'roi_pct':summary.get('roi_pct'),'buy_close_watch_active':registry.get('active_count')})
           PY

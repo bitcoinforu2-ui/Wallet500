@@ -181,7 +181,7 @@ def dynamic_candidates():
     seen = set()
     for c in d.get("candidates") or []:
         ctype = str(c.get("candidate_type") or "").upper()
-        if ctype not in {"PUBLIC_ALPHA", "GATE_SPOT_DISCOVERY"}:
+        if ctype not in {"BUY_ZONE", "PUBLIC_ALPHA", "GATE_SPOT_DISCOVERY"}:
             continue
         ca = str(c.get("contract") or "")
         pair = str(c.get("pair") or "")
@@ -201,10 +201,11 @@ def dynamic_candidates():
     # All Gate spot movers are retained. Public-alpha gets a balanced slice:
     # freshest calls (early-signal value) plus highest-liquidity calls
     # (execution quality). The collector/reputation layers still track every call.
+    buy_zone = [x for x in rows if x["_candidate_type"] == "BUY_ZONE"]
     gate = [x for x in rows if x["_candidate_type"] == "GATE_SPOT_DISCOVERY"]
     alpha = [x for x in rows if x["_candidate_type"] == "PUBLIC_ALPHA"]
     dynamic_cap = 36
-    alpha_budget = max(0, dynamic_cap - len(gate))
+    alpha_budget = max(0, dynamic_cap - len(buy_zone) - len(gate))
 
     def _liq(x):
         try:
@@ -227,7 +228,7 @@ def dynamic_candidates():
             chosen_ids.add(key)
             chosen.append(x)
 
-    selected = gate + chosen
+    selected = buy_zone + gate + chosen
     out = []
     for c in selected:
         ctype = c["_candidate_type"]
@@ -243,9 +244,20 @@ def dynamic_candidates():
                 "liquidity_drop_pct": 25,
                 "volume_acceleration_multiple": 2.0,
                 "min_volume_h1_for_momentum": 0,
+                "dynamic_buy_candidate": ctype == "BUY_ZONE",
                 "dynamic_alpha_candidate": ctype == "PUBLIC_ALPHA",
                 "dynamic_spot_candidate": ctype == "GATE_SPOT_DISCOVERY",
                 "candidate_type": ctype,
+                "priority": c.get("priority") or ("HIGHEST" if ctype == "BUY_ZONE" else None),
+                "close_watch": c.get("close_watch") or ("HIGHEST" if ctype == "BUY_ZONE" else None),
+                "collector_priority": c.get("collector_priority", 0 if ctype == "BUY_ZONE" else None),
+                "deep_investigation": bool(c.get("deep_investigation") or ctype == "BUY_ZONE"),
+                "full_intelligence": bool(c.get("full_intelligence") or ctype == "BUY_ZONE"),
+                "derivatives_intelligence": bool(c.get("derivatives_intelligence")),
+                "derivatives_symbol": c.get("derivatives_symbol"),
+                "buy_zone_price_usd": c.get("buy_zone_price_usd"),
+                "first_buy_at": c.get("first_buy_at"),
+                "last_buy_at": c.get("last_buy_at"),
                 "source": c.get("source") or "",
                 "first_seen_at": c.get("first_seen_at"),
                 "discovery_price": c.get("discovery_price"),
@@ -494,10 +506,49 @@ def main():
     notable_min_raw = float(alert_policy.get("notable_evidence_min_raw", 0.30))
 
     static_tokens = list(cfg.get("tokens") or [])
-    tokens = list(static_tokens)
-    known = {exact_identity_key(x) for x in tokens}
-    dynamic = [x for x in dynamic_candidates() if exact_identity_key(x) not in known]
-    tokens += dynamic
+    dynamic_all = dynamic_candidates()
+    static_by_identity = {exact_identity_key(x): x for x in static_tokens if exact_identity_key(x)}
+    tokens = []
+    used = set()
+
+    # Final BUY targets always run first at HIGHEST priority. If the identity is
+    # already statically configured, preserve its tuned watch parameters while
+    # upgrading it to the durable BUY close-watch semantics.
+    for buy in [x for x in dynamic_all if x.get("dynamic_buy_candidate")]:
+        identity = exact_identity_key(buy)
+        if not identity or identity in used:
+            continue
+        base = dict(static_by_identity.get(identity) or {})
+        if base:
+            for field in (
+                "candidate_type", "dynamic_buy_candidate", "priority", "close_watch",
+                "collector_priority", "deep_investigation", "full_intelligence",
+                "buy_zone_price_usd", "first_buy_at", "last_buy_at",
+            ):
+                base[field] = buy.get(field)
+            if buy.get("first_seen_at"):
+                base["first_seen_at"] = buy.get("first_seen_at")
+            if buy.get("discovery_price") is not None:
+                base["discovery_price"] = buy.get("discovery_price")
+            target = base
+        else:
+            target = buy
+        tokens.append(target)
+        used.add(identity)
+
+    for item in static_tokens:
+        identity = exact_identity_key(item)
+        if identity and identity not in used:
+            tokens.append(item)
+            used.add(identity)
+
+    for item in dynamic_all:
+        identity = exact_identity_key(item)
+        if identity and identity not in used:
+            tokens.append(item)
+            used.add(identity)
+
+    dynamic = dynamic_all
     intel_index, intel_doc = load_intelligence()
     intel_rows = []
     sent_alerts = 0
@@ -507,7 +558,9 @@ def main():
     for t in tokens:
         sym = t["symbol"].upper()
         identity_key = exact_identity_key(t)
-        if t.get("dynamic_alpha_candidate"):
+        if t.get("dynamic_buy_candidate"):
+            key = f"BUY:{identity_key}"
+        elif t.get("dynamic_alpha_candidate"):
             key = f"ALPHA:{identity_key}"
         elif t.get("dynamic_spot_candidate"):
             key = f"SPOT:{identity_key}"
@@ -571,6 +624,7 @@ def main():
             "spread_pct": live["spread_pct"],
             "observed_at": live["observed_at"],
             "candidate_type": t.get("candidate_type") or "CONFIGURED",
+            "dynamic_buy_candidate": bool(t.get("dynamic_buy_candidate")),
             "dynamic_alpha_candidate": bool(t.get("dynamic_alpha_candidate")),
             "dynamic_spot_candidate": bool(t.get("dynamic_spot_candidate")),
             "first_seen_at": t.get("first_seen_at") or prev.get("first_seen_at"),
@@ -628,6 +682,8 @@ def main():
 
         if risk:
             label = "RISK"
+        elif t.get("dynamic_buy_candidate"):
+            label = "BUY_ZONE_CLOSE_WATCH"
         elif t.get("dynamic_alpha_candidate"):
             label = "ALPHA_CLOSE_WATCH"
         elif t.get("dynamic_spot_candidate"):
@@ -685,6 +741,7 @@ def main():
         "suppressed_repeated_alerts": suppressed_alerts,
         "suppressed_low_confirmation_alerts": suppressed_low_confirmation_alerts,
         "configured_targets": len(static_tokens),
+        "dynamic_buy_targets": sum(bool(x.get("dynamic_buy_candidate")) for x in dynamic),
         "dynamic_alpha_targets": sum(bool(x.get("dynamic_alpha_candidate")) for x in dynamic),
         "dynamic_spot_targets": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
         "targets": intel_rows,
@@ -693,6 +750,7 @@ def main():
     print(json.dumps({
         "status": "OK",
         "configured": len(static_tokens),
+        "dynamic_buy": sum(bool(x.get("dynamic_buy_candidate")) for x in dynamic),
         "dynamic_alpha": sum(bool(x.get("dynamic_alpha_candidate")) for x in dynamic),
         "dynamic_spot": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
         "intelligence_targets": len(intel_rows),

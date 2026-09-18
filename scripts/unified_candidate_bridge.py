@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SPOT = ROOT / "data/spot-market-discovery.json"
 ALPHA = ROOT / "data/alpha-caller-candidates.json"
+BUY_REGISTRY = ROOT / "data/buy-zone-close-watch-registry.json"
 OUT = ROOT / "data/unified-dynamic-candidates.json"
 EVENTS = ROOT / "data/close-watch-events.json"
 
@@ -45,9 +46,46 @@ def load(path, default):
 def main():
     spot = load(SPOT, {"candidates": []})
     alpha = load(ALPHA, {"candidates": []})
+    buy_registry = load(BUY_REGISTRY, {"entries": {}})
     event_doc = load(EVENTS, {"version": 3, "events": []})
     out = []
     seen = set()
+
+    buy_entries = buy_registry.get("entries") if isinstance(buy_registry, dict) and isinstance(buy_registry.get("entries"), dict) else {}
+    for row in buy_entries.values():
+        if not isinstance(row, dict) or row.get("active") is not True:
+            continue
+        i = ident(row)
+        if not i or i[3] in seen:
+            continue
+        seen.add(i[3])
+        out.append({
+            "candidate_type": "BUY_ZONE",
+            "symbol": str(row.get("symbol") or "BUY").upper(),
+            "network": row.get("network") or row.get("chain"),
+            "contract": row.get("contract") or row.get("token_address"),
+            "pair": row.get("pair") or row.get("pair_address"),
+            "dex_url": row.get("dex_url") or "",
+            "source": "Decision Engine BUY_ZONE",
+            "first_seen_at": row.get("first_buy_at") or row.get("last_buy_at"),
+            "discovery_price": row.get("first_buy_price_usd") or row.get("buy_zone_price_usd"),
+            "dex_liquidity_usd": row.get("dex_liquidity_usd"),
+            "identity_key": i[3],
+            "priority": "HIGHEST",
+            "close_watch": "HIGHEST",
+            "collector_priority": 0,
+            "deep_investigation": True,
+            "full_intelligence": True,
+            "wallet_holder_intelligence": True,
+            "attention_social_intelligence": True,
+            "search_news_intelligence": True,
+            "market_microstructure_intelligence": True,
+            "derivatives_intelligence": bool(row.get("derivatives_intelligence")),
+            "derivatives_symbol": row.get("derivatives_symbol"),
+            "buy_zone_price_usd": row.get("buy_zone_price_usd"),
+            "first_buy_at": row.get("first_buy_at"),
+            "last_buy_at": row.get("last_buy_at"),
+        })
 
     for row in spot.get("candidates") or []:
         if row.get("status") != "IDENTITY_RESOLVED" or row.get("identity_status") != "RESOLVED_EXACT":
@@ -97,7 +135,7 @@ def main():
         })
 
     out.sort(key=lambda x: (
-        0 if x["candidate_type"] == "GATE_SPOT_DISCOVERY" else 1,
+        0 if x["candidate_type"] == "BUY_ZONE" else 1 if x["candidate_type"] == "GATE_SPOT_DISCOVERY" else 2,
         x.get("positive_gainer_rank") or 999999,
         -(float(x.get("dex_liquidity_usd") or 0)),
     ))
@@ -106,6 +144,7 @@ def main():
         "generated_at": now(),
         "mode": "EXACT_IDENTITY_DYNAMIC_RESEARCH",
         "counts": {
+            "buy_zone": sum(x["candidate_type"] == "BUY_ZONE" for x in out),
             "gate_spot": sum(x["candidate_type"] == "GATE_SPOT_DISCOVERY" for x in out),
             "public_alpha": sum(x["candidate_type"] == "PUBLIC_ALPHA" for x in out),
             "total": len(out),

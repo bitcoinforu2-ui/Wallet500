@@ -211,6 +211,8 @@ def actionable_real_alert_gate(last_alert, live, fusion, triggers, reasons, poli
 
 def _state_key(t):
     identity_key = engine.exact_identity_key(t)
+    if t.get("dynamic_buy_candidate"):
+        return f"BUY:{identity_key}"
     if t.get("dynamic_alpha_candidate"):
         return f"ALPHA:{identity_key}"
     if t.get("dynamic_spot_candidate"):
@@ -223,20 +225,28 @@ def _refresh_deep_intelligence(last_alert, live, fusion, triggers, base_reasons,
     if not identity_key or identity_key in _DEEP_DONE:
         return False
 
-    qualification = deep_investigation_refresh.positive_investigation_reasons(
-        live, triggers, base_reasons, policy
+    t = _TARGETS_BY_IDENTITY.get(identity_key)
+    if not t:
+        print("DEEP_INVESTIGATION_TARGET_NOT_RESOLVED", identity_key)
+        return False
+
+    force_buy_watch = bool(
+        t.get("dynamic_buy_candidate")
+        or str(t.get("candidate_type") or "").upper() == "BUY_ZONE"
+    ) and bool(t.get("deep_investigation", True))
+    qualification = (
+        ["FINAL_BUY_ZONE_FULL_INTELLIGENCE"]
+        if force_buy_watch
+        else deep_investigation_refresh.positive_investigation_reasons(
+            live, triggers, base_reasons, policy
+        )
     )
     if not qualification:
         return False
 
     max_targets = max(1, int(policy.get("deep_investigation_max_targets_per_cycle", 8)))
-    if len(_DEEP_DONE) >= max_targets:
+    if len(_DEEP_DONE) >= max_targets and not force_buy_watch:
         print("DEEP_INVESTIGATION_CAP_REACHED", identity_key, qualification)
-        return False
-
-    t = _TARGETS_BY_IDENTITY.get(identity_key)
-    if not t:
-        print("DEEP_INVESTIGATION_TARGET_NOT_RESOLVED", identity_key)
         return False
 
     previous_scan = (_PREVIOUS_STATE.get("tokens") or {}).get(_state_key(t)) or {}
@@ -424,17 +434,37 @@ def _write_actionability_report(policy):
 
 def _build_target_index():
     cfg = json.loads(engine.CONFIG.read_text())
-    static = list(cfg.get("tokens") or [])
-    known = {engine.exact_identity_key(x) for x in static}
-    dynamic = [
-        x for x in engine.dynamic_candidates()
-        if engine.exact_identity_key(x) not in known
-    ]
-    return {
+    static = [dict(x) for x in (cfg.get("tokens") or []) if isinstance(x, dict)]
+    dynamic = [dict(x) for x in engine.dynamic_candidates() if isinstance(x, dict)]
+    index = {
         engine.exact_identity_key(x): x
-        for x in static + dynamic
+        for x in static
         if engine.exact_identity_key(x)
     }
+    for row in dynamic:
+        identity = engine.exact_identity_key(row)
+        if not identity:
+            continue
+        if row.get("dynamic_buy_candidate"):
+            merged = dict(index.get(identity) or {})
+            merged.update({
+                "candidate_type": "BUY_ZONE",
+                "dynamic_buy_candidate": True,
+                "priority": "HIGHEST",
+                "close_watch": "HIGHEST",
+                "deep_investigation": True,
+                "full_intelligence": True,
+                "buy_zone_price_usd": row.get("buy_zone_price_usd"),
+                "first_buy_at": row.get("first_buy_at"),
+                "last_buy_at": row.get("last_buy_at"),
+            })
+            for key in ("symbol", "network", "contract", "pair", "dex_url", "first_seen_at", "discovery_price"):
+                if not merged.get(key) and row.get(key) is not None:
+                    merged[key] = row.get(key)
+            index[identity] = merged
+        elif identity not in index:
+            index[identity] = row
+    return index
 
 
 def main():
