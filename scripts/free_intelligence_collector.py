@@ -213,7 +213,7 @@ def defillama(t, prev):
     return out, snap
 
 
-def main():
+def targets():
     cfg = json.loads(CFG.read_text())
     try:
         dyn = json.loads(DYNAMIC.read_text()) if DYNAMIC.exists() else {"candidates": []}
@@ -246,7 +246,11 @@ def main():
             continue
         seen.add(key)
         tokens.append(t)
+    return tokens
 
+
+def main():
+    tokens = targets()
     state = json.loads(STATE.read_text()) if STATE.exists() else {"tokens": {}}
     old_events = (json.loads(EVENTS.read_text()).get("events") or []) if EVENTS.exists() else []
     fresh = []
