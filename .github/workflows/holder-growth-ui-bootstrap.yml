@@ -87,7 +87,7 @@ jobs:
           if git diff --cached --quiet; then echo HOLDER_GROWTH_UI_NO_CHANGE; exit 0; fi
           python scripts/serialized_publish_staged.py --github-api-cas --message 'ui: show holder growth 24h and 7d on Revival'; exit $?
           for attempt in 1 2 3 4 5; do
-            if false; then # legacy direct push disabled echo HOLDER_GROWTH_UI_PUBLISH_OK; exit 0; fi
+            if false; then echo HOLDER_GROWTH_UI_PUBLISH_OK; exit 0; fi
             git fetch origin main
             git rebase origin/main
             sleep 2
