@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 EVENTS = ROOT / "data/close-watch-events.json"
 REP = ROOT / "data/alpha-caller-reputation.json"
 CALLS = ROOT / "data/alpha-caller-call-history.json"
-UA = "Wallet500-AlphaCallerReputation/1.1"
+UA = "Wallet500-AlphaCallerReputation/1.2"
+HORIZONS_MINUTES = (15, 30, 60, 180, 360, 1440)
 
 
 def now() -> str:
@@ -83,6 +84,7 @@ def main() -> None:
                 "first_2x_at": None,
                 "first_5x_at": None,
                 "first_10x_at": None,
+                "horizon_snapshots": {},
                 "status": "TRACKING",
                 "last_observed_at": now(),
             }
@@ -120,6 +122,26 @@ def main() -> None:
             if multiple >= 10 and not call.get("first_10x_at"):
                 call["first_10x_at"] = observed_at
 
+            # Compare every source message with the forward price path.
+            # No extra API request is used: snapshots reuse this observation.
+            elapsed = minutes_between(call.get("called_at"), observed_at)
+            snapshots = call.setdefault("horizon_snapshots", {})
+            if elapsed is not None:
+                entry = n(call.get("entry_price"))
+                current_multiple = round(price / entry, 4) if entry else None
+                observed_peak_multiple = round(call["peak_price"] / entry, 4) if entry else None
+                for horizon in HORIZONS_MINUTES:
+                    key = f"{horizon}m"
+                    if elapsed >= horizon and key not in snapshots:
+                        snapshots[key] = {
+                            "target_minutes": horizon,
+                            "captured_at": observed_at,
+                            "actual_elapsed_minutes": round(elapsed, 2),
+                            "price": price,
+                            "multiple": current_multiple,
+                            "observed_peak_multiple": observed_peak_multiple,
+                        }
+
     # Reputation is prospective and descriptive. Marketing claims and historical self-reported wins do not count.
     grouped = {}
     for call in calls.values():
@@ -137,6 +159,24 @@ def main() -> None:
         times5 = [minutes_between(x.get("called_at"), x.get("first_5x_at")) for x in resolved if x.get("first_5x_at")]
         early2_60 = sum(t is not None and t <= 60 for t in times2)
         early2_180 = sum(t is not None and t <= 180 for t in times2)
+
+        def horizon_values(minutes, field="multiple"):
+            key = f"{minutes}m"
+            return [
+                n((x.get("horizon_snapshots") or {}).get(key, {}).get(field))
+                for x in resolved
+                if (x.get("horizon_snapshots") or {}).get(key)
+            ]
+
+        mult_60 = horizon_values(60)
+        mult_180 = horizon_values(180)
+        peak_60 = horizon_values(60, "observed_peak_multiple")
+        peak_180 = horizon_values(180, "observed_peak_multiple")
+        samples_60 = len(mult_60)
+        samples_180 = len(mult_180)
+        hit_15x_60 = sum((v or 0) >= 1.5 for v in peak_60)
+        hit_2x_60 = sum((v or 0) >= 2.0 for v in peak_60)
+        hit_2x_180 = sum((v or 0) >= 2.0 for v in peak_180)
 
         hit5_rate = hits5 / count if count else 0
         early2_rate_60 = early2_60 / count if count else 0
@@ -158,6 +198,15 @@ def main() -> None:
             "early_2x_within_60m": early2_60,
             "early_2x_within_180m": early2_180,
             "early_hit_rate_2x_60m": round(early2_rate_60, 4),
+            "forward_window_samples_60m": samples_60,
+            "forward_window_samples_180m": samples_180,
+            "hit_rate_1_5x_within_60m": round(hit_15x_60 / samples_60, 4) if samples_60 else None,
+            "hit_rate_2x_within_60m": round(hit_2x_60 / samples_60, 4) if samples_60 else None,
+            "hit_rate_2x_within_180m": round(hit_2x_180 / samples_180, 4) if samples_180 else None,
+            "median_multiple_at_60m": median(mult_60),
+            "median_multiple_at_180m": median(mult_180),
+            "median_observed_peak_multiple_60m": median(peak_60),
+            "median_observed_peak_multiple_180m": median(peak_180),
             "bayesian_hit_rate_5x": round(shrunk_5x, 4),
             "bayesian_early_2x_60m": round(shrunk_early, 4),
             "median_max_multiple": median(mults),
@@ -169,15 +218,24 @@ def main() -> None:
             "updated_at": now(),
         }
 
-    rep["version"] = max(2, int(rep.get("version") or 1))
+    rep["version"] = max(3, int(rep.get("version") or 1))
     rep["policy"] = {
         "forward_only": True,
         "historical_marketing_claims_count": False,
-        "early_signal_metric": "Wallet500 first-seen to first observed 2x; scan cadence makes timing approximate",
+        "early_signal_metric": "Wallet500 first-seen to forward price jumps; scan cadence makes timing approximate",
+        "forward_horizons_minutes": list(HORIZONS_MINUTES),
+        "forward_window_metrics": [
+            "multiple_at_horizon",
+            "observed_peak_multiple_by_horizon",
+            "1.5x_within_60m",
+            "2x_within_60m",
+            "2x_within_180m",
+        ],
+        "automatic_source_weighting": False,
         "minimum_status_samples": {"EMERGING": 5, "ESTABLISHED": 20},
     }
     rep["updated_at"] = now()
-    hist["version"] = max(2, int(hist.get("version") or 1))
+    hist["version"] = max(3, int(hist.get("version") or 1))
     hist["updated_at"] = now()
     REP.write_text(json.dumps(rep, indent=2, ensure_ascii=False) + "\n")
     CALLS.write_text(json.dumps(hist, indent=2, ensure_ascii=False) + "\n")
