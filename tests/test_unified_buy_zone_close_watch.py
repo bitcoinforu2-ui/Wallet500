@@ -33,17 +33,20 @@ def _buy_entry():
 
 def test_buy_registry_bridges_to_unified_watch_at_highest_priority(tmp_path, monkeypatch):
     spot = tmp_path / "spot.json"
+    cex_identity = tmp_path / "cex_identity.json"
     alpha = tmp_path / "alpha.json"
     registry = tmp_path / "registry.json"
     output = tmp_path / "dynamic.json"
     events = tmp_path / "events.json"
 
     _write(spot, {"candidates": []})
+    _write(cex_identity, {"candidates": []})
     _write(alpha, {"candidates": []})
     _write(registry, {"entries": {"ethereum:0xabc:0xpair": _buy_entry()}})
     _write(events, {"version": 3, "events": []})
 
     monkeypatch.setattr(bridge, "SPOT", spot)
+    monkeypatch.setattr(bridge, "CEX_SPOT_IDENTITY", cex_identity)
     monkeypatch.setattr(bridge, "ALPHA", alpha)
     monkeypatch.setattr(bridge, "BUY_REGISTRY", registry)
     monkeypatch.setattr(bridge, "OUT", output)
