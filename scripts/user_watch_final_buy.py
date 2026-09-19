@@ -441,6 +441,29 @@ def main() -> int:
     watch_state = load(WATCH_STATE, {})
     watch_report = load(WATCH_REPORT, {})
     persistent = load(STATE, {"version": 1, "targets": {}})
+
+    upstream = os.environ.get("WALLET500_MARKET_WATCH_OUTCOME", "success").strip().lower()
+    if upstream != "success":
+        write(STATE, persistent)
+        write(REPORT, {
+            "version": 1,
+            "generated_at": now_iso(),
+            "mode": POLICY_MODE,
+            "status": "BLOCKED_UPSTREAM_MARKET_WATCH",
+            "upstream_outcome": upstream,
+            "configured_targets": len(eligible_targets(config)),
+            "buy_zone_count": 0,
+            "delivered_count": 0,
+            "error_count": 0,
+            "decisions": [],
+            "truth_contract": {
+                "fail_closed_on_upstream_failure": True,
+                "telegram_final_buy_only": True,
+                "automatic_trade": False,
+            },
+        })
+        print(json.dumps({"status": "BLOCKED_UPSTREAM_MARKET_WATCH", "upstream_outcome": upstream}))
+        return 0
     target_state = persistent.get("targets") if isinstance(persistent.get("targets"), dict) else {}
     target_state = dict(target_state)
 
