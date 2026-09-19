@@ -14,6 +14,7 @@ on:
       - 'scripts/resilient_http.py'
       - 'scripts/spot_market_discovery_collector.py'
       - 'scripts/unified_candidate_bridge.py'
+      - 'scripts/spot_cex_fast_handoff.py'
       - 'scripts/cross_domain_intelligence_collector.py'
       - 'scripts/free_intelligence_collector.py'
       - 'scripts/derivatives_intelligence_collector.py'
@@ -47,12 +48,20 @@ jobs:
       - name: Validate unified watcher, collectors and intelligence fusion
         id: validate
         run: |
-          python -m py_compile scripts/resilient_http.py scripts/resilient_unified_watch_runner.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py
+          python -m py_compile scripts/resilient_http.py scripts/resilient_unified_watch_runner.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/spot_cex_fast_handoff.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py
           for f in data/unified-watch-config.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/buy-zone-close-watch-registry.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/narrative-dependency-state.json data/http-resilience-state.json; do python -m json.tool "$f" >/dev/null; done
 
       - name: Test exact-identity intelligence fusion contract
         id: contract
         run: python scripts/test_intelligence_fusion_contract.py
+
+      - name: Refresh persisted unified state before any sensor handoff
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:data/unified-watch-state.json > data/unified-watch-state.json
+          python -m json.tool data/unified-watch-state.json >/dev/null
+          echo 'UNIFIED_STATE_INITIALIZED_FROM_LATEST_MAIN'
 
       - name: Discover broad non-leveraged Gate spot movers
         id: spot_discovery
@@ -76,6 +85,10 @@ jobs:
         id: candidate_bridge
         run: python scripts/unified_candidate_bridge.py
 
+      - name: Fast handoff CEX volume and rank shocks into exact-pair close watch
+        id: cex_sensor_handoff
+        run: python scripts/spot_cex_fast_handoff.py
+
       - name: Collect holder wallet attention search and news intelligence
         id: cross_domain
         run: python scripts/cross_domain_intelligence_collector.py
@@ -96,14 +109,6 @@ jobs:
         id: fusion
         run: python scripts/intelligence_fusion.py
 
-      - name: Refresh persisted unified alert state from latest main
-        run: |
-          set -euo pipefail
-          git fetch origin main
-          git show origin/main:data/unified-watch-state.json > data/unified-watch-state.json
-          python -m json.tool data/unified-watch-state.json >/dev/null
-          echo 'UNIFIED_ALERT_STATE_REFRESHED_FROM_LATEST_MAIN'
-
       - name: Run adaptive-cooldown fail-closed exact-pair market watchlist
         id: market_watch
         env:
@@ -121,6 +126,7 @@ jobs:
           PUBLIC_ALPHA_OUTCOME: ${{ steps.public_alpha.outcome }}
           ALPHA_INTAKE_OUTCOME: ${{ steps.alpha_intake.outcome }}
           CANDIDATE_BRIDGE_OUTCOME: ${{ steps.candidate_bridge.outcome }}
+          CEX_SENSOR_HANDOFF_OUTCOME: ${{ steps.cex_sensor_handoff.outcome }}
           CROSS_DOMAIN_OUTCOME: ${{ steps.cross_domain.outcome }}
           NARRATIVE_OUTCOME: ${{ steps.narrative_dependency.outcome }}
           DERIVATIVES_OUTCOME: ${{ steps.derivatives.outcome }}
@@ -157,6 +163,7 @@ jobs:
           narrative = load('data/narrative-dependency-state.json')
           derivatives = load('data/derivatives-intelligence-state.json')
           http_state = load('data/http-resilience-state.json')
+          cex_handoff = load('data/cex-sensor-handoff.json')
           outcomes = {
               'validate': os.getenv('VALIDATE_OUTCOME'),
               'contract': os.getenv('CONTRACT_OUTCOME'),
@@ -165,6 +172,7 @@ jobs:
               'public_alpha': os.getenv('PUBLIC_ALPHA_OUTCOME'),
               'alpha_intake': os.getenv('ALPHA_INTAKE_OUTCOME'),
               'candidate_bridge': os.getenv('CANDIDATE_BRIDGE_OUTCOME'),
+              'cex_sensor_handoff': os.getenv('CEX_SENSOR_HANDOFF_OUTCOME'),
               'cross_domain': os.getenv('CROSS_DOMAIN_OUTCOME'),
               'narrative_dependency': os.getenv('NARRATIVE_OUTCOME'),
               'derivatives': os.getenv('DERIVATIVES_OUTCOME'),
@@ -206,6 +214,8 @@ jobs:
                   'unified_state_updated_at': (state or {}).get('updated_at') if isinstance(state, dict) else None,
                   'unified_report_exists': report is not None,
                   'unified_report_updated_at': (report or {}).get('updated_at') if isinstance(report, dict) else None,
+                  'cex_sensor_handoff_generated_at': (cex_handoff or {}).get('generated_at') if isinstance(cex_handoff, dict) else None,
+                  'cex_sensor_handoff_escalated': (cex_handoff or {}).get('escalated_close_watch') if isinstance(cex_handoff, dict) else None,
                   'dynamic_spot_targets_watched': (report or {}).get('dynamic_spot_targets') if isinstance(report, dict) else None,
                   'dynamic_alpha_targets_watched': (report or {}).get('dynamic_alpha_targets') if isinstance(report, dict) else None,
               },
@@ -225,6 +235,7 @@ jobs:
             data/unified-watch-state.json \
             data/unified-watch-intelligence-report.json \
             data/unified-watch-runtime-evidence.json \
+            data/cex-sensor-handoff.json \
             data/derivatives-intelligence-state.json \
             data/http-resilience-state.json \
             data/close-watch-intelligence.json \

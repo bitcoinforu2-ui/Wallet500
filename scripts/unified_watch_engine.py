@@ -262,8 +262,11 @@ def dynamic_candidates():
                 "first_buy_at": c.get("first_buy_at"),
                 "last_buy_at": c.get("last_buy_at"),
                 "source": c.get("source") or "",
+                "source_url": c.get("source_url") or "",
                 "first_seen_at": c.get("first_seen_at"),
                 "discovery_price": c.get("discovery_price"),
+                "change_24h_pct": c.get("change_24h_pct"),
+                "quote_volume_24h_usd": c.get("quote_volume_24h_usd"),
                 "positive_gainer_rank": c.get("positive_gainer_rank"),
                 "dex_liquidity_usd": c.get("dex_liquidity_usd"),
             }
@@ -499,10 +502,72 @@ def alert_snapshot(live, fusion, triggers):
     }
 
 
+def spot_cex_sensor(t, prev):
+    """Bridge CEX discovery telemetry into the exact-pair close-watch lane.
+
+    The baseline is frozen on first observation so a small-cap volume expansion
+    is judged relative to its own pre-wave state instead of a fixed $100K bar.
+    """
+    if not t.get("dynamic_spot_candidate"):
+        return {
+            "triggers": [],
+            "cex_led": False,
+            "current_volume_usd": 0.0,
+            "baseline_volume_usd": 0.0,
+            "baseline_multiple": 0.0,
+            "scan_multiple": 0.0,
+            "current_rank": None,
+        }
+
+    def fnum(value):
+        try:
+            return float(value or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def irank(value):
+        try:
+            rank = int(float(value))
+            return rank if rank > 0 else 999
+        except (TypeError, ValueError):
+            return 999
+
+    current_volume = fnum(t.get("quote_volume_24h_usd") or t.get("cex_turnover_usd"))
+    previous_volume = fnum(prev.get("cex_quote_volume_24h_usd"))
+    baseline = fnum(prev.get("cex_quote_volume_baseline_usd"))
+    if baseline <= 0:
+        baseline = previous_volume if previous_volume > 0 else current_volume
+
+    current_rank = irank(t.get("positive_gainer_rank"))
+    previous_rank = irank(prev.get("positive_gainer_rank"))
+    baseline_multiple = current_volume / baseline if current_volume > 0 and baseline > 0 else 0.0
+    scan_multiple = current_volume / previous_volume if current_volume > 0 and previous_volume > 0 else 0.0
+
+    triggers = []
+    if current_volume >= 1000 and baseline_multiple >= 4.0 and current_rank <= 15:
+        triggers.append("CEX_RELATIVE_VOLUME_SHOCK")
+    if current_volume >= 1000 and scan_multiple >= 2.5:
+        triggers.append("CEX_VOLUME_ACCELERATION")
+    if current_rank <= 3 and previous_rank > 3:
+        triggers.append("CEX_TOP3_BREAKOUT")
+    if previous_rank < 999 and current_rank + 5 <= previous_rank:
+        triggers.append("CEX_RANK_ACCELERATION")
+
+    return {
+        "triggers": list(dict.fromkeys(triggers)),
+        "cex_led": bool(triggers),
+        "current_volume_usd": current_volume,
+        "baseline_volume_usd": baseline,
+        "baseline_multiple": round(baseline_multiple, 4),
+        "scan_multiple": round(scan_multiple, 4),
+        "current_rank": None if current_rank >= 999 else current_rank,
+    }
+
+
 def main():
     cfg = json.loads(CONFIG.read_text())
     state = json.loads(STATE.read_text()) if STATE.exists() else {"version": 3, "tokens": {}}
-    state["version"] = 3
+    state["version"] = 4
     st = state.setdefault("tokens", {})
     spread = float((cfg.get("data_integrity") or {}).get("max_price_source_spread_pct", 2))
     alert_policy = dict(cfg.get("alert_policy") or {})
@@ -555,6 +620,7 @@ def main():
     intel_index, intel_doc = load_intelligence()
     intel_rows = []
     sent_alerts = 0
+    internal_spot_escalations = 0
     suppressed_alerts = 0
     suppressed_low_confirmation_alerts = 0
 
@@ -590,7 +656,8 @@ def main():
         pp = float(prev.get("price") or 0)
         pl = float(prev.get("liquidity") or 0)
         pv = float(prev.get("volume_h1") or 0)
-        tr = []
+        cex_sensor = spot_cex_sensor(t, prev)
+        tr = list(cex_sensor["triggers"])
         if pp > 0:
             for lv in t.get("up_levels") or []:
                 if pp < float(lv) <= live["price"]:
@@ -632,8 +699,15 @@ def main():
             "dynamic_spot_candidate": bool(t.get("dynamic_spot_candidate")),
             "first_seen_at": t.get("first_seen_at") or prev.get("first_seen_at"),
             "discovery_price": t.get("discovery_price") if t.get("discovery_price") is not None else prev.get("discovery_price"),
+            "cex_quote_volume_24h_usd": cex_sensor["current_volume_usd"],
+            "cex_quote_volume_baseline_usd": cex_sensor["baseline_volume_usd"],
+            "cex_relative_volume_multiple": cex_sensor["baseline_multiple"],
+            "cex_scan_volume_multiple": cex_sensor["scan_multiple"],
+            "positive_gainer_rank": cex_sensor["current_rank"],
+            "cex_led_revival": cex_sensor["cex_led"],
             "intelligence_fusion": fusion,
             "last_alert": last_alert,
+            "last_internal_escalation": prev.get("last_internal_escalation") or {},
         }
         st[key] = current_state
         intel_rows.append({
@@ -643,10 +717,21 @@ def main():
             "market_verified": True,
             "discovery_price": current_state.get("discovery_price"),
             "first_seen_at": current_state.get("first_seen_at"),
+            "cex_sensor": {
+                "volume_24h_usd": current_state.get("cex_quote_volume_24h_usd"),
+                "baseline_volume_usd": current_state.get("cex_quote_volume_baseline_usd"),
+                "relative_volume_multiple": current_state.get("cex_relative_volume_multiple"),
+                "scan_volume_multiple": current_state.get("cex_scan_volume_multiple"),
+                "positive_gainer_rank": current_state.get("positive_gainer_rank"),
+                "cex_led_revival": current_state.get("cex_led_revival"),
+            },
             "intelligence": fusion,
         })
 
-        reasons = material_change_reasons(last_alert, live, fusion, tr, alert_policy)
+        comparison_snapshot = last_alert
+        if t.get("dynamic_spot_candidate"):
+            comparison_snapshot = prev.get("last_internal_escalation") or last_alert
+        reasons = material_change_reasons(comparison_snapshot, live, fusion, tr, alert_policy)
         print(key, "VERIFIED", current_state, "TRIGGERS", tr, "ALERT_REASONS", reasons)
 
         if not reasons:
@@ -689,6 +774,8 @@ def main():
             label = "BUY_ZONE_CLOSE_WATCH"
         elif t.get("dynamic_alpha_candidate"):
             label = "ALPHA_CLOSE_WATCH"
+        elif t.get("dynamic_spot_candidate") and cex_sensor["cex_led"]:
+            label = "CEX_LED_REVIVAL_CLOSE_WATCH"
         elif t.get("dynamic_spot_candidate"):
             label = "SPOT_CLOSE_WATCH"
         elif tr:
@@ -727,6 +814,23 @@ def main():
             f"Pair: {t['pair']}",
             str(t.get("dex_url") or ""),
         ])
+        if t.get("dynamic_spot_candidate"):
+            snap = alert_snapshot(live, fusion, tr)
+            snap.update({
+                "cex_quote_volume_24h_usd": cex_sensor["current_volume_usd"],
+                "cex_quote_volume_baseline_usd": cex_sensor["baseline_volume_usd"],
+                "cex_relative_volume_multiple": cex_sensor["baseline_multiple"],
+                "cex_scan_volume_multiple": cex_sensor["scan_multiple"],
+                "positive_gainer_rank": cex_sensor["current_rank"],
+                "internal_only": True,
+                "telegram_suppressed_by_policy": "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE",
+            })
+            st[key]["last_internal_escalation"] = snap
+            st[key]["close_watch_mode"] = "CEX_LED_REVIVAL" if cex_sensor["cex_led"] else "SPOT_CLOSE_WATCH"
+            internal_spot_escalations += 1
+            print(key, "INTERNAL_SPOT_ESCALATION", {"label": label, "triggers": tr, "reasons": reasons})
+            continue
+
         send("\n".join(lines))
         st[key].pop("last_suppressed_alert", None)
         st[key]["last_alert"] = alert_snapshot(live, fusion, tr)
@@ -735,12 +839,14 @@ def main():
     state["updated_at"] = now_iso()
     STATE.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n")
     report = {
-        "version": 3,
+        "version": 4,
         "updated_at": now_iso(),
-        "mode": "EXACT_PAIR_INTELLIGENCE_MATERIAL_CHANGE_ALERTS",
+        "mode": "CEX_SENSOR_HANDOFF_INTERNAL_SPOT_PLUS_FINAL_ALERTS",
         "alert_policy": alert_policy,
         "fusion_snapshot_generated_at": intel_doc.get("generated_at") if isinstance(intel_doc, dict) else None,
         "sent_alerts": sent_alerts,
+        "internal_spot_escalations": internal_spot_escalations,
+        "spot_telegram_policy": "INTERNAL_ONLY_UNTIL_CANONICAL_BUY",
         "suppressed_repeated_alerts": suppressed_alerts,
         "suppressed_low_confirmation_alerts": suppressed_low_confirmation_alerts,
         "configured_targets": len(static_tokens),
@@ -758,6 +864,7 @@ def main():
         "dynamic_spot": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
         "intelligence_targets": len(intel_rows),
         "sent_alerts": sent_alerts,
+        "internal_spot_escalations": internal_spot_escalations,
         "suppressed_repeated_alerts": suppressed_alerts,
         "suppressed_low_confirmation_alerts": suppressed_low_confirmation_alerts,
         "alert_mode": "MATERIAL_CHANGE_PLUS_ALPHA_CONFIRMATION_GATE",

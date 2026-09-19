@@ -280,14 +280,14 @@ def run_one(engine, policy, t, live, previous_scan, triggers, material_reasons):
     fresh += _attention_events(t, engine)
     providers["search_social_attention"] = "MATCH" if len(fresh) > before_attention else "NO_MATCH"
 
+    free_prev = (free_state.get("tokens") or {}).get(identity_key) or {}
+    hsnap = free_prev.get("honeypot") or {}
     try:
-        hp = free.honeypot(t)
+        hp, hsnap = free.honeypot(t, hsnap, with_snapshot=True)
         fresh += hp
-        providers["security_tokenomics"] = "CHECKED" if engine.chain_name(t.get("network")) in {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon"} else "NOT_APPLICABLE"
+        providers["security_tokenomics"] = "CHECKED_WITH_CONSECUTIVE_CONFIRMATION" if engine.chain_name(t.get("network")) in {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon"} else "NOT_APPLICABLE"
     except Exception as exc:
         providers["security_tokenomics"] = f"ERROR:{type(exc).__name__}"
-
-    free_prev = (free_state.get("tokens") or {}).get(identity_key) or {}
     try:
         ge, gs = free.github_collect(t, free_prev.get("github") or {})
         fresh += ge
@@ -312,7 +312,7 @@ def run_one(engine, policy, t, live, previous_scan, triggers, material_reasons):
     CROSS_STATE.write_text(json.dumps(cross_state, indent=2, ensure_ascii=False) + "\n")
 
     free_tokens = free_state.setdefault("tokens", {})
-    free_tokens[identity_key] = {"github": gs, "defillama": fs, "observed_at": now_iso(), "deep_investigation": True}
+    free_tokens[identity_key] = {"honeypot": hsnap, "github": gs, "defillama": fs, "observed_at": now_iso(), "deep_investigation": True}
     free_state["updated_at"] = now_iso()
     FREE_STATE.write_text(json.dumps(free_state, indent=2, ensure_ascii=False) + "\n")
 
