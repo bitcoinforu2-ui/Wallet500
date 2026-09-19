@@ -324,6 +324,70 @@ def test_inconclusive_coingecko_extrema_uses_strict_exact_pair_age_fallback(monk
     assert out["truth_contract"]["dex_fallback_never_waives_ambiguous_coin_identity"] is True
 
 
+def test_w3gg_like_absorption_shadow_enters_identity_queue_before_watch_threshold():
+    spot_payload = {
+        "watchlist": [],
+        "shadow_watchlist": [{
+            "symbol": "W3GGUSDT",
+            "spot_revival_score": 20,
+            "coherent_confirmations": 1,
+            "change_24h_max_pct": 0.48,
+            "volume_acceleration_max_pct": 178.1256,
+            "volume_window_multiple_max": 1.4,
+            "shadow_features": ["VOLUME_PRICE_ABSORPTION_SHADOW"],
+            "slow_ignition": {"status": "NONE", "confirmations": 0},
+            "markets": [{"exchange": "gate", "price": 0.0004948}],
+        }],
+    }
+
+    selected, report = mod._build_identity_queue(
+        spot_payload, {"candidates": []}, {}
+    )
+
+    assert [x["symbol"] for x in selected] == ["W3GGUSDT"]
+    assert report["regular_watch_count"] == 0
+    assert report["prewave_shadow_identity_priority_count"] == 1
+    assert report["prewave_shadow_selected_count"] == 1
+    assert report["prewave_shadow_is_identity_priority_only"] is True
+    assert report["prewave_shadow_never_satisfies_identity"] is True
+    assert report["production_effect"] is False
+
+
+def test_persistent_backlog_cannot_consume_reserved_current_capacity():
+    watchlist = [
+        {
+            "symbol": f"CUR{i}USDT",
+            "spot_revival_score": 40 + (i % 5),
+            "coherent_confirmations": 2,
+        }
+        for i in range(40)
+    ]
+    pending = {
+        "candidates": [
+            {
+                "symbol": f"OLD{i}USDT",
+                "persistent_until_exact_identity_resolution": True,
+                "first_alert_score": 35,
+                "first_alert_coherent_confirmations": 1,
+            }
+            for i in range(100)
+        ]
+    }
+
+    selected, report = mod._build_identity_queue(
+        {"watchlist": watchlist, "shadow_watchlist": []},
+        pending,
+        {},
+    )
+    selected_symbols = {x["symbol"] for x in selected}
+
+    assert len(selected) == mod.MAX_WATCH_CANDIDATES
+    assert report["selected_persistent_backlog_only_count"] <= mod.MAX_PERSISTENT_PRIORITY_SLOTS
+    assert report["persistent_backlog_cap_enforced"] is True
+    assert report["selected_current_count"] >= 30
+    assert len({f"CUR{i}USDT" for i in range(40)} & selected_symbols) >= 30
+
+
 def test_qualified_cross_lane_shadow_candidate_enters_identity_queue_before_spot_watch():
     spot_payload = {
         "watchlist": [],
