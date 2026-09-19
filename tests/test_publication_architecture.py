@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -7,13 +8,14 @@ import scripts.serialized_publish_staged as staged
 
 
 WORKFLOWS = Path(".github/workflows")
+DIRECT_MAIN_PUSH = re.compile(r"(?m)^[ \\t]*git push(?: -q)? origin HEAD:main\\b")
 
 
 def test_no_workflow_directly_pushes_head_to_main():
     offenders = []
     for path in sorted(WORKFLOWS.glob("*.yml")):
         text = path.read_text(encoding="utf-8")
-        if "git push origin HEAD:main" in text or "git push -q origin HEAD:main" in text:
+        if DIRECT_MAIN_PUSH.search(text):
             offenders.append(path.name)
     assert offenders == [], f"direct main publishers bypass serialized/atomic CAS: {offenders}"
 
