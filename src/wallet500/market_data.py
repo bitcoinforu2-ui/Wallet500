@@ -8,7 +8,7 @@ from urllib.parse import quote
 from .liquidity_reality import compute_liquidity_reality
 
 BASE = "https://api.dexscreener.com"
-EVM_CHAINS = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "polygon", "optimism", "avalanche"}
+EVM_CHAINS = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "polygon", "optimism", "avalanche", "harmony"}
 VALUATION_LIQUIDITY_MULTIPLE_HARD_MAX = 20.0
 VALUATION_INTERNAL_DIVERGENCE_HARD_MAX = 100.0
 

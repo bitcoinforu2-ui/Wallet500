@@ -186,3 +186,97 @@ def test_registry_fallback_requires_exact_coingecko_id_match():
     }
     assert c._registry_candidates({"symbol": "UAIUSDT", "coingecko_id": "unifai-network"}, registry)[0]["token_address"] == "0xABC"
     assert c._registry_candidates({"symbol": "UAIUSDT", "coingecko_id": "different-coin"}, registry) == []
+
+
+def test_native_asset_registry_requires_exact_coingecko_id_and_symbol():
+    native = {
+        "harmony": {
+            "symbol": "ONE",
+            "chain": "harmony",
+            "token_address": "0xcF664087a5bB0237a0BAd6742852ec6c8d69A27a",
+            "representation_type": "CANONICAL_WRAPPED_NATIVE",
+            "evidence_source": "HARMONY_OFFICIAL_DOCS_WRAPPED_ONE",
+        }
+    }
+    rows = c._native_asset_candidates(
+        {"symbol": "ONEUSDT", "coingecko_id": "harmony"},
+        native,
+    )
+    assert len(rows) == 1
+    assert rows[0]["chain"] == "harmony"
+    assert rows[0]["native_asset_proxy"] is True
+    assert rows[0]["token_address"].lower() == "0xcf664087a5bb0237a0bad6742852ec6c8d69a27a"
+    assert c._native_asset_candidates({"symbol": "ONEUSDT", "coingecko_id": "wrong"}, native) == []
+    assert c._native_asset_candidates({"symbol": "FAKEUSDT", "coingecko_id": "harmony"}, native) == []
+
+
+def test_dex_pair_derives_quote_side_target_price():
+    cand = {
+        "chain": "harmony",
+        "token_address": "0xcF664087a5bB0237a0BAd6742852ec6c8d69A27a",
+    }
+    pair = {
+        "chainId": "harmony",
+        "pairAddress": "0xPAIR",
+        "dexId": "sushiswap",
+        "url": "https://dexscreener.com/harmony/0xPAIR",
+        "baseToken": {"address": "0xUSDC", "symbol": "1USDC"},
+        "quoteToken": {"address": cand["token_address"], "symbol": "WONE"},
+        "priceUsd": "1.00",
+        "priceNative": "200.00",
+        "liquidity": {"usd": 50000},
+        "volume": {"h1": 1000, "h24": 10000},
+        "pairCreatedAt": 1234567890000,
+    }
+    row = c._dex_pair(cand, pair, "TEST")
+    assert row is not None
+    assert row["exact_token_side"] == "QUOTE"
+    assert row["price_usd"] == 0.005
+
+
+def test_harmony_one_native_bridge_resolves_to_exact_wrapped_pair(monkeypatch):
+    wone = "0xcF664087a5bB0237a0BAd6742852ec6c8d69A27a"
+    native = {
+        "harmony": {
+            "symbol": "ONE",
+            "chain": "harmony",
+            "token_address": wone,
+            "representation_type": "CANONICAL_WRAPPED_NATIVE",
+            "evidence_source": "HARMONY_OFFICIAL_DOCS_WRAPPED_ONE",
+        }
+    }
+
+    def fake_pairs(cand):
+        assert cand["chain"] == "harmony"
+        assert cand["token_address"].lower() == wone.lower()
+        assert cand["native_asset_proxy"] is True
+        return [{
+            **cand,
+            "pair_address": "0xONEPAIR",
+            "dex": "sushiswap",
+            "dex_url": "https://dexscreener.com/harmony/0xONEPAIR",
+            "price_usd": 0.00264,
+            "liquidity_usd": 42000,
+            "volume_h1": 5000,
+            "volume_h24": 25000,
+            "pair_created_at": 123,
+            "pair_provider": "DEXSCREENER_TOKEN_PAIRS",
+            "exact_token_side": "QUOTE",
+        }]
+
+    monkeypatch.setattr(c, "_verified_pairs", fake_pairs)
+    row = c.resolve_one(
+        {"symbol": "ONEUSDT", "coingecko_id": "harmony"},
+        catalog={},
+        registry={},
+        native_registry=native,
+        allow_single_lookup=False,
+    )
+    assert row["identity_status"] == "DEX_VERIFIED"
+    assert row["identity_verified"] is True
+    assert row["chain"] == "harmony"
+    assert row["native_asset_proxy"] is True
+    assert row["native_asset_representation"] == "CANONICAL_WRAPPED_NATIVE"
+    assert row["pair_address"] == "0xONEPAIR"
+    assert row["dex_price_usd"] == 0.00264
+    assert row["actionable"] is False

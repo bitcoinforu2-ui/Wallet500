@@ -245,6 +245,25 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         current_rows.append(row)
         current_seen.add(symbol)
     pending_rows = [x for x in (pending.get("candidates") or []) if isinstance(x, dict)]
+    pending_symbols_seed = {
+        _base_symbol(x.get("symbol"))
+        for x in pending_rows
+        if _base_symbol(x.get("symbol"))
+    }
+    previous_persistent_rows = []
+    for row in previous_identity.get("candidates") or []:
+        if not isinstance(row, dict):
+            continue
+        symbol = _base_symbol(row.get("symbol"))
+        if not symbol or symbol in pending_symbols_seed:
+            continue
+        if row.get("persistent_until_exact_identity_resolution") is not True:
+            continue
+        if str(row.get("identity_status") or "") == "DEX_VERIFIED":
+            continue
+        previous_persistent_rows.append(dict(row))
+        pending_symbols_seed.add(symbol)
+    pending_rows.extend(previous_persistent_rows)
 
     merged: dict[str, dict] = {}
     current_symbols: set[str] = set()
@@ -348,6 +367,7 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         "prewave_shadow_selected_count": prewave_selected,
         "prewave_shadow_priority_slot_cap": PREWAVE_IDENTITY_PRIORITY_SLOTS,
         "persistent_pending_count": len(pending_rows),
+        "previous_unresolved_persistent_carried_count": len(previous_persistent_rows),
         "persistent_backlog_only_count": len(pending_only_symbols),
         "persistent_carried_when_absent_from_current_watch": carried,
         "merged_unique_count": len(ordered),
@@ -420,18 +440,32 @@ def _persist_verified_registry(data_dir: Path, rows: list[dict], now: str) -> di
                 })
             continue
 
+        native_proxy = row.get("native_asset_proxy") is True
+        evidence_source = (
+            "AUTO_STRICT_CEX_SPOT_NATIVE_WRAPPED_PROXY_PLUS_EXACT_DEX_PAIR"
+            if native_proxy
+            else "AUTO_STRICT_CEX_SPOT_CGID_AGE_PLUS_EXACT_DEX_PAIR"
+        )
         symbols[symbol] = {
             "coingecko_id": coin_id,
             "chain": chain,
             "token_address": token,
             "market_age_evidence_at": age_at,
-            "evidence_source": "AUTO_STRICT_CEX_SPOT_CGID_AGE_PLUS_EXACT_DEX_PAIR",
+            "evidence_source": evidence_source,
             "evidence_note": (
                 "Automatically learned only after strict CEX symbol identity, >=90d age evidence, "
-                "exact on-chain chain+contract resolution, exact-address DEX pair and current CEX/DEX "
-                "execution-price coherence. This is an identity seed only; all liquidity, holder, "
-                "survival and REAL ALERT gates still apply."
+                + (
+                    "a curated canonical wrapped-native execution proxy, exact-address DEX pair and "
+                    if native_proxy
+                    else "exact on-chain chain+contract resolution, exact-address DEX pair and "
+                )
+                + "current CEX/DEX execution-price coherence. This is an identity seed only; all "
+                "liquidity, holder, survival and REAL ALERT gates still apply."
             ),
+            "native_asset_proxy": native_proxy,
+            "native_asset_symbol": row.get("native_asset_symbol") if native_proxy else None,
+            "native_asset_representation": row.get("native_asset_representation") if native_proxy else None,
+            "native_asset_evidence_source": row.get("native_asset_evidence_source") if native_proxy else None,
             "auto_verified_pair_address": pair,
             "auto_verified_at": now,
         }
@@ -476,7 +510,10 @@ def _quarantine_incoherent_auto_registry(data_dir: Path, rows: list[dict], now: 
         existing = symbols.get(symbol)
         if not isinstance(existing, dict):
             continue
-        if str(existing.get("evidence_source") or "") != "AUTO_STRICT_CEX_SPOT_CGID_AGE_PLUS_EXACT_DEX_PAIR":
+        if str(existing.get("evidence_source") or "") not in {
+            "AUTO_STRICT_CEX_SPOT_CGID_AGE_PLUS_EXACT_DEX_PAIR",
+            "AUTO_STRICT_CEX_SPOT_NATIVE_WRAPPED_PROXY_PLUS_EXACT_DEX_PAIR",
+        }:
             continue
         same = (
             str(existing.get("coingecko_id") or "") == str(row.get("coingecko_id") or "")
@@ -551,6 +588,9 @@ def run(data_dir: Path = DATA) -> dict:
             "symbol_only_never_actionable": True,
             "unique_or_strictly_coherent_coin_identity_required": True,
             "exact_onchain_contract_required": True,
+            "native_asset_requires_curated_canonical_wrapped_contract": True,
+            "native_asset_proxy_never_bypasses_price_coherence": True,
+            "native_asset_proxy_never_bypasses_buy_safety_gates": True,
             "exact_dex_pair_required_before_registry_learning": True,
             "dynamic_exact_pair_requires_current_cex_dex_price_coherence": True,
             "incoherent_auto_registry_seed_quarantined_with_audit_record": True,
@@ -571,6 +611,8 @@ def run(data_dir: Path = DATA) -> dict:
             "fresh_watch_capacity_protected": True,
             "prewave_shadow_capacity_protected": True,
             "previous_attempt_only_controls_future_queue_order": True,
+            "previous_unresolved_persistent_identity_is_carried_forward": True,
+            "previous_unresolved_persistent_identity_never_becomes_actionable_by_persistence": True,
             "no_hindsight": True,
         },
         "source_watch_count": len(watch),
@@ -650,6 +692,7 @@ def run(data_dir: Path = DATA) -> dict:
         counts = {
             "age_identity_verified": len(rows),
             "dex_verified": sum(1 for x in rows if x.get("identity_status") == "DEX_VERIFIED"),
+            "native_proxy_verified": sum(1 for x in rows if x.get("identity_status") == "DEX_VERIFIED" and x.get("native_asset_proxy") is True),
             "pair_pending": sum(1 for x in rows if x.get("identity_status") == "IDENTITY_RESOLVED_PAIR_PENDING"),
             "identity_pending": sum(1 for x in rows if x.get("identity_status") == "IDENTITY_PENDING"),
             "price_incoherent": sum(1 for x in rows if x.get("identity_blocker") == "DEX_PRICE_INCOHERENT_WITH_CEX_SPOT"),
