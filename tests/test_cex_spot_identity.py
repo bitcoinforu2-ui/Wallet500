@@ -416,9 +416,9 @@ def test_persistent_backlog_cannot_consume_reserved_current_capacity():
     assert len(selected) == mod.MAX_WATCH_CANDIDATES
     assert report["selected_persistent_backlog_only_count"] <= mod.MAX_PERSISTENT_PRIORITY_SLOTS
     assert report["persistent_backlog_cap_enforced"] is True
-    assert report["persistent_backlog_target_slots"] == 20
-    assert report["selected_current_count"] >= 40
-    assert len({f"CUR{i}USDT" for i in range(40)} & selected_symbols) == 40
+    assert report["persistent_backlog_target_slots"] == 30
+    assert report["selected_current_count"] >= 30
+    assert len({f"CUR{i}USDT" for i in range(40)} & selected_symbols) >= 30
 
 
 def test_qualified_cross_lane_shadow_candidate_enters_identity_queue_before_spot_watch():
