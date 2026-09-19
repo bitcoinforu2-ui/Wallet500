@@ -1,4 +1,14 @@
-from wallet500.genesis_radar import PAPER_ENTRY_USD, age_band, extension_band, genesis_score, safety_gate
+from wallet500.genesis_radar import (
+    ALERT_STAGE_HOT_WATCH,
+    ALERT_STAGE_REAL_ALERT,
+    ALERT_STAGE_WATCH,
+    PAPER_ENTRY_USD,
+    age_band,
+    extension_band,
+    genesis_score,
+    safety_gate,
+    source_catalyst,
+)
 
 
 def base_candidate():
@@ -90,3 +100,44 @@ def test_healthy_accelerating_candidate_reaches_actionable_band():
     assert result["acceleration"]["passed"] is True
     assert result["genesis_score"] >= 75
     assert result["status"] in {"PAPER_BUY_CANDIDATE", "STRONG_GENESIS", "EXCEPTIONAL_GENESIS"}
+    assert result["alert_stage"] == ALERT_STAGE_REAL_ALERT
+
+
+def test_moonshot_finalized_is_high_weight_source_catalyst():
+    c = base_candidate()
+    c["sources"] = ["moonshot:finalized"]
+    c["source_confirmations"] = 1
+    catalyst = source_catalyst(c)
+    assert catalyst["moonshot_confirmed"] is True
+    assert catalyst["score"] == 10.0
+    assert "MOONSHOT_FINALIZED" in catalyst["reasons"]
+
+
+def test_moonshot_hot_watch_does_not_bypass_unknown_safety():
+    c = base_candidate()
+    c["lp_integrity_safe"] = None
+    c["sources"] = ["moonshot:new"]
+    c["source_confirmations"] = 1
+    result = genesis_score(c)
+    assert result["status"] == "RESEARCH_ONLY"
+    assert result["alert_stage"] == ALERT_STAGE_HOT_WATCH
+    assert result["source_catalyst"]["score"] >= 8.0
+
+
+def test_moonshot_never_bypasses_hard_liquidity_block():
+    c = base_candidate()
+    c["liquidity_usd"] = 20_000
+    c["sources"] = ["moonshot:finalized"]
+    result = genesis_score(c)
+    assert result["status"] == "BLOCKED"
+    assert result["alert_stage"] == ALERT_STAGE_WATCH
+    assert "BLOCKED_LOW_LIQUIDITY" in result["safety"]["hard_blocks"]
+
+
+def test_decision_signal_summary_has_seven_dimensions():
+    c = base_candidate()
+    c["sources"] = ["moonshot:new", "birdeye:new_listing"]
+    c["source_confirmations"] = 2
+    result = genesis_score(c)
+    assert result["signal_summary"]["total"] == 7
+    assert "SOURCE_CATALYST" in result["signal_summary"]["signals"]

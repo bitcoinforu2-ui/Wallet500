@@ -9,10 +9,11 @@ from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
-from .genesis_radar import PAPER_ENTRY_USD, THRESHOLDS, genesis_score
+from .genesis_radar import PAPER_ENTRY_USD, THRESHOLDS, genesis_score, source_catalyst
 from .holder_truth_provider import fetch_rpc_holder_truth
 from .market_data import snapshot
 from .market_discovery import discover_tokens, discovery_diagnostics
+from .rugcheck_safety import fetch_rugcheck_safety
 from .solana_mintability_gate import resolve as resolve_mintability
 
 CHAINS = ("solana", "ethereum", "bsc")
@@ -86,18 +87,34 @@ def _key(chain: str, token: str, pair: str) -> str:
 
 def _priority(row: dict) -> tuple:
     sources = row.get("sources") or [row.get("source")]
-    source_text = " ".join(str(x or "") for x in sources)
-    if "new_pools:fresh" in source_text:
+    source_text = " ".join(str(x or "").lower() for x in sources)
+    confirmations = max(int(row.get("source_confirmations") or 1), len(set(str(x or "") for x in sources)))
+    catalyst = source_catalyst(row)
+    if "moonshot:finalized" in source_text or "moonshot:new" in source_text:
         lane = 0
-    elif "birdeye:new_listing" in source_text or "moonshot:new" in source_text:
+    elif "moonshot:rising" in source_text:
         lane = 1
-    elif "moonshot:rising" in source_text or "token-profiles/latest" in source_text:
+    elif confirmations >= 2:
         lane = 2
-    elif "new_pools:deep" in source_text:
+    elif "birdeye:new_listing" in source_text or "new_pools:fresh" in source_text:
         lane = 3
-    else:
+    elif "moonshot:trending" in source_text or "moonshot:top" in source_text or "token-profiles/latest" in source_text:
         lane = 4
-    return (lane, -_n(row.get("reserve_usd")), -int(row.get("source_confirmations") or 1))
+    elif "new_pools:deep" in source_text:
+        lane = 5
+    else:
+        lane = 6
+    return (lane, -_n(catalyst.get("score")), -confirmations, -_n(row.get("reserve_usd")))
+
+
+def _deep_priority(row: dict) -> tuple:
+    catalyst = source_catalyst(row)
+    return (
+        -_n(catalyst.get("score")),
+        -int(row.get("source_confirmations") or 1),
+        -_n(row.get("liquidity_usd")),
+        _n(row.get("pair_age_minutes")),
+    )
 
 
 def _prior(history: list[dict], now_epoch: float, seconds_ago: int) -> dict | None:
@@ -348,6 +365,9 @@ def _open_paper_entry(candidate: dict, now: datetime) -> dict:
         "entry_genesis_score": candidate.get("genesis_score"),
         "entry_shadow_score": candidate.get("shadow_score"),
         "entry_status": candidate.get("status"),
+        "entry_alert_stage": candidate.get("alert_stage"),
+        "entry_source_catalyst": candidate.get("source_catalyst"),
+        "entry_signal_summary": candidate.get("signal_summary"),
         "entry_age_minutes": candidate.get("pair_age_minutes"),
         "entry_liquidity_usd": candidate.get("liquidity_usd"),
         "entry_holders": candidate.get("holders"),
@@ -433,8 +453,10 @@ def _compact_candidate(row: dict) -> dict:
         "volume_m5", "volume_h1", "buys_h1", "sells_h1", "holders", "holder_truth_status",
         "top10_ex_system_pct", "largest_non_system_wallet_pct", "distribution_status", "lp_vault_match_count",
         "mint_authority_safe", "freeze_authority_safe", "transfer_restrictions_safe", "lp_integrity_safe",
+        "rugcheck_status", "rugcheck_lp_locked_pct", "rugcheck_score_normalised", "rugcheck_blocking_risks",
         "source", "sources", "source_confirmations", "genesis_score", "shadow_score", "shadow_paper_ready",
-        "status", "age_band", "extension_band", "safety", "acceleration", "subscores", "measurement_method",
+        "status", "alert_stage", "age_band", "extension_band", "safety", "acceleration", "source_catalyst",
+        "signal_summary", "subscores", "measurement_method",
     )
     return {k: row.get(k) for k in keep if k in row}
 
@@ -516,8 +538,7 @@ def run(data_dir: Path | None = None, now: datetime | None = None) -> dict:
     deep_limit = max(1, int(os.getenv("GENESIS_MAX_SOLANA_DEEP", "18")))
     solana_deep = sorted(
         [x for x in raw_candidates if x.get("chain") == "solana" and _n(x.get("liquidity_usd")) >= THRESHOLDS.min_liquidity_usd and _n(x.get("pair_age_minutes")) <= 1440],
-        key=lambda x: _n(x.get("liquidity_usd")),
-        reverse=True,
+        key=_deep_priority,
     )[:deep_limit]
     deep_keys = {x["candidate_key"] for x in solana_deep}
     mint_truth: dict[str, dict] = {}
@@ -563,6 +584,32 @@ def run(data_dir: Path | None = None, now: datetime | None = None) -> dict:
             if distribution.get("verified") is True:
                 candidate["top10_ex_system_pct"] = distribution.get("top10_ex_system_pct")
                 candidate["largest_non_system_wallet_pct"] = distribution.get("largest_non_system_wallet_pct")
+
+            top10 = _maybe(candidate.get("top10_ex_system_pct"))
+            largest = _maybe(candidate.get("largest_non_system_wallet_pct"))
+            pre_lp_safe = (
+                candidate.get("mint_authority_safe") is True
+                and candidate.get("freeze_authority_safe") is True
+                and candidate.get("transfer_restrictions_safe") is True
+                and _n(candidate.get("liquidity_usd")) >= THRESHOLDS.min_liquidity_usd
+                and _n(candidate.get("holders")) >= THRESHOLDS.min_holders
+                and top10 is not None
+                and top10 <= THRESHOLDS.top10_hard_max_pct
+                and largest is not None
+                and largest <= THRESHOLDS.largest_wallet_hard_max_pct
+            )
+            if pre_lp_safe:
+                rugcheck = fetch_rugcheck_safety(token, timeout=int(os.getenv("GENESIS_RUGCHECK_TIMEOUT", "10")))
+                candidate["rugcheck_status"] = rugcheck.get("status")
+                candidate["rugcheck_lp_locked_pct"] = rugcheck.get("lp_locked_pct")
+                candidate["rugcheck_score_normalised"] = rugcheck.get("score_normalised")
+                candidate["rugcheck_blocking_risks"] = rugcheck.get("blocking_risks") or []
+                candidate["lp_integrity_safe"] = rugcheck.get("lp_integrity_safe")
+            else:
+                candidate["rugcheck_status"] = "SKIPPED_UNTIL_PRE_LP_GATES_PASS"
+                candidate["rugcheck_lp_locked_pct"] = None
+                candidate["rugcheck_score_normalised"] = None
+                candidate["rugcheck_blocking_risks"] = []
         else:
             candidate.setdefault("mint_authority_safe", None)
             candidate.setdefault("freeze_authority_safe", None)
@@ -572,6 +619,7 @@ def run(data_dir: Path | None = None, now: datetime | None = None) -> dict:
             candidate.setdefault("largest_non_system_wallet_pct", None)
             candidate.setdefault("holder_truth_status", "NOT_DEEP_VERIFIED_THIS_RUN")
             candidate.setdefault("distribution_status", "NOT_DEEP_VERIFIED_THIS_RUN")
+            candidate.setdefault("rugcheck_status", "NOT_DEEP_VERIFIED_THIS_RUN")
 
         candidate.update(_history_features(rec, candidate, now_epoch))
 
@@ -588,6 +636,9 @@ def run(data_dir: Path | None = None, now: datetime | None = None) -> dict:
         candidate["shadow_paper_ready"] = _shadow_ready(candidate, scored, shadow)
         ranked.append(candidate)
 
+        safety = candidate.get("safety") or {}
+        catalyst = candidate.get("source_catalyst") or {}
+        signal_summary = candidate.get("signal_summary") or {}
         history.append({
             "ts": now_epoch,
             "price_usd": candidate.get("price_usd"),
@@ -596,10 +647,33 @@ def run(data_dir: Path | None = None, now: datetime | None = None) -> dict:
             "holders": candidate.get("holders"),
             "top10_ex_system_pct": candidate.get("top10_ex_system_pct"),
             "largest_non_system_wallet_pct": candidate.get("largest_non_system_wallet_pct"),
+            "genesis_score": candidate.get("genesis_score"),
+            "status": candidate.get("status"),
+            "alert_stage": candidate.get("alert_stage"),
+            "source_catalyst_score": catalyst.get("score"),
+            "signals_passed": signal_summary.get("passed"),
+            "hard_blocks": safety.get("hard_blocks") or [],
+            "research_only_reasons": safety.get("research_only_reasons") or [],
         })
+        first_signal_snapshot = rec.get("first_signal_snapshot")
+        if not isinstance(first_signal_snapshot, dict):
+            first_signal_snapshot = {
+                "at": now.isoformat(),
+                "price_usd": candidate.get("price_usd"),
+                "market_cap": candidate.get("market_cap"),
+                "liquidity_usd": candidate.get("liquidity_usd"),
+                "status": candidate.get("status"),
+                "alert_stage": candidate.get("alert_stage"),
+                "genesis_score": candidate.get("genesis_score"),
+                "source_catalyst": catalyst,
+                "signal_summary": signal_summary,
+                "hard_blocks": safety.get("hard_blocks") or [],
+                "research_only_reasons": safety.get("research_only_reasons") or [],
+            }
         records[key] = {
             "first_seen_at": rec.get("first_seen_at") or now.isoformat(),
             "first_price_usd": first_price,
+            "first_signal_snapshot": first_signal_snapshot,
             "last_seen_at": now.isoformat(),
             "last_seen_epoch": now_epoch,
             "chain": candidate.get("chain"),
@@ -608,7 +682,16 @@ def run(data_dir: Path | None = None, now: datetime | None = None) -> dict:
             "history": history[-HISTORY_LIMIT:],
         }
 
-    ranked.sort(key=lambda x: (_n(x.get("shadow_score")), _n(x.get("genesis_score"))), reverse=True)
+    stage_priority = {"REAL_ALERT": 3, "HOT_WATCH": 2, "WATCH": 1}
+    ranked.sort(
+        key=lambda x: (
+            stage_priority.get(str(x.get("alert_stage")), 0),
+            _n((x.get("source_catalyst") or {}).get("score")),
+            _n(x.get("shadow_score")),
+            _n(x.get("genesis_score")),
+        ),
+        reverse=True,
+    )
     current_by_key = {x["candidate_key"]: x for x in ranked}
     new_entries: list[dict] = []
 
@@ -637,14 +720,14 @@ def run(data_dir: Path | None = None, now: datetime | None = None) -> dict:
 
     diagnostics = discovery_diagnostics()
     state = {
-        "version": 2,
+        "version": 3,
         "updated_at": now.isoformat(),
         "records": records,
         "mintability_state": next_mint_state,
         "discovery_cursor": next_cursor,
     }
     paper = {
-        "version": 2,
+        "version": 3,
         "updated_at": now.isoformat(),
         "paper_entry_usd": PAPER_ENTRY_USD,
         "real_money_execution": False,
@@ -659,13 +742,16 @@ def run(data_dir: Path | None = None, now: datetime | None = None) -> dict:
         "solana_deep_verified_attempted": len(solana_deep),
         "watch_or_better": sum(x.get("status") not in {"IGNORE", "BLOCKED", "OUTSIDE_GENESIS", "DISCOVERY_ONLY"} for x in ranked),
         "evidence_ready_or_better": sum(_n(x.get("genesis_score")) >= 65 for x in ranked),
+        "real_alert": sum(x.get("alert_stage") == "REAL_ALERT" for x in ranked),
+        "hot_watch": sum(x.get("alert_stage") == "HOT_WATCH" for x in ranked),
+        "moonshot_confirmed": sum((x.get("source_catalyst") or {}).get("moonshot_confirmed") is True for x in ranked),
         "shadow_paper_ready": sum(x.get("shadow_paper_ready") is True for x in ranked),
         "new_paper_entries": len(new_entries),
         "paper_entries_total": len(entries),
         "late_no_chase": sum(x.get("extension_band") == "LATE_NO_CHASE" for x in ranked),
     }
     radar = {
-        "version": 2,
+        "version": 3,
         "generated_at": now.isoformat(),
         "status": "LIVE",
         "lane": "GENESIS_RADAR_ISOLATED_NEW_COIN_RESEARCH",
@@ -680,7 +766,7 @@ def run(data_dir: Path | None = None, now: datetime | None = None) -> dict:
         "errors": errors[-40:],
     }
     health = {
-        "version": 1,
+        "version": 2,
         "generated_at": now.isoformat(),
         "status": "LIVE" if raw_candidates else "DEGRADED_NO_GENESIS_SNAPSHOTS",
         "paper_entry_usd": PAPER_ENTRY_USD,
