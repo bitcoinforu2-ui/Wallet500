@@ -34,6 +34,7 @@ MIN_REACTIVATION_CHANGE_PCT = 3.0
 MIN_REACTIVATION_MARKET_TURNOVER_USD = 50_000.0
 MIN_REACTIVATION_TOTAL_TURNOVER_USD = 250_000.0
 MIN_REACTIVATION_CONFIRMATIONS = 2
+CROSS_LANE_REQUIRED_STATUS = "QUALIFIED_CEX_DERIVATIVES_SPOT_PRECURSOR"
 
 EXCLUDED_ASSETS = {
     ("solana", "61v8vbaqagmpgdqi4jcawo1dmbghsyhzodcpqnev pump".replace(" ", "").lower()),
@@ -52,6 +53,57 @@ def is_excluded(row: dict) -> bool:
     chain = str(row.get("chain") or "").lower().strip()
     token = str(row.get("token_address") or "").strip().lower()
     return (chain, token) in EXCLUDED_ASSETS
+
+
+def _cross_lane_action_row(row: dict) -> tuple[dict, dict | None]:
+    """Promote only already-qualified cross-lane precursor metadata into action scoring.
+
+    The spot lane created this metadata using immutable derivatives FIRST_ALERT plus
+    contemporaneous spot price/time anchoring. Exact identity, pair, liquidity,
+    current CEX/DEX coherence, freshness and no-chase gates still run normally.
+    """
+    precursor = row.get("cross_lane_derivatives_precursor")
+    if not isinstance(precursor, dict):
+        return row, None
+    if (
+        precursor.get("status") != CROSS_LANE_REQUIRED_STATUS
+        or precursor.get("eligible_for_action_score_fusion_after_exact_identity") is not True
+        or precursor.get("no_hindsight") is not True
+    ):
+        return row, None
+
+    score = int(float(precursor.get("action_signal_score") or 0))
+    signal_price = float(precursor.get("action_signal_price") or 0.0)
+    signal_change = float(precursor.get("action_signal_change_24h_pct") or 0.0)
+    signal_at = str(precursor.get("action_signal_at") or "")
+    if score < MIN_ACTION_SCORE or signal_price <= 0 or not signal_at:
+        return row, None
+
+    existing = ((row.get("milestones") or {}).get("first_alert") or {})
+    existing_score = int(float(existing.get("score") or row.get("spot_revival_score") or 0))
+    if existing_score >= score:
+        return row, None
+
+    fused = dict(row)
+    milestones = dict(row.get("milestones") or {})
+    milestones["first_alert"] = {
+        "kind": "CROSS_LANE_FUSED_ACTION_SIGNAL",
+        "observed_at": signal_at,
+        "reference_price": signal_price,
+        "reference_change_24h_pct": signal_change,
+        "score": score,
+        "confirmations": precursor.get("derivatives_coherent_confirmations"),
+        "coherent_confirmations": precursor.get("derivatives_coherent_confirmations"),
+        "dispersion_status": precursor.get("derivatives_dispersion_status"),
+        "source": "CEX_DERIVATIVES_FIRST_ALERT_PLUS_SPOT_PRICE_ANCHOR",
+    }
+    fused["milestones"] = milestones
+    fused["action_signal_fusion"] = {
+        **precursor,
+        "used_for_action_score": True,
+        "original_spot_first_alert_score": existing_score,
+    }
+    return fused, fused["action_signal_fusion"]
 
 
 def _signal_age_hours(metrics: dict, now: datetime | None = None) -> float | None:
@@ -73,8 +125,8 @@ def _current_reactivation_evidence(row: dict, metrics: dict) -> dict:
     """
     exchanges = set()
     qualifying_turnover = 0.0
-    for market in row.get("markets") or []:
-        if not isinstance(market, dict) or market.get("volume_comparable_usd_like", True) is False:
+    for market in promo._action_market_rows(row):
+        if not isinstance(market, dict):
             continue
         exchange = str(market.get("exchange") or "").lower().strip()
         price = float(market.get("price") or 0.0)
@@ -102,9 +154,12 @@ def _current_reactivation_evidence(row: dict, metrics: dict) -> dict:
 
 
 def action_eligibility(row: object):
-    ok, metrics = _ORIGINAL_ELIGIBILITY(row)
     if not isinstance(row, dict):
+        ok, metrics = _ORIGINAL_ELIGIBILITY(row)
         return False, metrics
+
+    action_row, fusion = _cross_lane_action_row(row)
+    ok, metrics = _ORIGINAL_ELIGIBILITY(action_row)
     blockers = list(metrics.get("blockers") or [])
     score = int(metrics.get("signal_score") or 0)
     current_change = float(metrics.get("current_change_24h_pct") or 0.0)
@@ -112,7 +167,7 @@ def action_eligibility(row: object):
     current_price = float(metrics.get("current_price") or 0.0)
     since = ((current_price / signal_price) - 1.0) * 100.0 if signal_price > 0 and current_price > 0 else 0.0
 
-    if is_excluded(row):
+    if is_excluded(action_row):
         blockers.append("EXACT_ASSET_EXCLUDED")
     if score < MIN_ACTION_SCORE:
         blockers.append("ACTION_SCORE_LT_50")
@@ -124,7 +179,7 @@ def action_eligibility(row: object):
         blockers.append("ACTION_SIGNAL_INVALIDATED_DOWNSIDE")
 
     signal_age = _signal_age_hours(metrics)
-    reactivation = _current_reactivation_evidence(row, metrics)
+    reactivation = _current_reactivation_evidence(action_row, metrics)
     stale_signal = False
     if signal_age is None:
         blockers.append("SIGNAL_TIME_MISSING")
@@ -149,11 +204,24 @@ def action_eligibility(row: object):
     metrics["fresh_reactivation_exchanges"] = reactivation["exchanges"]
     metrics["fresh_reactivation_turnover_usd"] = reactivation["qualifying_turnover_usd"]
     metrics["fresh_reactivation_required_for_stale_signal"] = True
+    metrics["cross_lane_action_fusion_used"] = bool(fusion)
+    if fusion:
+        metrics["cross_lane_action_signal_score"] = fusion.get("action_signal_score")
+        metrics["cross_lane_action_signal_at"] = fusion.get("action_signal_at")
+        metrics["cross_lane_spot_anchor_kind"] = fusion.get("spot_anchor_kind")
+        metrics["cross_lane_spot_anchor_price"] = fusion.get("spot_anchor_price")
+        metrics["cross_lane_derivatives_score"] = fusion.get("derivatives_score")
+        metrics["cross_lane_derivatives_coherent_confirmations"] = fusion.get("derivatives_coherent_confirmations")
 
     blockers = sorted(set(blockers))
     if not blockers:
         metrics["action_state"] = "REENTRY_ZONE" if stale_signal else "BUY_ZONE"
-        metrics["action_basis"] = "FRESH_MULTI_CEX_REACTIVATION" if stale_signal else "FRESH_SIGNAL"
+        if stale_signal:
+            metrics["action_basis"] = "FRESH_MULTI_CEX_REACTIVATION"
+        elif fusion:
+            metrics["action_basis"] = "FRESH_CEX_DERIVATIVES_SPOT_FUSION"
+        else:
+            metrics["action_basis"] = "FRESH_SIGNAL"
     elif blockers == ["WAIT_FOR_RETEST_ABOVE_DISCOVERY"]:
         metrics["action_state"] = "WAIT_FOR_RETEST"
         metrics["action_basis"] = "PRICE_EXTENSION"
@@ -187,8 +255,12 @@ def guarded_merge(identity_payload: dict, usdc_groups: dict[str, dict]) -> list[
     return _best_per_asset(_ORIGINAL_MERGE(identity_payload, usdc_groups))
 
 
-def guarded_resolve_many(rows: list[dict]):
-    resolved, failures = _ORIGINAL_RESOLVE_MANY(rows)
+def guarded_resolve_many(rows: list[dict], *args, **kwargs):
+    result = _ORIGINAL_RESOLVE_MANY(rows, *args, **kwargs)
+    if isinstance(result, tuple) and len(result) == 3:
+        resolved, failures, cache_hits = result
+        return _best_per_asset(resolved), failures, cache_hits
+    resolved, failures = result
     return _best_per_asset(resolved), failures
 
 
@@ -334,6 +406,7 @@ def guarded_message(row: dict, metrics: dict, now: str, event_id: str) -> str:
     same_pair = context.get("best_verified_pool_is_execution_pair") is True
     action_state = str(metrics.get("action_state") or "BUY_ZONE")
     signal_age = metrics.get("signal_age_hours")
+    fusion_used = metrics.get("cross_lane_action_fusion_used") is True
     reactivation_exchanges = [str(x) for x in (metrics.get("fresh_reactivation_exchanges") or [])]
 
     replacement = [f"Execution pair liquidity: {promo._fmt_money(execution)} ✅ min $15K"]
@@ -361,6 +434,10 @@ def guarded_message(row: dict, metrics: dict, now: str, event_id: str) -> str:
         if line.startswith("⏱ Engine signal time:"):
             line = line.replace("⏱ Engine signal time:", "⏱ Original engine signal time:", 1)
             lines.append(line)
+            if fusion_used:
+                lines.append(
+                    "🔀 Action signal fusion: coherent derivatives FIRST_ALERT + contemporaneous spot anchor ✅"
+                )
             if signal_age is not None:
                 lines.append(f"⏳ Signal age at validation: {float(signal_age):.1f}h")
             if action_state == "REENTRY_ZONE":

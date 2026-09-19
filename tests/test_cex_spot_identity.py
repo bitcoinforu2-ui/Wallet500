@@ -322,3 +322,51 @@ def test_inconclusive_coingecko_extrema_uses_strict_exact_pair_age_fallback(monk
     assert out["counts"]["age_inconclusive_fallback_verified"] == 1
     assert out["truth_contract"]["dex_fallback_for_missing_or_inconclusive_age_evidence"] is True
     assert out["truth_contract"]["dex_fallback_never_waives_ambiguous_coin_identity"] is True
+
+
+def test_qualified_cross_lane_shadow_candidate_enters_identity_queue_before_spot_watch():
+    spot_payload = {
+        "watchlist": [],
+        "shadow_watchlist": [{
+            "symbol": "AKEUSDT",
+            "spot_revival_score": 5,
+            "coherent_confirmations": 0,
+            "markets": [
+                {
+                    "exchange": "gate",
+                    "market_type": "spot",
+                    "symbol": "AKEUSDT",
+                    "quote_symbol": "USDT",
+                    "price": 0.0136977,
+                    "volume_comparable_usd_like": True,
+                },
+                {
+                    "exchange": "kucoin",
+                    "market_type": "spot",
+                    "symbol": "AKEUSDT",
+                    "quote_symbol": "USDT",
+                    "price": 0.01372,
+                    "volume_comparable_usd_like": True,
+                },
+            ],
+            "cross_lane_derivatives_precursor": {
+                "status": "QUALIFIED_CEX_DERIVATIVES_SPOT_PRECURSOR",
+                "identity_priority": True,
+                "action_signal_score": 79,
+                "derivatives_coherent_confirmations": 4,
+                "eligible_for_action_score_fusion_after_exact_identity": True,
+                "no_hindsight": True,
+            },
+        }],
+    }
+
+    selected, report = mod._build_identity_queue(spot_payload, {"candidates": []}, {})
+
+    assert [x["symbol"] for x in selected] == ["AKEUSDT"]
+    assert report["regular_watch_count"] == 0
+    assert report["cross_lane_identity_priority_count"] == 1
+    assert report["selected_current_count"] == 1
+    assert report["cross_lane_derivatives_precursor_is_identity_priority_only"] is True
+    assert report["cross_lane_derivatives_precursor_never_satisfies_identity"] is True
+    assert report["production_effect"] is False
+    assert report["no_hindsight"] is True

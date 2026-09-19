@@ -15,6 +15,12 @@ LEVERAGED_SUFFIXES = ("2L", "2S", "3L", "3S", "4L", "4S", "5L", "5S", "BULL", "B
 REGIONAL_EXCHANGES = {"upbit"}
 PRESSURE_HORIZONS = ((6, 1.20), (12, 1.35), (24, 1.50))
 STATE_HISTORY_LIMIT = 192
+CROSS_LANE_MIN_DERIVATIVES_SCORE = 50
+CROSS_LANE_MIN_DERIVATIVES_COHERENT_CONFIRMATIONS = 2
+CROSS_LANE_MAX_SIGNAL_MOVE_PCT = 35.0
+CROSS_LANE_MAX_PRICE_ERROR_PCT = 12.0
+CROSS_LANE_MAX_SPOT_BEFORE_DERIVATIVES_MINUTES = 90.0
+CROSS_LANE_MAX_SPOT_AFTER_DERIVATIVES_MINUTES = 30.0
 
 
 def _get(url: str, timeout: int = 12):
@@ -142,6 +148,120 @@ def _price_coherent_partition(markets: list[dict], max_ratio: float = 1.35) -> t
     prices = [_f(x.get("price")) for x in usd if _f(x.get("price")) > 0]
     observed_ratio = max(prices) / min(prices) if prices else 1.0
     return best or usd[:1], outliers, regional, observed_ratio
+
+
+def _load_derivatives_first_alerts(out: Path) -> dict[str, dict]:
+    """Load immutable derivatives FIRST_ALERT milestones for cross-lane early-warning fusion.
+
+    cex-state.json.gz is the persistent source of truth. cex-learning.json is only
+    a fallback for repositories/tests where the rolling state is unavailable.
+    """
+    state = _load_state(out / "cex-state.json", {})
+    index: dict[str, dict] = {}
+    milestones = state.get("signal_milestones") if isinstance(state, dict) else {}
+    if isinstance(milestones, dict):
+        for symbol, bundle in milestones.items():
+            if not isinstance(bundle, dict):
+                continue
+            alert = bundle.get("first_alert")
+            if isinstance(alert, dict) and alert.get("observed_at"):
+                index[_norm_symbol(str(symbol))] = dict(alert)
+
+    if index:
+        return index
+
+    try:
+        learning = json.loads((out / "cex-learning.json").read_text(encoding="utf-8"))
+    except Exception:
+        learning = {}
+    for row in learning.get("top_candidates") or []:
+        if not isinstance(row, dict):
+            continue
+        alert = ((row.get("milestones") or {}).get("first_alert"))
+        symbol = _norm_symbol(str(row.get("symbol") or ""))
+        if symbol and isinstance(alert, dict) and alert.get("observed_at"):
+            index[symbol] = dict(alert)
+    return index
+
+
+def _cross_lane_derivatives_precursor(
+    symbol: str,
+    spot_milestones: dict,
+    derivatives_first_alerts: dict[str, dict],
+) -> dict | None:
+    """Qualify a strong derivatives alert only when contemporaneous spot price anchors it.
+
+    The fusion is intentionally shadow-only here: it may accelerate exact-identity
+    resolution, but it cannot alter the spot score or become actionable by itself.
+    """
+    alert = derivatives_first_alerts.get(_norm_symbol(symbol))
+    if not isinstance(alert, dict):
+        return None
+
+    score = int(_f(alert.get("score")))
+    coherent = int(_f(alert.get("coherent_confirmations")))
+    dispersion = str(alert.get("dispersion_status") or "").upper()
+    signal_move = _f(alert.get("reference_change_24h_pct"))
+    derivative_price = _f(alert.get("reference_price"))
+    derivative_at = _parse_ts(alert.get("observed_at"))
+    if (
+        score < CROSS_LANE_MIN_DERIVATIVES_SCORE
+        or coherent < CROSS_LANE_MIN_DERIVATIVES_COHERENT_CONFIRMATIONS
+        or dispersion != "COHERENT_RANGE"
+        or signal_move > CROSS_LANE_MAX_SIGNAL_MOVE_PCT
+        or derivative_price <= 0
+        or derivative_at is None
+    ):
+        return None
+
+    anchors = []
+    for name in ("first_seen", "first_anomaly", "first_watch", "first_alert"):
+        item = spot_milestones.get(name) if isinstance(spot_milestones, dict) else None
+        if not isinstance(item, dict):
+            continue
+        spot_price = _f(item.get("reference_price"))
+        spot_at = _parse_ts(item.get("observed_at"))
+        if spot_price <= 0 or spot_at is None:
+            continue
+        delta_minutes = (spot_at - derivative_at).total_seconds() / 60.0
+        if delta_minutes < -CROSS_LANE_MAX_SPOT_BEFORE_DERIVATIVES_MINUTES:
+            continue
+        if delta_minutes > CROSS_LANE_MAX_SPOT_AFTER_DERIVATIVES_MINUTES:
+            continue
+        price_error = abs(spot_price / derivative_price - 1.0) * 100.0
+        if price_error > CROSS_LANE_MAX_PRICE_ERROR_PCT:
+            continue
+        anchors.append((abs(delta_minutes), price_error, name, item, spot_at, delta_minutes))
+
+    if not anchors:
+        return None
+    _, price_error, anchor_name, anchor, spot_at, delta_minutes = min(anchors, key=lambda x: (x[0], x[1]))
+    fused_at = max(derivative_at, spot_at)
+    fused_change = max(signal_move, _f(anchor.get("reference_change_24h_pct")))
+    return {
+        "status": "QUALIFIED_CEX_DERIVATIVES_SPOT_PRECURSOR",
+        "research_only": True,
+        "actionable": False,
+        "affects_spot_score": False,
+        "identity_priority": True,
+        "eligible_for_action_score_fusion_after_exact_identity": True,
+        "no_hindsight": True,
+        "action_signal_score": score,
+        "action_signal_at": fused_at.isoformat(),
+        "action_signal_price": _f(anchor.get("reference_price")),
+        "action_signal_change_24h_pct": round(fused_change, 4),
+        "derivatives_first_alert_at": derivative_at.isoformat(),
+        "derivatives_score": score,
+        "derivatives_coherent_confirmations": coherent,
+        "derivatives_dispersion_status": dispersion,
+        "derivatives_reference_price": derivative_price,
+        "spot_anchor_kind": anchor_name,
+        "spot_anchor_at": spot_at.isoformat(),
+        "spot_anchor_price": _f(anchor.get("reference_price")),
+        "spot_derivatives_time_delta_minutes": round(delta_minutes, 3),
+        "spot_derivatives_price_error_pct": round(price_error, 4),
+        "fusion_rule": "IMMUTABLE_DERIVATIVES_FIRST_ALERT_PLUS_CONTEMPORANEOUS_SPOT_PRICE_ANCHOR",
+    }
 
 
 def _row(
@@ -638,6 +758,7 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
     state_path = out / "cex-spot-state.json"
     rows, state = _enrich(rows, _load_state(state_path, {}), now)
     milestones = state["signal_milestones"]
+    derivatives_first_alerts = _load_derivatives_first_alerts(out)
     groups = {}
     leveraged_products = set()
     leveraged_sensors: dict[str, dict] = {}
@@ -687,6 +808,7 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
     alerts = []
     shadow_watchlist = []
     collision_diagnostics = []
+    cross_lane_precursor_count = 0
     for symbol, markets in groups.items():
         scoring_markets, collision_outliers, regional_markets, price_ratio = _price_coherent_partition(markets)
         local = [_market_signal(x) for x in scoring_markets]
@@ -757,6 +879,16 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
             ms["first_seen"] = first
         if best.get("hit_count") and "first_anomaly" not in ms:
             ms["first_anomaly"] = {**first, "kind": "FIRST_ANOMALY"}
+
+        cross_lane_precursor = _cross_lane_derivatives_precursor(symbol, ms, derivatives_first_alerts)
+        if cross_lane_precursor:
+            cross_lane_precursor_count += 1
+            shadow_features = sorted(set(shadow_features + ["CEX_DERIVATIVES_PRECURSOR_SHADOW"]))
+            shadow_reasons.append(
+                "strong coherent derivatives FIRST_ALERT is price/time anchored by spot; "
+                "identity resolution accelerated without changing spot score"
+            )
+
         if shadow_features and "first_shadow_watch" not in ms:
             ms["first_shadow_watch"] = {
                 **first,
@@ -799,6 +931,7 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
             "shadow_features_affect_score": False,
             "shadow_watch_eligible": bool(shadow_features),
             "leveraged_underlying_sensor": leveraged_sensor,
+            "cross_lane_derivatives_precursor": cross_lane_precursor,
             "regional_spot_lead": regional_lead,
             "slow_ignition": slow_ignition,
             "source_coverage": coverage,
@@ -861,6 +994,9 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
             "regional_native_quote_never_counts_as_action_coherence": True,
             "same_ticker_price_collision_outliers_excluded_from_coherence": True,
             "leveraged_underlying_signal_shadow_only": True,
+            "derivatives_spot_cross_lane_precursor_shadow_only_until_exact_identity": True,
+            "derivatives_spot_cross_lane_requires_immutable_time_price_anchor": True,
+            "derivatives_spot_cross_lane_never_changes_spot_score": True,
             "new_lsk_features_shadow_only": True,
             "slow_ignition_shadow_only": True,
             "shadow_watch_below_watch_score_allowed": True,
@@ -886,6 +1022,8 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
         "shadow_watch_count": len(shadow_watchlist),
         "symbol_collision_count": len(collision_diagnostics),
         "symbol_collisions": collision_diagnostics[:100],
+        "cross_lane_derivatives_precursor_count": cross_lane_precursor_count,
+        "cross_lane_derivatives_source_count": len(derivatives_first_alerts),
         "watchlist": watchlist[:100],
         "alerts": alerts[:100],
         "shadow_watchlist": shadow_watchlist[:100],
@@ -903,6 +1041,7 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
             "coherent_feature_hits": x["coherent_feature_hits"],
             "shadow_features": x["shadow_features"],
             "leveraged_underlying_sensor": x.get("leveraged_underlying_sensor"),
+            "cross_lane_derivatives_precursor": x.get("cross_lane_derivatives_precursor"),
             "symbol_collision": x.get("symbol_collision"),
             "regional_spot_lead": x["regional_spot_lead"],
             "slow_ignition": x["slow_ignition"],
@@ -928,6 +1067,7 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
         "slow_ignition_shadow_only": True,
         "shadow_watch_below_watch_score_allowed": True,
         "shadow_watch_never_actionable": True,
+        "cross_lane_derivatives_precursor_shadow_only": True,
         "excluded_products": excluded[:100],
         "features": [
             "spot_24h_momentum",
