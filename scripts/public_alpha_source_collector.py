@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import re
@@ -125,6 +126,11 @@ def caller_from_message(message_text: str, source: dict) -> str:
     return normalize_caller(fallback)
 
 
+def message_fingerprint(value: object) -> str:
+    normalized = re.sub(r"\s+", " ", html.unescape(str(value or ""))).strip().lower()
+    return hashlib.sha256(normalized.encode()).hexdigest()[:20] if normalized else ""
+
+
 def source_metadata(source: dict) -> dict:
     return {
         "source_class": str(source.get("source_class") or "direct_source"),
@@ -148,8 +154,10 @@ def telegram_discoveries(body: str, source: dict, observed_at: str) -> tuple[lis
         if published is None:
             continue
         age_minutes = max(0.0, (observed_dt - published).total_seconds() / 60.0)
-        caller = caller_from_message(str(post.get("text") or ""), source)
-        for network, contract in extract_candidates(str(post.get("text") or ""), source):
+        post_text = str(post.get("text") or "")
+        caller = caller_from_message(post_text, source)
+        content_fingerprint = message_fingerprint(post_text)
+        for network, contract in extract_candidates(post_text, source):
             rows.append(
                 {
                     "network": network,
@@ -158,6 +166,7 @@ def telegram_discoveries(body: str, source: dict, observed_at: str) -> tuple[lis
                     "called_at": published.isoformat(),
                     "source_post_id": post.get("id"),
                     "source_post_url": post.get("url"),
+                    "source_content_fingerprint": content_fingerprint,
                     "age_minutes": age_minutes,
                     "live_eligible": age_minutes <= max_age,
                     "timestamp_semantics": "TELEGRAM_ORIGINAL_DATETIME",
@@ -253,6 +262,7 @@ def main() -> None:
                     "called_at": item["called_at"],
                     "source_url": item.get("source_post_url") or source["url"],
                     "source_post_id": item.get("source_post_id"),
+                    "source_content_fingerprint": item.get("source_content_fingerprint"),
                     "caller_strength": float(source.get("initial_strength") or 25),
                     "caller_confidence": min(
                         45.0, float(source.get("confidence_cap") or 45)
