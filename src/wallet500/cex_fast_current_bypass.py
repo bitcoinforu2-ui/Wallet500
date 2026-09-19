@@ -9,6 +9,7 @@ from pathlib import Path
 from .cex_fast_promotion import (
     OUTPUT_FILE,
     REPORT_FILE,
+    _canonical_symbol,
     _eligibility,
     _event_id,
     _f,
@@ -24,9 +25,11 @@ from .cex_fast_promotion import (
 DATA = Path("data")
 RADAR_FILE = "cex-spot-revival-radar.json"
 STATE_FILE = "cex-fast-current-bypass-state.json"
-MAX_STRICT_RESOLVES_PER_RUN = 16
+IDENTITY_FILE = "cex-spot-identity-radar.json"
+MAX_STRICT_RESOLVES_PER_RUN = 24
 MAX_DELIVER_PER_RUN = 6
 MIN_PRIORITY_SCORE = 35
+MIN_LEVERAGED_SENSOR_ABS_CHANGE_PCT = 25.0
 MAX_PRE_RESOLVE_24H_CHANGE_PCT = 45.0
 
 
@@ -41,15 +44,39 @@ def _milestone_score(row: dict) -> int:
     )
 
 
+def _leveraged_sensor_strength(row: dict) -> float:
+    sensor = row.get("leveraged_underlying_sensor") if isinstance(row.get("leveraged_underlying_sensor"), dict) else {}
+    if not sensor.get("active"):
+        return 0.0
+    return _f(sensor.get("max_abs_change_24h_pct"))
+
+
 def _priority_candidates(radar: dict) -> list[dict]:
-    rows = [dict(x) for x in (radar.get("watchlist") or []) if isinstance(x, dict)]
+    combined = [
+        dict(x)
+        for bucket in ("watchlist", "shadow_watchlist")
+        for x in (radar.get(bucket) or [])
+        if isinstance(x, dict)
+    ]
+    by_symbol: dict[str, dict] = {}
+    for row in combined:
+        symbol = _canonical_symbol(row.get("symbol"))
+        if not symbol:
+            continue
+        old = by_symbol.get(symbol)
+        rank = (_milestone_score(row), _leveraged_sensor_strength(row))
+        old_rank = (_milestone_score(old), _leveraged_sensor_strength(old)) if old else (-1, -1.0)
+        if old is None or rank > old_rank:
+            by_symbol[symbol] = row
+
     selected = []
-    for row in rows:
+    for row in by_symbol.values():
         if row.get("leveraged_product") is True:
             continue
         score = _milestone_score(row)
+        sensor_strength = _leveraged_sensor_strength(row)
         change = _f(row.get("change_24h_max_pct"))
-        if score < MIN_PRIORITY_SCORE:
+        if score < MIN_PRIORITY_SCORE and sensor_strength < MIN_LEVERAGED_SENSOR_ABS_CHANGE_PCT:
             continue
         if change > MAX_PRE_RESOLVE_24H_CHANGE_PCT:
             continue
@@ -57,12 +84,19 @@ def _priority_candidates(radar: dict) -> list[dict]:
         if not markets:
             continue
         row["_fast_priority_score"] = score
+        row["_leveraged_sensor_priority"] = round(sensor_strength, 4)
+        row["_fast_priority_reason"] = (
+            "LEVERAGED_UNDERLYING_SENSOR"
+            if score < MIN_PRIORITY_SCORE and sensor_strength >= MIN_LEVERAGED_SENSOR_ABS_CHANGE_PCT
+            else "CEX_SIGNAL_SCORE"
+        )
         selected.append(row)
 
     selected.sort(
         key=lambda x: (
             _i(x.get("coherent_confirmations")),
             _i(x.get("_fast_priority_score")),
+            _f(x.get("_leveraged_sensor_priority")),
             -_f(x.get("change_24h_max_pct")),
             max((_f(m.get("volume_24h")) for m in x.get("markets") or [] if isinstance(m, dict)), default=0.0),
         ),
@@ -71,13 +105,62 @@ def _priority_candidates(radar: dict) -> list[dict]:
     return selected[:MAX_STRICT_RESOLVES_PER_RUN]
 
 
-def _resolve_many(rows: list[dict]) -> tuple[list[dict], list[dict]]:
+def _verified_identity_index(payload: dict) -> dict[str, dict]:
+    out = {}
+    for row in payload.get("candidates") or []:
+        if not isinstance(row, dict):
+            continue
+        symbol = _canonical_symbol(row.get("symbol"))
+        if (
+            symbol
+            and row.get("identity_verified") is True
+            and row.get("identity_status") == "DEX_VERIFIED"
+            and row.get("chain")
+            and row.get("token_address")
+            and row.get("pair_address")
+        ):
+            out[symbol] = row
+    return out
+
+
+def _merge_cached_identity(source: dict, cached: dict) -> dict:
+    item = {**cached, **source}
+    identity_fields = (
+        "chain", "token_address", "pair_address", "dex", "dex_url",
+        "dex_price_usd", "price_usd", "execution_pool_liquidity_usd",
+        "dex_liquidity_usd", "dex_total_liquidity_usd", "dex_pool_count",
+        "dex_tradable_pool_count_50k", "dex_volume_h1", "dex_volume_h24",
+        "pair_created_at", "market_age_verified", "market_age_min_days",
+        "market_age_evidence_at", "market_age_evidence_source",
+        "identity_status", "identity_verified", "identity_source",
+        "identity_candidate_source", "pair_provider", "exact_token_side",
+        "execution_pair_price_coherent", "cex_dex_price_ratio",
+    )
+    for key in identity_fields:
+        if key in cached:
+            item[key] = cached[key]
+    item["fast_identity_bypass"] = True
+    item["fast_identity_bypass_source"] = "CURRENT_CEX_SPOT_WATCHLIST_EXISTING_EXACT_IDENTITY"
+    return item
+
+
+def _resolve_many(rows: list[dict], identity_index: dict[str, dict] | None = None) -> tuple[list[dict], list[dict], int]:
     resolved = []
     failures = []
-    if not rows:
-        return resolved, failures
-    with ThreadPoolExecutor(max_workers=min(8, len(rows))) as pool:
-        futures = {pool.submit(_strict_dex_resolve, row): row for row in rows}
+    cache_hits = 0
+    pending = []
+    index = identity_index or {}
+    for row in rows:
+        cached = index.get(_canonical_symbol(row.get("symbol")))
+        if cached:
+            resolved.append(_merge_cached_identity(row, cached))
+            cache_hits += 1
+        else:
+            pending.append(row)
+    if not pending:
+        return resolved, failures, cache_hits
+    with ThreadPoolExecutor(max_workers=min(8, len(pending))) as pool:
+        futures = {pool.submit(_strict_dex_resolve, row): row for row in pending}
         for fut in as_completed(futures):
             source = futures[fut]
             symbol = str(source.get("symbol") or "")
@@ -91,7 +174,7 @@ def _resolve_many(rows: list[dict]) -> tuple[list[dict], list[dict]]:
                     failures.append({"symbol": symbol, "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"})
             except Exception as exc:
                 failures.append({"symbol": symbol, "reason": f"{type(exc).__name__}: {exc}"[:240]})
-    return resolved, failures
+    return resolved, failures, cache_hits
 
 
 def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
@@ -100,8 +183,12 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
     now_iso = now_dt.isoformat()
 
     radar = _load(out / RADAR_FILE, {})
+    identity_payload = _load(out / IDENTITY_FILE, {})
     priority = _priority_candidates(radar if isinstance(radar, dict) else {})
-    resolved, resolve_failures = _resolve_many(priority)
+    resolved, resolve_failures, identity_cache_hits = _resolve_many(
+        priority,
+        _verified_identity_index(identity_payload if isinstance(identity_payload, dict) else {}),
+    )
 
     state_path = out / STATE_FILE
     previous_state = _load(state_path, {})
@@ -217,11 +304,14 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
     report["current_watch_bypass"] = {
         "priority_candidates": len(priority),
         "strict_resolved": len(resolved),
+        "identity_cache_hits": identity_cache_hits,
         "eligible": len(eligible),
         "delivered": len(delivered),
         "resolve_failures": resolve_failures[:30],
         "errors": errors,
         "resolve_limit": MAX_STRICT_RESOLVES_PER_RUN,
+        "leveraged_sensor_priority_min_abs_change_pct": MIN_LEVERAGED_SENSOR_ABS_CHANGE_PCT,
+        "identity_cache_reuse_enabled": True,
         "delivery_cap": 0,
         "telegram_delivery_enabled": False,
     }
@@ -240,6 +330,7 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
     result = {
         "priority_candidates": len(priority),
         "strict_resolved": len(resolved),
+        "identity_cache_hits": identity_cache_hits,
         "eligible": len(eligible),
         "delivered": len(delivered),
         "errors": len(errors),
