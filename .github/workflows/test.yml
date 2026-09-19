@@ -2,8 +2,31 @@ name: Wallet500 Tests
 
 on:
   push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - '.github/workflows/**'
+      - 'data/**/*config*.json'
+      - 'data/**/*policy*.json'
+      - 'data/**/*sources*.json'
   pull_request:
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - '.github/workflows/**'
+      - 'data/**/*config*.json'
+      - 'data/**/*policy*.json'
+      - 'data/**/*sources*.json'
   workflow_dispatch:
+
+concurrency:
+  group: wallet500-tests-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:

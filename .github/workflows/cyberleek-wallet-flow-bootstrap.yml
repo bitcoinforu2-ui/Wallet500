@@ -94,27 +94,21 @@ jobs:
           assert d['truth_contract']['dex_txn_counts_are_not_wallet_counts'] is True
           print('REAL_WALLET_FLOW_STATIC_OK')
           PY
-      - name: Commit installed dashboard metric
+      - name: Persist installed dashboard metric atomically
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add dashboard-cyberleek.html .github/workflows/pages.yml data/cyberleek-wallet-flow.json
-          if [ -f data/cyberleek-wallet-flow-state.json ]; then git add data/cyberleek-wallet-flow-state.json; fi
-          if git diff --cached --quiet; then
-            echo 'Wallet-flow dashboard already installed'
-            exit 0
+          paths=(
+            dashboard-cyberleek.html
+            .github/workflows/pages.yml
+            data/cyberleek-wallet-flow.json
+          )
+          if [ -f data/cyberleek-wallet-flow-state.json ]; then
+            paths+=(data/cyberleek-wallet-flow-state.json)
           fi
-          git commit -m 'feat: replace CYBERLEEK txn proxy with real wallet flow'
-          for attempt in 1 2 3; do
-            git fetch origin main
-            if ! git rebase origin/main; then
-              git rebase --abort || true
-              echo 'Wallet-flow bootstrap stopped fail-closed on rebase conflict'
-              exit 1
-            fi
-            if git push origin HEAD:main; then exit 0; fi
-            [ "$attempt" -eq 3 ] && exit 1
-            sleep $((attempt * 2))
-          done
+          python scripts/serialized_publish.py \
+            --message 'feat: replace CYBERLEEK txn proxy with real wallet flow' \
+            "${paths[@]}"
+          echo 'CYBERLEEK_WALLET_FLOW_BOOTSTRAP_PUBLISH_OK'
