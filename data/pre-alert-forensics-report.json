@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "generated_at": "2026-09-19T17:59:55.696903+00:00",
+  "generated_at": "2026-09-19T18:03:13.929329+00:00",
   "mode": "shadow",
   "source": "real-alerts.json + holder-cluster-gate.json + wallet-candidates.json + revival-wallet-registry.json",
-  "targets": 1,
-  "real_alert_targets": 1,
+  "targets": 2,
+  "real_alert_targets": 2,
   "pre_wave_targets": 0,
   "actionable": 0,
-  "would_block": 1,
+  "would_block": 2,
   "truth_contract": {
     "shadow_does_not_suppress_current_real_alerts": true,
     "enforce_requires_actionable_pre_alert_forensics": false,
@@ -21,11 +21,128 @@
   },
   "results": [
     {
+      "key": "solana:Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump:93tjgwff5Ac5ThyMi8C4WejVVQq4tuMeMuYW1LEYZ7bu",
+      "chain": "solana",
+      "token_address": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump",
+      "pair_address": "93tjgwff5Ac5ThyMi8C4WejVVQq4tuMeMuYW1LEYZ7bu",
+      "evaluated_at": "2026-09-19T18:03:13.929329+00:00",
+      "mode": "shadow",
+      "decision": "RESEARCH_ONLY",
+      "actionable": false,
+      "would_block": true,
+      "send_allowed": true,
+      "confidence": 25.0,
+      "wallet_forensics_score": 0,
+      "entry_timing_score": 100,
+      "critical_evidence_complete": false,
+      "holder_cluster": {
+        "status": "REVIEW",
+        "verification_complete": false,
+        "fresh": true,
+        "checked_at": "2026-09-19T18:03:14.339709+00:00",
+        "gross_top10_pct": 0,
+        "adjusted_top10_pct": 0,
+        "largest_adjusted_holder_pct": 0,
+        "cex_custody_pct": 0,
+        "known_infrastructure_pct": 0,
+        "unknown_holder_pct_observed": 0,
+        "reasons": [
+          "SOLANA_LARGEST_ACCOUNTS_RPC_UNAVAILABLE",
+          "HOLDER_DATA_UNAVAILABLE",
+          "SOME_TOKEN_ACCOUNT_OWNERS_UNRESOLVED"
+        ]
+      },
+      "bundle_analysis": {
+        "level": "UNKNOWN",
+        "confidence": 0.25,
+        "reasons": [
+          "CLUSTER_EVIDENCE_INCOMPLETE"
+        ],
+        "clusters": 0
+      },
+      "whale_flow": {
+        "method": "SNAPSHOT_HOLDER_BALANCE_DELTA_NOT_TRANSACTION_NETFLOW",
+        "h1": {
+          "status": "STABLE_MIXED",
+          "method": "SNAPSHOT_HOLDER_BALANCE_DELTA",
+          "holder_top10_delta_pct": 0.0,
+          "cex_custody_delta_pct": 0.0,
+          "gross_positive_holder_delta_pct": 0,
+          "gross_negative_holder_delta_pct": 0,
+          "largest_holder_share_changes": [],
+          "reference_at": "2026-09-19T11:37:47.060610+00:00"
+        },
+        "h6": {
+          "status": "STABLE_MIXED",
+          "method": "SNAPSHOT_HOLDER_BALANCE_DELTA",
+          "holder_top10_delta_pct": 0.0,
+          "cex_custody_delta_pct": 0.0,
+          "gross_positive_holder_delta_pct": 0,
+          "gross_negative_holder_delta_pct": 0,
+          "largest_holder_share_changes": [],
+          "reference_at": "2026-09-19T11:37:47.060610+00:00"
+        },
+        "h24": {
+          "status": "INSUFFICIENT_HISTORY",
+          "method": "SNAPSHOT_HOLDER_BALANCE_DELTA"
+        }
+      },
+      "smart_money_persistence": {
+        "status": "INSUFFICIENT_RECENT_WALLET_EVIDENCE",
+        "recent_verified_pair_signers": 0,
+        "qualified_recent_signers": [],
+        "historically_qualified_pre_event_buyers": 0,
+        "historically_qualified_recent_pair_touch": [],
+        "side_inference": "NOT_CLAIMED_FROM_SIGNER_TOUCH_ALONE",
+        "confidence": 0.0
+      },
+      "entry_timing": {
+        "score": 100,
+        "state": "EARLY_VALID",
+        "complete": true,
+        "reasons": [],
+        "price_change_h1_pct": -1.87,
+        "price_change_h6_pct": -1.93,
+        "price_change_h24_pct": 11.84
+      },
+      "market_snapshot": {
+        "source": "DEXSCREENER_EXACT_PAIR_LIVE",
+        "checked_at": "2026-09-19T18:03:14.476045+00:00",
+        "complete": true,
+        "price_usd": 0.0144,
+        "liquidity_usd": 1595236.75,
+        "volume_h1_usd": 59835.74,
+        "price_change_h1_pct": -1.87,
+        "price_change_h6_pct": -1.93,
+        "price_change_h24_pct": 11.84,
+        "buys_h1": 239,
+        "sells_h1": 257,
+        "dex_id": "raydium",
+        "pair_address": "93tjgwff5Ac5ThyMi8C4WejVVQq4tuMeMuYW1LEYZ7bu",
+        "url": "https://dexscreener.com/solana/93tjgwff5ac5thymi8c4wejvvqq4tumemuyw1leyz7bu"
+      },
+      "blockers": [
+        "HOLDER_CLUSTER_EVIDENCE_MISSING_INCOMPLETE_OR_STALE"
+      ],
+      "reasons": [],
+      "evidence_snapshot": {
+        "at": "2026-09-19T18:03:13.929329+00:00",
+        "price_usd": 0.0144,
+        "liquidity_usd": 1595236.75,
+        "adjusted_top10_pct": 0,
+        "cex_custody_pct": 0.0,
+        "real_holder_pct": {},
+        "smart_money_status": "INSUFFICIENT_RECENT_WALLET_EVIDENCE",
+        "qualified_recent_signers": 0
+      },
+      "alert_stage": "REAL_ALERT"
+    },
+    {
       "key": "bsc:0x783c3f003f172c6ac5ac700218a357d2d66ee2a2:0xc1a780989734a0e5df875cebe410748562e1c5e6",
       "chain": "bsc",
       "token_address": "0x783c3f003f172c6ac5ac700218a357d2d66ee2a2",
       "pair_address": "0xc1A780989734a0e5df875cEbe410748562e1c5e6",
-      "evaluated_at": "2026-09-19T17:59:55.696903+00:00",
+      "evaluated_at": "2026-09-19T18:03:13.929329+00:00",
       "mode": "shadow",
       "decision": "RESEARCH_ONLY",
       "actionable": false,
@@ -39,7 +156,7 @@
         "status": "REVIEW",
         "verification_complete": false,
         "fresh": true,
-        "checked_at": "2026-09-19T17:59:58.712517+00:00",
+        "checked_at": "2026-09-19T18:03:23.394798+00:00",
         "gross_top10_pct": 0,
         "adjusted_top10_pct": 0,
         "largest_adjusted_holder_pct": 0,
@@ -69,7 +186,7 @@
           "gross_positive_holder_delta_pct": 0,
           "gross_negative_holder_delta_pct": 0,
           "largest_holder_share_changes": [],
-          "reference_at": "2026-09-19T16:59:04.950934+00:00"
+          "reference_at": "2026-09-19T17:02:38.138722+00:00"
         },
         "h6": {
           "status": "STABLE_MIXED",
@@ -88,7 +205,7 @@
       },
       "smart_money_persistence": {
         "status": "RECENT_SIGNERS_NO_QUALIFIED_SMART_MONEY_MATCH",
-        "recent_verified_pair_signers": 10,
+        "recent_verified_pair_signers": 8,
         "qualified_recent_signers": [],
         "historically_qualified_pre_event_buyers": 0,
         "historically_qualified_recent_pair_touch": [],
@@ -100,22 +217,22 @@
         "state": "EARLY_VALID",
         "complete": true,
         "reasons": [],
-        "price_change_h1_pct": -11.52,
-        "price_change_h6_pct": -32.78,
-        "price_change_h24_pct": 23.55
+        "price_change_h1_pct": -11.38,
+        "price_change_h6_pct": -32.44,
+        "price_change_h24_pct": 24.42
       },
       "market_snapshot": {
         "source": "DEXSCREENER_EXACT_PAIR_LIVE",
-        "checked_at": "2026-09-19T17:59:58.842388+00:00",
+        "checked_at": "2026-09-19T18:03:23.418811+00:00",
         "complete": true,
-        "price_usd": 0.5227,
-        "liquidity_usd": 908349.36,
-        "volume_h1_usd": 4825156.69,
-        "price_change_h1_pct": -11.52,
-        "price_change_h6_pct": -32.78,
-        "price_change_h24_pct": 23.55,
-        "buys_h1": 5615,
-        "sells_h1": 5993,
+        "price_usd": 0.5259,
+        "liquidity_usd": 911709.81,
+        "volume_h1_usd": 4820868.4,
+        "price_change_h1_pct": -11.38,
+        "price_change_h6_pct": -32.44,
+        "price_change_h24_pct": 24.42,
+        "buys_h1": 5602,
+        "sells_h1": 5978,
         "dex_id": "pancakeswap",
         "pair_address": "0xc1A780989734a0e5df875cEbe410748562e1c5e6",
         "url": "https://dexscreener.com/bsc/0xc1a780989734a0e5df875cebe410748562e1c5e6"
@@ -125,9 +242,9 @@
       ],
       "reasons": [],
       "evidence_snapshot": {
-        "at": "2026-09-19T17:59:55.696903+00:00",
-        "price_usd": 0.5227,
-        "liquidity_usd": 908349.36,
+        "at": "2026-09-19T18:03:13.929329+00:00",
+        "price_usd": 0.5259,
+        "liquidity_usd": 911709.81,
         "adjusted_top10_pct": 0,
         "cex_custody_pct": 0.0,
         "real_holder_pct": {},
