@@ -17,6 +17,14 @@ STATE = ROOT / "data/free-intelligence-collector-state.json"
 UA = "Wallet500-FreeIntel/2.1"
 EVM = {"ethereum", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche"}
 CHAIN_ALIASES = {"eth": "ethereum", "bnb": "bsc"}
+HONEYPOT_CHAIN_IDS = {
+    "ethereum": 1,
+    "bsc": 56,
+    "base": 8453,
+    "arbitrum": 42161,
+    "optimism": 10,
+    "polygon": 137,
+}
 
 
 def now() -> str:
@@ -156,24 +164,86 @@ def trending(tokens):
     return out
 
 
-def honeypot(t):
+def honeypot(t, prev=None, with_snapshot=False):
+    """Require chain-specific, consecutive confirmation before a provider result becomes HARD_RISK."""
     chain, contract, _, _ = identity(t)
-    if chain not in {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon"}:
-        return []
-    d = get_json("https://api.honeypot.is/v2/IsHoneypot?address=" + contract)
+    chain_id = HONEYPOT_CHAIN_IDS.get(chain)
+    empty = {"is_honeypot": None, "buy_tax": None, "sell_tax": None, "confirmed_hard_risk": False}
+    if not chain_id or not contract:
+        return ([], empty) if with_snapshot else []
+
+    d = get_json(
+        "https://api.honeypot.is/v2/IsHoneypot?address="
+        + contract
+        + "&chainID="
+        + str(chain_id)
+    )
     if not d:
-        return []
+        return ([], empty) if with_snapshot else []
+
     out = []
     hp = (d.get("honeypotResult") or {}).get("isHoneypot")
     sim = d.get("simulationResult") or {}
     bt = num(sim.get("buyTax"))
     st = num(sim.get("sellTax"))
+    previous = prev if isinstance(prev, dict) else {}
+    consecutive_honeypot = bool(hp is True and previous.get("is_honeypot") is True)
+
     if hp is True:
-        out.append(event(t, "supply_tokenomics", "honeypot_or_transfer_block", -1, 100, 95, "Honeypot.is", extra={"identity_verified": True, "identity_scope": "EXACT_CONTRACT_CONFIGURED_PAIR_CONTEXT", "hard_risk": True}))
+        kind = "honeypot_or_transfer_block" if consecutive_honeypot else "honeypot_or_transfer_block_unconfirmed"
+        out.append(event(
+            t,
+            "supply_tokenomics",
+            kind,
+            -1,
+            100 if consecutive_honeypot else 55,
+            95 if consecutive_honeypot else 70,
+            "Honeypot.is",
+            extra={
+                "identity_verified": True,
+                "identity_scope": "EXACT_CONTRACT_CONFIGURED_PAIR_CONTEXT",
+                "hard_risk": consecutive_honeypot,
+                "security_confirmation": "CONSECUTIVE_PROVIDER_CONFIRMATION" if consecutive_honeypot else "FIRST_OBSERVATION_REQUIRES_RECHECK",
+                "chain_id": chain_id,
+            },
+        ))
+
     tax = max([x for x in (bt, st) if x is not None], default=None)
+    consecutive_extreme_tax = bool(
+        tax is not None
+        and tax >= 30
+        and previous.get("extreme_tax") is True
+    )
     if tax is not None and tax >= 15:
-        out.append(event(t, "supply_tokenomics", "extreme_tax", -1, min(100, tax * 3), 90, "Honeypot.is", extra={"identity_verified": True, "identity_scope": "EXACT_CONTRACT_CONFIGURED_PAIR_CONTEXT", "buy_tax": bt, "sell_tax": st, "hard_risk": tax >= 30}))
-    return out
+        out.append(event(
+            t,
+            "supply_tokenomics",
+            "extreme_tax",
+            -1,
+            min(100, tax * 3),
+            90,
+            "Honeypot.is",
+            extra={
+                "identity_verified": True,
+                "identity_scope": "EXACT_CONTRACT_CONFIGURED_PAIR_CONTEXT",
+                "buy_tax": bt,
+                "sell_tax": st,
+                "hard_risk": consecutive_extreme_tax,
+                "security_confirmation": "CONSECUTIVE_PROVIDER_CONFIRMATION" if consecutive_extreme_tax else "FIRST_OBSERVATION_REQUIRES_RECHECK",
+                "chain_id": chain_id,
+            },
+        ))
+
+    snap = {
+        "observed_at": now(),
+        "chain_id": chain_id,
+        "is_honeypot": hp is True,
+        "buy_tax": bt,
+        "sell_tax": st,
+        "extreme_tax": bool(tax is not None and tax >= 30),
+        "confirmed_hard_risk": bool(consecutive_honeypot or consecutive_extreme_tax),
+    }
+    return (out, snap) if with_snapshot else out
 
 
 def github_collect(t, prev):
@@ -262,12 +332,13 @@ def main():
         p = state.get("tokens", {}).get(key, {})
         de, ds = ds_collect(t, p.get("dexscreener", {}))
         fresh += de
-        fresh += honeypot(t)
+        he, hs = honeypot(t, p.get("honeypot", {}), with_snapshot=True)
+        fresh += he
         ge, gs = github_collect(t, p.get("github", {}))
         fresh += ge
         le, ls = defillama(t, p.get("defillama", {}))
         fresh += le
-        newstate["tokens"][key] = {"dexscreener": ds, "github": gs, "defillama": ls, "observed_at": now()}
+        newstate["tokens"][key] = {"dexscreener": ds, "honeypot": hs, "github": gs, "defillama": ls, "observed_at": now()}
         time.sleep(0.15)
 
     cutoff = time.time() - 24 * 3600

@@ -64,12 +64,25 @@ def alpha_age_minutes(row, current=None):
 
 
 def cex_signal_milestone(row):
+    """Prefer the freshest valid CEX milestone so old alerts cannot mask reactivation."""
     milestones = row.get("milestones") if isinstance(row.get("milestones"), dict) else {}
-    for name in ("first_alert", "first_watch", "first_anomaly", "first_seen"):
+    names = (
+        "first_cross_venue_slow_ignition",
+        "first_shadow_watch",
+        "first_alert",
+        "first_watch",
+        "first_anomaly",
+        "first_seen",
+    )
+    candidates = []
+    for priority, name in enumerate(names):
         item = milestones.get(name)
-        if isinstance(item, dict) and item.get("observed_at"):
-            return item
-    return {}
+        if not isinstance(item, dict) or not item.get("observed_at"):
+            continue
+        ts = parse_ts(item.get("observed_at"))
+        if ts is not None:
+            candidates.append((ts, -priority, item))
+    return max(candidates, key=lambda x: (x[0], x[1]))[2] if candidates else {}
 
 
 def max_cex_turnover(row):

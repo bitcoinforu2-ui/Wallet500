@@ -316,3 +316,81 @@ def test_same_ticker_collision_outlier_is_excluded_from_current_action_metrics()
     assert metrics["current_change_24h_pct"] == 18.0
     assert metrics["current_price"] < 0.02
     assert "LATE_MOVE_DO_NOT_CHASE" not in metrics["blockers"]
+
+
+def test_fresh_cross_venue_reactivation_milestone_beats_stale_first_alert():
+    row = _row(
+        spot_revival_score=63,
+        milestones={
+            "first_alert": {
+                "observed_at": "2026-09-05T18:55:50.520435+00:00",
+                "reference_price": 0.000362,
+                "reference_change_24h_pct": -0.54,
+                "score": 35,
+            },
+            "first_cross_venue_slow_ignition": {
+                "observed_at": "2026-09-18T04:17:00.898003+00:00",
+                "reference_price": 0.000239,
+                "reference_change_24h_pct": 12.73,
+                "score": 18,
+                "exchanges": ["gate", "kucoin"],
+            },
+        },
+    )
+    ok, metrics = _eligibility(row)
+    assert ok is True
+    assert metrics["signal_milestone"] == "first_cross_venue_slow_ignition"
+    assert metrics["signal_at"] == "2026-09-18T04:17:00.898003+00:00"
+    assert metrics["signal_price"] == 0.000239
+
+
+def test_relative_volume_shock_allows_low_absolute_turnover_handoff_before_late_move():
+    row = _row(
+        spot_revival_score=63,
+        coherent_confirmations=2,
+        exchanges=["gate", "kucoin"],
+        execution_pool_liquidity_usd=18_000,
+        volume_multiple_6h_max=5.72,
+        volume_acceleration_max_pct=142.7,
+        milestones={
+            "first_cross_venue_slow_ignition": {
+                "observed_at": "2026-09-18T04:17:00.898003+00:00",
+                "reference_price": 0.000239,
+                "reference_change_24h_pct": 12.73,
+                "score": 18,
+            }
+        },
+        markets=[
+            {
+                "exchange": "gate",
+                "market_type": "spot",
+                "symbol": "TESTUSDT",
+                "market_id": "TEST_USDT",
+                "quote_symbol": "USDT",
+                "price": 0.0003083,
+                "change_24h_pct": 25.88,
+                "volume_24h": 1802.33,
+                "volume_comparable_usd_like": True,
+                "regional_market": False,
+            },
+            {
+                "exchange": "kucoin",
+                "market_type": "spot",
+                "symbol": "TESTUSDT",
+                "market_id": "TEST-USDT",
+                "quote_symbol": "USDT",
+                "price": 0.000306,
+                "change_24h_pct": 24.8,
+                "volume_24h": 1175.42,
+                "volume_comparable_usd_like": True,
+                "regional_market": False,
+            },
+        ],
+    )
+    ok, metrics = _eligibility(row)
+    assert ok is True
+    assert metrics["cex_turnover_usd"] < 100_000
+    assert metrics["relative_volume_shock"] is True
+    assert metrics["relative_volume_turnover_exception"] is True
+    assert "CEX_TURNOVER_LT_100K_WITHOUT_RELATIVE_VOLUME_SHOCK" not in metrics["blockers"]
+    assert "LATE_MOVE_DO_NOT_CHASE" not in metrics["blockers"]

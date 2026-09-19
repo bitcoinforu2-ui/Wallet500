@@ -13,7 +13,7 @@ from typing import Any
 
 DATA = Path("data")
 
-MODE = "CEX_FAST_PROMOTION_V1"
+MODE = "CEX_FAST_PROMOTION_V2_SENSOR_HANDOFF"
 MIN_MARKET_AGE_DAYS = 90.0
 MIN_EXECUTION_LIQUIDITY_USD = 15_000.0
 MIN_SIGNAL_SCORE = 35
@@ -23,6 +23,16 @@ MIN_MULTI_EXCHANGE_CONFIRMATIONS = 2
 SINGLE_EXCHANGE_MIN_SCORE = 40
 SINGLE_EXCHANGE_MIN_TURNOVER_USD = 250_000.0
 SINGLE_EXCHANGE_MAX_SIGNAL_CHANGE_PCT = 25.0
+MIN_RELATIVE_VOLUME_TURNOVER_USD = 1_000.0
+MIN_RELATIVE_VOLUME_MULTIPLE = 4.0
+MIN_RELATIVE_VOLUME_ACCEL_PCT = 100.0
+REACTIVATION_MILESTONE_NAMES = (
+    "first_cross_venue_slow_ignition",
+    "first_shadow_watch",
+    "first_alert",
+    "first_watch",
+    "first_anomaly",
+)
 USD_QUOTES = ("USDT", "USDC")
 SUPPORTED_CHAINS = {
     "solana", "ethereum", "bsc", "base", "arbitrum", "polygon",
@@ -498,16 +508,55 @@ def _merge_live_usdc(identity_payload: dict, usdc_groups: dict[str, dict]) -> li
 
 
 def _milestone(row: dict) -> dict:
+    """Use the freshest verified precursor instead of anchoring to a stale first alert."""
     milestones = row.get("milestones") if isinstance(row.get("milestones"), dict) else {}
-    for name in ("first_alert", "first_watch", "first_anomaly"):
+    dated: list[tuple[datetime, int, dict]] = []
+    undated: list[tuple[int, dict]] = []
+    for priority, name in enumerate(REACTIVATION_MILESTONE_NAMES):
         item = milestones.get(name)
-        if isinstance(item, dict) and _f(item.get("reference_price")) > 0:
-            return item
+        if not isinstance(item, dict) or _f(item.get("reference_price")) <= 0:
+            continue
+        enriched = dict(item)
+        enriched["_milestone_name"] = name
+        ts = _parse_ts(item.get("observed_at"))
+        if ts is not None:
+            dated.append((ts, -priority, enriched))
+        else:
+            undated.append((-priority, enriched))
+    if dated:
+        return max(dated, key=lambda x: (x[0], x[1]))[2]
+    if undated:
+        return max(undated, key=lambda x: x[0])[1]
     return {}
 
 
 def _max_turnover(row: dict) -> float:
     return max((_f(x.get("volume_24h")) for x in _action_market_rows(row)), default=0.0)
+
+
+def _relative_volume_metrics(row: dict) -> dict:
+    multiples = [
+        _f(row.get("volume_window_multiple_max")),
+        _f(row.get("volume_multiple_6h_max")),
+        _f(row.get("volume_multiple_12h_max")),
+        _f(row.get("volume_multiple_24h_max")),
+    ]
+    max_multiple = max(multiples, default=0.0)
+    acceleration_pct = _f(row.get("volume_acceleration_max_pct"))
+    turnover = _max_turnover(row)
+    shock = bool(
+        turnover >= MIN_RELATIVE_VOLUME_TURNOVER_USD
+        and (
+            max_multiple >= MIN_RELATIVE_VOLUME_MULTIPLE
+            or acceleration_pct >= MIN_RELATIVE_VOLUME_ACCEL_PCT
+        )
+    )
+    return {
+        "shock": shock,
+        "max_multiple": round(max_multiple, 4),
+        "acceleration_pct": round(acceleration_pct, 4),
+        "minimum_turnover_usd": MIN_RELATIVE_VOLUME_TURNOVER_USD,
+    }
 
 
 def _current_change(row: dict) -> float:
@@ -566,6 +615,9 @@ def _eligibility(row: object) -> tuple[bool, dict]:
     best_rank = _i(row.get("leaderboard_best_rank"), 999)
     leaderboard_exchanges = sorted({str(x) for x in row.get("leaderboard_exchanges") or [] if str(x).strip()})
     risk = str(row.get("pump_dump_risk_level") or row.get("risk_level") or "").upper()
+    multi = coherent >= MIN_MULTI_EXCHANGE_CONFIRMATIONS or len(exchanges) >= MIN_MULTI_EXCHANGE_CONFIRMATIONS
+    relative_volume = _relative_volume_metrics(row)
+    relative_volume_exception = bool(multi and relative_volume["shock"])
 
     if not symbol:
         blockers.append("SYMBOL_MISSING")
@@ -587,14 +639,13 @@ def _eligibility(row: object) -> tuple[bool, dict]:
         blockers.append("SIGNAL_SCORE_LT_35")
     if current_price <= 0:
         blockers.append("CURRENT_CEX_PRICE_MISSING")
-    if turnover < 100_000:
-        blockers.append("CEX_TURNOVER_LT_100K")
+    if turnover < 100_000 and not relative_volume_exception:
+        blockers.append("CEX_TURNOVER_LT_100K_WITHOUT_RELATIVE_VOLUME_SHOCK")
     if current_change > MAX_CURRENT_24H_CHANGE_PCT:
         blockers.append("LATE_MOVE_DO_NOT_CHASE")
     if risk in {"HIGH", "CRITICAL"}:
         blockers.append("HIGH_OR_CRITICAL_RISK")
 
-    multi = coherent >= MIN_MULTI_EXCHANGE_CONFIRMATIONS or len(exchanges) >= MIN_MULTI_EXCHANGE_CONFIRMATIONS
     single_exception = bool(
         len(exchanges) == 1
         and best_rank <= 1
@@ -615,8 +666,13 @@ def _eligibility(row: object) -> tuple[bool, dict]:
         "current_change_24h_pct": round(current_change, 4),
         "signal_price": signal_price,
         "signal_at": milestone.get("observed_at"),
+        "signal_milestone": milestone.get("_milestone_name") or milestone.get("kind"),
         "current_price": current_price,
         "cex_turnover_usd": turnover,
+        "relative_volume_shock": relative_volume["shock"],
+        "relative_volume_max_multiple": relative_volume["max_multiple"],
+        "relative_volume_acceleration_pct": relative_volume["acceleration_pct"],
+        "relative_volume_turnover_exception": relative_volume_exception,
         "market_age_days": age_days,
         "execution_liquidity_usd": liquidity,
         "exchanges": exchanges,
@@ -818,6 +874,11 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
             "minimum_market_age_days": MIN_MARKET_AGE_DAYS,
             "minimum_execution_liquidity_usd": MIN_EXECUTION_LIQUIDITY_USD,
             "minimum_signal_score": MIN_SIGNAL_SCORE,
+            "relative_volume_handoff_enabled": True,
+            "relative_volume_min_turnover_usd": MIN_RELATIVE_VOLUME_TURNOVER_USD,
+            "relative_volume_min_multiple": MIN_RELATIVE_VOLUME_MULTIPLE,
+            "relative_volume_min_acceleration_pct": MIN_RELATIVE_VOLUME_ACCEL_PCT,
+            "freshest_reactivation_milestone_wins": True,
             "late_move_do_not_chase_above_24h_pct": MAX_CURRENT_24H_CHANGE_PCT,
             "multi_exchange_or_strict_top1_single_exchange_required": True,
             "manual_decision_only": True,
