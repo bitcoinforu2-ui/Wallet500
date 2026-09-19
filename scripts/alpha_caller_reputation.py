@@ -232,6 +232,9 @@ def main() -> None:
             "2x_within_180m",
         ],
         "automatic_source_weighting": False,
+        "historical_third_party_evidence_used_for_source_selection": True,
+        "historical_evidence_affects_trade_score": False,
+        "aggregator_scores_are_external_metadata_only": True,
         "minimum_status_samples": {"EMERGING": 5, "ESTABLISHED": 20},
     }
     rep["updated_at"] = now()
