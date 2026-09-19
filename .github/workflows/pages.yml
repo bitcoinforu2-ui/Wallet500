@@ -38,9 +38,12 @@ permissions:
   pages: write
   id-token: write
 
+# Dashboard deploys are derived views of immutable main state. A newer run fully
+# supersedes an older queued/in-progress deploy, so coalesce churn instead of
+# consuming scarce runners on builds that can never be the final public state.
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
