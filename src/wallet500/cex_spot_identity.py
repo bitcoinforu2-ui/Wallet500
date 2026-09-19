@@ -447,7 +447,8 @@ def run(data_dir: Path = DATA) -> dict:
             "cex_only_never_real_alert": True,
             "hard_liquidity_and_survival_gates_unchanged": True,
             "existing_registry_conflict_never_overwritten": True,
-            "dex_fallback_only_for_coingecko_not_found": True,
+            "dex_fallback_for_missing_or_inconclusive_age_evidence": True,
+            "dex_fallback_never_waives_ambiguous_coin_identity": True,
             "dex_fallback_requires_price_pair_age_coherence": True,
             "persistent_pending_priority_is_ordering_only": True,
             "persistent_pending_never_satisfies_identity": True,
@@ -483,13 +484,34 @@ def run(data_dir: Path = DATA) -> dict:
         ]
 
         rejected = list((age_report or {}).get("rejections") or [])
-        not_found = {_base_symbol(x.get("symbol")) for x in rejected if isinstance(x, dict) and x.get("reason") == "AGE_IDENTITY_NOT_FOUND"}
+        fallback_age_reasons = {
+            "AGE_IDENTITY_NOT_FOUND",
+            "AGE_MINIMUM_NOT_PROVEN_BY_COINGECKO_EXTREMA",
+            # Backward-compatible aliases from older preflight reports. These are
+            # treated as "age unproven", never as evidence that the asset is young.
+            "UNDER_60_DAYS_OR_AGE_UNVERIFIED",
+            "UNDER_90_DAYS_OR_AGE_UNVERIFIED",
+        }
+        fallback_rejections = {
+            _base_symbol(x.get("symbol")): x
+            for x in rejected
+            if isinstance(x, dict) and x.get("reason") in fallback_age_reasons
+        }
         fallback_rows = []
         for original in watch:
-            if _base_symbol(original.get("symbol")) not in not_found:
+            base_symbol = _base_symbol(original.get("symbol"))
+            rejection = fallback_rejections.get(base_symbol)
+            if not rejection:
                 continue
-            fallback = resolve_dex_fallback(original)
+            fallback_input = dict(original)
+            # Preserve the already-disambiguated CoinGecko identity when the only
+            # missing proof is age. If CoinGecko had no identity, the strict DEX
+            # fallback remains run-scoped and cannot auto-seed the registry.
+            if rejection.get("coingecko_id"):
+                fallback_input["coingecko_id"] = rejection.get("coingecko_id")
+            fallback = resolve_dex_fallback(fallback_input)
             if fallback:
+                fallback["age_preflight_rejection_reason"] = rejection.get("reason")
                 fallback_rows.append(_research_wrap(fallback, "CEX_SPOT_STRICT_DEX_IDENTITY_FALLBACK", now))
         rows.extend(fallback_rows)
 
@@ -516,6 +538,10 @@ def run(data_dir: Path = DATA) -> dict:
             "identity_pending": sum(1 for x in rows if x.get("identity_status") == "IDENTITY_PENDING"),
             "price_incoherent": sum(1 for x in rows if x.get("identity_blocker") == "DEX_PRICE_INCOHERENT_WITH_CEX_SPOT"),
             "dex_fallback_verified": len(fallback_rows),
+            "age_inconclusive_fallback_verified": sum(
+                1 for x in fallback_rows
+                if x.get("age_preflight_rejection_reason") == "AGE_MINIMUM_NOT_PROVEN_BY_COINGECKO_EXTREMA"
+            ),
         }
         payload = {
             **base,
