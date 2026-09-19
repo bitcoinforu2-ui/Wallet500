@@ -200,6 +200,14 @@ def main() -> None:
                     "liquidity_usd_at_intake": liquidity,
                     "timestamp_semantics": call.get("timestamp_semantics"),
                     "signal_role": role,
+                    "source_id": call.get("source_id"),
+                    "source_class": call.get("source_class"),
+                    "origin_caller": call.get("origin_caller") or caller,
+                    "independence_group": call.get("independence_group"),
+                    "independence_key": call.get("independence_key"),
+                    "source_post_id": call.get("source_post_id"),
+                    "historical_evidence_grade": call.get("historical_evidence_grade"),
+                    "discovery_priority": call.get("discovery_priority"),
                 }
             )
             added += 1
