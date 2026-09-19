@@ -65,7 +65,11 @@ def extract_candidates(body: str, source: dict) -> list[tuple[str, str]]:
     if source.get("extract_raw_contracts"):
         visible = plain_text(body)
         rows.extend(("evm", m.group(1)) for m in EVM_RAW.finditer(visible))
-        rows.extend(("solana", m.group(1)) for m in SOL_RAW.finditer(visible))
+        # EVM hex addresses contain long Base58-compatible substrings beginning at
+        # the "x" in "0x...". Remove exact EVM addresses before scanning for raw
+        # Solana mints so one post cannot fabricate a second cross-chain identity.
+        visible_without_evm = EVM_RAW.sub(" ", visible)
+        rows.extend(("solana", m.group(1)) for m in SOL_RAW.finditer(visible_without_evm))
     return dedupe_preserve(rows)
 
 
