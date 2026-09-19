@@ -11,7 +11,7 @@ DEX_SEARCH = "https://api.dexscreener.com/latest/dex/search?q="
 MIN_MARKET_AGE_DAYS = 90
 MAX_PRICE_ERROR_PCT = 12.0
 SUPPORTED_CHAINS = {
-    "solana", "ethereum", "bsc", "base", "arbitrum", "polygon", "avalanche", "sui", "optimism"
+    "solana", "ethereum", "bsc", "base", "arbitrum", "polygon", "avalanche", "sui", "optimism", "harmony"
 }
 USD_LIKE_QUOTES = {"USD", "USDT", "USDC", "BUSD", "FDUSD", "TUSD", "USDP", "DAI"}
 

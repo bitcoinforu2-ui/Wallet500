@@ -467,3 +467,29 @@ def test_qualified_cross_lane_shadow_candidate_enters_identity_queue_before_spot
     assert report["cross_lane_derivatives_precursor_never_satisfies_identity"] is True
     assert report["production_effect"] is False
     assert report["no_hindsight"] is True
+
+
+def test_previous_unresolved_persistent_identity_is_carried_forward_without_pending_file():
+    previous_identity = {
+        "candidates": [{
+            "symbol": "ONEUSDT",
+            "base_symbol": "ONE",
+            "coingecko_id": "harmony",
+            "identity_status": "IDENTITY_PENDING",
+            "identity_blocker": "NO_EXACT_ONCHAIN_PLATFORM_IDENTITY",
+            "persistent_until_exact_identity_resolution": True,
+            "market_age_verified": True,
+            "spot_revival_score": 38,
+            "coherent_confirmations": 3,
+            "identity_attempted_at": "2026-09-19T03:01:14+00:00",
+        }]
+    }
+    selected, report = mod._build_identity_queue(
+        {"watchlist": [], "shadow_watchlist": []},
+        {"candidates": []},
+        previous_identity,
+    )
+    assert [x["symbol"] for x in selected] == ["ONEUSDT"]
+    assert report["previous_unresolved_persistent_carried_count"] == 1
+    assert report["selected_persistent_backlog_only_count"] == 1
+    assert report["ordering_only"] is True

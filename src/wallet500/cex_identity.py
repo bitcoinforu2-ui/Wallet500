@@ -35,6 +35,7 @@ PLATFORM_TO_DEX = {
     "blast": "blast",
     "tron": "tron",
     "aptos": "aptos",
+    "harmony-shard-0": "harmony",
 }
 
 DEX_TO_GT = {
@@ -131,6 +132,20 @@ def _load_registry(path: Path = DATA / "cex-identity-registry.json") -> dict:
     return symbols if isinstance(symbols, dict) else {}
 
 
+def _load_native_registry(path: Path = DATA / "native-asset-identity-registry.json") -> dict:
+    """Curated canonical wrappers for native assets that have no CoinGecko platform contract.
+
+    Entries are keyed by exact CoinGecko ID and are identity candidates only. They still
+    require an exact-address DEX pool and downstream CEX/DEX execution-price coherence.
+    """
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception:
+        return {}
+    assets = raw.get("assets") if isinstance(raw, dict) else {}
+    return assets if isinstance(assets, dict) else {}
+
+
 def _base_symbol(value: object) -> str:
     s = str(value or "").upper().replace("-", "").replace("_", "").strip()
     if s.endswith("USDTM"):
@@ -157,6 +172,46 @@ def _registry_candidates(alert: dict, registry: dict) -> list[dict]:
         "chain": chain,
         "token_address": token,
         "identity_candidate_source": "EXACT_IDENTITY_REGISTRY_CGID_MATCH",
+        "native_asset_proxy": bool(reg.get("native_asset_proxy")),
+        "native_asset_symbol": reg.get("native_asset_symbol"),
+        "native_asset_representation": reg.get("native_asset_representation"),
+        "native_asset_evidence_source": reg.get("native_asset_evidence_source"),
+    }]
+
+
+def _native_asset_candidates(alert: dict, native_registry: dict) -> list[dict]:
+    """Resolve native L1 assets through a canonical wrapped representation, fail-closed.
+
+    Symbol-only matching is forbidden. Both the exact CoinGecko ID and expected native
+    symbol must match the curated entry. The wrapper is only an on-chain observation
+    proxy; later price-coherence and all production safety gates remain mandatory.
+    """
+    cid = str(alert.get("coingecko_id") or "").strip()
+    if not cid or not isinstance(native_registry, dict):
+        return []
+    reg = native_registry.get(cid)
+    if not isinstance(reg, dict):
+        return []
+    base = _base_symbol(alert.get("symbol"))
+    native_symbol = str(reg.get("symbol") or "").upper().strip()
+    if not base or not native_symbol or base != native_symbol:
+        return []
+    if str(reg.get("representation_type") or "") != "CANONICAL_WRAPPED_NATIVE":
+        return []
+    chain = str(reg.get("chain") or "").lower().strip()
+    token = str(reg.get("token_address") or "").strip()
+    if not chain or not token:
+        return []
+    return [{
+        "coingecko_platform": "native-asset-registry",
+        "chain": chain,
+        "token_address": token,
+        "identity_candidate_source": "NATIVE_ASSET_CANONICAL_WRAPPER_REGISTRY",
+        "native_asset_proxy": True,
+        "native_asset_symbol": native_symbol,
+        "native_asset_representation": "CANONICAL_WRAPPED_NATIVE",
+        "native_asset_evidence_source": reg.get("evidence_source"),
+        "native_asset_evidence_url": reg.get("evidence_url"),
     }]
 
 
@@ -185,12 +240,22 @@ def _dex_pair(candidate: dict, pair: dict, provider: str) -> dict | None:
     token_is_quote = _addr_eq(quote_token, token)
     if not (token_is_base or token_is_quote):
         return None
+    if token_is_base:
+        target_price_usd = _float(pair.get("priceUsd"))
+    else:
+        base_price_usd = _float(pair.get("priceUsd"))
+        base_price_in_quote = _float(pair.get("priceNative"))
+        target_price_usd = (
+            base_price_usd / base_price_in_quote
+            if base_price_usd > 0 and base_price_in_quote > 0
+            else 0.0
+        )
     return {
         **candidate,
         "pair_address": pair.get("pairAddress"),
         "dex": pair.get("dexId"),
         "dex_url": pair.get("url"),
-        "price_usd": _float(pair.get("priceUsd")) if token_is_base else 0.0,
+        "price_usd": target_price_usd,
         "liquidity_usd": _float((pair.get("liquidity") or {}).get("usd")),
         "volume_h1": _float((pair.get("volume") or {}).get("h1")),
         "volume_h24": _float((pair.get("volume") or {}).get("h24")),
@@ -395,6 +460,7 @@ def resolve_one(
     alert: dict,
     catalog: dict[str, list[dict]] | None = None,
     registry: dict | None = None,
+    native_registry: dict | None = None,
     *,
     allow_single_lookup: bool = True,
 ) -> dict:
@@ -410,6 +476,8 @@ def resolve_one(
     candidates = list((catalog or {}).get(coin_id) or [])
     if not candidates:
         candidates = _registry_candidates(alert, registry or {})
+    if not candidates:
+        candidates = _native_asset_candidates(alert, native_registry or {})
     if not candidates and allow_single_lookup:
         try:
             candidates = _coin_platforms(coin_id)
@@ -476,6 +544,11 @@ def resolve_one(
         "pair_created_at": best.get("pair_created_at"),
         "pair_provider": best.get("pair_provider"),
         "exact_token_side": best.get("exact_token_side"),
+        "native_asset_proxy": bool(best.get("native_asset_proxy")),
+        "native_asset_symbol": best.get("native_asset_symbol"),
+        "native_asset_representation": best.get("native_asset_representation"),
+        "native_asset_evidence_source": best.get("native_asset_evidence_source"),
+        "native_asset_evidence_url": best.get("native_asset_evidence_url"),
         "identity_source": f"{candidate_source}_PLUS_EXACT_ADDRESS_DEX_POOL",
         "pair_selection_rule": "DEEPEST_EXECUTION_POOL_AFTER_MULTI_PROVIDER_EXACT_TOKEN_POOL_AGGREGATION",
         **liquidity,
@@ -495,11 +568,12 @@ def run(path: Path = DATA / "cex-revival-radar.json") -> dict:
     }
     catalog, catalog_error = _platform_catalog(coin_ids)
     registry = _load_registry(path.parent / "cex-identity-registry.json")
+    native_registry = _load_native_registry(path.parent / "native-asset-identity-registry.json")
 
     by_index = {}
     with ThreadPoolExecutor(max_workers=min(6, max(1, len(alerts)))) as pool:
         futures = {
-            pool.submit(resolve_one, row, catalog, registry, allow_single_lookup=False): i
+            pool.submit(resolve_one, row, catalog, registry, native_registry, allow_single_lookup=False): i
             for i, row in enumerate(alerts)
         }
         for fut in as_completed(futures):
@@ -522,10 +596,14 @@ def run(path: Path = DATA / "cex-revival-radar.json") -> dict:
         "exact_coingecko_id_required": True,
         "exact_onchain_address_required": True,
         "exact_dex_pair_required": True,
-        "platform_resolution": "ONE_BATCH_COINGECKO_COINS_LIST_INCLUDE_PLATFORM_THEN_EXACT_REGISTRY_CGID_FALLBACK",
+        "platform_resolution": "ONE_BATCH_COINGECKO_COINS_LIST_INCLUDE_PLATFORM_THEN_EXACT_REGISTRY_THEN_CURATED_NATIVE_WRAPPER_CGID_FALLBACK",
+        "native_asset_proxy_requires_exact_coingecko_id_and_symbol": True,
+        "native_asset_proxy_requires_exact_dex_pair_and_cex_dex_price_coherence": True,
+        "native_asset_proxy_is_not_a_buy_signal": True,
         "providers": [
             "COINGECKO_PLATFORM_CATALOG",
             "EXACT_IDENTITY_REGISTRY_CGID_MATCH",
+            "NATIVE_ASSET_CANONICAL_WRAPPER_REGISTRY",
             "DEXSCREENER_TOKEN_PAIRS",
             "DEXSCREENER_EXACT_ADDRESS_SEARCH",
             "GECKOTERMINAL_EXACT_TOKEN_POOLS",
@@ -542,6 +620,7 @@ def run(path: Path = DATA / "cex-revival-radar.json") -> dict:
     payload["platform_catalog"] = {
         "requested_coin_ids": len(coin_ids),
         "resolved_coin_ids": sum(1 for cid in coin_ids if catalog.get(cid)),
+        "native_registry_coin_ids": sum(1 for cid in coin_ids if native_registry.get(cid)),
         "status": "OK" if catalog_error is None else "DEGRADED_FAIL_CLOSED",
         "error": catalog_error,
         "anti_rate_limit_rule": "ONE_CATALOG_REQUEST_PER_RUN_NOT_ONE_COIN_REQUEST_PER_ALERT",
@@ -551,6 +630,7 @@ def run(path: Path = DATA / "cex-revival-radar.json") -> dict:
         "dex_verified": sum(1 for x in resolved if x.get("identity_status") == "DEX_VERIFIED"),
         "pair_pending": sum(1 for x in resolved if x.get("identity_status") == "IDENTITY_RESOLVED_PAIR_PENDING"),
         "identity_pending": sum(1 for x in resolved if x.get("identity_status") == "IDENTITY_PENDING"),
+        "native_proxy_verified": sum(1 for x in resolved if x.get("identity_status") == "DEX_VERIFIED" and x.get("native_asset_proxy") is True),
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return payload["identity_counts"]

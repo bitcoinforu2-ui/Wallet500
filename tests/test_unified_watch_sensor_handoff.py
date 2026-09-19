@@ -1,5 +1,5 @@
 from scripts.unified_watch_engine import spot_cex_sensor
-from scripts.spot_cex_fast_handoff import _should_refresh
+from scripts.spot_cex_fast_handoff import _pending_identity_candidates, _should_refresh
 
 
 def test_island_style_relative_volume_shock_escalates_from_own_baseline():
@@ -86,4 +86,45 @@ def test_island_replay_first_trigger_is_1256_local():
     assert sensor["baseline_multiple"] == 5.7219
     assert "CEX_RELATIVE_VOLUME_SHOCK" in sensor["triggers"]
     assert "CEX_VOLUME_ACCELERATION" in sensor["triggers"]
+    assert "CEX_RANK_ACCELERATION" in sensor["triggers"]
+
+
+def test_one_identity_pending_replay_keeps_cex_sensors_alive_without_contract():
+    doc = {
+        "candidates": [{
+            "symbol": "ONEUSDT",
+            "base_symbol": "ONE",
+            "coingecko_id": "harmony",
+            "market_age_verified": True,
+            "identity_status": "IDENTITY_PENDING",
+            "identity_blocker": "NO_EXACT_ONCHAIN_PLATFORM_IDENTITY",
+            "current_coherent_confirmations": 3,
+            "current_change_24h_max_pct": 37.8,
+            "leaderboard_best_rank": 2,
+            "leaderboard_volume_24h_max": 2_949_639.18,
+            "markets": [
+                {"exchange": "gate", "price": 0.0027884, "volume_24h": 2_949_639.18, "volume_comparable_usd_like": True},
+                {"exchange": "okx", "price": 0.00275, "volume_24h": 1_200_000, "volume_comparable_usd_like": True},
+            ],
+            "milestones": {
+                "first_seen": {"observed_at": "2026-09-04T10:50:55+00:00", "reference_price": 0.00071}
+            },
+        }]
+    }
+    targets = _pending_identity_candidates(doc)
+    assert len(targets) == 1
+    target = targets[0]
+    assert target["candidate_type"] == "CEX_IDENTITY_PENDING"
+    assert target["coingecko_id"] == "harmony"
+    assert "contract" not in target
+    assert "pair" not in target
+
+    previous = {
+        "cex_quote_volume_baseline_usd": 2_806_980.14,
+        "cex_quote_volume_24h_usd": 2_806_980.14,
+        "positive_gainer_rank": 643,
+    }
+    sensor = spot_cex_sensor(target, previous)
+    assert sensor["cex_led"] is True
+    assert "CEX_TOP3_BREAKOUT" in sensor["triggers"]
     assert "CEX_RANK_ACCELERATION" in sensor["triggers"]
