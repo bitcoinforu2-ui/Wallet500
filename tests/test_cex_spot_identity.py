@@ -353,6 +353,38 @@ def test_w3gg_like_absorption_shadow_enters_identity_queue_before_watch_threshol
     assert report["production_effect"] is False
 
 
+def test_island_like_cross_venue_slow_ignition_gets_prewave_identity_priority():
+    spot_payload = {
+        "watchlist": [],
+        "shadow_watchlist": [{
+            "symbol": "ISLANDUSDT",
+            "spot_revival_score": 18,
+            "coherent_confirmations": 2,
+            "change_24h_max_pct": 12.73,
+            "volume_acceleration_max_pct": -2.3531,
+            "volume_window_multiple_max": 1.1,
+            "shadow_features": ["PERSISTENT_SPOT_PRESSURE_SHADOW"],
+            "slow_ignition": {
+                "status": "CROSS_VENUE_PERSISTENT",
+                "confirmations": 2,
+                "exchanges": ["gate", "kucoin"],
+            },
+            "markets": [
+                {"exchange": "gate", "price": 0.000239},
+                {"exchange": "kucoin", "price": 0.000239},
+            ],
+        }],
+    }
+
+    selected, report = mod._build_identity_queue(
+        spot_payload, {"candidates": []}, {}
+    )
+
+    assert [x["symbol"] for x in selected] == ["ISLANDUSDT"]
+    assert report["prewave_shadow_identity_priority_count"] == 1
+    assert report["prewave_shadow_selected_count"] == 1
+
+
 def test_persistent_backlog_cannot_consume_reserved_current_capacity():
     watchlist = [
         {
