@@ -23,6 +23,7 @@ CRITICAL_TESTS = (
     "tests/test_provider_redundancy.py",
     "tests/test_cex_spot_revival.py",
     "tests/test_cex_spot_identity.py",
+    "tests/test_cex_early_revival_pending.py",
     "tests/test_cex_fast_current_bypass.py",
     "tests/test_unified_candidate_bridge_recency.py",
     "tests/test_waking_fallbacks.py",
