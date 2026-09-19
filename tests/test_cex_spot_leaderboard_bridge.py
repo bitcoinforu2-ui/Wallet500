@@ -118,3 +118,75 @@ def test_current_four_part_state_key_keeps_raw_market_id_out_of_canonical_symbol
     assert row["confirmations"] == 2
     assert {m["market_id"] for m in row["markets"]} == {"BR_USDT", "BR-USDT"}
     assert all(":" not in m["symbol"] for m in row["markets"])
+
+
+def test_upbit_native_turnover_is_never_scored_as_usd(tmp_path: Path):
+    state = {
+        "version": 3,
+        "markets": {
+            "spot:upbit:EDGEUSDT:KRW-EDGE": [{
+                "observed_at": "2026-09-19T07:10:00+00:00",
+                "price": 131.0,
+                "change_24h_pct": 40.0,
+                "volume_24h": 32_000_000_000.0,
+                "quote_symbol": "KRW",
+                "volume_comparable_usd_like": False,
+                "regional_market": True,
+                "market_id": "KRW-EDGE",
+            }],
+        },
+        "signal_milestones": {},
+    }
+    _write(tmp_path / "cex-spot-state.json", state)
+    _write(tmp_path / "cex-spot-revival-radar.json", {"version": 4, "watchlist": [], "alerts": []})
+
+    report = bridge.run(tmp_path, "2026-09-19T07:11:00+00:00")
+    item = report["leaderboard"][0]
+    radar = json.loads((tmp_path / "cex-spot-revival-radar.json").read_text())
+    row = radar["watchlist"][0]
+
+    assert item["symbol"] == "EDGEUSDT"
+    assert item["volume_24h_max"] == 0
+    assert item["volume_24h_scope"] == "USD_LIKE_QUOTES_ONLY"
+    assert item["regional_exchanges"] == ["upbit"]
+    assert item["boosted_score"] == 28
+    assert row["confirmations"] == 1
+    assert row["coherent_confirmations"] == 0
+
+
+def test_regional_exchange_never_inflates_leaderboard_action_coherence(tmp_path: Path):
+    state = {
+        "version": 3,
+        "markets": {
+            "spot:gate:TESTUSDT:TEST_USDT": [{
+                "observed_at": "2026-09-19T07:10:00+00:00",
+                "price": 0.10,
+                "change_24h_pct": 30.0,
+                "volume_24h": 300_000.0,
+                "quote_symbol": "USDT",
+                "volume_comparable_usd_like": True,
+                "regional_market": False,
+            }],
+            "spot:upbit:TESTUSDT:KRW-TEST": [{
+                "observed_at": "2026-09-19T07:10:00+00:00",
+                "price": 140.0,
+                "change_24h_pct": 45.0,
+                "volume_24h": 50_000_000_000.0,
+                "quote_symbol": "KRW",
+                "volume_comparable_usd_like": False,
+                "regional_market": True,
+            }],
+        },
+        "signal_milestones": {},
+    }
+    _write(tmp_path / "cex-spot-state.json", state)
+    _write(tmp_path / "cex-spot-revival-radar.json", {"version": 4, "watchlist": [], "alerts": []})
+
+    bridge.run(tmp_path, "2026-09-19T07:11:00+00:00")
+    radar = json.loads((tmp_path / "cex-spot-revival-radar.json").read_text())
+    row = radar["watchlist"][0]
+
+    assert row["confirmations"] == 2
+    assert row["coherent_confirmations"] == 1
+    assert row["leaderboard_usd_like_exchanges"] == ["gate"]
+    assert row["leaderboard_regional_exchanges"] == ["upbit"]
