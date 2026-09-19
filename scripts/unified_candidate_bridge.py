@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SPOT = ROOT / "data/spot-market-discovery.json"
+CEX_SPOT_IDENTITY = ROOT / "data/cex-spot-identity-radar.json"
 ALPHA = ROOT / "data/alpha-caller-candidates.json"
 BUY_REGISTRY = ROOT / "data/buy-zone-close-watch-registry.json"
 OUT = ROOT / "data/unified-dynamic-candidates.json"
@@ -62,8 +63,32 @@ def alpha_age_minutes(row, current=None):
     return max(0.0, (current - ts).total_seconds() / 60.0)
 
 
+def cex_signal_milestone(row):
+    milestones = row.get("milestones") if isinstance(row.get("milestones"), dict) else {}
+    for name in ("first_alert", "first_watch", "first_anomaly", "first_seen"):
+        item = milestones.get(name)
+        if isinstance(item, dict) and item.get("observed_at"):
+            return item
+    return {}
+
+
+def max_cex_turnover(row):
+    values = []
+    for market in row.get("markets") or []:
+        if not isinstance(market, dict):
+            continue
+        if market.get("volume_comparable_usd_like", True) is False:
+            continue
+        try:
+            values.append(float(market.get("volume_24h") or 0.0))
+        except (TypeError, ValueError):
+            pass
+    return max(values, default=0.0)
+
+
 def main():
     spot = load(SPOT, {"candidates": []})
+    cex_identity = load(CEX_SPOT_IDENTITY, {"candidates": []})
     alpha = load(ALPHA, {"candidates": []})
     buy_registry = load(BUY_REGISTRY, {"entries": {}})
     event_doc = load(EVENTS, {"version": 3, "events": []})
@@ -109,6 +134,43 @@ def main():
             "last_buy_at": row.get("last_buy_at"),
         })
 
+    for row in cex_identity.get("candidates") or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("identity_status") != "DEX_VERIFIED" or row.get("identity_verified") is not True:
+            continue
+        if row.get("execution_pair_price_coherent") is not True:
+            continue
+        if row.get("market_age_verified") is not True:
+            continue
+        i = ident(row)
+        if not i or i[3] in seen:
+            continue
+        seen.add(i[3])
+        milestone = cex_signal_milestone(row)
+        out.append({
+            "candidate_type": "CEX_SPOT_DISCOVERY",
+            "symbol": str(row.get("symbol") or "").upper(),
+            "network": row.get("chain"),
+            "contract": row.get("token_address"),
+            "pair": row.get("pair_address"),
+            "dex_url": row.get("dex_url") or row.get("url") or "",
+            "source": "CEX Spot Multi-Venue Exact Identity",
+            "first_seen_at": milestone.get("observed_at") or row.get("identity_attempted_at"),
+            "discovery_price": milestone.get("reference_price"),
+            "change_24h_pct": row.get("change_24h_max_pct"),
+            "quote_volume_24h_usd": max_cex_turnover(row),
+            "positive_gainer_rank": row.get("leaderboard_best_rank"),
+            "dex_liquidity_usd": (
+                row.get("execution_pool_liquidity_usd")
+                or row.get("dex_pair_liquidity_usd")
+                or row.get("dex_liquidity_usd")
+            ),
+            "spot_revival_score": row.get("spot_revival_score"),
+            "coherent_confirmations": row.get("coherent_confirmations"),
+            "identity_key": i[3],
+        })
+
     for row in spot.get("candidates") or []:
         if row.get("status") != "IDENTITY_RESOLVED" or row.get("identity_status") != "RESOLVED_EXACT":
             continue
@@ -125,7 +187,7 @@ def main():
             "contract": row.get("contract"),
             "pair": row.get("pair"),
             "dex_url": row.get("dex_url") or "",
-            "source": "Gate Spot",
+            "source": c.get("source") or "CEX Spot",
             "source_url": row.get("source_url") or "",
             "first_seen_at": row.get("first_seen_at"),
             "discovery_price": row.get("discovery_price"),
@@ -165,7 +227,7 @@ def main():
         })
 
     out.sort(key=lambda x: (
-        0 if x["candidate_type"] == "BUY_ZONE" else 1 if x["candidate_type"] == "GATE_SPOT_DISCOVERY" else 2,
+        0 if x["candidate_type"] == "BUY_ZONE" else 1 if x["candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"} else 2,
         (
             x.get("alpha_age_minutes", 999999)
             if x["candidate_type"] == "PUBLIC_ALPHA"
@@ -179,6 +241,7 @@ def main():
         "mode": "EXACT_IDENTITY_DYNAMIC_RESEARCH",
         "counts": {
             "buy_zone": sum(x["candidate_type"] == "BUY_ZONE" for x in out),
+            "cex_spot": sum(x["candidate_type"] == "CEX_SPOT_DISCOVERY" for x in out),
             "gate_spot": sum(x["candidate_type"] == "GATE_SPOT_DISCOVERY" for x in out),
             "public_alpha": sum(x["candidate_type"] == "PUBLIC_ALPHA" for x in out),
             "public_alpha_stale_excluded": stale_alpha_excluded,
@@ -194,9 +257,9 @@ def main():
     existing = {str(e.get("canonical_event_id") or "") for e in events}
     added = 0
     for c in out:
-        if c["candidate_type"] != "GATE_SPOT_DISCOVERY":
+        if c["candidate_type"] not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"}:
             continue
-        cid = "gate-spot-discovery:" + c["identity_key"]
+        cid = "cex-spot-discovery:" + c["identity_key"]
         if cid in existing:
             continue
         change = max(0.0, float(c.get("change_24h_pct") or 0))
@@ -234,7 +297,7 @@ def main():
     event_doc["generated_at"] = now()
     event_doc["events"] = events[-5000:]
     EVENTS.write_text(json.dumps(event_doc, indent=2, ensure_ascii=False) + "\n")
-    print(json.dumps({"status": "OK", **doc["counts"], "gate_discovery_events_added": added}, ensure_ascii=False))
+    print(json.dumps({"status": "OK", **doc["counts"], "cex_discovery_events_added": added}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
