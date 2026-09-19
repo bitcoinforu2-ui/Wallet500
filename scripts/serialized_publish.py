@@ -70,6 +70,12 @@ def _identity() -> tuple[str, str, str, str]:
     run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1").strip() or "1"
     if not token or not repo or "/" not in repo:
         raise RuntimeError("SERIALIZED_PUBLISH_REQUIRES_GITHUB_CREDENTIAL_AND_REPOSITORY")
+    # The lock layer can recover the checkout credential from git config, but
+    # atomic_publish's GitHub API transports read GITHUB_TOKEN directly.
+    # Export the recovered credential so both layers share one authenticated
+    # identity without requiring every legacy workflow to duplicate env wiring.
+    if not os.environ.get("GITHUB_TOKEN", "").strip():
+        os.environ["GITHUB_TOKEN"] = token
     return token, repo, run_id, run_attempt
 
 
