@@ -69,7 +69,16 @@ def _target_identity(t: dict) -> tuple[str, str, str, str] | None:
 
 
 def _fingerprint(e: dict, identity_key: str) -> str:
-    root = str(e.get("canonical_event_id") or e.get("source_url") or "").strip()
+    # An aggregator and the original Telegram/X caller are the same underlying
+    # social opinion, not two independent confirmations. Upstream alpha intake
+    # supplies an independence_key keyed to caller+asset whenever provenance is
+    # known. Repeated surfaces therefore receive the normal duplicate discount.
+    root = str(
+        e.get("independence_key")
+        or e.get("canonical_event_id")
+        or e.get("source_url")
+        or ""
+    ).strip()
     if not root:
         root = "|".join(str(e.get(k) or "") for k in ("family", "kind", "subject", "event_time", "source"))
     return hashlib.sha256(f"{identity_key}|{root.lower()}".encode()).hexdigest()[:20]
