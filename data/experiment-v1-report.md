@@ -1,6 +1,6 @@
 # Wallet500 Experiment V1
 
-Generated: 2026-09-19T22:59:04.404445+00:00
+Generated: 2026-09-19T23:08:01.313269+00:00
 
 Prospective research only — production policy unchanged.
 
@@ -8,9 +8,9 @@ Prospective research only — production policy unchanged.
 
 | Experiment | N | Survival 1h | Survival 6h | Failed | Median ROI | P25 ROI | Max DD | Verified Tradable | Status |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| FIVE_MINUTE_FINGERPRINT | 192 | 11.46 | 11.46 | 0.52 | -4.178445 | -14.895439 | None | 11.46 | ANALYZABLE |
+| FIVE_MINUTE_FINGERPRINT | 192 | 11.46 | 11.46 | 0.52 | -4.178445 | -14.834214 | None | 11.46 | ANALYZABLE |
 | SURVIVOR_FIRST | 20 | 100.0 | 100.0 | 0.0 | -1.687161 | -6.317636 | None | 100.0 | COLLECTING |
-| SOURCE_TOURNAMENT | 359 | 6.96 | 6.96 | 0.84 | -4.178445 | -15.649821 | None | 6.96 | ANALYZABLE |
+| SOURCE_TOURNAMENT | 359 | 6.96 | 6.96 | 0.84 | -4.178445 | -15.588596 | None | 6.96 | ANALYZABLE |
 
 ## Source Tournament
 
