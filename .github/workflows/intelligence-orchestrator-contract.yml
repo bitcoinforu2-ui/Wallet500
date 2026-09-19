@@ -1,0 +1,42 @@
+name: Wallet500 Intelligence Orchestrator Contract
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/wallet500/intelligence_orchestrator.py'
+      - 'tests/test_intelligence_orchestrator.py'
+      - '.github/workflows/intelligence-orchestrator-contract.yml'
+
+permissions:
+  contents: read
+
+# Contract QA only: no canonical writes and no production promotion.
+concurrency:
+  group: wallet500-intelligence-orchestrator-contract
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e . pytest
+      - run: python -m pytest -q tests/test_intelligence_orchestrator.py
+      - name: Assert production truth gates remain unchanged
+        run: |
+          python - <<'PY'
+          import json
+          g=json.load(open('data/decision-generation.json'))
+          p=g['policy']['production']
+          assert p['minimum_market_age_days']==180
+          assert float(p['minimum_execution_liquidity_usd'])==50000
+          assert p['exact_pair_required'] is True
+          assert p['automatic_buy'] is False
+          print('TRUTH_GATES_UNCHANGED')
+          PY
