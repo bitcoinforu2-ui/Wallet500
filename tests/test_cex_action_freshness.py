@@ -88,6 +88,55 @@ assert ok is True, metrics
 assert metrics["action_state"] == "BUY_ZONE", metrics
 assert metrics["action_basis"] == "FRESH_SIGNAL", metrics
 assert metrics["signal_freshness"] == "FRESH", metrics
+
+# AKE-like regression: spot lane alone is below action threshold (38), while an
+# immutable derivatives FIRST_ALERT scored 79 at the same early spot price.
+# Cross-lane fusion should make the already exact-identity candidate actionable
+# without weakening identity/liquidity/no-chase/freshness gates.
+ake_time = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+ake = row(ake_time, (8.0, 7.6))
+ake["spot_revival_score"] = 38
+ake["milestones"]["first_alert"].update({
+    "observed_at": ake_time,
+    "reference_price": 0.0143037,
+    "reference_change_24h_pct": -3.49,
+    "score": 38,
+})
+for market, price in zip(ake["markets"], (0.01410, 0.01412)):
+    market["price"] = price
+ake["cross_lane_derivatives_precursor"] = {
+    "status": "QUALIFIED_CEX_DERIVATIVES_SPOT_PRECURSOR",
+    "research_only": True,
+    "actionable": False,
+    "affects_spot_score": False,
+    "identity_priority": True,
+    "eligible_for_action_score_fusion_after_exact_identity": True,
+    "no_hindsight": True,
+    "action_signal_score": 79,
+    "action_signal_at": ake_time,
+    "action_signal_price": 0.0136977,
+    "action_signal_change_24h_pct": 7.67,
+    "derivatives_score": 79,
+    "derivatives_coherent_confirmations": 4,
+    "derivatives_dispersion_status": "COHERENT_RANGE",
+    "spot_anchor_kind": "first_seen",
+    "spot_anchor_price": 0.0136977,
+}
+
+without_fusion = dict(ake)
+without_fusion.pop("cross_lane_derivatives_precursor")
+ok, metrics = guard.action_eligibility(without_fusion)
+assert ok is False, metrics
+assert "ACTION_SCORE_LT_50" in metrics["blockers"], metrics
+
+ok, metrics = guard.action_eligibility(ake)
+assert ok is True, metrics
+assert metrics["blockers"] == [], metrics
+assert metrics["signal_score"] == 79, metrics
+assert metrics["cross_lane_action_fusion_used"] is True, metrics
+assert metrics["action_state"] == "BUY_ZONE", metrics
+assert metrics["action_basis"] == "FRESH_CEX_DERIVATIVES_SPOT_FUSION", metrics
+assert metrics["since_discovery_pct"] < guard.MAX_GAIN_SINCE_DISCOVERY_PCT, metrics
 '''
     proc = subprocess.run(
         [sys.executable, "-c", textwrap.dedent(code)],

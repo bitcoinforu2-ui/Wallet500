@@ -135,13 +135,24 @@ def _status(row: dict) -> str:
 
 def _identity_priority(row: dict) -> tuple:
     persistent = bool(row.get("persistent_until_exact_identity_resolution"))
-    early = str(row.get("timing_quality") or "") == "EARLY_BREAKOUT_EVIDENCE"
-    alert_score = _num(row.get("first_alert_score") or row.get("spot_revival_score"))
+    precursor = row.get("cross_lane_derivatives_precursor") if isinstance(row.get("cross_lane_derivatives_precursor"), dict) else {}
+    cross_lane = bool(
+        precursor.get("identity_priority") is True
+        and precursor.get("status") == "QUALIFIED_CEX_DERIVATIVES_SPOT_PRECURSOR"
+    )
+    early = str(row.get("timing_quality") or "") == "EARLY_BREAKOUT_EVIDENCE" or cross_lane
+    alert_score = max(
+        _num(row.get("first_alert_score") or row.get("spot_revival_score")),
+        _num(precursor.get("action_signal_score")),
+    )
     watch_score = _num(row.get("first_watch_score"))
-    coherent = _num(
-        row.get("first_alert_coherent_confirmations")
-        or row.get("first_watch_coherent_confirmations")
-        or row.get("coherent_confirmations")
+    coherent = max(
+        _num(
+            row.get("first_alert_coherent_confirmations")
+            or row.get("first_watch_coherent_confirmations")
+            or row.get("coherent_confirmations")
+        ),
+        _num(precursor.get("derivatives_coherent_confirmations")),
     )
     accel = max(
         _num(row.get("first_watch_price_acceleration_max_pct")),
@@ -172,7 +183,22 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
     """
     previous_identity = previous_identity if isinstance(previous_identity, dict) else {}
     recent_attempts = _last_attempted_symbols(previous_identity)
-    current_rows = [x for x in (spot.get("watchlist") or []) if isinstance(x, dict)]
+    watch_rows = [x for x in (spot.get("watchlist") or []) if isinstance(x, dict)]
+    cross_lane_rows = [
+        x for x in (spot.get("shadow_watchlist") or [])
+        if isinstance(x, dict)
+        and isinstance(x.get("cross_lane_derivatives_precursor"), dict)
+        and x["cross_lane_derivatives_precursor"].get("identity_priority") is True
+        and x["cross_lane_derivatives_precursor"].get("status") == "QUALIFIED_CEX_DERIVATIVES_SPOT_PRECURSOR"
+    ]
+    current_rows = []
+    current_seen = set()
+    for row in watch_rows + cross_lane_rows:
+        symbol = _base_symbol(row.get("symbol"))
+        if not symbol or symbol in current_seen:
+            continue
+        current_rows.append(row)
+        current_seen.add(symbol)
     pending_rows = [x for x in (pending.get("candidates") or []) if isinstance(x, dict)]
 
     merged: dict[str, dict] = {}
@@ -248,6 +274,8 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
     pending_not_recent = len(pending_symbols - recent_attempts)
     report = {
         "current_watch_count": len(current_rows),
+        "regular_watch_count": len(watch_rows),
+        "cross_lane_identity_priority_count": len(cross_lane_rows),
         "persistent_pending_count": len(pending_rows),
         "persistent_carried_when_absent_from_current_watch": carried,
         "merged_unique_count": len(ordered),
@@ -262,6 +290,8 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         "fresh_watch_capacity_protected": True,
         "one_cycle_backlog_rotation": True,
         "ordering_only": True,
+        "cross_lane_derivatives_precursor_is_identity_priority_only": True,
+        "cross_lane_derivatives_precursor_never_satisfies_identity": True,
         "production_effect": False,
         "no_hindsight": True,
     }
@@ -453,6 +483,8 @@ def run(data_dir: Path = DATA) -> dict:
             "persistent_pending_priority_is_ordering_only": True,
             "persistent_pending_never_satisfies_identity": True,
             "priority_uses_only_preexisting_evidence": True,
+            "cross_lane_derivatives_precursor_identity_priority_only": True,
+            "cross_lane_derivatives_precursor_never_satisfies_identity": True,
             "fresh_watch_capacity_protected": True,
             "previous_attempt_only_controls_future_queue_order": True,
             "no_hindsight": True,

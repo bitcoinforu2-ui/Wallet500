@@ -1,3 +1,4 @@
+import gzip
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -457,3 +458,115 @@ def test_regional_momentum_is_shadow_only_and_never_counts_as_action_coherence(t
     assert row["spot_revival_score"] == 13
     assert "REGIONAL_MOMENTUM_SHADOW" in row["shadow_features"]
     assert row["regional_spot_lead"]["status"] == "REGIONAL_CONFIRMED"
+
+
+def test_ake_like_derivatives_precursor_surfaces_before_spot_watch_threshold(tmp_path: Path, monkeypatch):
+    now = "2026-09-04T10:50:55.521230+00:00"
+    rows = [
+        {
+            "exchange": "gate",
+            "market_type": "spot",
+            "symbol": "AKEUSDT",
+            "market_id": "AKE_USDT",
+            "price": 0.0136977,
+            "change_24h_pct": 7.57,
+            "volume_24h": 4_000_000.0,
+            "quote_symbol": "USDT",
+            "volume_comparable_usd_like": True,
+            "regional_market": False,
+        },
+        {
+            "exchange": "kucoin",
+            "market_type": "spot",
+            "symbol": "AKEUSDT",
+            "market_id": "AKE-USDT",
+            "price": 0.01372,
+            "change_24h_pct": 7.69,
+            "volume_24h": 2_000_000.0,
+            "quote_symbol": "USDT",
+            "volume_comparable_usd_like": True,
+            "regional_market": False,
+        },
+        {
+            "exchange": "mexc",
+            "market_type": "spot",
+            "symbol": "AKEUSDT",
+            "market_id": "AKEUSDT",
+            "price": 0.01368,
+            "change_24h_pct": 7.50,
+            "volume_24h": 1_500_000.0,
+            "quote_symbol": "USDT",
+            "volume_comparable_usd_like": True,
+            "regional_market": False,
+        },
+    ]
+    monkeypatch.setattr(
+        spot,
+        "SPOT_SOURCES",
+        [
+            ("gate", lambda: [rows[0]]),
+            ("kucoin", lambda: [rows[1]]),
+            ("mexc", lambda: [rows[2]]),
+        ],
+    )
+    derivative_state = {
+        "version": 4,
+        "signal_milestones": {
+            "AKEUSDT": {
+                "first_alert": {
+                    "kind": "FIRST_ALERT",
+                    "observed_at": now,
+                    "reference_exchange": "gate",
+                    "reference_price": 0.0137092,
+                    "reference_change_24h_pct": 7.67,
+                    "score": 79,
+                    "confirmations": 5,
+                    "coherent_confirmations": 4,
+                    "dispersion_status": "COHERENT_RANGE",
+                }
+            }
+        },
+    }
+    with gzip.open(tmp_path / "cex-state.json.gz", "wt", encoding="utf-8") as fh:
+        json.dump(derivative_state, fh)
+
+    report = spot.run_cex_spot_revival(tmp_path, now)
+
+    assert report["watch_count"] == 0
+    assert report["alerts_count"] == 0
+    assert report["shadow_watch_count"] == 1
+    assert report["cross_lane_derivatives_precursor_count"] == 1
+    row = report["shadow_watchlist"][0]
+    assert row["symbol"] == "AKEUSDT"
+    assert row["spot_revival_score"] < spot.WATCH_SCORE
+    assert "CEX_DERIVATIVES_PRECURSOR_SHADOW" in row["shadow_features"]
+    precursor = row["cross_lane_derivatives_precursor"]
+    assert precursor["status"] == "QUALIFIED_CEX_DERIVATIVES_SPOT_PRECURSOR"
+    assert precursor["action_signal_score"] == 79
+    assert precursor["derivatives_coherent_confirmations"] == 4
+    assert precursor["spot_anchor_kind"] == "first_seen"
+    assert precursor["spot_derivatives_price_error_pct"] < 1.0
+    assert precursor["identity_priority"] is True
+    assert precursor["affects_spot_score"] is False
+    assert precursor["actionable"] is False
+
+
+def test_cross_lane_precursor_rejects_extreme_derivatives_dispersion():
+    spot_ms = {
+        "first_seen": {
+            "observed_at": "2026-09-04T10:50:55+00:00",
+            "reference_price": 0.0137,
+            "reference_change_24h_pct": 7.5,
+        }
+    }
+    derivative = {
+        "AKEUSDT": {
+            "observed_at": "2026-09-04T10:50:55+00:00",
+            "reference_price": 0.01371,
+            "reference_change_24h_pct": 7.7,
+            "score": 90,
+            "coherent_confirmations": 4,
+            "dispersion_status": "EXTREME_DISLOCATION_VERIFY",
+        }
+    }
+    assert spot._cross_lane_derivatives_precursor("AKEUSDT", spot_ms, derivative) is None
