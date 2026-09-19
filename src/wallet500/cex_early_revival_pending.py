@@ -4,6 +4,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .cex_spot_identity import _is_prewave_shadow_identity_candidate
+
 DATA = Path("data")
 MIN_EARLY_ALERT_SCORE = 35
 MIN_EARLY_WATCH_SCORE = 25
@@ -80,6 +82,15 @@ def run(data_dir: Path = DATA) -> dict:
         for r in (spot.get("watchlist") or [])
         if isinstance(r, dict) and _base_symbol(r.get("symbol"))
     }
+    # Persist high-value pre-wave shadows too. Identity resolution runs before
+    # this persistence step in the fast lane; if a provider fails on the first
+    # qualifying scan, the candidate must survive into the next resolver cycle.
+    for row in spot.get("shadow_watchlist") or []:
+        if not isinstance(row, dict) or not _is_prewave_shadow_identity_candidate(row):
+            continue
+        symbol = _base_symbol(row.get("symbol"))
+        if symbol:
+            current[symbol] = row
 
     candidates = []
     for symbol in sorted(set(prior) | set(current)):
@@ -103,13 +114,42 @@ def run(data_dir: Path = DATA) -> dict:
             and watch_coherent >= MIN_COHERENT_CONFIRMATIONS
             and (watch_price_acc >= MIN_PRICE_ACCEL_PCT or watch_volume_acc >= MIN_VOLUME_ACCEL_PCT)
         )
-        if not (watch_ok or alert_ok):
+        prewave_now = bool(cur) and _is_prewave_shadow_identity_candidate(cur)
+        prewave_ok = prewave_now or bool(old.get("prewave_identity_priority"))
+        if not (watch_ok or alert_ok or prewave_ok):
             continue
 
-        anchor = first_watch if watch_ok else first_alert
-        anchor_kind = "FIRST_WATCH" if watch_ok else "FIRST_ALERT"
-        anchor_change = _f(anchor.get("change_24h_max_pct") or anchor.get("reference_change_24h_pct"))
+        if watch_ok:
+            anchor = first_watch
+            anchor_kind = "FIRST_WATCH"
+        elif alert_ok:
+            anchor = first_alert
+            anchor_kind = "FIRST_ALERT"
+        else:
+            first_shadow = ms.get("first_shadow_watch") if isinstance(ms.get("first_shadow_watch"), dict) else {}
+            slow = ms.get("first_cross_venue_slow_ignition") if isinstance(ms.get("first_cross_venue_slow_ignition"), dict) else {}
+            first_anomaly = ms.get("first_anomaly") if isinstance(ms.get("first_anomaly"), dict) else {}
+            anchor = first_shadow or slow or first_anomaly or (ms.get("first_seen") if isinstance(ms.get("first_seen"), dict) else {}) or {}
+            anchor_kind = "PREWAVE_SHADOW"
+        anchor_change = _f(
+            anchor.get("change_24h_max_pct")
+            or anchor.get("reference_change_24h_pct")
+            or cur.get("change_24h_max_pct")
+            or old.get("prewave_change_24h_pct")
+        )
         timing_quality = "LATE_BREAKOUT_ALREADY_EXTENDED" if anchor_change >= LATE_MOVE_PCT else "EARLY_BREAKOUT_EVIDENCE"
+
+        slow_ignition = cur.get("slow_ignition") if isinstance(cur.get("slow_ignition"), dict) else {}
+        prewave_observed_at = (
+            anchor.get("observed_at")
+            if prewave_now
+            else old.get("prewave_observed_at")
+        )
+        prewave_features = (
+            list(cur.get("shadow_features") or [])
+            if prewave_now
+            else list(old.get("prewave_shadow_features") or [])
+        )
 
         candidates.append({
             "symbol": cur.get("symbol") or old.get("symbol") or f"{symbol}USDT",
@@ -132,6 +172,29 @@ def run(data_dir: Path = DATA) -> dict:
             "first_alert_observed_at": first_alert.get("observed_at") or old.get("first_alert_observed_at"),
             "first_alert_reference_price": first_alert.get("reference_price") if first_alert else old.get("first_alert_reference_price"),
             "first_alert_reference_exchange": first_alert.get("reference_exchange") if first_alert else old.get("first_alert_reference_exchange"),
+            "prewave_identity_priority": bool(prewave_ok),
+            "prewave_observed_at": prewave_observed_at,
+            "prewave_change_24h_pct": (
+                cur.get("change_24h_max_pct")
+                if prewave_now
+                else old.get("prewave_change_24h_pct")
+            ),
+            "prewave_volume_acceleration_pct": (
+                cur.get("volume_acceleration_max_pct")
+                if prewave_now
+                else old.get("prewave_volume_acceleration_pct")
+            ),
+            "prewave_volume_window_multiple": (
+                cur.get("volume_window_multiple_max")
+                if prewave_now
+                else old.get("prewave_volume_window_multiple")
+            ),
+            "prewave_slow_ignition_status": (
+                slow_ignition.get("status")
+                if prewave_now
+                else old.get("prewave_slow_ignition_status")
+            ),
+            "prewave_shadow_features": prewave_features,
             "current_score": cur.get("spot_revival_score", old.get("current_score")),
             "current_coherent_confirmations": cur.get("coherent_confirmations", old.get("current_coherent_confirmations")),
             "current_change_24h_max_pct": cur.get("change_24h_max_pct", old.get("current_change_24h_max_pct")),
@@ -148,9 +211,9 @@ def run(data_dir: Path = DATA) -> dict:
         reverse=True,
     )
     payload = {
-        "version": 2,
+        "version": 3,
         "generated_at": now,
-        "mode": "RESEARCH_ONLY_PERSISTENT_EARLY_REVIVAL_PENDING_V2",
+        "mode": "RESEARCH_ONLY_PERSISTENT_EARLY_REVIVAL_PENDING_V3_PREWAVE",
         "production_portfolio_impact": "NONE",
         "automatic_buy": False,
         "minimum_first_alert_score": MIN_EARLY_ALERT_SCORE,
@@ -168,6 +231,8 @@ def run(data_dir: Path = DATA) -> dict:
             "exact_dex_pair_required": True,
             "production_liquidity_and_survival_gates_unchanged": True,
             "pre_alert_retention_is_research_only": True,
+            "prewave_shadow_persistence_is_identity_only": True,
+            "prewave_shadow_never_actionable": True,
         },
         "candidate_count": len(candidates),
         "candidates": candidates,
