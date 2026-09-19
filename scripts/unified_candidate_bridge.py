@@ -357,6 +357,18 @@ def main():
             "buys_h1_at_intake": row.get("buys_h1"),
             "sells_h1_at_intake": row.get("sells_h1"),
             "identity_key": i[3],
+            "priority": (
+                "ALPHA_MULTI_CONVERGENCE"
+                if int(conv.get("alpha_independent_callers_30m") or 0) >= 3
+                else "ALPHA_DOUBLE_CONVERGENCE"
+                if int(conv.get("alpha_independent_callers_30m") or 0) >= 2
+                else "ALPHA_FIRST_CALL"
+            ),
+            "collector_priority": (
+                1 if int(conv.get("alpha_independent_callers_30m") or 0) >= 2 else 3
+            ),
+            "deep_investigation": int(conv.get("alpha_independent_callers_30m") or 0) >= 2,
+            "full_intelligence": int(conv.get("alpha_independent_callers_30m") or 0) >= 3,
             **conv,
         })
 
