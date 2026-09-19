@@ -60,6 +60,66 @@ def test_binance_spot_parses_usdt_markets(monkeypatch):
     assert rows[0]["volume_comparable_usd_like"] is True
 
 
+def test_bitget_spot_parses_usdt_markets(monkeypatch):
+    monkeypatch.setattr(
+        spot,
+        "_get",
+        lambda url: {
+            "code": "00000",
+            "data": [
+                {
+                    "symbol": "ISLANDUSDT",
+                    "lastPr": "0.00045",
+                    "change24h": "0.125",
+                    "quoteVolume": "250000",
+                },
+                {
+                    "symbol": "BTCUSDC",
+                    "lastPr": "100000",
+                    "change24h": "0.01",
+                    "quoteVolume": "1",
+                },
+            ],
+        },
+    )
+    rows = spot.bitget_spot()
+    assert len(rows) == 1
+    assert rows[0]["exchange"] == "bitget"
+    assert rows[0]["symbol"] == "ISLANDUSDT"
+    assert rows[0]["change_24h_pct"] == 12.5
+    assert rows[0]["volume_24h"] == 250000.0
+
+
+def test_coinex_spot_parses_usdt_markets(monkeypatch):
+    monkeypatch.setattr(
+        spot,
+        "_get",
+        lambda url: {
+            "code": 0,
+            "data": [
+                {
+                    "market": "B2USDT",
+                    "last": "0.44",
+                    "open": "0.40",
+                    "value": "900000",
+                },
+                {
+                    "market": "BTCUSDC",
+                    "last": "100000",
+                    "open": "99000",
+                    "value": "1",
+                },
+            ],
+        },
+    )
+    rows = spot.coinex_spot()
+    assert len(rows) == 1
+    assert rows[0]["exchange"] == "coinex"
+    assert rows[0]["symbol"] == "B2USDT"
+    assert round(rows[0]["change_24h_pct"], 6) == 10.0
+    assert rows[0]["volume_24h"] == 900000.0
+
+
 def test_upbit_spot_maps_krw_market_into_canonical_research_symbol(monkeypatch):
     def fake_get(url):
         if "market/all" in url:
