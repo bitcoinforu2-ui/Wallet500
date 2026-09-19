@@ -10,8 +10,10 @@ ROOT = Path(__file__).resolve().parents[1]
 EVENTS = ROOT / "data/close-watch-events.json"
 REP = ROOT / "data/alpha-caller-reputation.json"
 CALLS = ROOT / "data/alpha-caller-call-history.json"
-UA = "Wallet500-AlphaCallerReputation/1.2"
+CANDIDATES = ROOT / "data/alpha-caller-candidates.json"
+UA = "Wallet500-AlphaCallerReputation/1.3"
 HORIZONS_MINUTES = (15, 30, 60, 180, 360, 1440)
+RELIABILITY_MATURITY_MINUTES = 30
 
 
 def now() -> str:
@@ -54,11 +56,117 @@ def median(values):
     return xs[len(xs) // 2]
 
 
+def clamp(value, lo=0.0, hi=100.0):
+    return max(lo, min(hi, float(value)))
+
+
+def normalized_call_key(row: dict):
+    source = str(row.get("source") or "").strip().lower()
+    caller = str(row.get("caller") or row.get("subject") or "").strip().lower()
+    contract = str(row.get("contract") or "").strip().lower()
+    called = dt(row.get("called_at") or row.get("event_time"))
+    if not source or not caller or not contract or called is None:
+        return None
+    return source, caller, contract, called.isoformat()
+
+
+def intake_reliability(candidate_rows: list[dict], verified_calls: list[dict], current_dt=None) -> dict:
+    current_dt = current_dt or datetime.now(timezone.utc)
+    verified_keys = {
+        key for key in (normalized_call_key(x) for x in verified_calls) if key is not None
+    }
+    groups: dict[tuple[str, str], dict] = {}
+    seen: set[tuple] = set()
+
+    for row in candidate_rows:
+        if not isinstance(row, dict) or str(row.get("signal_role") or "candidate_discovery") == "confirmation_only":
+            continue
+        key = normalized_call_key(row)
+        if key is None or key in seen:
+            continue
+        seen.add(key)
+        source, caller, _, _ = key
+        group = groups.setdefault(
+            (source, caller),
+            {
+                "observed_calls": 0,
+                "ever_verified": 0,
+                "mature_unverified": 0,
+                "pending_unverified": 0,
+                "rejection_reasons": {},
+            },
+        )
+        group["observed_calls"] += 1
+        is_verified = key in verified_keys or row.get("status") == "GATED_RESEARCH_CANDIDATE"
+        if is_verified:
+            group["ever_verified"] += 1
+            continue
+
+        called = dt(row.get("called_at"))
+        age_minutes = (
+            max(0.0, (current_dt - called).total_seconds() / 60.0)
+            if called is not None
+            else RELIABILITY_MATURITY_MINUTES
+        )
+        if age_minutes < RELIABILITY_MATURITY_MINUTES:
+            group["pending_unverified"] += 1
+            continue
+
+        group["mature_unverified"] += 1
+        for reason in row.get("reasons") or ["UNKNOWN_REJECTION"]:
+            reason = str(reason)
+            group["rejection_reasons"][reason] = group["rejection_reasons"].get(reason, 0) + 1
+
+    result = {}
+    for key, group in groups.items():
+        evaluable = group["ever_verified"] + group["mature_unverified"]
+        rate = group["ever_verified"] / evaluable if evaluable else None
+        bayes = (group["ever_verified"] + 2) / (evaluable + 4) if evaluable else 0.5
+        reasons = sorted(
+            group["rejection_reasons"].items(), key=lambda item: (-item[1], item[0])
+        )[:5]
+        result[key] = {
+            **group,
+            "mature_evaluable_calls": evaluable,
+            "ever_verified_rate": None if rate is None else round(rate, 4),
+            "bayesian_verification_rate": round(bayes, 4),
+            "top_rejection_reasons": [
+                {"reason": reason, "count": count} for reason, count in reasons
+            ],
+        }
+    return result
+
+
+def source_quality_v2(reliability: dict, *, shrunk_early: float, shrunk_5x: float, median_multiple, resolved_count: int) -> dict:
+    validation = 100.0 * float(reliability.get("bayesian_verification_rate", 0.5))
+    early = 100.0 * float(shrunk_early)
+    big_win = 100.0 * float(shrunk_5x)
+    med = n(median_multiple)
+    median_edge = 0.0 if med is None else clamp((min(2.0, max(1.0, med)) - 1.0) * 100.0)
+    raw = 0.45 * validation + 0.30 * early + 0.15 * big_win + 0.10 * median_edge
+    evidence_n = max(int(reliability.get("mature_evaluable_calls") or 0), int(resolved_count or 0))
+    confidence = min(1.0, evidence_n / 30.0)
+    score = 50.0 * (1.0 - confidence) + raw * confidence
+    return {
+        "source_quality_score_v2": round(clamp(score), 2),
+        "source_quality_raw_v2": round(clamp(raw), 2),
+        "source_quality_confidence_v2": round(confidence, 4),
+        "source_quality_components_v2": {
+            "intake_reliability": round(validation, 2),
+            "early_2x": round(early, 2),
+            "five_x": round(big_win, 2),
+            "median_edge": round(median_edge, 2),
+        },
+    }
+
+
 def main() -> None:
     bus = json.loads(EVENTS.read_text()) if EVENTS.exists() else {"events": []}
     rep = json.loads(REP.read_text()) if REP.exists() else {"version": 1, "callers": {}, "policy": {}}
     hist = json.loads(CALLS.read_text()) if CALLS.exists() else {"version": 1, "calls": {}}
-    callers = rep.setdefault("callers", {})
+    candidates_doc = json.loads(CANDIDATES.read_text()) if CANDIDATES.exists() else {"candidates": []}
+    callers = {}
+    rep["callers"] = callers
     calls = hist.setdefault("calls", {})
 
     for event in bus.get("events") or []:
@@ -143,9 +251,26 @@ def main() -> None:
                         }
 
     # Reputation is prospective and descriptive. Marketing claims and historical self-reported wins do not count.
+    reliability = intake_reliability(
+        [x for x in (candidates_doc.get("candidates") or []) if isinstance(x, dict)],
+        [x for x in calls.values() if isinstance(x, dict)],
+    )
     grouped = {}
     for call in calls.values():
         grouped.setdefault((call["source"], call["caller"]), []).append(call)
+    for source_caller in reliability:
+        source_key, caller_key = source_caller
+        matching = next(
+            (
+                (str(x.get("source") or ""), str(x.get("caller") or ""))
+                for x in (candidates_doc.get("candidates") or [])
+                if isinstance(x, dict)
+                and str(x.get("source") or "").strip().lower() == source_key
+                and str(x.get("caller") or "").strip().lower() == caller_key
+            ),
+            (source_key, caller_key),
+        )
+        grouped.setdefault(matching, [])
 
     for (source, caller), xs in grouped.items():
         resolved = [x for x in xs if n(x.get("max_multiple")) is not None]
@@ -185,6 +310,27 @@ def main() -> None:
         confidence = min(90, 35 + count * 2) if count >= 5 else min(55, 30 + count * 5)
         strength = min(90, 25 + 45 * shrunk_5x + 20 * shrunk_early)
 
+        reliability_card = reliability.get(
+            (str(source).strip().lower(), str(caller).strip().lower()),
+            {
+                "observed_calls": len(xs),
+                "ever_verified": count,
+                "mature_unverified": 0,
+                "pending_unverified": 0,
+                "mature_evaluable_calls": count,
+                "ever_verified_rate": 1.0 if count else None,
+                "bayesian_verification_rate": (count + 2) / (count + 4) if count else 0.5,
+                "top_rejection_reasons": [],
+            },
+        )
+        quality_v2 = source_quality_v2(
+            reliability_card,
+            shrunk_early=shrunk_early,
+            shrunk_5x=shrunk_5x,
+            median_multiple=median(mults),
+            resolved_count=count,
+        )
+
         key = source + "::" + caller
         callers[key] = {
             "source": source,
@@ -214,6 +360,8 @@ def main() -> None:
             "median_minutes_to_5x": median(times5),
             "reputation_strength": round(strength, 1),
             "reputation_confidence": round(confidence, 1),
+            "intake_reliability": reliability_card,
+            **quality_v2,
             "status": "ESTABLISHED" if count >= 20 else ("EMERGING" if count >= 5 else "UNPROVEN"),
             "updated_at": now(),
         }
@@ -235,6 +383,10 @@ def main() -> None:
         "historical_third_party_evidence_used_for_source_selection": True,
         "historical_evidence_affects_trade_score": False,
         "aggregator_scores_are_external_metadata_only": True,
+        "survivorship_bias_correction": "MATURE_UNVERIFIED_CALLS_COUNT_AGAINST_SOURCE_RELIABILITY; PREVIOUSLY_VERIFIED_CALLS_REMAIN_VERIFIED_IF_MARKET_LATER_DIES",
+        "reliability_maturity_minutes": RELIABILITY_MATURITY_MINUTES,
+        "source_quality_v2_trade_effect": "RESEARCH_PRIORITY_ONLY",
+        "source_quality_v2_formula": "45% intake reliability + 30% early 2x + 15% 5x + 10% capped median edge; confidence shrunk to neutral prior",
         "minimum_status_samples": {"EMERGING": 5, "ESTABLISHED": 20},
     }
     rep["updated_at"] = now()
