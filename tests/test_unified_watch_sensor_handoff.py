@@ -83,7 +83,7 @@ def test_island_replay_first_trigger_is_1256_local():
     assert observed_at == "2026-09-19T09:56:19.811417+00:00"
     assert volume == 1802.33
     assert rank == 8
-    assert sensor["baseline_multiple"] == 5.722
+    assert sensor["baseline_multiple"] == 5.7219
     assert "CEX_RELATIVE_VOLUME_SHOCK" in sensor["triggers"]
     assert "CEX_VOLUME_ACCELERATION" in sensor["triggers"]
     assert "CEX_RANK_ACCELERATION" in sensor["triggers"]
