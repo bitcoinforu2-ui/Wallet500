@@ -177,7 +177,7 @@ def _identity_priority(row: dict) -> tuple:
         precursor.get("identity_priority") is True
         and precursor.get("status") == "QUALIFIED_CEX_DERIVATIVES_SPOT_PRECURSOR"
     )
-    prewave = _is_prewave_shadow_identity_candidate(row)
+    prewave = _is_prewave_shadow_identity_candidate(row) or bool(row.get("prewave_identity_priority"))
     early = str(row.get("timing_quality") or "") == "EARLY_BREAKOUT_EVIDENCE" or cross_lane
     alert_score = max(
         _num(row.get("first_alert_score") or row.get("spot_revival_score")),
