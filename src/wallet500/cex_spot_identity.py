@@ -11,6 +11,12 @@ from .cex_spot_identity_fallback import resolve as resolve_dex_fallback
 DATA = Path("data")
 MAX_WATCH_CANDIDATES = 60
 MAX_PERSISTENT_PRIORITY_SLOTS = 30
+PERSISTENT_BACKLOG_TARGET_SLOTS = 30
+PREWAVE_IDENTITY_PRIORITY_SLOTS = 12
+PREWAVE_MIN_VOLUME_ACCEL_PCT = 50.0
+PREWAVE_MIN_VOLUME_WINDOW_MULTIPLE = 3.0
+PREWAVE_MIN_CURRENT_CHANGE_PCT = -10.0
+PREWAVE_MAX_CURRENT_CHANGE_PCT = 20.0
 MAX_CEX_DEX_PRICE_RATIO = 2.0
 USD_LIKE_QUOTES = {"USD", "USDT", "USDC", "BUSD", "FDUSD", "TUSD", "USDP", "DAI"}
 
@@ -133,6 +139,38 @@ def _status(row: dict) -> str:
     return "CEX_SPOT_IDENTITY_PENDING_RESEARCH"
 
 
+def _is_prewave_shadow_identity_candidate(row: dict) -> bool:
+    """Surface strong pre-wave spot evidence for identity work without changing action score.
+
+    This closes the W3GG-class hole: a large turnover burst or persistent cross-venue
+    pressure while price is still relatively quiet should get exact-identity work before
+    the token has already broken out. The signal remains research-only and never satisfies
+    identity, liquidity, age, action-score or Telegram gates by itself.
+    """
+    if row.get("leveraged_product") is True:
+        return False
+    change = _num(row.get("change_24h_max_pct"))
+    if change < PREWAVE_MIN_CURRENT_CHANGE_PCT or change > PREWAVE_MAX_CURRENT_CHANGE_PCT:
+        return False
+
+    shadow = set(row.get("shadow_features") or [])
+    volume_accel = _num(row.get("volume_acceleration_max_pct"))
+    volume_window = _num(row.get("volume_window_multiple_max"))
+    absorption = (
+        "VOLUME_PRICE_ABSORPTION_SHADOW" in shadow
+        and (
+            volume_accel >= PREWAVE_MIN_VOLUME_ACCEL_PCT
+            or volume_window >= PREWAVE_MIN_VOLUME_WINDOW_MULTIPLE
+        )
+    )
+    slow = row.get("slow_ignition") if isinstance(row.get("slow_ignition"), dict) else {}
+    persistent_pressure = (
+        slow.get("status") == "CROSS_VENUE_PERSISTENT"
+        and _num(slow.get("confirmations")) >= 2
+    )
+    return bool(absorption or persistent_pressure)
+
+
 def _identity_priority(row: dict) -> tuple:
     persistent = bool(row.get("persistent_until_exact_identity_resolution"))
     precursor = row.get("cross_lane_derivatives_precursor") if isinstance(row.get("cross_lane_derivatives_precursor"), dict) else {}
@@ -140,6 +178,7 @@ def _identity_priority(row: dict) -> tuple:
         precursor.get("identity_priority") is True
         and precursor.get("status") == "QUALIFIED_CEX_DERIVATIVES_SPOT_PRECURSOR"
     )
+    prewave = _is_prewave_shadow_identity_candidate(row) or bool(row.get("prewave_identity_priority"))
     early = str(row.get("timing_quality") or "") == "EARLY_BREAKOUT_EVIDENCE" or cross_lane
     alert_score = max(
         _num(row.get("first_alert_score") or row.get("spot_revival_score")),
@@ -157,8 +196,13 @@ def _identity_priority(row: dict) -> tuple:
     accel = max(
         _num(row.get("first_watch_price_acceleration_max_pct")),
         _num(row.get("first_watch_volume_acceleration_max_pct")),
+        _num(row.get("volume_acceleration_max_pct")),
     )
-    return (persistent, early, coherent, alert_score, watch_score, accel)
+    prewave_strength = max(
+        _num(row.get("volume_acceleration_max_pct")),
+        _num(row.get("volume_window_multiple_max")) * 10.0,
+    )
+    return (cross_lane, prewave, early, coherent, alert_score, watch_score, prewave_strength, accel, persistent)
 
 
 def _last_attempted_symbols(previous_identity: dict) -> set[str]:
@@ -184,16 +228,17 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
     previous_identity = previous_identity if isinstance(previous_identity, dict) else {}
     recent_attempts = _last_attempted_symbols(previous_identity)
     watch_rows = [x for x in (spot.get("watchlist") or []) if isinstance(x, dict)]
+    shadow_rows = [x for x in (spot.get("shadow_watchlist") or []) if isinstance(x, dict)]
     cross_lane_rows = [
-        x for x in (spot.get("shadow_watchlist") or [])
-        if isinstance(x, dict)
-        and isinstance(x.get("cross_lane_derivatives_precursor"), dict)
+        x for x in shadow_rows
+        if isinstance(x.get("cross_lane_derivatives_precursor"), dict)
         and x["cross_lane_derivatives_precursor"].get("identity_priority") is True
         and x["cross_lane_derivatives_precursor"].get("status") == "QUALIFIED_CEX_DERIVATIVES_SPOT_PRECURSOR"
     ]
+    prewave_rows = [x for x in shadow_rows if _is_prewave_shadow_identity_candidate(x)]
     current_rows = []
     current_seen = set()
-    for row in watch_rows + cross_lane_rows:
+    for row in cross_lane_rows + prewave_rows + watch_rows:
         symbol = _base_symbol(row.get("symbol"))
         if not symbol or symbol in current_seen:
             continue
@@ -243,53 +288,88 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
             carried += 1
 
     ordered = sorted(merged.values(), key=_identity_priority, reverse=True)
-    pending_ordered = sorted(
-        [row for row in ordered if _base_symbol(row.get("symbol")) in pending_symbols],
+    current_ordered = [
+        row for row in ordered if _base_symbol(row.get("symbol")) in current_symbols
+    ]
+    prewave_symbols = {
+        _base_symbol(row.get("symbol"))
+        for row in prewave_rows
+        if _base_symbol(row.get("symbol"))
+    }
+    prewave_ordered = [
+        row for row in current_ordered
+        if _base_symbol(row.get("symbol")) in prewave_symbols
+    ]
+    pending_only_symbols = pending_symbols - current_symbols
+    pending_only_ordered = sorted(
+        [
+            row for row in ordered
+            if _base_symbol(row.get("symbol")) in pending_only_symbols
+        ],
         key=lambda row: (
             _base_symbol(row.get("symbol")) not in recent_attempts,
             _identity_priority(row),
         ),
         reverse=True,
     )
-    current_ordered = [row for row in ordered if _base_symbol(row.get("symbol")) in current_symbols]
 
     selected: list[dict] = []
     selected_symbols: set[str] = set()
 
-    def add_rows(rows: list[dict], limit: int) -> None:
+    def add_rows(rows: list[dict], category_cap: int | None = None) -> int:
+        added = 0
         for row in rows:
-            if len(selected) >= limit:
-                return
+            if len(selected) >= MAX_WATCH_CANDIDATES:
+                break
+            if category_cap is not None and added >= category_cap:
+                break
             symbol = _base_symbol(row.get("symbol"))
             if not symbol or symbol in selected_symbols:
                 continue
             selected.append(row)
             selected_symbols.add(symbol)
+            added += 1
+        return added
 
-    add_rows(pending_ordered, min(MAX_PERSISTENT_PRIORITY_SLOTS, MAX_WATCH_CANDIDATES))
-    add_rows(current_ordered, MAX_WATCH_CANDIDATES)
-    add_rows(ordered, MAX_WATCH_CANDIDATES)
+    prewave_selected = add_rows(prewave_ordered, PREWAVE_IDENTITY_PRIORITY_SLOTS)
+    backlog_selected = add_rows(
+        pending_only_ordered,
+        min(MAX_PERSISTENT_PRIORITY_SLOTS, PERSISTENT_BACKLOG_TARGET_SLOTS),
+    )
+    add_rows(current_ordered)
 
     selected_recent = len(selected_symbols & recent_attempts)
-    pending_not_recent = len(pending_symbols - recent_attempts)
+    pending_not_recent = len(pending_only_symbols - recent_attempts)
     report = {
         "current_watch_count": len(current_rows),
         "regular_watch_count": len(watch_rows),
         "cross_lane_identity_priority_count": len(cross_lane_rows),
+        "prewave_shadow_identity_priority_count": len(prewave_rows),
+        "prewave_shadow_selected_count": prewave_selected,
+        "prewave_shadow_priority_slot_cap": PREWAVE_IDENTITY_PRIORITY_SLOTS,
         "persistent_pending_count": len(pending_rows),
+        "persistent_backlog_only_count": len(pending_only_symbols),
         "persistent_carried_when_absent_from_current_watch": carried,
         "merged_unique_count": len(ordered),
         "selected_count": len(selected),
         "selected_persistent_count": len(selected_symbols & pending_symbols),
+        "selected_persistent_backlog_only_count": len(selected_symbols & pending_only_symbols),
         "selected_current_count": len(selected_symbols & current_symbols),
+        "selected_current_nonpersistent_count": len((selected_symbols & current_symbols) - pending_symbols),
         "previous_attempted_symbol_count": len(recent_attempts),
         "pending_not_attempted_previous_run": pending_not_recent,
         "selected_attempted_previous_run": selected_recent,
         "limit": MAX_WATCH_CANDIDATES,
         "persistent_priority_slot_cap": MAX_PERSISTENT_PRIORITY_SLOTS,
+        "persistent_backlog_target_slots": PERSISTENT_BACKLOG_TARGET_SLOTS,
+        "persistent_backlog_selected_this_run": backlog_selected,
+        "persistent_backlog_cap_enforced": backlog_selected <= MAX_PERSISTENT_PRIORITY_SLOTS,
         "fresh_watch_capacity_protected": True,
+        "prewave_shadow_capacity_protected": True,
         "one_cycle_backlog_rotation": True,
         "ordering_only": True,
+        "prewave_shadow_is_identity_priority_only": True,
+        "prewave_shadow_never_satisfies_identity": True,
         "cross_lane_derivatives_precursor_is_identity_priority_only": True,
         "cross_lane_derivatives_precursor_never_satisfies_identity": True,
         "production_effect": False,
@@ -485,7 +565,11 @@ def run(data_dir: Path = DATA) -> dict:
             "priority_uses_only_preexisting_evidence": True,
             "cross_lane_derivatives_precursor_identity_priority_only": True,
             "cross_lane_derivatives_precursor_never_satisfies_identity": True,
+            "prewave_shadow_identity_priority_only": True,
+            "prewave_shadow_never_satisfies_identity": True,
+            "persistent_backlog_cap_enforced": True,
             "fresh_watch_capacity_protected": True,
+            "prewave_shadow_capacity_protected": True,
             "previous_attempt_only_controls_future_queue_order": True,
             "no_hindsight": True,
         },
