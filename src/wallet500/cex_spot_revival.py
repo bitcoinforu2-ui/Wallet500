@@ -388,6 +388,38 @@ def binance_spot():
     ]
 
 
+def bitget_spot():
+    payload = _get("https://api.bitget.com/api/v2/spot/market/tickers")
+    rows = payload.get("data", []) if isinstance(payload, dict) else []
+    return [
+        _row(
+            "bitget",
+            x.get("symbol", ""),
+            x.get("lastPr"),
+            _f(x.get("change24h")) * 100.0,
+            x.get("quoteVolume"),
+            x.get("symbol"),
+        )
+        for x in rows
+        if str(x.get("symbol", "")).endswith("USDT")
+    ]
+
+
+def coinex_spot():
+    payload = _get("https://api.coinex.com/v2/spot/ticker")
+    rows = payload.get("data", []) if isinstance(payload, dict) else []
+    out = []
+    for x in rows:
+        market = str(x.get("market", ""))
+        if not market.endswith("USDT"):
+            continue
+        last = _f(x.get("last") if x.get("last") is not None else x.get("close"))
+        open24h = _f(x.get("open"))
+        change = (last / open24h - 1.0) * 100.0 if last and open24h else 0.0
+        out.append(_row("coinex", market, last, change, x.get("value"), market))
+    return out
+
+
 def upbit_spot():
     markets = _get("https://api.upbit.com/v1/market/all?is_details=false")
     krw_markets = [str(x.get("market", "")) for x in markets if str(x.get("market", "")).startswith("KRW-")]
@@ -428,6 +460,8 @@ SPOT_SOURCES = [
     ("mexc", mexc_spot),
     ("kucoin", kucoin_spot),
     ("binance", binance_spot),
+    ("bitget", bitget_spot),
+    ("coinex", coinex_spot),
     ("upbit", upbit_spot),
 ]
 
