@@ -686,6 +686,7 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
     watchlist = []
     alerts = []
     shadow_watchlist = []
+    collision_diagnostics = []
     for symbol, markets in groups.items():
         scoring_markets, collision_outliers, regional_markets, price_ratio = _price_coherent_partition(markets)
         local = [_market_signal(x) for x in scoring_markets]
@@ -708,6 +709,9 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
 
         shadow_features = sorted({hit for x in local for hit in x.get("shadow_hits", [])})
         shadow_reasons = [reason for x in local for reason in x.get("shadow_reasons", [])]
+        if any(x.get("hit_count", 0) > 0 for x in regional_local):
+            shadow_features = sorted(set(shadow_features + ["REGIONAL_MOMENTUM_SHADOW"]))
+            shadow_reasons.append("regional native-quote momentum detected; research-only until exact identity")
         leveraged_sensor = leveraged_sensors.get(symbol)
         if leveraged_sensor and leveraged_sensor.get("active"):
             shadow_features = sorted(set(shadow_features + ["LEVERAGED_UNDERLYING_MOMENTUM_SHADOW"]))
@@ -735,6 +739,17 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
             ],
             "promotion_effect": "OUTLIERS_EXCLUDED_FROM_CROSS_EXCHANGE_CONFIRMATION",
         }
+        if collision_outliers:
+            collision_diagnostics.append({
+                "symbol": symbol,
+                **symbol_collision,
+            })
+            outlier_signals = [_market_signal(x) for x in collision_outliers]
+            if any(x.get("hit_count", 0) > 0 for x in outlier_signals):
+                shadow_features = sorted(set(shadow_features + ["SYMBOL_COLLISION_OUTLIER_SHADOW"]))
+                shadow_reasons.append(
+                    "same-ticker USD markets split into divergent price cohorts; outlier momentum kept research-only"
+                )
 
         ms = milestones.setdefault(symbol, {})
         first = _snapshot(now, scoring_markets, score, coherent_conf, "FIRST_SEEN", best)
@@ -869,6 +884,8 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
         "watch_count": len(watchlist),
         "alerts_count": len(alerts),
         "shadow_watch_count": len(shadow_watchlist),
+        "symbol_collision_count": len(collision_diagnostics),
+        "symbol_collisions": collision_diagnostics[:100],
         "watchlist": watchlist[:100],
         "alerts": alerts[:100],
         "shadow_watchlist": shadow_watchlist[:100],
