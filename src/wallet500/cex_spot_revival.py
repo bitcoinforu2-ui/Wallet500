@@ -93,6 +93,57 @@ def _is_leveraged_product(symbol: str) -> bool:
     return any(base.endswith(suffix) and len(base) > len(suffix) for suffix in LEVERAGED_SUFFIXES)
 
 
+def _leveraged_underlying_symbol(symbol: str) -> str | None:
+    base = _base_symbol(symbol)
+    for suffix in sorted(LEVERAGED_SUFFIXES, key=len, reverse=True):
+        if base.endswith(suffix) and len(base) > len(suffix):
+            return base[:-len(suffix)] + "USDT"
+    return None
+
+
+def _price_coherent_partition(markets: list[dict], max_ratio: float = 1.35) -> tuple[list[dict], list[dict], list[dict], float]:
+    """Split same-ticker markets into a USD-like price-coherent cohort plus outliers.
+
+    Same ticker text is not identity. If exchanges use the same ticker for different
+    assets, cross-exchange confirmation must not be manufactured by symbol alone.
+    Native-quote regional markets stay research-only and never choose the USD cohort.
+    """
+    usd = [
+        x for x in markets
+        if x.get("volume_comparable_usd_like", True) and _f(x.get("price")) > 0
+    ]
+    regional = [x for x in markets if not x.get("volume_comparable_usd_like", True)]
+    if len(usd) <= 1:
+        return usd, [], regional, 1.0
+
+    ordered = sorted(usd, key=lambda x: _f(x.get("price")))
+    best: list[dict] = []
+    best_volume = -1.0
+    for i in range(len(ordered)):
+        cohort = []
+        low = _f(ordered[i].get("price"))
+        if low <= 0:
+            continue
+        for j in range(i, len(ordered)):
+            high = _f(ordered[j].get("price"))
+            if high / low > max_ratio:
+                break
+            cohort.append(ordered[j])
+        volume = sum(_f(x.get("volume_24h")) for x in cohort)
+        if len(cohort) > len(best) or (len(cohort) == len(best) and volume > best_volume):
+            best = cohort
+            best_volume = volume
+
+    best_ids = {(str(x.get("exchange")), str(x.get("market_id"))) for x in best}
+    outliers = [
+        x for x in usd
+        if (str(x.get("exchange")), str(x.get("market_id"))) not in best_ids
+    ]
+    prices = [_f(x.get("price")) for x in usd if _f(x.get("price")) > 0]
+    observed_ratio = max(prices) / min(prices) if prices else 1.0
+    return best or usd[:1], outliers, regional, observed_ratio
+
+
 def _row(
     exchange: str,
     symbol: str,
@@ -330,6 +381,9 @@ def _enrich(rows: list[dict], state: dict, now: str):
                 "change_24h_pct": row.get("change_24h_pct"),
                 "volume_24h": row.get("volume_24h"),
                 "quote_symbol": row.get("quote_symbol"),
+                "volume_comparable_usd_like": row.get("volume_comparable_usd_like", True),
+                "regional_market": row.get("regional_market", False),
+                "market_id": row.get("market_id"),
             }
         )
         histories[key] = hist[-STATE_HISTORY_LIMIT:]
@@ -444,6 +498,7 @@ def _market_signal(row: dict) -> dict:
         "volume_multiple_6h": _f(row.get("volume_multiple_6h")),
         "volume_multiple_12h": _f(row.get("volume_multiple_12h")),
         "volume_multiple_24h": _f(row.get("volume_multiple_24h")),
+        "volume_comparable_usd_like": bool(row.get("volume_comparable_usd_like", True)),
         "regional_market": bool(row.get("regional_market")),
     }
 
@@ -585,20 +640,56 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
     milestones = state["signal_milestones"]
     groups = {}
     leveraged_products = set()
+    leveraged_sensors: dict[str, dict] = {}
     for row in rows:
         symbol = row.get("symbol", "")
         if not symbol.endswith("USDT"):
             continue
         if _is_leveraged_product(symbol):
             leveraged_products.add(symbol)
+            underlying = _leveraged_underlying_symbol(symbol)
+            if underlying:
+                bucket = leveraged_sensors.setdefault(
+                    underlying,
+                    {
+                        "underlying_symbol": underlying,
+                        "products": set(),
+                        "exchanges": set(),
+                        "max_change_24h_pct": 0.0,
+                        "max_abs_change_24h_pct": 0.0,
+                        "max_volume_24h_usd_like": 0.0,
+                        "research_only": True,
+                        "affects_score": False,
+                        "actionable": False,
+                    },
+                )
+                change = _f(row.get("change_24h_pct"))
+                bucket["products"].add(symbol)
+                if row.get("exchange"):
+                    bucket["exchanges"].add(row.get("exchange"))
+                if abs(change) >= _f(bucket.get("max_abs_change_24h_pct")):
+                    bucket["max_abs_change_24h_pct"] = abs(change)
+                    bucket["max_change_24h_pct"] = change
+                if row.get("volume_comparable_usd_like", True):
+                    bucket["max_volume_24h_usd_like"] = max(
+                        _f(bucket.get("max_volume_24h_usd_like")),
+                        _f(row.get("volume_24h")),
+                    )
             continue
         groups.setdefault(symbol, []).append(row)
+
+    for sensor in leveraged_sensors.values():
+        sensor["products"] = sorted(sensor["products"])
+        sensor["exchanges"] = sorted(sensor["exchanges"])
+        sensor["active"] = _f(sensor.get("max_abs_change_24h_pct")) >= 25.0
 
     watchlist = []
     alerts = []
     shadow_watchlist = []
     for symbol, markets in groups.items():
-        local = [_market_signal(x) for x in markets]
+        scoring_markets, collision_outliers, regional_markets, price_ratio = _price_coherent_partition(markets)
+        local = [_market_signal(x) for x in scoring_markets]
+        regional_local = [_market_signal(x) for x in regional_markets]
         best = max(
             local,
             key=lambda x: (x["score"], x["hit_count"]),
@@ -617,12 +708,36 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
 
         shadow_features = sorted({hit for x in local for hit in x.get("shadow_hits", [])})
         shadow_reasons = [reason for x in local for reason in x.get("shadow_reasons", [])]
-        regional_lead = _regional_lead(local)
+        leveraged_sensor = leveraged_sensors.get(symbol)
+        if leveraged_sensor and leveraged_sensor.get("active"):
+            shadow_features = sorted(set(shadow_features + ["LEVERAGED_UNDERLYING_MOMENTUM_SHADOW"]))
+            shadow_reasons.append(
+                "leveraged products accelerated "
+                f"{_f(leveraged_sensor.get('max_change_24h_pct')):.2f}% "
+                "without changing the underlying action score"
+            )
+        regional_lead = _regional_lead(local + regional_local)
         slow_ignition = _slow_ignition(local)
-        coverage = _coverage(health, markets)
+        coverage = _coverage(health, scoring_markets + regional_markets)
+        symbol_collision = {
+            "suspected": bool(collision_outliers),
+            "usd_price_ratio_max_min": round(price_ratio, 6),
+            "price_coherent_exchanges": sorted({x.get("exchange") for x in scoring_markets if x.get("exchange")}),
+            "outlier_exchanges": sorted({x.get("exchange") for x in collision_outliers if x.get("exchange")}),
+            "outlier_markets": [
+                {
+                    "exchange": x.get("exchange"),
+                    "market_id": x.get("market_id"),
+                    "price": _f(x.get("price")),
+                    "change_24h_pct": _f(x.get("change_24h_pct")),
+                }
+                for x in collision_outliers
+            ],
+            "promotion_effect": "OUTLIERS_EXCLUDED_FROM_CROSS_EXCHANGE_CONFIRMATION",
+        }
 
         ms = milestones.setdefault(symbol, {})
-        first = _snapshot(now, markets, score, coherent_conf, "FIRST_SEEN", best)
+        first = _snapshot(now, scoring_markets, score, coherent_conf, "FIRST_SEEN", best)
         if "first_seen" not in ms:
             ms["first_seen"] = first
         if best.get("hit_count") and "first_anomaly" not in ms:
@@ -668,24 +783,28 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
             "shadow_reasons": shadow_reasons,
             "shadow_features_affect_score": False,
             "shadow_watch_eligible": bool(shadow_features),
+            "leveraged_underlying_sensor": leveraged_sensor,
             "regional_spot_lead": regional_lead,
             "slow_ignition": slow_ignition,
             "source_coverage": coverage,
+            "symbol_collision": symbol_collision,
             "confirmations": len({x.get("exchange") for x in markets}),
+            "price_coherent_confirmations": len({x.get("exchange") for x in scoring_markets}),
             "coherent_confirmations": coherent_conf,
             "coherent_exchange": best.get("exchange"),
             "coherent_feature_hits": best.get("hits", []),
-            "change_24h_max_pct": round(max((_f(x.get("change_24h_pct")) for x in markets), default=0), 4),
-            "price_acceleration_max_pct": round(max((_f(x.get("price_delta_pct")) for x in markets), default=0), 4),
-            "volume_acceleration_max_pct": round(max((_f(x.get("volume24_delta_pct")) for x in markets), default=0), 4),
-            "volume_window_multiple_max": round(max((_f(x.get("volume_window_multiple")) for x in markets), default=0), 4),
-            "volume_multiple_6h_max": round(max((_f(x.get("volume_multiple_6h")) for x in markets), default=0), 4),
-            "volume_multiple_12h_max": round(max((_f(x.get("volume_multiple_12h")) for x in markets), default=0), 4),
-            "volume_multiple_24h_max": round(max((_f(x.get("volume_multiple_24h")) for x in markets), default=0), 4),
-            "price_change_6h_max_pct": round(max((_f(x.get("price_change_6h_pct")) for x in markets), default=0), 4),
-            "price_change_12h_max_pct": round(max((_f(x.get("price_change_12h_pct")) for x in markets), default=0), 4),
-            "price_change_24h_window_max_pct": round(max((_f(x.get("price_change_24h_pct")) for x in markets), default=0), 4),
-            "price_window_abs_min_pct": round(min((abs(_f(x.get("price_window_pct"))) for x in markets), default=0), 4),
+            "change_24h_max_pct": round(max((_f(x.get("change_24h_pct")) for x in scoring_markets), default=0), 4),
+            "observed_change_24h_max_pct_all_markets": round(max((_f(x.get("change_24h_pct")) for x in markets), default=0), 4),
+            "price_acceleration_max_pct": round(max((_f(x.get("price_delta_pct")) for x in scoring_markets), default=0), 4),
+            "volume_acceleration_max_pct": round(max((_f(x.get("volume24_delta_pct")) for x in scoring_markets), default=0), 4),
+            "volume_window_multiple_max": round(max((_f(x.get("volume_window_multiple")) for x in scoring_markets), default=0), 4),
+            "volume_multiple_6h_max": round(max((_f(x.get("volume_multiple_6h")) for x in scoring_markets), default=0), 4),
+            "volume_multiple_12h_max": round(max((_f(x.get("volume_multiple_12h")) for x in scoring_markets), default=0), 4),
+            "volume_multiple_24h_max": round(max((_f(x.get("volume_multiple_24h")) for x in scoring_markets), default=0), 4),
+            "price_change_6h_max_pct": round(max((_f(x.get("price_change_6h_pct")) for x in scoring_markets), default=0), 4),
+            "price_change_12h_max_pct": round(max((_f(x.get("price_change_12h_pct")) for x in scoring_markets), default=0), 4),
+            "price_change_24h_window_max_pct": round(max((_f(x.get("price_change_24h_pct")) for x in scoring_markets), default=0), 4),
+            "price_window_abs_min_pct": round(min((abs(_f(x.get("price_window_pct"))) for x in scoring_markets), default=0), 4),
             "exchanges": sorted({x.get("exchange") for x in markets if x.get("exchange")}),
             "milestones": ms,
             "markets": markets,
@@ -724,6 +843,9 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
             "leveraged_cex_products_excluded": True,
             "no_hindsight": True,
             "regional_native_quote_not_compared_as_usd": True,
+            "regional_native_quote_never_counts_as_action_coherence": True,
+            "same_ticker_price_collision_outliers_excluded_from_coherence": True,
+            "leveraged_underlying_signal_shadow_only": True,
             "new_lsk_features_shadow_only": True,
             "slow_ignition_shadow_only": True,
             "shadow_watch_below_watch_score_allowed": True,
@@ -731,6 +853,11 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
         },
         "leveraged_products_excluded_count": len(excluded),
         "leveraged_products_excluded": excluded[:100],
+        "leveraged_underlying_sensors": sorted(
+            leveraged_sensors.values(),
+            key=lambda x: _f(x.get("max_abs_change_24h_pct")),
+            reverse=True,
+        )[:100],
         "requested_sources": [name for name, _ in SPOT_SOURCES],
         "source_health": health,
         "healthy_sources": healthy_sources,
@@ -758,6 +885,8 @@ def run_cex_spot_revival(out: Path, now: str) -> dict:
             "coherent_confirmations": x["coherent_confirmations"],
             "coherent_feature_hits": x["coherent_feature_hits"],
             "shadow_features": x["shadow_features"],
+            "leveraged_underlying_sensor": x.get("leveraged_underlying_sensor"),
+            "symbol_collision": x.get("symbol_collision"),
             "regional_spot_lead": x["regional_spot_lead"],
             "slow_ignition": x["slow_ignition"],
             "source_coverage": x["source_coverage"],
