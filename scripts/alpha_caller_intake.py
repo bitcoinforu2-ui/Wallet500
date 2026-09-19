@@ -116,6 +116,7 @@ def main() -> None:
             "independence_group": call.get("independence_group"),
             "independence_key": call.get("independence_key"),
             "source_post_id": call.get("source_post_id"),
+            "source_content_fingerprint": call.get("source_content_fingerprint"),
             "historical_evidence_grade": call.get("historical_evidence_grade"),
             "discovery_priority": call.get("discovery_priority"),
             "contract": contract,
@@ -246,6 +247,7 @@ def main() -> None:
                     "independence_group": call.get("independence_group"),
                     "independence_key": call.get("independence_key"),
                     "source_post_id": call.get("source_post_id"),
+                    "source_content_fingerprint": call.get("source_content_fingerprint"),
                     "historical_evidence_grade": call.get("historical_evidence_grade"),
                     "discovery_priority": call.get("discovery_priority"),
                 }
