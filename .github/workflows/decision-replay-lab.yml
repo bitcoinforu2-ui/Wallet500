@@ -7,10 +7,21 @@ on:
     paths:
       - 'src/wallet500/decision_replay_lab.py'
       - 'src/wallet500/decision_replay_path_metrics.py'
+      - 'src/wallet500/historical_pattern_mining.py'
       - 'tests/test_decision_replay_lab.py'
       - 'tests/test_decision_replay_path_metrics.py'
+      - 'tests/test_historical_pattern_mining.py'
       - '.github/workflows/decision-replay-lab.yml'
       - 'data/research-sample-ledger.json'
+  pull_request:
+    paths:
+      - 'src/wallet500/decision_replay_lab.py'
+      - 'src/wallet500/decision_replay_path_metrics.py'
+      - 'src/wallet500/historical_pattern_mining.py'
+      - 'tests/test_decision_replay_lab.py'
+      - 'tests/test_decision_replay_path_metrics.py'
+      - 'tests/test_historical_pattern_mining.py'
+      - '.github/workflows/decision-replay-lab.yml'
   schedule:
     - cron: '12 * * * *'
 
@@ -24,11 +35,10 @@ concurrency:
 jobs:
   replay:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
           fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
@@ -36,11 +46,15 @@ jobs:
       - name: Install and test Decision Replay contract
         run: |
           pip install -e . pytest
-          python -m pytest -q tests/test_decision_replay_lab.py tests/test_decision_replay_path_metrics.py
-      - name: Build immutable forward-only replay
+          python -m pytest -q \
+            tests/test_decision_replay_lab.py \
+            tests/test_decision_replay_path_metrics.py \
+            tests/test_historical_pattern_mining.py
+      - name: Build immutable forward-only replay and pattern research
         run: |
           python -m wallet500.decision_replay_lab
           python -m wallet500.decision_replay_path_metrics
+          python -m wallet500.historical_pattern_mining
       - name: Validate research isolation, identity, horizon and promotion contracts
         run: |
           python - <<'PY'
@@ -49,6 +63,7 @@ jobs:
           r=json.loads(Path('data/decision-replay-report.json').read_text())
           l=json.loads(Path('data/decision-replay-ledger.json').read_text())
           p=json.loads(Path('data/decision-replay-path-metrics.json').read_text())
+          h=json.loads(Path('data/historical-pattern-report.json').read_text())
           if r.get('mode')!='RESEARCH_ONLY_DECISION_REPLAY_V1': raise SystemExit('REPLAY_MODE_DRIFT')
           if r.get('research_only') is not True or r.get('production_effect') is not False: raise SystemExit('PRODUCTION_LEAK')
           if r.get('production_thresholds_modified') is not False: raise SystemExit('THRESHOLD_LEAK')
@@ -81,16 +96,27 @@ jobs:
           if p.get('selection_contract')!='FIRST_RELIABLE_EXACT_PAIR_OBSERVATION_AT_OR_AFTER_TARGET': raise SystemExit('PATH_METRICS_SELECTION_DRIFT')
           pg=p.get('guardrails') or {}
           if pg.get('exact_pair_required') is not True or pg.get('no_future_observation_before_horizon_selection') is not True: raise SystemExit('PATH_METRICS_GUARD_LOST')
-          print('DECISION_REPLAY_VALID', r.get('sample'), gate, p.get('horizon_summary'))
+          if h.get('mode')!='RESEARCH_ONLY_HISTORICAL_PATTERN_MINING_V1': raise SystemExit('PATTERN_MODE_DRIFT')
+          if h.get('research_only') is not True or h.get('production_effect') is not False: raise SystemExit('PATTERN_PRODUCTION_LEAK')
+          if h.get('feature_contract')!='T0_ONLY_NO_FUTURE_FEATURES': raise SystemExit('PATTERN_T0_CONTRACT_DRIFT')
+          hg=h.get('guardrails') or {}
+          if hg.get('t0_features_only') is not True or hg.get('future_outcomes_used_as_labels_only') is not True: raise SystemExit('PATTERN_LEAKAGE_GUARD_LOST')
+          if hg.get('chronological_walk_forward') is not True or hg.get('non_overlapping_validation_windows') is not True: raise SystemExit('PATTERN_VALIDATION_GUARD_LOST')
+          if hg.get('no_automatic_buy') is not True or hg.get('no_production_threshold_change') is not True: raise SystemExit('PATTERN_ISOLATION_LOST')
+          hgate=h.get('promotion_gate') or {}
+          if hgate.get('automatic_production_promotion') is not False or hgate.get('requires_manual_review') is not True: raise SystemExit('PATTERN_PROMOTION_SCOPE_DRIFT')
+          print('DECISION_REPLAY_VALID', r.get('sample'), gate, p.get('horizon_summary'), hgate)
           PY
       - name: Publish replay state atomically
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "wallet500-research-bot"
           git config user.email "wallet500-research-bot@users.noreply.github.com"
           python scripts/atomic_publish.py \
-            --message 'research: refresh decision replay lab' \
+            --message 'research: refresh decision replay and historical patterns' \
             data/decision-replay-ledger.json \
             data/decision-replay-report.json \
-            data/decision-replay-path-metrics.json
+            data/decision-replay-path-metrics.json \
+            data/historical-pattern-report.json
