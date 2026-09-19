@@ -3,15 +3,16 @@ from __future__ import annotations
 import html
 import json
 import re
+import sys
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from wallet500.social_telegram_truth_hardening import parse_public_telegram_html
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+from wallet500.social_telegram_truth_hardening import parse_public_telegram_html
 CFG = ROOT / "data/alpha-caller-sources.json"
 STATE = ROOT / "data/alpha-caller-source-state.json"
 INBOX = ROOT / "data/alpha-caller-inbox.json"
