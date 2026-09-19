@@ -29,6 +29,7 @@ RADAR_FILE = "cex-spot-revival-radar.json"
 STATE_FILE = "cex-fast-current-bypass-state.json"
 IDENTITY_FILE = "cex-spot-identity-radar.json"
 MAX_STRICT_RESOLVES_PER_RUN = 24
+MAX_PREWAVE_STRICT_RESOLVES_PER_RUN = 8
 MAX_DELIVER_PER_RUN = 6
 MIN_PRIORITY_SCORE = 35
 MAX_PRE_RESOLVE_24H_CHANGE_PCT = 45.0
@@ -110,18 +111,40 @@ def _priority_candidates(radar: dict) -> list[dict]:
         )
         selected.append(row)
 
-    selected.sort(
-        key=lambda x: (
-            1 if _is_prewave_shadow_identity_candidate(x) else 0,
+    def sort_key(x):
+        return (
             _i(x.get("coherent_confirmations")),
             _i(x.get("_fast_priority_score")),
             _f(x.get("_prewave_shadow_priority")),
             -_f(x.get("change_24h_max_pct")),
             max((_f(m.get("volume_24h")) for m in x.get("markets") or [] if isinstance(m, dict)), default=0.0),
-        ),
+        )
+
+    prewave_rows = sorted(
+        [x for x in selected if _is_prewave_shadow_identity_candidate(x)],
+        key=sort_key,
         reverse=True,
     )
-    return selected[:MAX_STRICT_RESOLVES_PER_RUN]
+    regular_rows = sorted(
+        [x for x in selected if not _is_prewave_shadow_identity_candidate(x)],
+        key=sort_key,
+        reverse=True,
+    )
+
+    # Pre-wave work gets protected capacity, but cannot starve already-qualified
+    # current signals. Unused regular capacity can still be filled by more pre-wave
+    # rows, so the strict-resolve budget is never wasted.
+    chosen = prewave_rows[:MAX_PREWAVE_STRICT_RESOLVES_PER_RUN]
+    for row in regular_rows:
+        if len(chosen) >= MAX_STRICT_RESOLVES_PER_RUN:
+            break
+        chosen.append(row)
+    if len(chosen) < MAX_STRICT_RESOLVES_PER_RUN:
+        for row in prewave_rows[MAX_PREWAVE_STRICT_RESOLVES_PER_RUN:]:
+            if len(chosen) >= MAX_STRICT_RESOLVES_PER_RUN:
+                break
+            chosen.append(row)
+    return chosen
 
 
 def _verified_identity_index(payload: dict) -> dict[str, dict]:
@@ -337,6 +360,7 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
         "resolve_failures": resolve_failures[:30],
         "errors": errors,
         "resolve_limit": MAX_STRICT_RESOLVES_PER_RUN,
+        "prewave_strict_resolve_reserved_cap": MAX_PREWAVE_STRICT_RESOLVES_PER_RUN,
         "prewave_shadow_priority_enabled": True,
         "prewave_shadow_priority_is_identity_only": True,
         "leveraged_product_priority_enabled": False,
