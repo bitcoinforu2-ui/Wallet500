@@ -319,3 +319,141 @@ def test_leveraged_products_are_not_used_for_revival_or_learning(tmp_path: Path,
     assert "BEAT3SUSDT" not in learned
     assert learning["leveraged_cex_products_excluded"] is True
     assert learning["new_lsk_features_shadow_only"] is True
+
+
+def test_leveraged_product_acceleration_surfaces_underlying_as_shadow_without_score_boost(tmp_path: Path, monkeypatch):
+    rows = [
+        {
+            "exchange": "gate",
+            "market_type": "spot",
+            "symbol": "STRKUSDT",
+            "market_id": "STRK_USDT",
+            "price": 0.03,
+            "change_24h_pct": 4.0,
+            "volume_24h": 500_000.0,
+            "quote_symbol": "USDT",
+            "volume_comparable_usd_like": True,
+            "regional_market": False,
+        },
+        {
+            "exchange": "gate",
+            "market_type": "spot",
+            "symbol": "STRK3LUSDT",
+            "market_id": "STRK3L_USDT",
+            "price": 0.4,
+            "change_24h_pct": 70.0,
+            "volume_24h": 100_000.0,
+            "quote_symbol": "USDT",
+            "volume_comparable_usd_like": True,
+            "regional_market": False,
+        },
+    ]
+    monkeypatch.setattr(spot, "SPOT_SOURCES", [("gate", lambda: rows)])
+    report = spot.run_cex_spot_revival(tmp_path, "2026-09-19T07:00:00+00:00")
+
+    assert report["watch_count"] == 0
+    assert report["shadow_watch_count"] == 1
+    row = report["shadow_watchlist"][0]
+    assert row["symbol"] == "STRKUSDT"
+    assert row["spot_revival_score"] < spot.WATCH_SCORE
+    assert "LEVERAGED_UNDERLYING_MOMENTUM_SHADOW" in row["shadow_features"]
+    assert row["leveraged_underlying_sensor"]["active"] is True
+    assert row["leveraged_underlying_sensor"]["max_abs_change_24h_pct"] == 70.0
+    assert row["leveraged_underlying_sensor"]["affects_score"] is False
+    assert row["leveraged_underlying_sensor"]["actionable"] is False
+
+
+def test_same_ticker_price_collision_is_not_counted_as_cross_exchange_confirmation(tmp_path: Path, monkeypatch):
+    gate = [{
+        "exchange": "gate",
+        "market_type": "spot",
+        "symbol": "EDGEUSDT",
+        "market_id": "EDGE_USDT",
+        "price": 0.10,
+        "change_24h_pct": 50.0,
+        "volume_24h": 400_000.0,
+        "quote_symbol": "USDT",
+        "volume_comparable_usd_like": True,
+        "regional_market": False,
+    }]
+    okx = [{
+        "exchange": "okx",
+        "market_type": "spot",
+        "symbol": "EDGEUSDT",
+        "market_id": "EDGE-USDT",
+        "price": 0.60,
+        "change_24h_pct": 2.0,
+        "volume_24h": 2_000_000.0,
+        "quote_symbol": "USDT",
+        "volume_comparable_usd_like": True,
+        "regional_market": False,
+    }]
+    kucoin = [{
+        "exchange": "kucoin",
+        "market_type": "spot",
+        "symbol": "EDGEUSDT",
+        "market_id": "EDGE-USDT",
+        "price": 0.61,
+        "change_24h_pct": 2.2,
+        "volume_24h": 1_000_000.0,
+        "quote_symbol": "USDT",
+        "volume_comparable_usd_like": True,
+        "regional_market": False,
+    }]
+    monkeypatch.setattr(
+        spot,
+        "SPOT_SOURCES",
+        [("gate", lambda: gate), ("okx", lambda: okx), ("kucoin", lambda: kucoin)],
+    )
+
+    report = spot.run_cex_spot_revival(tmp_path, "2026-09-19T07:00:00+00:00")
+    assert report["symbol_collision_count"] == 1
+    collision = report["symbol_collisions"][0]
+    assert collision["symbol"] == "EDGEUSDT"
+    assert collision["suspected"] is True
+    assert collision["price_coherent_exchanges"] == ["kucoin", "okx"]
+    assert collision["outlier_exchanges"] == ["gate"]
+
+    row = report["shadow_watchlist"][0]
+    assert row["change_24h_max_pct"] == 2.2
+    assert row["observed_change_24h_max_pct_all_markets"] == 50.0
+    assert row["coherent_confirmations"] == 0
+    assert "SYMBOL_COLLISION_OUTLIER_SHADOW" in row["shadow_features"]
+
+
+def test_regional_momentum_is_shadow_only_and_never_counts_as_action_coherence(tmp_path: Path, monkeypatch):
+    rows = [
+        {
+            "exchange": "gate",
+            "market_type": "spot",
+            "symbol": "TESTUSDT",
+            "market_id": "TEST_USDT",
+            "price": 0.01,
+            "change_24h_pct": 9.0,
+            "volume_24h": 200_000.0,
+            "quote_symbol": "USDT",
+            "volume_comparable_usd_like": True,
+            "regional_market": False,
+        },
+        {
+            "exchange": "upbit",
+            "market_type": "spot",
+            "symbol": "TESTUSDT",
+            "market_id": "KRW-TEST",
+            "price": 14.0,
+            "change_24h_pct": 60.0,
+            "volume_24h": 90_000_000_000.0,
+            "quote_symbol": "KRW",
+            "volume_comparable_usd_like": False,
+            "regional_market": True,
+        },
+    ]
+    monkeypatch.setattr(spot, "SPOT_SOURCES", [("gate", lambda: [rows[0]]), ("upbit", lambda: [rows[1]])])
+
+    report = spot.run_cex_spot_revival(tmp_path, "2026-09-19T07:00:00+00:00")
+    row = report["shadow_watchlist"][0]
+    assert row["coherent_confirmations"] == 1
+    assert row["price_coherent_confirmations"] == 1
+    assert row["spot_revival_score"] == 13
+    assert "REGIONAL_MOMENTUM_SHADOW" in row["shadow_features"]
+    assert row["regional_spot_lead"]["status"] == "REGIONAL_CONFIRMED"
