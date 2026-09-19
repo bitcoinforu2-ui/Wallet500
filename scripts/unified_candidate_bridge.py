@@ -13,6 +13,7 @@ EVENTS = ROOT / "data/close-watch-events.json"
 
 EVM = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche"}
 ALIASES = {"eth": "ethereum", "bnb": "bsc"}
+PUBLIC_ALPHA_LIVE_WINDOW_MINUTES = 180
 
 
 def now():
@@ -43,6 +44,24 @@ def load(path, default):
         return default
 
 
+def parse_ts(value):
+    try:
+        dt = datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def alpha_age_minutes(row, current=None):
+    current = current or datetime.now(timezone.utc)
+    ts = parse_ts(row.get("called_at") or row.get("observed_at"))
+    if ts is None:
+        return None
+    return max(0.0, (current - ts).total_seconds() / 60.0)
+
+
 def main():
     spot = load(SPOT, {"candidates": []})
     alpha = load(ALPHA, {"candidates": []})
@@ -50,6 +69,9 @@ def main():
     event_doc = load(EVENTS, {"version": 3, "events": []})
     out = []
     seen = set()
+    current = datetime.now(timezone.utc)
+    stale_alpha_excluded = 0
+    invalid_time_alpha_excluded = 0
 
     buy_entries = buy_registry.get("entries") if isinstance(buy_registry, dict) and isinstance(buy_registry.get("entries"), dict) else {}
     for row in buy_entries.values():
@@ -117,6 +139,13 @@ def main():
     for row in alpha.get("candidates") or []:
         if row.get("status") != "GATED_RESEARCH_CANDIDATE":
             continue
+        age_minutes = alpha_age_minutes(row, current=current)
+        if age_minutes is None:
+            invalid_time_alpha_excluded += 1
+            continue
+        if age_minutes > PUBLIC_ALPHA_LIVE_WINDOW_MINUTES:
+            stale_alpha_excluded += 1
+            continue
         i = ident(row)
         if not i or i[3] in seen:
             continue
@@ -130,13 +159,18 @@ def main():
             "dex_url": row.get("dex_url") or "",
             "source": row.get("source") or "Public Alpha",
             "first_seen_at": row.get("called_at") or row.get("observed_at"),
+            "alpha_age_minutes": round(age_minutes, 2),
             "dex_liquidity_usd": row.get("liquidity_usd"),
             "identity_key": i[3],
         })
 
     out.sort(key=lambda x: (
         0 if x["candidate_type"] == "BUY_ZONE" else 1 if x["candidate_type"] == "GATE_SPOT_DISCOVERY" else 2,
-        x.get("positive_gainer_rank") or 999999,
+        (
+            x.get("alpha_age_minutes", 999999)
+            if x["candidate_type"] == "PUBLIC_ALPHA"
+            else (x.get("positive_gainer_rank") or 999999)
+        ),
         -(float(x.get("dex_liquidity_usd") or 0)),
     ))
     doc = {
@@ -147,6 +181,9 @@ def main():
             "buy_zone": sum(x["candidate_type"] == "BUY_ZONE" for x in out),
             "gate_spot": sum(x["candidate_type"] == "GATE_SPOT_DISCOVERY" for x in out),
             "public_alpha": sum(x["candidate_type"] == "PUBLIC_ALPHA" for x in out),
+            "public_alpha_stale_excluded": stale_alpha_excluded,
+            "public_alpha_invalid_time_excluded": invalid_time_alpha_excluded,
+            "public_alpha_live_window_minutes": PUBLIC_ALPHA_LIVE_WINDOW_MINUTES,
             "total": len(out),
         },
         "candidates": out[:120],
