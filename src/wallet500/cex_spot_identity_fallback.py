@@ -13,6 +13,7 @@ MAX_PRICE_ERROR_PCT = 12.0
 SUPPORTED_CHAINS = {
     "solana", "ethereum", "bsc", "base", "arbitrum", "polygon", "avalanche", "sui", "optimism"
 }
+USD_LIKE_QUOTES = {"USD", "USDT", "USDC", "BUSD", "FDUSD", "TUSD", "USDP", "DAI"}
 
 
 def _f(value: object) -> float:
@@ -28,7 +29,25 @@ def _base_symbol(value: object) -> str:
 
 
 def _cex_reference_price(alert: dict) -> float:
-    prices = sorted(_f(x.get("price")) for x in (alert.get("markets") or []) if isinstance(x, dict) and _f(x.get("price")) > 0)
+    prices = []
+    for market in alert.get("markets") or []:
+        if not isinstance(market, dict):
+            continue
+        if str(market.get("market_type") or "spot").lower() != "spot":
+            continue
+        if market.get("regional_market") is True or market.get("volume_comparable_usd_like") is False:
+            continue
+        quote = str(market.get("quote_symbol") or "").upper().strip()
+        symbol = str(market.get("symbol") or "").upper().replace("-", "").replace("_", "").replace("/", "")
+        if quote:
+            if quote not in USD_LIKE_QUOTES:
+                continue
+        elif not any(symbol.endswith(q) for q in USD_LIKE_QUOTES):
+            continue
+        price = _f(market.get("price"))
+        if price > 0:
+            prices.append(price)
+    prices.sort()
     if prices:
         n = len(prices)
         return prices[n // 2] if n % 2 else (prices[n // 2 - 1] + prices[n // 2]) / 2.0
@@ -56,7 +75,7 @@ def _age_days(created_ms: object) -> int:
 
 
 def resolve(alert: dict) -> dict | None:
-    """Strict fallback for CoinGecko-missing CEX symbols.
+    """Strict fallback for missing or inconclusive CoinGecko age evidence.
 
     A fallback is accepted only when DexScreener exposes an exact base-token symbol,
     a real token+pair address, >=90d pair age, and a price within 12% of the CEX median.
