@@ -205,6 +205,115 @@ def _identity_priority(row: dict) -> tuple:
     return (cross_lane, prewave, early, coherent, alert_score, watch_score, prewave_strength, accel, persistent)
 
 
+def _learning_recovery_candidates(learning: dict, leaderboard: dict, discovery: dict) -> list[dict]:
+    """Recover unresolved identity work from immutable learning history + current CEX evidence.
+
+    Learning milestones prove that the engine saw the asset before the current move. They
+    never satisfy identity or actionability. A candidate is recovered only when current
+    CEX discovery still provides a contemporaneous USD-like price and either the asset is
+    a current top-10 multi-CEX gainer or it is explicitly forced into CEX research watch.
+    """
+    lb_by_symbol = {}
+    for row in leaderboard.get("leaderboard") or []:
+        if not isinstance(row, dict):
+            continue
+        symbol = _base_symbol(row.get("symbol"))
+        if symbol:
+            lb_by_symbol[symbol] = row
+
+    discovery_by_symbol = {}
+    for row in discovery.get("candidates") or []:
+        if not isinstance(row, dict):
+            continue
+        symbol = _base_symbol(row.get("symbol"))
+        if not symbol:
+            continue
+        price = _num(row.get("discovery_price"))
+        if price > 0:
+            discovery_by_symbol[symbol] = row
+
+    learned = []
+    seen = set()
+    for bucket in ("top_candidates", "top_shadow_candidates"):
+        for row in learning.get(bucket) or []:
+            if not isinstance(row, dict):
+                continue
+            symbol = _base_symbol(row.get("symbol"))
+            if not symbol or symbol in seen:
+                continue
+            milestones = row.get("milestones") if isinstance(row.get("milestones"), dict) else {}
+            watch = milestones.get("first_watch") if isinstance(milestones.get("first_watch"), dict) else {}
+            alert = milestones.get("first_alert") if isinstance(milestones.get("first_alert"), dict) else {}
+            slow = milestones.get("first_cross_venue_slow_ignition") if isinstance(milestones.get("first_cross_venue_slow_ignition"), dict) else {}
+            early_proof = bool(
+                (watch.get("observed_at") and _num(watch.get("coherent_confirmations")) >= 2)
+                or (alert.get("observed_at") and _num(alert.get("coherent_confirmations")) >= 2)
+                or (slow.get("observed_at") and len(slow.get("exchanges") or []) >= 2)
+            )
+            if not early_proof:
+                continue
+
+            current = discovery_by_symbol.get(symbol)
+            if not current:
+                continue
+            lb = lb_by_symbol.get(symbol) or {}
+            rank = int(_num(lb.get("best_rank") or current.get("positive_gainer_rank") or 999))
+            forced = current.get("forced_cex_watch") is True
+            if rank > 10 and not forced:
+                continue
+
+            price = _num(current.get("discovery_price"))
+            volume = _num(current.get("quote_volume_24h_usd"))
+            if price <= 0:
+                continue
+
+            first_seen = milestones.get("first_seen") if isinstance(milestones.get("first_seen"), dict) else {}
+            recovery = {
+                **row,
+                "symbol": f"{symbol}USDT",
+                "base_symbol": symbol,
+                "persistent_until_exact_identity_resolution": True,
+                "timing_quality": "IMMUTABLE_LEARNING_RECOVERY",
+                "identity_recovery_source": "IMMUTABLE_LEARNING_PLUS_CURRENT_CEX_DISCOVERY",
+                "identity_recovery_research_only": True,
+                "identity_recovery_never_actionable": True,
+                "first_watch_score": watch.get("score"),
+                "first_watch_coherent_confirmations": watch.get("coherent_confirmations"),
+                "first_watch_observed_at": watch.get("observed_at"),
+                "first_watch_reference_price": watch.get("reference_price"),
+                "first_watch_price_acceleration_max_pct": watch.get("price_acceleration_max_pct"),
+                "first_watch_volume_acceleration_max_pct": watch.get("volume_acceleration_max_pct"),
+                "first_alert_score": alert.get("score"),
+                "first_alert_coherent_confirmations": alert.get("coherent_confirmations"),
+                "first_alert_observed_at": alert.get("observed_at"),
+                "first_alert_reference_price": alert.get("reference_price"),
+                "first_alert_reference_exchange": alert.get("reference_exchange"),
+                "first_seen_at": first_seen.get("observed_at"),
+                "leaderboard_best_rank": None if rank >= 999 else rank,
+                "leaderboard_exchanges": list(lb.get("exchanges") or []),
+                "exchanges": list(lb.get("exchanges") or []),
+                "leaderboard_change_24h_max_pct": _num(lb.get("change_24h_max_pct")),
+                "leaderboard_volume_24h_max": _num(lb.get("volume_24h_max")),
+                "current_change_24h_max_pct": _num(lb.get("change_24h_max_pct") or current.get("change_24h_pct")),
+                "forced_cex_watch": forced,
+                "markets": [{
+                    "exchange": "gate",
+                    "market_type": "spot",
+                    "symbol": f"{symbol}USDT",
+                    "market_id": current.get("currency_pair") or f"{symbol}_USDT",
+                    "quote_symbol": "USDT",
+                    "price": price,
+                    "change_24h_pct": _num(current.get("change_24h_pct")),
+                    "volume_24h": volume,
+                    "volume_comparable_usd_like": True,
+                    "regional_market": False,
+                }],
+            }
+            learned.append(recovery)
+            seen.add(symbol)
+    return learned
+
+
 def _last_attempted_symbols(previous_identity: dict) -> set[str]:
     attempted: set[str] = set()
     for key in ("candidates", "rejections"):
@@ -568,11 +677,28 @@ def run(data_dir: Path = DATA) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     spot_path = data_dir / "cex-spot-revival-radar.json"
     pending_path = data_dir / "cex-early-revival-pending.json"
+    learning_path = data_dir / "cex-spot-learning.json"
+    leaderboard_path = data_dir / "cex-spot-leaderboard.json"
+    discovery_path = data_dir / "spot-market-discovery.json"
     out_path = data_dir / "cex-spot-identity-radar.json"
     spot = _load(spot_path, {})
     pending = _load(pending_path, {})
+    learning = _load(learning_path, {})
+    leaderboard = _load(leaderboard_path, {})
+    discovery = _load(discovery_path, {})
     previous_identity = _load(out_path, {})
-    watch, queue_report = _build_identity_queue(spot, pending, previous_identity)
+    recovery_rows = _learning_recovery_candidates(learning, leaderboard, discovery)
+    pending_for_queue = dict(pending) if isinstance(pending, dict) else {}
+    # Put fresh recovery evidence first. If an older persistent pending row for the
+    # same symbol follows, _build_identity_queue preserves the already-merged recovery
+    # fields while retaining immutable pending milestones.
+    pending_for_queue["candidates"] = [
+        *recovery_rows,
+        *[x for x in (pending.get("candidates") or []) if isinstance(x, dict)],
+    ]
+    watch, queue_report = _build_identity_queue(spot, pending_for_queue, previous_identity)
+    queue_report["learning_recovery_candidate_count"] = len(recovery_rows)
+    queue_report["learning_recovery_symbols"] = [_base_symbol(x.get("symbol")) for x in recovery_rows[:30]]
 
     base = {
         "version": 4,
@@ -613,6 +739,9 @@ def run(data_dir: Path = DATA) -> dict:
             "previous_attempt_only_controls_future_queue_order": True,
             "previous_unresolved_persistent_identity_is_carried_forward": True,
             "previous_unresolved_persistent_identity_never_becomes_actionable_by_persistence": True,
+            "immutable_learning_recovery_identity_priority_only": True,
+            "immutable_learning_recovery_requires_current_cex_price": True,
+            "immutable_learning_recovery_never_satisfies_identity_or_actionability": True,
             "no_hindsight": True,
         },
         "source_watch_count": len(watch),

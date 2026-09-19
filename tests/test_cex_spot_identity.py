@@ -493,3 +493,99 @@ def test_previous_unresolved_persistent_identity_is_carried_forward_without_pend
     assert report["previous_unresolved_persistent_carried_count"] == 1
     assert report["selected_persistent_backlog_only_count"] == 1
     assert report["ordering_only"] is True
+
+
+def test_one_learning_recovery_reenters_identity_queue_from_immutable_signal_and_current_cex():
+    learning = {
+        "top_candidates": [{
+            "symbol": "ONEUSDT",
+            "score": 46,
+            "coherent_confirmations": 4,
+            "change_24h_max_pct": 164.66,
+            "milestones": {
+                "first_seen": {
+                    "observed_at": "2026-09-04T10:50:55+00:00",
+                    "reference_price": 0.00071,
+                },
+                "first_watch": {
+                    "observed_at": "2026-09-06T02:15:44+00:00",
+                    "reference_price": 0.000736,
+                    "score": 28,
+                    "coherent_confirmations": 2,
+                    "volume_acceleration_max_pct": 61.3879,
+                },
+                "first_alert": {
+                    "observed_at": "2026-09-13T00:24:06+00:00",
+                    "reference_price": 0.000655,
+                    "score": 39,
+                    "coherent_confirmations": 4,
+                    "reference_exchange": "okx",
+                },
+            },
+        }],
+        "top_shadow_candidates": [],
+    }
+    leaderboard = {
+        "leaderboard": [{
+            "symbol": "ONEUSDT",
+            "best_rank": 1,
+            "exchanges": ["binance", "coinex", "gate", "kucoin", "okx"],
+            "change_24h_max_pct": 101.24,
+            "volume_24h_max": 34_533_903.7632,
+        }]
+    }
+    discovery = {
+        "candidates": [{
+            "symbol": "ONE",
+            "currency_pair": "ONE_USDT",
+            "discovery_price": 0.0044948,
+            "change_24h_pct": 122.14,
+            "quote_volume_24h_usd": 4_088_611.11,
+            "positive_gainer_rank": 2,
+            "forced_cex_watch": True,
+        }]
+    }
+
+    recovered = mod._learning_recovery_candidates(learning, leaderboard, discovery)
+    assert len(recovered) == 1
+    row = recovered[0]
+    assert row["symbol"] == "ONEUSDT"
+    assert row["persistent_until_exact_identity_resolution"] is True
+    assert row["identity_recovery_source"] == "IMMUTABLE_LEARNING_PLUS_CURRENT_CEX_DISCOVERY"
+    assert row["identity_recovery_never_actionable"] is True
+    assert row["leaderboard_best_rank"] == 1
+    assert row["markets"][0]["price"] == 0.0044948
+    assert row["markets"][0]["volume_24h"] == 4_088_611.11
+
+    selected, report = mod._build_identity_queue(
+        {"watchlist": [], "shadow_watchlist": []},
+        {"candidates": recovered},
+        {},
+    )
+    assert [x["symbol"] for x in selected] == ["ONEUSDT"]
+    assert report["selected_persistent_backlog_only_count"] == 1
+    assert report["ordering_only"] is True
+
+
+def test_learning_recovery_refuses_stale_history_without_current_cex_price():
+    learning = {
+        "top_candidates": [{
+            "symbol": "ONEUSDT",
+            "milestones": {
+                "first_watch": {
+                    "observed_at": "2026-09-06T02:15:44+00:00",
+                    "reference_price": 0.000736,
+                    "score": 28,
+                    "coherent_confirmations": 2,
+                }
+            },
+        }]
+    }
+    leaderboard = {
+        "leaderboard": [{
+            "symbol": "ONEUSDT",
+            "best_rank": 1,
+            "exchanges": ["gate"],
+        }]
+    }
+    assert mod._learning_recovery_candidates(learning, leaderboard, {"candidates": []}) == []
