@@ -63,6 +63,117 @@ def alpha_age_minutes(row, current=None):
     return max(0.0, (current - ts).total_seconds() / 60.0)
 
 
+def alpha_asset_key(row):
+    chain = chain_name(row.get("network") or row.get("chain"))
+    contract = norm_addr(chain, row.get("contract") or row.get("token_address"))
+    return f"{chain}:{contract}" if chain and contract else None
+
+
+def independent_caller_name(row):
+    caller = str(row.get("origin_caller") or row.get("caller") or "").strip()
+    source = str(row.get("source") or "").strip()
+    source_class = str(row.get("source_class") or "")
+    lowered = caller.lower()
+    if not caller:
+        return None
+    if source_class == "caller_aggregator" and (
+        lowered in {"call analyser", "call analyser sol"}
+        or lowered == source.lower()
+    ):
+        return None
+    return caller
+
+
+def alpha_convergence_metrics(rows, current=None):
+    current = current or datetime.now(timezone.utc)
+    grouped = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get("status") != "GATED_RESEARCH_CANDIDATE":
+            continue
+        age = alpha_age_minutes(row, current=current)
+        if age is None or age > PUBLIC_ALPHA_LIVE_WINDOW_MINUTES:
+            continue
+        asset = alpha_asset_key(row)
+        caller = independent_caller_name(row)
+        called = parse_ts(row.get("called_at") or row.get("observed_at"))
+        if not asset or not caller or called is None:
+            continue
+        grouped.setdefault(asset, []).append(
+            {
+                "caller": caller,
+                "called_at": called,
+                "source": row.get("source"),
+                "fingerprint": str(row.get("source_content_fingerprint") or ""),
+            }
+        )
+
+    result = {}
+    for asset, items in grouped.items():
+        items.sort(key=lambda x: x["called_at"])
+        # Collapse exact copied posts first, then collapse repeated surfaces from
+        # the same underlying caller. This is intentionally conservative.
+        fingerprints = {}
+        for item in items:
+            fp = item["fingerprint"]
+            if fp:
+                fingerprints.setdefault(fp, item)
+            else:
+                fingerprints[f"nofp:{item['caller'].lower()}:{item['called_at'].isoformat()}"] = item
+        first_by_caller = {}
+        for item in sorted(fingerprints.values(), key=lambda x: x["called_at"]):
+            first_by_caller.setdefault(item["caller"].strip().lower(), item)
+        independent = sorted(first_by_caller.values(), key=lambda x: x["called_at"])
+        if not independent:
+            continue
+        first = independent[0]
+        def within(minutes):
+            return [
+                item for item in independent
+                if (item["called_at"] - first["called_at"]).total_seconds() <= minutes * 60
+            ]
+        c15, c30, c60 = len(within(15)), len(within(30)), len(within(60))
+        if c30 >= 3:
+            tier = "MULTI_SOURCE_CONVERGENCE"
+        elif c30 >= 2:
+            tier = "DOUBLE_SOURCE_CONVERGENCE"
+        elif c60 >= 2:
+            tier = "SLOW_DOUBLE_SOURCE"
+        else:
+            tier = "SINGLE_SOURCE"
+        last_60 = within(60)[-1]["called_at"]
+        result[asset] = {
+            "alpha_first_caller": first["caller"],
+            "alpha_first_source": first.get("source"),
+            "alpha_first_called_at": first["called_at"].isoformat(),
+            "alpha_independent_callers_15m": c15,
+            "alpha_independent_callers_30m": c30,
+            "alpha_independent_callers_60m": c60,
+            "alpha_independent_callers_60m_list": [x["caller"] for x in within(60)[:12]],
+            "alpha_convergence_span_minutes": round(
+                max(0.0, (last_60 - first["called_at"]).total_seconds() / 60.0), 2
+            ),
+            "alpha_convergence_tier": tier,
+            "alpha_convergence_research_only": True,
+            "alpha_independence_mode": "DISTINCT_ORIGIN_CALLER_PLUS_EXACT_CONTENT_COPY_COLLAPSE",
+        }
+    return result
+
+
+def candidate_sort_key(row):
+    liquidity = -float(row.get("dex_liquidity_usd") or 0)
+    kind = row.get("candidate_type")
+    if kind == "BUY_ZONE":
+        return (0, 0, 0, liquidity)
+    if kind in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"}:
+        return (1, int(row.get("positive_gainer_rank") or 999999), 0, liquidity)
+    return (
+        2,
+        -int(row.get("alpha_independent_callers_30m") or 1),
+        float(row.get("alpha_age_minutes") or 999999),
+        liquidity,
+    )
+
+
 def cex_signal_milestone(row):
     """Prefer the freshest valid CEX milestone so old alerts cannot mask reactivation."""
     milestones = row.get("milestones") if isinstance(row.get("milestones"), dict) else {}
@@ -103,6 +214,7 @@ def main():
     spot = load(SPOT, {"candidates": []})
     cex_identity = load(CEX_SPOT_IDENTITY, {"candidates": []})
     alpha = load(ALPHA, {"candidates": []})
+    alpha_rows = [x for x in (alpha.get("candidates") or []) if isinstance(x, dict)]
     buy_registry = load(BUY_REGISTRY, {"entries": {}})
     event_doc = load(EVENTS, {"version": 3, "events": []})
     out = []
@@ -110,6 +222,7 @@ def main():
     current = datetime.now(timezone.utc)
     stale_alpha_excluded = 0
     invalid_time_alpha_excluded = 0
+    convergence = alpha_convergence_metrics(alpha_rows, current=current)
 
     buy_entries = buy_registry.get("entries") if isinstance(buy_registry, dict) and isinstance(buy_registry.get("entries"), dict) else {}
     for row in buy_entries.values():
@@ -211,7 +324,7 @@ def main():
             "identity_key": i[3],
         })
 
-    for row in alpha.get("candidates") or []:
+    for row in alpha_rows:
         if row.get("status") != "GATED_RESEARCH_CANDIDATE":
             continue
         age_minutes = alpha_age_minutes(row, current=current)
@@ -225,6 +338,7 @@ def main():
         if not i or i[3] in seen:
             continue
         seen.add(i[3])
+        conv = convergence.get(alpha_asset_key(row), {})
         out.append({
             "candidate_type": "PUBLIC_ALPHA",
             "symbol": str(row.get("symbol") or "ALPHA").upper(),
@@ -236,18 +350,29 @@ def main():
             "first_seen_at": row.get("called_at") or row.get("observed_at"),
             "alpha_age_minutes": round(age_minutes, 2),
             "dex_liquidity_usd": row.get("liquidity_usd"),
+            "price_usd_at_intake": row.get("price_usd"),
+            "market_cap_usd_at_intake": row.get("market_cap_usd"),
+            "pair_age_minutes_at_intake": row.get("pair_age_minutes_at_intake"),
+            "volume_h1_usd_at_intake": row.get("volume_h1_usd"),
+            "buys_h1_at_intake": row.get("buys_h1"),
+            "sells_h1_at_intake": row.get("sells_h1"),
             "identity_key": i[3],
+            "priority": (
+                "ALPHA_MULTI_CONVERGENCE"
+                if int(conv.get("alpha_independent_callers_30m") or 0) >= 3
+                else "ALPHA_DOUBLE_CONVERGENCE"
+                if int(conv.get("alpha_independent_callers_30m") or 0) >= 2
+                else "ALPHA_FIRST_CALL"
+            ),
+            "collector_priority": (
+                1 if int(conv.get("alpha_independent_callers_30m") or 0) >= 2 else 3
+            ),
+            "deep_investigation": int(conv.get("alpha_independent_callers_30m") or 0) >= 2,
+            "full_intelligence": int(conv.get("alpha_independent_callers_30m") or 0) >= 3,
+            **conv,
         })
 
-    out.sort(key=lambda x: (
-        0 if x["candidate_type"] == "BUY_ZONE" else 1 if x["candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"} else 2,
-        (
-            x.get("alpha_age_minutes", 999999)
-            if x["candidate_type"] == "PUBLIC_ALPHA"
-            else (x.get("positive_gainer_rank") or 999999)
-        ),
-        -(float(x.get("dex_liquidity_usd") or 0)),
-    ))
+    out.sort(key=candidate_sort_key)
     doc = {
         "version": 1,
         "generated_at": now(),
@@ -257,6 +382,16 @@ def main():
             "cex_spot": sum(x["candidate_type"] == "CEX_SPOT_DISCOVERY" for x in out),
             "gate_spot": sum(x["candidate_type"] == "GATE_SPOT_DISCOVERY" for x in out),
             "public_alpha": sum(x["candidate_type"] == "PUBLIC_ALPHA" for x in out),
+            "public_alpha_double_source_or_better": sum(
+                x["candidate_type"] == "PUBLIC_ALPHA"
+                and int(x.get("alpha_independent_callers_30m") or 0) >= 2
+                for x in out
+            ),
+            "public_alpha_multi_source": sum(
+                x["candidate_type"] == "PUBLIC_ALPHA"
+                and int(x.get("alpha_independent_callers_30m") or 0) >= 3
+                for x in out
+            ),
             "public_alpha_stale_excluded": stale_alpha_excluded,
             "public_alpha_invalid_time_excluded": invalid_time_alpha_excluded,
             "public_alpha_live_window_minutes": PUBLIC_ALPHA_LIVE_WINDOW_MINUTES,

@@ -60,6 +60,18 @@ def parse_time(value):
         return None
 
 
+def pair_age_minutes(pair: dict, current: datetime | None = None) -> float | None:
+    try:
+        created_ms = float(pair.get("pairCreatedAt") or 0)
+    except (TypeError, ValueError):
+        return None
+    if created_ms <= 0:
+        return None
+    created = datetime.fromtimestamp(created_ms / 1000.0, tz=timezone.utc)
+    current = current or datetime.now(timezone.utc)
+    return max(0.0, (current - created).total_seconds() / 60.0)
+
+
 def liquid_exact_pairs(pairs, contract: str, allowed_chain: str | None = None):
     exact = []
     for pair in pairs:
@@ -97,7 +109,16 @@ def main() -> None:
         role = str(call.get("signal_role") or "candidate_discovery")
         result = {
             "caller": caller,
+            "origin_caller": call.get("origin_caller") or caller,
             "source": source,
+            "source_id": call.get("source_id"),
+            "source_class": call.get("source_class"),
+            "independence_group": call.get("independence_group"),
+            "independence_key": call.get("independence_key"),
+            "source_post_id": call.get("source_post_id"),
+            "source_content_fingerprint": call.get("source_content_fingerprint"),
+            "historical_evidence_grade": call.get("historical_evidence_grade"),
+            "discovery_priority": call.get("discovery_priority"),
             "contract": contract,
             "network": input_network,
             "called_at": call.get("called_at"),
@@ -165,6 +186,16 @@ def main() -> None:
                 "liquidity_usd": liquidity,
                 "dex_url": pair.get("url"),
                 "symbol": symbol,
+                "price_usd": pair.get("priceUsd"),
+                "market_cap_usd": pair.get("marketCap"),
+                "fdv_usd": pair.get("fdv"),
+                "pair_created_at_ms": pair.get("pairCreatedAt"),
+                "pair_age_minutes_at_intake": pair_age_minutes(pair),
+                "volume_h1_usd": (pair.get("volume") or {}).get("h1"),
+                "buys_h1": ((pair.get("txns") or {}).get("h1") or {}).get("buys"),
+                "sells_h1": ((pair.get("txns") or {}).get("h1") or {}).get("sells"),
+                "price_change_m5_pct": (pair.get("priceChange") or {}).get("m5"),
+                "price_change_h1_pct": (pair.get("priceChange") or {}).get("h1"),
                 "reasons": [
                     "CONFIRMATION_ONLY_DOES_NOT_CREATE_BUY_SIGNAL"
                     if role == "confirmation_only"
@@ -198,6 +229,16 @@ def main() -> None:
                     "research_only": True,
                     "requires_full_wallet500_gates": True,
                     "liquidity_usd_at_intake": liquidity,
+                    "price_usd_at_intake": result.get("price_usd"),
+                    "market_cap_usd_at_intake": result.get("market_cap_usd"),
+                    "fdv_usd_at_intake": result.get("fdv_usd"),
+                    "pair_created_at_ms": result.get("pair_created_at_ms"),
+                    "pair_age_minutes_at_intake": result.get("pair_age_minutes_at_intake"),
+                    "volume_h1_usd_at_intake": result.get("volume_h1_usd"),
+                    "buys_h1_at_intake": result.get("buys_h1"),
+                    "sells_h1_at_intake": result.get("sells_h1"),
+                    "price_change_m5_pct_at_intake": result.get("price_change_m5_pct"),
+                    "price_change_h1_pct_at_intake": result.get("price_change_h1_pct"),
                     "timestamp_semantics": call.get("timestamp_semantics"),
                     "signal_role": role,
                     "source_id": call.get("source_id"),
@@ -206,6 +247,7 @@ def main() -> None:
                     "independence_group": call.get("independence_group"),
                     "independence_key": call.get("independence_key"),
                     "source_post_id": call.get("source_post_id"),
+                    "source_content_fingerprint": call.get("source_content_fingerprint"),
                     "historical_evidence_grade": call.get("historical_evidence_grade"),
                     "discovery_priority": call.get("discovery_priority"),
                 }

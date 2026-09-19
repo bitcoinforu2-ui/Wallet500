@@ -218,18 +218,37 @@ def dynamic_candidates():
 
     newest = sorted(alpha, key=lambda x: str(x.get("first_seen_at") or ""), reverse=True)
     liquid = sorted(alpha, key=_liq, reverse=True)
+    convergent = sorted(
+        [
+            x for x in alpha
+            if int(x.get("alpha_independent_callers_30m") or 0) >= 2
+        ],
+        key=lambda x: (
+            int(x.get("alpha_independent_callers_30m") or 0),
+            int(x.get("alpha_independent_callers_15m") or 0),
+            str(x.get("first_seen_at") or ""),
+            _liq(x),
+        ),
+        reverse=True,
+    )
     chosen = []
     chosen_ids = set()
-    fresh_budget = min(alpha_budget, max(8, (alpha_budget * 2) // 3))
-    for bucket, limit in ((newest, fresh_budget), (liquid, alpha_budget)):
+
+    def _take(bucket, limit):
         for x in bucket:
-            if len(chosen) >= alpha_budget or (bucket is newest and len(chosen) >= limit):
+            if len(chosen) >= alpha_budget or len(chosen) >= limit:
                 break
             key = x["_identity_key"]
             if key in chosen_ids:
                 continue
             chosen_ids.add(key)
             chosen.append(x)
+
+    convergence_budget = min(alpha_budget, max(4, alpha_budget // 2))
+    _take(convergent, convergence_budget)
+    fresh_budget = min(alpha_budget, max(len(chosen), max(8, (alpha_budget * 2) // 3)))
+    _take(newest, fresh_budget)
+    _take(liquid, alpha_budget)
 
     selected = buy_zone + spot + chosen
     out = []
@@ -269,6 +288,21 @@ def dynamic_candidates():
                 "quote_volume_24h_usd": c.get("quote_volume_24h_usd"),
                 "positive_gainer_rank": c.get("positive_gainer_rank"),
                 "dex_liquidity_usd": c.get("dex_liquidity_usd"),
+                "price_usd_at_intake": c.get("price_usd_at_intake"),
+                "market_cap_usd_at_intake": c.get("market_cap_usd_at_intake"),
+                "pair_age_minutes_at_intake": c.get("pair_age_minutes_at_intake"),
+                "volume_h1_usd_at_intake": c.get("volume_h1_usd_at_intake"),
+                "buys_h1_at_intake": c.get("buys_h1_at_intake"),
+                "sells_h1_at_intake": c.get("sells_h1_at_intake"),
+                "alpha_first_caller": c.get("alpha_first_caller"),
+                "alpha_first_source": c.get("alpha_first_source"),
+                "alpha_first_called_at": c.get("alpha_first_called_at"),
+                "alpha_independent_callers_15m": c.get("alpha_independent_callers_15m"),
+                "alpha_independent_callers_30m": c.get("alpha_independent_callers_30m"),
+                "alpha_independent_callers_60m": c.get("alpha_independent_callers_60m"),
+                "alpha_independent_callers_60m_list": c.get("alpha_independent_callers_60m_list"),
+                "alpha_convergence_span_minutes": c.get("alpha_convergence_span_minutes"),
+                "alpha_convergence_tier": c.get("alpha_convergence_tier"),
             }
         )
     return out
