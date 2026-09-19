@@ -74,3 +74,11 @@ def test_different_callers_remain_independent():
     a = {"independence_key": "alpha-origin:solana:mint:caller a"}
     b = {"independence_key": "alpha-origin:solana:mint:caller b"}
     assert fusion._fingerprint(a, identity) != fusion._fingerprint(b, identity)
+
+
+def test_evm_raw_address_does_not_fabricate_solana_candidate():
+    source = {"extract_raw_contracts": True}
+    evm = "0x49d4c84E35627F6AC9A9bC2684aEA3ABB41948CF"
+    rows = alpha.extract_candidates(f"CA: {evm}", source)
+    assert ("evm", evm) in rows
+    assert not any(network == "solana" for network, _ in rows)
