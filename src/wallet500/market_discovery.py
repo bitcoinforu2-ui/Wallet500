@@ -8,13 +8,15 @@ GECKO="https://api.geckoterminal.com/api/v2"
 MOONSHOT="https://api.moonshot.cc"
 BIRDEYE="https://public-api.birdeye.so"
 BIRDEYE_KEY=os.getenv("BIRDEYE_API_KEY","").strip()
-CHAINS=("solana","ethereum","bsc")
-GECKO_NETWORK={"solana":"solana","ethereum":"eth","bsc":"bsc"}
+CHAINS=("solana","ethereum","bsc","arc")
+GECKO_NETWORK={"solana":"solana","ethereum":"eth","bsc":"bsc","arc":"arc"}
 BIRDEYE_CHAIN={"solana":"solana","ethereum":"ethereum","bsc":"bsc"}
 BSC_MIN_DISCOVERY_CAP=300
 FRESH_PAGE_COUNT=5
 DEEP_MAX_PAGE=15
 GECKO_MIN_INTERVAL_SECONDS=2.15
+EVM_CHAINS={"ethereum","bsc","arc"}
+BLOCKED_SYMBOLS={"USDC","USDT","DAI","USDS","USDE","WETH","ETH","WBNB","BNB","WSOL","SOL","WBTC","BTC"}
 BLOCKED_BASE_TOKENS={
  "solana":{"So11111111111111111111111111111111111111112","EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","Es9vMFrzaCERmJfrF4H2FYD9iG6vGvL5JZtJm6Gq5tQ"},
  "ethereum":{"0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2","0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48","0xdac17f958d2ee523a2206206994597c13d831ec7","0x6b175474e89094c44da98b954eedeac495271d0f","0x2260fac5e5542a773aa44fbcfedf7c193bc2c599"},
@@ -48,10 +50,10 @@ def _gecko_get(url):
  try:return _get(url,retries=4)
  finally:_LAST_GECKO_CALL=time.monotonic()
 
-def _key(chain,token):return (chain,token.lower() if chain in {"ethereum","bsc"} else token)
+def _key(chain,token):return (chain,token.lower() if chain in EVM_CHAINS else token)
 def _blocked(chain,token):
  if not token:return True
- norm=token.lower() if chain in {"ethereum","bsc"} else token
+ norm=token.lower() if chain in EVM_CHAINS else token
  return norm in BLOCKED_BASE_TOKENS.get(chain,set())
 def _chain_limit(chain,limit):return max(int(limit),BSC_MIN_DISCOVERY_CAP) if chain=="bsc" else int(limit)
 
@@ -119,6 +121,7 @@ def _gecko_pool_page(chain,network,endpoint,page,limit,rows,seen,counts,filtered
  included={x.get("id"):x for x in payload.get("included",[]) if isinstance(x,dict)}; before=counts[chain]
  for pool in payload.get("data",[]) or []:
   rel=(pool.get("relationships") or {}).get("base_token",{}).get("data") or {}; tid=rel.get("id"); a=pool.get("attributes") or {}; token_obj=included.get(tid,{}) or {}; ta=token_obj.get("attributes") or {}
+  if str(ta.get("symbol") or "").upper() in BLOCKED_SYMBOLS:continue
   _add(rows,seen,counts,filtered,chain,_extract_address(tid,token_obj),source,limit,pool_address=a.get("address"),pool_created_at=a.get("pool_created_at"),name=a.get("name"),symbol=ta.get("symbol"),token_name=ta.get("name"),discovery_page=page,reserve_usd=a.get("reserve_in_usd"),volume_usd=a.get("volume_usd"),transactions=a.get("transactions"),price_change_percentage=a.get("price_change_percentage"))
  return counts[chain]-before
 
