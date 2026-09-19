@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from wallet500.cex_fast_current_bypass import _milestone_score, _priority_candidates
+from wallet500 import cex_fast_current_bypass as bypass
+from wallet500.cex_fast_current_bypass import (
+    _milestone_score,
+    _priority_candidates,
+    _resolve_many,
+    _verified_identity_index,
+)
 
 
 def _row(**overrides):
@@ -47,3 +53,110 @@ def test_leveraged_product_never_enters_bypass():
 def test_missing_live_cex_price_never_enters_bypass():
     row = _row(markets=[])
     assert _priority_candidates({"watchlist": [row]}) == []
+
+
+def test_strong_leveraged_underlying_sensor_prioritizes_shadow_candidate():
+    row = _row(
+        spot_revival_score=12,
+        milestones={},
+        leveraged_underlying_sensor={
+            "active": True,
+            "max_abs_change_24h_pct": 68.0,
+            "affects_score": False,
+            "actionable": False,
+        },
+    )
+    chosen = _priority_candidates({"watchlist": [], "shadow_watchlist": [row]})
+    assert len(chosen) == 1
+    assert chosen[0]["symbol"] == "TESTUSDT"
+    assert chosen[0]["_fast_priority_reason"] == "LEVERAGED_UNDERLYING_SENSOR"
+
+
+def test_existing_exact_identity_is_reused_without_new_symbol_search(monkeypatch):
+    source = _row(
+        markets=[
+            {
+                "exchange": "gate",
+                "price": 0.0100,
+                "volume_24h": 300_000,
+                "volume_comparable_usd_like": True,
+            },
+            {
+                "exchange": "kucoin",
+                "price": 0.0101,
+                "volume_24h": 250_000,
+                "volume_comparable_usd_like": True,
+            },
+        ]
+    )
+    payload = {
+        "candidates": [{
+            "symbol": "TESTUSDT",
+            "identity_status": "DEX_VERIFIED",
+            "identity_verified": True,
+            "chain": "base",
+            "token_address": "0xTOKEN",
+            "pair_address": "0xPAIR",
+            "dex": "uniswap",
+            "dex_url": "https://dexscreener.com/base/0xPAIR",
+            "dex_price_usd": 0.01005,
+            "execution_pool_liquidity_usd": 100_000,
+            "market_age_verified": True,
+            "market_age_min_days": 200,
+            "execution_pair_price_coherent": True,
+        }]
+    }
+
+    def should_not_run(_row):
+        raise AssertionError("strict symbol search should not run when exact cached identity is coherent")
+
+    monkeypatch.setattr(bypass, "_strict_dex_resolve", should_not_run)
+    resolved, failures, hits = _resolve_many([source], _verified_identity_index(payload))
+
+    assert hits == 1
+    assert failures == []
+    assert len(resolved) == 1
+    assert resolved[0]["token_address"] == "0xTOKEN"
+    assert resolved[0]["fast_identity_bypass_source"] == "CURRENT_CEX_SPOT_WATCHLIST_EXISTING_EXACT_IDENTITY"
+
+
+def test_mismatched_cached_identity_is_not_reused(monkeypatch):
+    source = _row(
+        markets=[{
+            "exchange": "gate",
+            "price": 0.0100,
+            "volume_24h": 300_000,
+            "volume_comparable_usd_like": True,
+        }]
+    )
+    payload = {
+        "candidates": [{
+            "symbol": "TESTUSDT",
+            "identity_status": "DEX_VERIFIED",
+            "identity_verified": True,
+            "chain": "base",
+            "token_address": "0xWRONG",
+            "pair_address": "0xWRONGPAIR",
+            "dex_price_usd": 0.50,
+        }]
+    }
+    calls = []
+
+    def strict(row):
+        calls.append(row["symbol"])
+        return {
+            **row,
+            "chain": "base",
+            "token_address": "0xRIGHT",
+            "pair_address": "0xRIGHTPAIR",
+            "identity_status": "DEX_VERIFIED",
+            "identity_verified": True,
+        }
+
+    monkeypatch.setattr(bypass, "_strict_dex_resolve", strict)
+    resolved, failures, hits = _resolve_many([source], _verified_identity_index(payload))
+
+    assert hits == 0
+    assert calls == ["TESTUSDT"]
+    assert failures == []
+    assert resolved[0]["token_address"] == "0xRIGHT"

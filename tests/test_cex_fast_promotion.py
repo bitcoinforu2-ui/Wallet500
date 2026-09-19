@@ -219,3 +219,100 @@ def test_reactivation_pair_change_or_expired_window_starts_new_trigger():
     )
     assert expired["state"] == "PENDING_HOLD"
     assert expired["entry"]["trigger_price_usd"] == 0.0042
+
+
+def test_regional_native_quote_exchange_does_not_satisfy_multi_exchange_gate():
+    row = _row(
+        coherent_confirmations=1,
+        exchanges=["gate", "upbit"],
+        leaderboard_best_rank=2,
+        markets=[
+            {
+                "exchange": "gate",
+                "market_type": "spot",
+                "symbol": "TESTUSDT",
+                "market_id": "TEST_USDT",
+                "quote_symbol": "USDT",
+                "price": 0.012,
+                "change_24h_pct": 18.0,
+                "volume_24h": 500_000,
+                "volume_comparable_usd_like": True,
+                "regional_market": False,
+            },
+            {
+                "exchange": "upbit",
+                "market_type": "spot",
+                "symbol": "TESTUSDT",
+                "market_id": "KRW-TEST",
+                "quote_symbol": "KRW",
+                "price": 17.0,
+                "change_24h_pct": 70.0,
+                "volume_24h": 90_000_000_000,
+                "volume_comparable_usd_like": False,
+                "regional_market": True,
+            },
+        ],
+    )
+    ok, metrics = _eligibility(row)
+    assert ok is False
+    assert metrics["exchanges"] == ["gate"]
+    assert metrics["observed_exchanges"] == ["gate", "upbit"]
+    assert "CEX_CONFIRMATION_INSUFFICIENT" in metrics["blockers"]
+    assert metrics["current_change_24h_pct"] == 18.0
+
+
+def test_same_ticker_collision_outlier_is_excluded_from_current_action_metrics():
+    row = _row(
+        coherent_confirmations=2,
+        exchanges=["gate", "okx", "kucoin"],
+        symbol_collision={
+            "suspected": True,
+            "price_coherent_exchanges": ["okx", "kucoin"],
+            "outlier_exchanges": ["gate"],
+        },
+        markets=[
+            {
+                "exchange": "gate",
+                "market_type": "spot",
+                "symbol": "TESTUSDT",
+                "market_id": "TEST_USDT",
+                "quote_symbol": "USDT",
+                "price": 0.10,
+                "change_24h_pct": 70.0,
+                "volume_24h": 5_000_000,
+                "volume_comparable_usd_like": True,
+                "regional_market": False,
+            },
+            {
+                "exchange": "okx",
+                "market_type": "spot",
+                "symbol": "TESTUSDT",
+                "market_id": "TEST-USDT",
+                "quote_symbol": "USDT",
+                "price": 0.012,
+                "change_24h_pct": 18.0,
+                "volume_24h": 500_000,
+                "volume_comparable_usd_like": True,
+                "regional_market": False,
+            },
+            {
+                "exchange": "kucoin",
+                "market_type": "spot",
+                "symbol": "TESTUSDT",
+                "market_id": "TEST-USDT",
+                "quote_symbol": "USDT",
+                "price": 0.0121,
+                "change_24h_pct": 17.7,
+                "volume_24h": 300_000,
+                "volume_comparable_usd_like": True,
+                "regional_market": False,
+            },
+        ],
+    )
+    ok, metrics = _eligibility(row)
+    assert ok is True
+    assert metrics["exchanges"] == ["kucoin", "okx"]
+    assert metrics["observed_exchanges"] == ["gate", "kucoin", "okx"]
+    assert metrics["current_change_24h_pct"] == 18.0
+    assert metrics["current_price"] < 0.02
+    assert "LATE_MOVE_DO_NOT_CHASE" not in metrics["blockers"]

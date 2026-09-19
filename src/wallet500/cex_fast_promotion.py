@@ -351,12 +351,28 @@ def _median(values: list[float]) -> float:
     return values[n // 2] if n % 2 else (values[n // 2 - 1] + values[n // 2]) / 2.0
 
 
-def _cex_reference_price(row: dict) -> float:
-    prices = [
-        _f(x.get("price"))
+def _action_market_rows(row: dict) -> list[dict]:
+    markets = [
+        x
         for x in row.get("markets") or []
-        if isinstance(x, dict) and _f(x.get("price")) > 0 and x.get("volume_comparable_usd_like", True)
+        if isinstance(x, dict)
+        and _f(x.get("price")) > 0
+        and x.get("volume_comparable_usd_like", True)
+        and not x.get("regional_market", False)
     ]
+    collision = row.get("symbol_collision") if isinstance(row.get("symbol_collision"), dict) else {}
+    coherent_exchanges = {
+        str(x)
+        for x in (collision.get("price_coherent_exchanges") or [])
+        if str(x).strip()
+    }
+    if collision.get("suspected") and coherent_exchanges:
+        markets = [x for x in markets if str(x.get("exchange") or "") in coherent_exchanges]
+    return markets
+
+
+def _cex_reference_price(row: dict) -> float:
+    prices = [_f(x.get("price")) for x in _action_market_rows(row)]
     return _median(prices)
 
 
@@ -491,19 +507,27 @@ def _milestone(row: dict) -> dict:
 
 
 def _max_turnover(row: dict) -> float:
-    return max(
-        (_f(x.get("volume_24h")) for x in row.get("markets") or [] if isinstance(x, dict) and x.get("volume_comparable_usd_like", True)),
-        default=0.0,
-    )
+    return max((_f(x.get("volume_24h")) for x in _action_market_rows(row)), default=0.0)
 
 
 def _current_change(row: dict) -> float:
-    changes = [
-        _f(x.get("change_24h_pct"))
-        for x in row.get("markets") or []
-        if isinstance(x, dict) and x.get("volume_comparable_usd_like", True)
-    ]
+    changes = [_f(x.get("change_24h_pct")) for x in _action_market_rows(row)]
     return max(changes, default=_f(row.get("change_24h_max_pct")))
+
+
+def _confirmation_exchanges(row: dict) -> list[str]:
+    exchanges = sorted({
+        str(x.get("exchange"))
+        for x in _action_market_rows(row)
+        if str(x.get("exchange") or "").strip()
+    })
+    if exchanges:
+        return exchanges
+    return sorted({
+        str(x)
+        for x in (row.get("leaderboard_usd_like_exchanges") or [])
+        if str(x).strip()
+    })
 
 
 def _liquidity(row: dict) -> float:
@@ -530,9 +554,14 @@ def _eligibility(row: object) -> tuple[bool, dict]:
     turnover = _max_turnover(row)
     age_days = _f(row.get("market_age_min_days"))
     liquidity = _liquidity(row)
-    exchanges = sorted({str(x) for x in (row.get("exchanges") or []) if str(x).strip()})
-    if not exchanges:
-        exchanges = sorted({str(x.get("exchange")) for x in row.get("markets") or [] if isinstance(x, dict) and x.get("exchange")})
+    exchanges = _confirmation_exchanges(row)
+    observed_exchanges = sorted({str(x) for x in (row.get("exchanges") or []) if str(x).strip()})
+    if not observed_exchanges:
+        observed_exchanges = sorted({
+            str(x.get("exchange"))
+            for x in row.get("markets") or []
+            if isinstance(x, dict) and x.get("exchange")
+        })
     coherent = _i(row.get("coherent_confirmations"))
     best_rank = _i(row.get("leaderboard_best_rank"), 999)
     leaderboard_exchanges = sorted({str(x) for x in row.get("leaderboard_exchanges") or [] if str(x).strip()})
@@ -591,6 +620,7 @@ def _eligibility(row: object) -> tuple[bool, dict]:
         "market_age_days": age_days,
         "execution_liquidity_usd": liquidity,
         "exchanges": exchanges,
+        "observed_exchanges": observed_exchanges,
         "coherent_confirmations": coherent,
         "leaderboard_best_rank": best_rank if best_rank < 999 else None,
         "leaderboard_exchanges": leaderboard_exchanges,
