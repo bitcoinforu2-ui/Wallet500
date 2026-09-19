@@ -118,6 +118,7 @@ jobs:
           q=ident.get('identity_queue') or {}
           if q.get('selected_count',0) > 60: raise SystemExit('IDENTITY_QUEUE_LIMIT_BROKEN')
           if q.get('persistent_priority_slot_cap') != 30: raise SystemExit('IDENTITY_PERSISTENT_CAP_BROKEN')
+          if q.get('persistent_backlog_target_slots') != 20: raise SystemExit('IDENTITY_PERSISTENT_TARGET_POLICY_DRIFT')
           if int(q.get('selected_persistent_backlog_only_count') or 0) > int(q.get('persistent_priority_slot_cap') or 0):
               raise SystemExit('IDENTITY_PERSISTENT_BACKLOG_CAP_NOT_ENFORCED')
           if q.get('persistent_backlog_cap_enforced') is not True: raise SystemExit('IDENTITY_PERSISTENT_BACKLOG_GUARD_MISSING')
