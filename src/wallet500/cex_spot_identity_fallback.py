@@ -38,7 +38,7 @@ def _cex_reference_price(alert: dict) -> float:
         if market.get("regional_market") is True or market.get("volume_comparable_usd_like") is False:
             continue
         quote = str(market.get("quote_symbol") or "").upper().strip()
-        symbol = str(market.get("symbol") or "").upper().replace("-", "").replace("_", "").replace("/", "")
+        symbol = str(market.get("symbol") or alert.get("symbol") or "").upper().replace("-", "").replace("_", "").replace("/", "")
         if quote:
             if quote not in USD_LIKE_QUOTES:
                 continue
