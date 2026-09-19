@@ -4,10 +4,15 @@ import base64
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
-import scripts.serialized_publish as serialized
-import scripts.serialized_publish_staged as staged
+SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+import serialized_publish as serialized
+import serialized_publish_staged as staged
 
 
 WORKFLOWS = Path(".github/workflows")
