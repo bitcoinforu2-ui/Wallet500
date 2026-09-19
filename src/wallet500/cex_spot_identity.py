@@ -11,6 +11,7 @@ from .cex_spot_identity_fallback import resolve as resolve_dex_fallback
 DATA = Path("data")
 MAX_WATCH_CANDIDATES = 60
 MAX_PERSISTENT_PRIORITY_SLOTS = 30
+PERSISTENT_BACKLOG_TARGET_SLOTS = 20
 PREWAVE_IDENTITY_PRIORITY_SLOTS = 12
 PREWAVE_MIN_VOLUME_ACCEL_PCT = 50.0
 PREWAVE_MIN_VOLUME_WINDOW_MULTIPLE = 3.0
@@ -331,7 +332,10 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         return added
 
     prewave_selected = add_rows(prewave_ordered, PREWAVE_IDENTITY_PRIORITY_SLOTS)
-    backlog_selected = add_rows(pending_only_ordered, MAX_PERSISTENT_PRIORITY_SLOTS)
+    backlog_selected = add_rows(
+        pending_only_ordered,
+        min(MAX_PERSISTENT_PRIORITY_SLOTS, PERSISTENT_BACKLOG_TARGET_SLOTS),
+    )
     add_rows(current_ordered)
 
     selected_recent = len(selected_symbols & recent_attempts)
@@ -357,6 +361,7 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         "selected_attempted_previous_run": selected_recent,
         "limit": MAX_WATCH_CANDIDATES,
         "persistent_priority_slot_cap": MAX_PERSISTENT_PRIORITY_SLOTS,
+        "persistent_backlog_target_slots": PERSISTENT_BACKLOG_TARGET_SLOTS,
         "persistent_backlog_selected_this_run": backlog_selected,
         "persistent_backlog_cap_enforced": backlog_selected <= MAX_PERSISTENT_PRIORITY_SLOTS,
         "fresh_watch_capacity_protected": True,
