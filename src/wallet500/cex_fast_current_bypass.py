@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .cex_spot_identity import _is_prewave_shadow_identity_candidate
 from .cex_fast_promotion import (
     OUTPUT_FILE,
     REPORT_FILE,
@@ -30,7 +31,6 @@ IDENTITY_FILE = "cex-spot-identity-radar.json"
 MAX_STRICT_RESOLVES_PER_RUN = 24
 MAX_DELIVER_PER_RUN = 6
 MIN_PRIORITY_SCORE = 35
-MIN_LEVERAGED_SENSOR_ABS_CHANGE_PCT = 25.0
 MAX_PRE_RESOLVE_24H_CHANGE_PCT = 45.0
 
 
@@ -45,11 +45,15 @@ def _milestone_score(row: dict) -> int:
     )
 
 
-def _leveraged_sensor_strength(row: dict) -> float:
-    sensor = row.get("leveraged_underlying_sensor") if isinstance(row.get("leveraged_underlying_sensor"), dict) else {}
-    if not sensor.get("active"):
+def _prewave_shadow_strength(row: dict) -> float:
+    if not _is_prewave_shadow_identity_candidate(row):
         return 0.0
-    return _f(sensor.get("max_abs_change_24h_pct"))
+    slow = row.get("slow_ignition") if isinstance(row.get("slow_ignition"), dict) else {}
+    return max(
+        _f(row.get("volume_acceleration_max_pct")),
+        _f(row.get("volume_window_multiple_max")) * 10.0,
+        _f(slow.get("confirmations")) * 20.0,
+    )
 
 
 def _priority_candidates(radar: dict) -> list[dict]:
@@ -65,8 +69,20 @@ def _priority_candidates(radar: dict) -> list[dict]:
         if not symbol:
             continue
         old = by_symbol.get(symbol)
-        rank = (_milestone_score(row), _leveraged_sensor_strength(row))
-        old_rank = (_milestone_score(old), _leveraged_sensor_strength(old)) if old else (-1, -1.0)
+        rank = (
+            1 if _is_prewave_shadow_identity_candidate(row) else 0,
+            _milestone_score(row),
+            _prewave_shadow_strength(row),
+        )
+        old_rank = (
+            (
+                1 if _is_prewave_shadow_identity_candidate(old) else 0,
+                _milestone_score(old),
+                _prewave_shadow_strength(old),
+            )
+            if old
+            else (-1, -1, -1.0)
+        )
         if old is None or rank > old_rank:
             by_symbol[symbol] = row
 
@@ -75,9 +91,10 @@ def _priority_candidates(radar: dict) -> list[dict]:
         if row.get("leveraged_product") is True:
             continue
         score = _milestone_score(row)
-        sensor_strength = _leveraged_sensor_strength(row)
+        prewave = _is_prewave_shadow_identity_candidate(row)
+        prewave_strength = _prewave_shadow_strength(row)
         change = _f(row.get("change_24h_max_pct"))
-        if score < MIN_PRIORITY_SCORE and sensor_strength < MIN_LEVERAGED_SENSOR_ABS_CHANGE_PCT:
+        if score < MIN_PRIORITY_SCORE and not prewave:
             continue
         if change > MAX_PRE_RESOLVE_24H_CHANGE_PCT:
             continue
@@ -85,19 +102,20 @@ def _priority_candidates(radar: dict) -> list[dict]:
         if not markets:
             continue
         row["_fast_priority_score"] = score
-        row["_leveraged_sensor_priority"] = round(sensor_strength, 4)
+        row["_prewave_shadow_priority"] = round(prewave_strength, 4)
         row["_fast_priority_reason"] = (
-            "LEVERAGED_UNDERLYING_SENSOR"
-            if score < MIN_PRIORITY_SCORE and sensor_strength >= MIN_LEVERAGED_SENSOR_ABS_CHANGE_PCT
+            "PREWAVE_SPOT_SHADOW"
+            if score < MIN_PRIORITY_SCORE and prewave
             else "CEX_SIGNAL_SCORE"
         )
         selected.append(row)
 
     selected.sort(
         key=lambda x: (
+            1 if _is_prewave_shadow_identity_candidate(x) else 0,
             _i(x.get("coherent_confirmations")),
             _i(x.get("_fast_priority_score")),
-            _f(x.get("_leveraged_sensor_priority")),
+            _f(x.get("_prewave_shadow_priority")),
             -_f(x.get("change_24h_max_pct")),
             max((_f(m.get("volume_24h")) for m in x.get("markets") or [] if isinstance(m, dict)), default=0.0),
         ),
@@ -319,7 +337,9 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
         "resolve_failures": resolve_failures[:30],
         "errors": errors,
         "resolve_limit": MAX_STRICT_RESOLVES_PER_RUN,
-        "leveraged_sensor_priority_min_abs_change_pct": MIN_LEVERAGED_SENSOR_ABS_CHANGE_PCT,
+        "prewave_shadow_priority_enabled": True,
+        "prewave_shadow_priority_is_identity_only": True,
+        "leveraged_product_priority_enabled": False,
         "identity_cache_reuse_enabled": True,
         "identity_cache_requires_current_cex_dex_price_coherence": True,
         "delivery_cap": 0,
