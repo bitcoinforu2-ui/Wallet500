@@ -51,14 +51,14 @@ jobs:
           checks={
             '.github/workflows/cyberleek-wallet-flow.yml': ['serialized_publish.py','tests/test_cyberleek_wallet_flow_no_batch.py'],
             '.github/workflows/revival-wallet-coverage-probe.yml': ['serialized_publish_staged.py'],
-            '.github/workflows/cryptoyeezus-live-watch.yml': ["YEEZUS_X_POLL_EVERY_CYCLES: '1'",'YEEZUS_X_WAS_NOT_CHECKED_THIS_RUN','git reset --hard HEAD'],
-            '.github/workflows/cryptoyeezus-source-wallet-watch.yml': ['JCxTzSXz1f8s3UEtYQzaDdBDWneaD6yo1cX38RBf6Rjd','UNVERIFIED_SOURCE_WALLET_EVENT','git reset --hard HEAD'],
+            '.github/workflows/cryptoyeezus-live-watch.yml': ["YEEZUS_X_POLL_EVERY_CYCLES: '1'",'YEEZUS_X_WAS_NOT_CHECKED_THIS_RUN','serialized_publish.py'],
+            '.github/workflows/cryptoyeezus-source-wallet-watch.yml': ['JCxTzSXz1f8s3UEtYQzaDdBDWneaD6yo1cX38RBf6Rjd','UNVERIFIED_SOURCE_WALLET_EVENT','serialized_publish.py'],
           }
           for name, needles in checks.items():
               text=Path(name).read_text()
               for needle in needles:
                   assert needle in text, (name, needle)
-          for name in ['.github/workflows/cyberleek-wallet-flow.yml','.github/workflows/revival-wallet-coverage-probe.yml']:
+          for name in ['.github/workflows/cyberleek-wallet-flow.yml','.github/workflows/revival-wallet-coverage-probe.yml','.github/workflows/cryptoyeezus-live-watch.yml','.github/workflows/cryptoyeezus-source-wallet-watch.yml']:
               text=Path(name).read_text()
               assert 'git push origin HEAD:main' not in text, (name, 'direct-main-push')
           src=Path('src/wallet500/cryptoyeezus_source_wallet_watch.py').read_text()
