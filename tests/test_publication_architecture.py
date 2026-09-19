@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import base64
+import os
 import re
 import subprocess
 from pathlib import Path
 
+import scripts.serialized_publish as serialized
 import scripts.serialized_publish_staged as staged
 
 
@@ -67,3 +70,18 @@ def test_staged_path_reader_fails_closed_on_git_error(monkeypatch):
         assert "boom" in str(exc)
     else:
         raise AssertionError("expected staged path discovery to fail closed")
+
+
+def test_serialized_identity_exports_recovered_checkout_token(monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    encoded = base64.b64encode(b"x-access-token:recovered-token").decode("ascii")
+
+    class Result:
+        stdout = f"AUTHORIZATION: basic {encoded}"
+
+    monkeypatch.setattr(serialized.atomic_publish, "git", lambda *args, **kwargs: Result())
+    token, repo, _, _ = serialized._identity()
+    assert token == "recovered-token"
+    assert repo == "owner/repo"
+    assert os.environ["GITHUB_TOKEN"] == "recovered-token"
