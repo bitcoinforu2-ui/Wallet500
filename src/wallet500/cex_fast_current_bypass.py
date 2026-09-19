@@ -10,6 +10,7 @@ from .cex_fast_promotion import (
     OUTPUT_FILE,
     REPORT_FILE,
     _canonical_symbol,
+    _cex_reference_price,
     _eligibility,
     _event_id,
     _f,
@@ -123,6 +124,14 @@ def _verified_identity_index(payload: dict) -> dict[str, dict]:
     return out
 
 
+def _cached_identity_price_coherent(source: dict, cached: dict, max_ratio: float = 1.35) -> bool:
+    ref = _cex_reference_price(source)
+    dex = _f(cached.get("dex_price_usd") or cached.get("price_usd"))
+    if ref <= 0 or dex <= 0:
+        return False
+    return max(ref, dex) / min(ref, dex) <= max_ratio
+
+
 def _merge_cached_identity(source: dict, cached: dict) -> dict:
     item = {**cached, **source}
     identity_fields = (
@@ -152,7 +161,7 @@ def _resolve_many(rows: list[dict], identity_index: dict[str, dict] | None = Non
     index = identity_index or {}
     for row in rows:
         cached = index.get(_canonical_symbol(row.get("symbol")))
-        if cached:
+        if cached and _cached_identity_price_coherent(row, cached):
             resolved.append(_merge_cached_identity(row, cached))
             cache_hits += 1
         else:
@@ -312,6 +321,7 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
         "resolve_limit": MAX_STRICT_RESOLVES_PER_RUN,
         "leveraged_sensor_priority_min_abs_change_pct": MIN_LEVERAGED_SENSOR_ABS_CHANGE_PCT,
         "identity_cache_reuse_enabled": True,
+        "identity_cache_requires_current_cex_dex_price_coherence": True,
         "delivery_cap": 0,
         "telegram_delivery_enabled": False,
     }
