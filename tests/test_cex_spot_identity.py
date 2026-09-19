@@ -251,3 +251,74 @@ def test_priority_never_marks_symbol_only_candidate_actionable(monkeypatch, tmp_
     assert row["actionable"] is False
     assert row["automatic_buy"] is False
     assert out["truth_contract"]["persistent_pending_never_satisfies_identity"] is True
+
+def test_inconclusive_coingecko_extrema_uses_strict_exact_pair_age_fallback(monkeypatch, tmp_path):
+    (tmp_path / "cex-spot-revival-radar.json").write_text(json.dumps({
+        "generated_at": "2026-09-19T05:00:00+00:00",
+        "watchlist": [{
+            "symbol": "AKEUSDT",
+            "spot_revival_score": 38,
+            "coherent_confirmations": 3,
+            "exchanges": ["gate", "mexc", "okx"],
+            "markets": [
+                {"exchange": "gate", "market_type": "spot", "symbol": "AKEUSDT", "quote_symbol": "USDT", "price": 0.0144, "volume_comparable_usd_like": True},
+                {"exchange": "mexc", "market_type": "spot", "symbol": "AKEUSDT", "quote_symbol": "USDT", "price": 0.0143, "volume_comparable_usd_like": True},
+            ],
+        }],
+    }), encoding="utf-8")
+
+    def fake_age(path):
+        p = json.loads(path.read_text())
+        p["alerts"] = []
+        path.write_text(json.dumps(p))
+        return {
+            "accepted": 0,
+            "rejected": 1,
+            "rejections": [{
+                "symbol": "AKEUSDT",
+                "base_symbol": "AKE",
+                "reason": "AGE_MINIMUM_NOT_PROVEN_BY_COINGECKO_EXTREMA",
+                "coingecko_id": "akedo",
+            }],
+        }
+
+    def fake_exact(path):
+        return {"dex_verified": 0}
+
+    seen = {}
+
+    def fake_fallback(row):
+        seen.update(row)
+        return {
+            **row,
+            "identity_status": "DEX_VERIFIED",
+            "identity_verified": True,
+            "chain": "bsc",
+            "token_address": "0x2c3a8ee94ddd97244a93bc48298f97d2c412f7db",
+            "pair_address": "0xpair",
+            "dex_price_usd": 0.01435,
+            "dex_liquidity_usd": 3_000_000,
+            "market_age_verified": True,
+            "market_age_min_days": 341,
+            "market_age_evidence_at": "2025-09-28T09:00:00+00:00",
+            "market_age_evidence_source": "DEXSCREENER_EXACT_SYMBOL_PRICE_PAIR_AGE_FALLBACK",
+        }
+
+    monkeypatch.setattr(mod, "verify_age_and_coin_identity", fake_age)
+    monkeypatch.setattr(mod, "resolve_exact_identity", fake_exact)
+    monkeypatch.setattr(mod, "resolve_dex_fallback", fake_fallback)
+
+    out = mod.run(tmp_path)
+    row = out["candidates"][0]
+
+    assert seen["coingecko_id"] == "akedo"
+    assert row["identity_status"] == "DEX_VERIFIED"
+    assert row["identity_verified"] is True
+    assert row["market_age_verified"] is True
+    assert row["age_preflight_rejection_reason"] == "AGE_MINIMUM_NOT_PROVEN_BY_COINGECKO_EXTREMA"
+    assert row["research_only"] is True
+    assert row["actionable"] is False
+    assert out["counts"]["dex_fallback_verified"] == 1
+    assert out["counts"]["age_inconclusive_fallback_verified"] == 1
+    assert out["truth_contract"]["dex_fallback_for_missing_or_inconclusive_age_evidence"] is True
+    assert out["truth_contract"]["dex_fallback_never_waives_ambiguous_coin_identity"] is True

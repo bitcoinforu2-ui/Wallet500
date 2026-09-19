@@ -62,3 +62,14 @@ def test_fallback_rejects_ambiguous_token_identity(monkeypatch):
         ]
     })
     assert mod.resolve(alert()) is None
+
+
+def test_reference_price_ignores_regional_non_usd_market():
+    row = {
+        "symbol": "CODEXUSDT",
+        "markets": [
+            {"exchange": "gate", "market_type": "spot", "symbol": "CODEXUSDT", "quote_symbol": "USDT", "price": 0.10, "volume_comparable_usd_like": True},
+            {"exchange": "upbit", "market_type": "spot", "symbol": "CODEXKRW", "quote_symbol": "KRW", "price": 150.0, "regional_market": True, "volume_comparable_usd_like": False},
+        ],
+    }
+    assert mod._cex_reference_price(row) == 0.10

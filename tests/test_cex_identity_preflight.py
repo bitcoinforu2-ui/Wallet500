@@ -64,4 +64,5 @@ def test_resolved_but_young_coin_is_rejected(tmp_path, monkeypatch):
     })
     report = p.run(path)
     assert report["accepted"] == 0
-    assert report["rejections"][0]["reason"] == "UNDER_60_DAYS_OR_AGE_UNVERIFIED"
+    assert report["rejections"][0]["reason"] == "AGE_MINIMUM_NOT_PROVEN_BY_COINGECKO_EXTREMA"
+    assert report["recent_extrema_never_prove_young"] is True
