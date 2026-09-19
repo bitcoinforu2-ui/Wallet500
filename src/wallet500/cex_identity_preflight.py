@@ -99,6 +99,14 @@ def _parse_dt(value: object) -> datetime | None:
 
 
 def _age_meta(row: dict, source: str) -> dict | None:
+    """Return conservative minimum-age proof from CoinGecko extrema.
+
+    ATH/ATL timestamps can prove that an asset existed *at least* as far back as an
+    old extremum. A recent ATH/ATL cannot prove that the asset itself is young, so
+    extrema newer than the minimum-age threshold are treated as inconclusive and
+    handed to an independent exact-pair age resolver instead of being classified as
+    an under-age asset.
+    """
     now = now_utc()
     dates = [_parse_dt(row.get("ath_date")), _parse_dt(row.get("atl_date"))]
     dates = [x for x in dates if x is not None and x <= now]
@@ -113,6 +121,7 @@ def _age_meta(row: dict, source: str) -> dict | None:
         "market_age_min_days": days,
         "market_age_evidence_at": evidence.isoformat(),
         "market_age_evidence_source": source,
+        "market_age_evidence_semantics": "MINIMUM_AGE_PROOF_ONLY",
         "coingecko_id": row.get("id"),
     }
 
@@ -253,7 +262,7 @@ def run(path: Path = DATA / "cex-revival-radar.json") -> dict:
             rejected.append({
                 "symbol": alert.get("symbol"),
                 "base_symbol": base,
-                "reason": "UNDER_60_DAYS_OR_AGE_UNVERIFIED",
+                "reason": "AGE_MINIMUM_NOT_PROVEN_BY_COINGECKO_EXTREMA",
                 "coingecko_id": chosen.get("id"),
                 "identity_evidence": identity_evidence,
             })
@@ -265,7 +274,7 @@ def run(path: Path = DATA / "cex-revival-radar.json") -> dict:
             "cex_identity_preflight": identity_evidence,
         })
 
-    payload["version"] = max(int(payload.get("version") or 0), 9)
+    payload["version"] = max(int(payload.get("version") or 0), 10)
     payload["alerts"] = kept
     payload["alerts_count"] = len(kept)
     payload["raw_alerts_before_age_gate"] = len(raw)
@@ -275,7 +284,8 @@ def run(path: Path = DATA / "cex-revival-radar.json") -> dict:
         "accepted": len(kept),
         "rejected": len(rejected),
         "identity_rule": "UNIQUE_SYMBOL_OR_STRICT_CEX_PRICE/TICKER_COHERENCE_TO_ONE_COINGECKO_ID",
-        "evidence_rule": "EXACT_COINGECKO_ID_THEN_EARLIEST_ATH_OR_ATL_PROVES_180D",
+        "evidence_rule": "EXACT_COINGECKO_ID_THEN_OLD_ATH_OR_ATL_CAN_PROVE_MINIMUM_90D_AGE; RECENT_EXTREMA_ARE_INCONCLUSIVE_NOT_YOUTH_EVIDENCE",
+        "recent_extrema_never_prove_young": True,
         "unknown_or_unresolved_identity": "REJECT",
         "rejections": rejected[:100],
     }
