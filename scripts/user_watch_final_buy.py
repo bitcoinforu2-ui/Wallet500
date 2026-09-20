@@ -249,6 +249,7 @@ def _policy(config: dict) -> dict:
         "cex_quarter_wave_max_gainer_rank": 15,
         "cex_quarter_wave_min_microstructure_score": 5.0,
         "cex_quarter_wave_min_current_evidence": 2,
+        "cex_quarter_wave_absolute_turnover_fallback_usd": 100000.0,
         "cex_quarter_wave_min_depth_1pct_usd": 3000.0,
         "cex_quarter_wave_max_orderbook_spread_pct": 1.5,
         "cex_quarter_wave_min_bid_ask_depth_ratio": 1.05,
@@ -381,6 +382,15 @@ def evaluate(
     else:
         blockers.append("FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET")
 
+    cex_momentum_confirmed = bool(
+        cex_relative_multiple >= float(policy["cex_quarter_wave_min_relative_volume_multiple"])
+        or (
+            cex_turnover >= float(policy["cex_quarter_wave_absolute_turnover_fallback_usd"])
+            and cex_rank is not None
+            and cex_rank <= int(policy["cex_quarter_wave_max_gainer_rank"])
+        )
+    )
+
     cex_quarter_wave_fast_path = bool(
         quarter_wave_lane
         and not cex_market_only
@@ -396,10 +406,9 @@ def evaluate(
         and cex_orderbook_spread <= float(policy["cex_quarter_wave_max_orderbook_spread_pct"])
         and cex_bid_ask_depth_ratio >= float(policy["cex_quarter_wave_min_bid_ask_depth_ratio"])
         and cex_turnover >= float(policy["cex_quarter_wave_min_turnover_usd"])
-        and cex_relative_multiple >= float(policy["cex_quarter_wave_min_relative_volume_multiple"])
+        and cex_momentum_confirmed
         and cex_rank is not None
         and cex_rank <= int(policy["cex_quarter_wave_max_gainer_rank"])
-        and cex_led
     )
 
     cex_market_only_fast_path = bool(
@@ -415,7 +424,6 @@ def evaluate(
         and cex_depth_1pct >= float(policy["cex_market_only_min_depth_1pct_usd"])
         and cex_orderbook_spread <= float(policy["cex_market_only_max_orderbook_spread_pct"])
         and cex_bid_ask_depth_ratio >= float(policy["cex_market_only_min_bid_ask_depth_ratio"])
-        and cex_led
     )
 
     if cex_quarter_wave_fast_path:
