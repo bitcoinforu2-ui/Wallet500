@@ -162,6 +162,44 @@ def main() -> None:
     research_only = dict(bootstrap, bootstrap_final_buy_lane=False)
     assert gate.eligible_targets({"tokens": []}, {"candidates": [research_only]}) == []
 
+    cex = {
+        "candidate_type": "GATE_SPOT_DISCOVERY",
+        "symbol": "MGT",
+        "network": "bsc",
+        "contract": "0x3c6256f234ba638e5883c46b3fedb00ea2e66b8a",
+        "pair": "0xdce2e6fe348f8c8a2b08bbff8f447c64224d75fb",
+        "dex_url": "https://dexscreener.com/bsc/example",
+    }
+    cex_key = gate.identity_key(cex)
+    unarmed_state = {
+        "tokens": {
+            "SPOT:" + cex_key: {
+                "identity_key": cex_key,
+                "quarter_wave_revalidation_armed": False,
+                "first_verified_price": 0.0001,
+            }
+        }
+    }
+    assert gate.eligible_targets({"tokens": []}, {"candidates": [cex]}, unarmed_state) == []
+
+    armed_state = {
+        "tokens": {
+            "SPOT:" + cex_key: {
+                "identity_key": cex_key,
+                "quarter_wave_revalidation_armed": True,
+                "first_verified_price": 0.0001,
+                "gain_from_first_verified_pct": 31.0,
+                "quarter_wave_revalidation_armed_at": NOW.isoformat(),
+                "quarter_wave_revalidation_trigger_price": 0.000125,
+            }
+        }
+    }
+    selected_cex = gate.eligible_targets({"tokens": []}, {"candidates": [cex]}, armed_state)
+    assert len(selected_cex) == 1
+    assert selected_cex[0]["quarter_wave_revalidation_lane"] is True
+    assert selected_cex[0]["quarter_wave_anchor_price_usd"] == 0.0001
+    assert selected_cex[0]["telegram_policy"] == "FINAL_BUY_ONLY"
+
     print("USER_WATCH_FINAL_BUY_CONTRACT_OK")
 
 
