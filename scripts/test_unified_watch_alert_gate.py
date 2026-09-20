@@ -81,4 +81,31 @@ assert q4["quarter_wave_revalidation_armed"] is True
 assert q4["first_verified_price"] == 0.00010000
 assert q4["quarter_wave_revalidation_trigger_price"] == 0.00012500
 
+# If discovery happens after a wave is already >25%, arm immediately instead of
+# demanding a second +25% move from the late snapshot.
+qlate = quarter_wave_revalidation(
+    {},
+    0.000170,
+    "2026-09-20T16:16:00+00:00",
+    anchor_price=0.000170,
+    anchor_change_24h_pct=246.97,
+    anchor_at="2026-09-20T16:16:00+00:00",
+)
+assert qlate["quarter_wave_revalidation_armed"] is True
+assert qlate["quarter_wave_late_discovery"] is True
+assert qlate["quarter_wave_revalidation_basis"] == "FIRST_DISCOVERY_ALREADY_GE_25PCT_24H"
+
+# A supplied immutable first-seen price beats a later first exact-pair snapshot.
+qanchor = quarter_wave_revalidation(
+    {"price": 0.000217},
+    0.000100,
+    "2026-09-20T14:30:00+00:00",
+    anchor_price=0.0000751,
+    anchor_change_24h_pct=10.78,
+    anchor_at="2026-09-20T14:15:55+00:00",
+)
+assert qanchor["first_verified_price"] == 0.0000751
+assert qanchor["quarter_wave_revalidation_armed"] is True
+assert qanchor["gain_from_first_verified_pct"] > 25
+
 print("UNIFIED_WATCH_ALPHA_ALERT_GATE_PASS")
