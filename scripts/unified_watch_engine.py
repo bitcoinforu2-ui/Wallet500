@@ -701,8 +701,15 @@ def spot_cex_sensor(t, prev):
     current_volume = fnum(t.get("quote_volume_24h_usd") or t.get("cex_turnover_usd"))
     previous_volume = fnum(prev.get("cex_quote_volume_24h_usd"))
     baseline = fnum(prev.get("cex_quote_volume_baseline_usd"))
+    first_seen_volume = fnum(t.get("first_seen_quote_volume_24h_usd"))
     if baseline <= 0:
-        baseline = previous_volume if previous_volume > 0 else current_volume
+        baseline = (
+            previous_volume
+            if previous_volume > 0
+            else first_seen_volume
+            if first_seen_volume > 0
+            else current_volume
+        )
 
     current_rank = irank(t.get("positive_gainer_rank"))
     previous_rank = irank(prev.get("positive_gainer_rank"))
