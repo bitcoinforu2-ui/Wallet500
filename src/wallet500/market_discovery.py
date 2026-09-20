@@ -16,6 +16,7 @@ FRESH_PAGE_COUNT=5
 DEEP_MAX_PAGE=15
 GECKO_MIN_INTERVAL_SECONDS=2.15
 EVM_CHAINS={"ethereum","bsc","arc"}
+OPTIONAL_DISCOVERY_CHAINS={"arc"}
 BLOCKED_SYMBOLS={"USDC","USDT","DAI","USDS","USDE","WETH","ETH","WBNB","BNB","WSOL","SOL","WBTC","BTC"}
 BLOCKED_BASE_TOKENS={
  "solana":{"So11111111111111111111111111111111111111112","EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","Es9vMFrzaCERmJfrF4H2FYD9iG6vGvL5JZtJm6Gq5tQ"},
@@ -172,10 +173,10 @@ def discover_tokens(chains=CHAINS,limit_per_chain=120,start_pages=None,pages_per
  _moonshot(wanted,limit_per_chain,rows,seen,counts,filtered,errors)
  _dex_latest(wanted,limit_per_chain,rows,seen,counts,filtered,errors)
  next_pages,deep_pages_used=_gecko_deep_lane(wanted,limit_per_chain,rows,seen,counts,filtered,start_pages,pages_per_run,max_page,errors,FRESH_PAGE_COUNT)
- dead=[c for c in sorted(wanted) if counts.get(c,0)==0]; health={c:("FAILED" if counts.get(c,0)==0 else "DEGRADED" if counts.get(c,0)<10 else "HEALTHY") for c in sorted(wanted)}
+ dead=[c for c in sorted(wanted) if counts.get(c,0)==0]; critical_dead=[c for c in dead if c not in OPTIONAL_DISCOVERY_CHAINS]; health={c:("FAILED" if counts.get(c,0)==0 else "DEGRADED" if counts.get(c,0)<10 else "HEALTHY") for c in sorted(wanted)}
  boosted=[x for x in rows if x.get("dex_boost_active")]; saturated={c:counts.get(c,0)>=effective_limits.get(c,0) for c in sorted(wanted)}; stats=_source_stats(rows)
  _LAST_DIAGNOSTICS={"version":2,"mode":"DISCOVERY_V2_MULTI_SOURCE","counts":dict(counts),"total_unique_tokens":len(rows),"effective_limits":effective_limits,"cap_saturated":saturated,"health":health,"filtered_base_assets":dict(filtered),"cursor_in":dict(start_pages or {}),"cursor_out":dict(next_pages),"fresh_overlap_pages":fresh_pages_used,"deep_pages_scanned":deep_pages_used,"fresh_overlap_enabled":True,"fresh_overlap_page_count":FRESH_PAGE_COUNT,"gecko_min_interval_seconds":GECKO_MIN_INTERVAL_SECONDS,"birdeye_configured":bool(BIRDEYE_KEY),"dex_boosted_seen":len(boosted),"dex_boost_top_seen":sum(1 for x in boosted if x.get("dex_boost_top_rank") is not None),**stats,"errors_count":len(errors),"recent_errors":errors[-30:]}
- if dead:raise RuntimeError(f"Discovery health failure: zero tokens on {dead}; recent_errors={errors[-12:]}")
+ if critical_dead:raise RuntimeError(f"Discovery health failure: zero tokens on {critical_dead}; recent_errors={errors[-12:]}")
  return rows,next_pages
 
 def discover_solana_tokens(limit=120):
