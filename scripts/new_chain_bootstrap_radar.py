@@ -40,7 +40,10 @@ STABLE_OR_BASE_SYMBOLS = {
     "WBNB", "BNB", "WSOL", "SOL", "WBTC", "BTC",
 }
 
-NETWORK_SCAN_PAGES = max(1, min(8, int(os.getenv("NEW_CHAIN_NETWORK_SCAN_PAGES", "3"))))
+NETWORK_FAST_SCAN_PAGES = max(1, min(8, int(os.getenv("NEW_CHAIN_NETWORK_FAST_SCAN_PAGES", "3"))))
+NETWORK_FULL_SCAN_MAX_PAGES = max(3, min(30, int(os.getenv("NEW_CHAIN_NETWORK_FULL_SCAN_MAX_PAGES", "20"))))
+NETWORK_FULL_SCAN_INTERVAL_MINUTES = max(15, int(os.getenv("NEW_CHAIN_NETWORK_FULL_SCAN_INTERVAL_MINUTES", "60")))
+NEW_POOL_SCAN_PAGES = max(1, min(3, int(os.getenv("NEW_CHAIN_NEW_POOL_SCAN_PAGES", "2"))))
 AUTO_ACTIVE_DAYS = max(1, int(os.getenv("NEW_CHAIN_AUTO_ACTIVE_DAYS", "14")))
 MAX_AUTO_NETWORKS = max(1, int(os.getenv("NEW_CHAIN_MAX_AUTO_NETWORKS", "4")))
 MIN_LIQUIDITY = float(os.getenv("NEW_CHAIN_MIN_LIQUIDITY_USD", "5000"))
@@ -334,10 +337,10 @@ def merge_candidates(rows: list[dict]) -> list[dict]:
     )
 
 
-def discover_supported_networks() -> tuple[list[str], list[dict]]:
+def discover_supported_networks(max_pages: int) -> tuple[list[str], list[dict]]:
     found: list[str] = []
     errors: list[dict] = []
-    for page in range(1, NETWORK_SCAN_PAGES + 1):
+    for page in range(1, max(1, int(max_pages)) + 1):
         try:
             payload = _get(f"{GECKO}/networks?{urlencode({'page': page})}")
         except Exception as exc:
@@ -415,16 +418,22 @@ def active_networks(state: dict) -> list[str]:
 def collect_network(network: str, now: datetime) -> tuple[list[dict], list[dict]]:
     rows: list[dict] = []
     errors: list[dict] = []
-    for endpoint, lane in (("new_pools", "new_pools"), ("trending_pools", "trending_pools")):
+    requests = [("new_pools", f"new_pools:p{page}", page) for page in range(1, NEW_POOL_SCAN_PAGES + 1)]
+    requests.extend([
+        ("trending_pools", "trending_pools", 1),
+        ("pools", "top_pools", 1),
+    ])
+    for endpoint, lane, page in requests:
         try:
             payload = _get(
-                f"{GECKO}/networks/{network}/{endpoint}?{urlencode({'page': 1, 'include': 'base_token'})}"
+                f"{GECKO}/networks/{network}/{endpoint}?{urlencode({'page': page, 'include': 'base_token'})}"
             )
             rows.extend(parse_pool_payload(network, payload, lane, now))
         except Exception as exc:
             errors.append({
                 "stage": lane,
                 "network": network,
+                "page": page,
                 "error": f"{type(exc).__name__}:{str(exc)[:180]}",
             })
     return rows, errors
@@ -434,8 +443,20 @@ def run(now: datetime | None = None) -> dict:
     now = (now or now_utc()).astimezone(timezone.utc)
     state = load(STATE, {"version": 1, "baseline_initialized": False, "known_networks": {}, "auto_active_networks": []})
 
-    supported, errors = discover_supported_networks()
+    last_full = parse_dt(state.get("last_full_network_scan_at"))
+    full_scan_due = (
+        not bool(state.get("baseline_initialized"))
+        or last_full is None
+        or (now - last_full).total_seconds() >= NETWORK_FULL_SCAN_INTERVAL_MINUTES * 60
+    )
+    catalog_pages = NETWORK_FULL_SCAN_MAX_PAGES if full_scan_due else NETWORK_FAST_SCAN_PAGES
+    supported, errors = discover_supported_networks(catalog_pages)
     state, newly_seen = update_network_state(state, supported, now)
+    if full_scan_due and supported:
+        state["last_full_network_scan_at"] = now.isoformat()
+    state["last_catalog_scan_at"] = now.isoformat()
+    state["last_catalog_scan_mode"] = "FULL" if full_scan_due else "FAST"
+    state["last_catalog_pages_requested"] = catalog_pages
     networks = active_networks(state)
 
     rows: list[dict] = []
@@ -492,6 +513,15 @@ def run(now: datetime | None = None) -> dict:
             "min_bootstrap_score": MIN_SCORE,
             "max_pair_age_hours": MAX_PAIR_AGE_HOURS,
             "auto_active_days": AUTO_ACTIVE_DAYS,
+            "network_fast_scan_pages": NETWORK_FAST_SCAN_PAGES,
+            "network_full_scan_max_pages": NETWORK_FULL_SCAN_MAX_PAGES,
+            "network_full_scan_interval_minutes": NETWORK_FULL_SCAN_INTERVAL_MINUTES,
+            "new_pool_scan_pages": NEW_POOL_SCAN_PAGES,
+        },
+        "network_catalog": {
+            "scan_mode": state.get("last_catalog_scan_mode"),
+            "pages_requested": state.get("last_catalog_pages_requested"),
+            "last_full_scan_at": state.get("last_full_network_scan_at"),
         },
         "counts": {
             "active_networks": len(networks),
@@ -504,7 +534,8 @@ def run(now: datetime | None = None) -> dict:
         "errors": errors[-30:],
         "truth_contract": {
             "provider_network_index_bootstraps_future_networks": True,
-            "initial_provider_catalog_is_baseline_not_false_new_chain": True,
+            "initial_provider_catalog_is_full_baseline_not_false_new_chain": True,
+            "hourly_full_provider_catalog_detects_networks_outside_fast_pages": True,
             "seeded_arc_is_active_immediately": True,
             "exact_chain_contract_pair_required_before_final_buy": True,
             "research_detection_never_auto_trades": True,
