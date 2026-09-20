@@ -200,6 +200,24 @@ def main() -> None:
     assert selected_cex[0]["quarter_wave_anchor_price_usd"] == 0.0001
     assert selected_cex[0]["telegram_policy"] == "FINAL_BUY_ONLY"
 
+    # Once armed, the candidate remains tracked even after leaving the live mover list.
+    persisted_live = dict(armed_state["tokens"]["SPOT:" + cex_key])
+    persisted_live.update({
+        "symbol": "MGT",
+        "network": "bsc",
+        "contract": cex["contract"],
+        "pair": cex["pair"],
+        "candidate_type": "GATE_SPOT_DISCOVERY",
+        "dynamic_spot_candidate": True,
+    })
+    persisted_state = {"tokens": {"SPOT:" + cex_key: persisted_live}}
+    persisted_selected = gate.eligible_targets(
+        {"tokens": []}, {"candidates": []}, persisted_state
+    )
+    assert len(persisted_selected) == 1
+    assert persisted_selected[0]["symbol"] == "MGT"
+    assert persisted_selected[0]["quarter_wave_revalidation_lane"] is True
+
     print("USER_WATCH_FINAL_BUY_CONTRACT_OK")
 
 
