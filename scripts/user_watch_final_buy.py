@@ -89,7 +89,11 @@ def identity_key(row: dict) -> str:
     return f"{chain}:{token}:{pair}" if chain and token and pair else ""
 
 
-def eligible_targets(config: dict, dynamic: dict | None = None) -> list[dict]:
+def eligible_targets(
+    config: dict,
+    dynamic: dict | None = None,
+    watch_state: dict | None = None,
+) -> list[dict]:
     rows = []
     seen = set()
     for row in config.get("tokens") or []:
@@ -106,19 +110,43 @@ def eligible_targets(config: dict, dynamic: dict | None = None) -> list[dict]:
             seen.add(key)
             rows.append(row)
 
-    # User explicitly enabled the New Chain Bootstrap lane. It can reach Telegram
-    # only through this same strict FINAL BUY gate; research/watch events stay silent.
+    # Dynamic lanes can enter only the same strict FINAL BUY gate.
+    # +25% CEX movement is an arming condition for revalidation, never a BUY by itself.
     for row in (dynamic or {}).get("candidates") or []:
         if not isinstance(row, dict):
             continue
-        if str(row.get("candidate_type") or "").upper() != "NEW_CHAIN_BOOTSTRAP":
-            continue
-        if row.get("bootstrap_final_buy_lane") is not True:
-            continue
+        ctype = str(row.get("candidate_type") or "").upper()
         key = identity_key(row)
-        if key and key not in seen:
+        if not key or key in seen:
+            continue
+
+        if ctype == "NEW_CHAIN_BOOTSTRAP":
+            if row.get("bootstrap_final_buy_lane") is not True:
+                continue
             seen.add(key)
             rows.append(row)
+            continue
+
+        if ctype not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"}:
+            continue
+        live = market_row(watch_state or {}, key)
+        if not isinstance(live, dict) or live.get("quarter_wave_revalidation_armed") is not True:
+            continue
+
+        target = dict(row)
+        target.update({
+            "user_watch_final_buy_lane": True,
+            "telegram_policy": "FINAL_BUY_ONLY",
+            "exact_identity_required": True,
+            "exact_pair_required": True,
+            "quarter_wave_revalidation_lane": True,
+            "quarter_wave_anchor_price_usd": live.get("first_verified_price"),
+            "quarter_wave_gain_from_anchor_pct": live.get("gain_from_first_verified_pct"),
+            "quarter_wave_armed_at": live.get("quarter_wave_revalidation_armed_at"),
+            "quarter_wave_trigger_price_usd": live.get("quarter_wave_revalidation_trigger_price"),
+        })
+        seen.add(key)
+        rows.append(target)
     return rows
 
 
@@ -183,6 +211,9 @@ def evaluate(
     key = identity_key(target)
     blockers: list[str] = []
     proof: list[str] = []
+    quarter_wave_lane = bool(target.get("quarter_wave_revalidation_lane"))
+    quarter_wave_anchor = num(target.get("quarter_wave_anchor_price_usd"), 0.0) or 0.0
+    quarter_wave_gain = num(target.get("quarter_wave_gain_from_anchor_pct"))
 
     if not key:
         blockers.append("EXACT_IDENTITY_MISSING")
@@ -340,6 +371,13 @@ def evaluate(
     if pre_buy_alert:
         pre_buy_armed = False
 
+    if quarter_wave_lane:
+        if quarter_wave_gain is None and quarter_wave_anchor > 0 and price > 0:
+            quarter_wave_gain = ((price / quarter_wave_anchor) - 1.0) * 100.0
+        proof.append(
+            "QUARTER_WAVE_REVALIDATION_ARMED"
+            + (f"_{quarter_wave_gain:.2f}PCT" if quarter_wave_gain is not None else "")
+        )
     if ratio >= float(policy["min_buy_sell_ratio"]):
         proof.append(f"BUY_SELL_{ratio:.2f}X")
     if rebound is not None and rebound >= float(policy["min_rebound_from_watch_low_pct"]):
@@ -365,6 +403,14 @@ def evaluate(
         "required_streak": required_streak,
         "blockers": unique_blockers,
         "proof": list(dict.fromkeys(proof)),
+        "quarter_wave_revalidation": {
+            "enabled_for_target": quarter_wave_lane,
+            "anchor_price_usd": quarter_wave_anchor if quarter_wave_anchor > 0 else None,
+            "gain_from_anchor_pct": round(quarter_wave_gain, 4) if quarter_wave_gain is not None else None,
+            "armed_at": target.get("quarter_wave_armed_at"),
+            "trigger_price_usd": target.get("quarter_wave_trigger_price_usd"),
+            "trigger_is_buy_signal": False,
+        },
         "market": {
             "price_usd": price,
             "liquidity_usd": liquidity,
@@ -397,6 +443,9 @@ def evaluate(
             "pre_buy_is_one_confirmation_scan_before_final_buy": True,
             "manual_decision_only": True,
             "automatic_trade": False,
+            "quarter_wave_revalidation_lane": quarter_wave_lane,
+            "quarter_wave_trigger_is_not_buy": True,
+            "all_final_buy_gates_still_required": True,
             "does_not_modify_veteran_real_alert_policy": True,
         },
     }
@@ -465,7 +514,15 @@ def telegram_message(target: dict, decision: dict) -> str:
         f"Scan-to-scan price gain: {m['scan_price_gain_pct']:.2f}%",
         f"Intelligence Fusion: {intel['score']:.1f}/100 | {intel['positive_families']} positive families",
         "Proof: " + " | ".join(decision.get("proof") or []),
-        ("New Chain Bootstrap Radar candidate." if str(target.get("candidate_type") or "").upper() == "NEW_CHAIN_BOOTSTRAP" else "Unified user watch candidate."),
+        (
+            "New Chain Bootstrap Radar candidate."
+            if str(target.get("candidate_type") or "").upper() == "NEW_CHAIN_BOOTSTRAP"
+            else (
+                "CEX +25% revalidation candidate; all FINAL BUY gates passed."
+                if target.get("quarter_wave_revalidation_lane") is True
+                else "Unified user watch candidate."
+            )
+        ),
         "Manual decision only. No automatic trade.",
         f"CA: {target.get('contract')}",
         f"Pair: {target.get('pair')}",
@@ -521,7 +578,7 @@ def main() -> int:
             "mode": POLICY_MODE,
             "status": "BLOCKED_UPSTREAM_MARKET_WATCH",
             "upstream_outcome": upstream,
-            "configured_targets": len(eligible_targets(config, dynamic)),
+            "configured_targets": len(eligible_targets(config, dynamic, watch_state)),
             "buy_zone_count": 0,
             "pre_buy_count": 0,
             "pre_buy_delivered_count": 0,
@@ -547,7 +604,7 @@ def main() -> int:
     pre_buy_delivered: list[str] = []
     errors: list[dict] = []
 
-    for target in eligible_targets(config, dynamic):
+    for target in eligible_targets(config, dynamic, watch_state):
         key = identity_key(target)
         m = market_row(watch_state, key)
         rr = report_row(watch_report, key)
@@ -604,7 +661,7 @@ def main() -> int:
         "generated_at": now.isoformat(),
         "mode": POLICY_MODE,
         "policy": policy,
-        "configured_targets": len(eligible_targets(config, dynamic)),
+        "configured_targets": len(eligible_targets(config, dynamic, watch_state)),
         "buy_zone_count": sum(1 for x in decisions if x.get("state") == "BUY_ZONE"),
         "pre_buy_count": sum(1 for x in decisions if x.get("pre_buy") is True),
         "pre_buy_delivered_count": len(pre_buy_delivered),
@@ -616,8 +673,11 @@ def main() -> int:
         "decisions": decisions,
         "truth_contract": {
             "source": "Unified Watch exact-pair state + current intelligence report",
-            "user_requested_targets_and_new_chain_bootstrap_only": True,
+            "user_requested_targets_new_chain_and_quarter_wave_cex_only": True,
             "new_chain_bootstrap_uses_same_strict_final_buy_gate": True,
+            "quarter_wave_cex_uses_same_strict_final_buy_gate": True,
+            "quarter_wave_trigger_gain_pct": 25.0,
+            "quarter_wave_trigger_is_not_buy": True,
             "telegram_final_buy_only": False,
             "telegram_pre_buy_enabled": bool(policy.get("telegram_pre_buy_enabled")),
             "pre_buy_definition": "ALL_CURRENT_GATES_PASSED_AND_EXACTLY_ONE_CONFIRMATION_SCAN_REMAINS",
