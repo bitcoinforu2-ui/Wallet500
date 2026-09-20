@@ -20,7 +20,7 @@ UA = "Wallet500-PublicAlphaCollector/1.2"
 
 SOL_LINK = re.compile(r"(?:/terminal/solana/|/t/)([1-9A-HJ-NP-Za-km-z]{32,44})")
 EVM_LINK = re.compile(
-    r"(?:/terminal/(?:ethereum|eth|base|arbitrum|bsc|optimism|polygon)/|/t/)(0x[a-fA-F0-9]{40})"
+    r"(?:/terminal/(?:ethereum|eth|base|arbitrum|bsc|optimism|polygon|arc)/|/t/)(0x[a-fA-F0-9]{40})"
 )
 SOL_RAW = re.compile(r"(?<![1-9A-HJ-NP-Za-km-z])([1-9A-HJ-NP-Za-km-z]{32,44})(?![1-9A-HJ-NP-Za-km-z])")
 EVM_RAW = re.compile(r"(?<![0-9a-fA-F])(0x[a-fA-F0-9]{40})(?![0-9a-fA-F])")
