@@ -17,6 +17,7 @@ on:
       - 'scripts/spot_market_discovery_collector.py'
       - 'scripts/unified_candidate_bridge.py'
       - 'scripts/spot_cex_fast_handoff.py'
+      - 'scripts/native_asset_intelligence.py'
       - 'scripts/cross_domain_intelligence_collector.py'
       - 'scripts/free_intelligence_collector.py'
       - 'scripts/derivatives_intelligence_collector.py'
@@ -54,7 +55,7 @@ jobs:
       - name: Validate unified watcher, collectors and intelligence fusion
         id: validate
         run: |
-          python -m py_compile scripts/resilient_http.py scripts/new_chain_bootstrap_radar.py scripts/test_new_chain_bootstrap_contract.py scripts/resilient_unified_watch_runner.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/spot_cex_fast_handoff.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py scripts/user_watch_final_buy.py scripts/test_user_watch_final_buy_contract.py
+          python -m py_compile scripts/resilient_http.py scripts/new_chain_bootstrap_radar.py scripts/test_new_chain_bootstrap_contract.py scripts/resilient_unified_watch_runner.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/spot_cex_fast_handoff.py scripts/native_asset_intelligence.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py scripts/user_watch_final_buy.py scripts/test_user_watch_final_buy_contract.py
           for f in data/unified-watch-config.json data/user-watch-final-buy-state.json data/user-watch-final-buy-report.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/buy-zone-close-watch-registry.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/narrative-dependency-state.json data/http-resilience-state.json data/new-chain-bootstrap-state.json data/new-chain-bootstrap-radar.json; do python -m json.tool "$f" >/dev/null; done
 
       - name: Test exact-identity intelligence fusion contract
@@ -107,6 +108,10 @@ jobs:
         id: cex_sensor_handoff
         run: python scripts/spot_cex_fast_handoff.py
 
+      - name: Verify native-asset CEX execution without requiring a dead DEX pair
+        id: native_asset_intelligence
+        run: python scripts/native_asset_intelligence.py
+
       - name: Collect holder wallet attention search and news intelligence
         id: cross_domain
         run: python scripts/cross_domain_intelligence_collector.py
@@ -156,6 +161,7 @@ jobs:
           ALPHA_INTAKE_OUTCOME: ${{ steps.alpha_intake.outcome }}
           CANDIDATE_BRIDGE_OUTCOME: ${{ steps.candidate_bridge.outcome }}
           CEX_SENSOR_HANDOFF_OUTCOME: ${{ steps.cex_sensor_handoff.outcome }}
+          NATIVE_ASSET_INTELLIGENCE_OUTCOME: ${{ steps.native_asset_intelligence.outcome }}
           CROSS_DOMAIN_OUTCOME: ${{ steps.cross_domain.outcome }}
           NARRATIVE_OUTCOME: ${{ steps.narrative_dependency.outcome }}
           DERIVATIVES_OUTCOME: ${{ steps.derivatives.outcome }}
@@ -196,6 +202,7 @@ jobs:
           derivatives = load('data/derivatives-intelligence-state.json')
           http_state = load('data/http-resilience-state.json')
           cex_handoff = load('data/cex-sensor-handoff.json')
+          native_asset = load('data/native-asset-close-watch.json')
           user_buy = load('data/user-watch-final-buy-report.json')
           outcomes = {
               'validate': os.getenv('VALIDATE_OUTCOME'),
@@ -208,6 +215,7 @@ jobs:
               'alpha_intake': os.getenv('ALPHA_INTAKE_OUTCOME'),
               'candidate_bridge': os.getenv('CANDIDATE_BRIDGE_OUTCOME'),
               'cex_sensor_handoff': os.getenv('CEX_SENSOR_HANDOFF_OUTCOME'),
+              'native_asset_intelligence': os.getenv('NATIVE_ASSET_INTELLIGENCE_OUTCOME'),
               'cross_domain': os.getenv('CROSS_DOMAIN_OUTCOME'),
               'narrative_dependency': os.getenv('NARRATIVE_OUTCOME'),
               'derivatives': os.getenv('DERIVATIVES_OUTCOME'),
@@ -256,6 +264,8 @@ jobs:
                   'unified_report_updated_at': (report or {}).get('updated_at') if isinstance(report, dict) else None,
                   'cex_sensor_handoff_generated_at': (cex_handoff or {}).get('generated_at') if isinstance(cex_handoff, dict) else None,
                   'cex_sensor_handoff_escalated': (cex_handoff or {}).get('escalated_close_watch') if isinstance(cex_handoff, dict) else None,
+                  'native_asset_close_watch_count': (native_asset or {}).get('close_watch_count') if isinstance(native_asset, dict) else None,
+                  'native_asset_prebuy_research_count': (native_asset or {}).get('prebuy_research_count') if isinstance(native_asset, dict) else None,
                   'dynamic_spot_targets_watched': (report or {}).get('dynamic_spot_targets') if isinstance(report, dict) else None,
                   'dynamic_bootstrap_targets_watched': (report or {}).get('dynamic_bootstrap_targets') if isinstance(report, dict) else None,
                   'dynamic_alpha_targets_watched': (report or {}).get('dynamic_alpha_targets') if isinstance(report, dict) else None,
@@ -283,6 +293,7 @@ jobs:
             data/user-watch-final-buy-state.json \
             data/user-watch-final-buy-report.json \
             data/cex-sensor-handoff.json \
+            data/native-asset-close-watch.json \
             data/derivatives-intelligence-state.json \
             data/http-resilience-state.json \
             data/close-watch-intelligence.json \
