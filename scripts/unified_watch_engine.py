@@ -170,7 +170,7 @@ def send(msg):
         raise RuntimeError("TELEGRAM_SEND_FAILED")
 
 
-def dynamic_candidates():
+def dynamic_candidates(persisted_tokens=None):
     if not DYNAMIC.exists():
         return []
     try:
@@ -282,6 +282,55 @@ def dynamic_candidates():
                 "bootstrap_final_buy_lane": bool(c.get("bootstrap_final_buy_lane")),
             }
         )
+
+    # Once a CEX spot candidate crosses the +25% verified-price threshold it must
+    # stay watched even if it later drops out of the live mover leaderboard.
+    current_ids = {exact_identity_key(x) for x in out if exact_identity_key(x)}
+    for prev in (persisted_tokens or {}).values():
+        if not isinstance(prev, dict):
+            continue
+        if prev.get("dynamic_spot_candidate") is not True:
+            continue
+        if prev.get("quarter_wave_revalidation_armed") is not True:
+            continue
+        key = exact_identity_key(prev)
+        if not key or key in current_ids:
+            continue
+        ctype = str(prev.get("candidate_type") or "GATE_SPOT_DISCOVERY").upper()
+        if ctype not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"}:
+            ctype = "GATE_SPOT_DISCOVERY"
+        out.append({
+            "symbol": str(prev.get("symbol") or "CEX").upper(),
+            "network": str(prev.get("network") or ""),
+            "contract": str(prev.get("contract") or ""),
+            "pair": str(prev.get("pair") or ""),
+            "dex_url": prev.get("dex_url") or "",
+            "up_levels": [],
+            "down_levels": [],
+            "liquidity_drop_pct": 25,
+            "volume_acceleration_multiple": 2.0,
+            "min_volume_h1_for_momentum": 0,
+            "dynamic_buy_candidate": False,
+            "dynamic_alpha_candidate": False,
+            "dynamic_bootstrap_candidate": False,
+            "dynamic_spot_candidate": True,
+            "candidate_type": ctype,
+            "priority": "HIGH",
+            "close_watch": "HIGHEST",
+            "collector_priority": 1,
+            "deep_investigation": True,
+            "full_intelligence": True,
+            "source": prev.get("source") or "Persisted +25% CEX Revalidation",
+            "source_url": prev.get("source_url") or "",
+            "first_seen_at": prev.get("first_seen_at"),
+            "discovery_price": prev.get("discovery_price"),
+            "change_24h_pct": prev.get("change_24h_pct"),
+            "quote_volume_24h_usd": prev.get("cex_quote_volume_24h_usd"),
+            "positive_gainer_rank": prev.get("positive_gainer_rank"),
+            "dex_liquidity_usd": prev.get("liquidity"),
+            "quarter_wave_persisted": True,
+        })
+        current_ids.add(key)
     return out
 
 def fusion_summary(row, notable_min_raw=0.30):
@@ -628,7 +677,7 @@ def main():
     notable_min_raw = float(alert_policy.get("notable_evidence_min_raw", 0.30))
 
     static_tokens = list(cfg.get("tokens") or [])
-    dynamic_all = dynamic_candidates()
+    dynamic_all = dynamic_candidates(st)
     static_by_identity = {exact_identity_key(x): x for x in static_tokens if exact_identity_key(x)}
     tokens = []
     used = set()
@@ -744,6 +793,9 @@ def main():
             "network": t["network"],
             "contract": t["contract"],
             "pair": t["pair"],
+            "dex_url": t.get("dex_url") or prev.get("dex_url") or "",
+            "source": t.get("source") or prev.get("source") or "",
+            "source_url": t.get("source_url") or prev.get("source_url") or "",
             "identity_key": identity_key,
             "price": live["price"],
             "liquidity": live["liquidity"],
@@ -757,8 +809,8 @@ def main():
             "dynamic_buy_candidate": bool(t.get("dynamic_buy_candidate")),
             "dynamic_alpha_candidate": bool(t.get("dynamic_alpha_candidate")),
             "dynamic_spot_candidate": bool(t.get("dynamic_spot_candidate")),
-            "first_seen_at": t.get("first_seen_at") or prev.get("first_seen_at"),
-            "discovery_price": t.get("discovery_price") if t.get("discovery_price") is not None else prev.get("discovery_price"),
+            "first_seen_at": prev.get("first_seen_at") or t.get("first_seen_at"),
+            "discovery_price": prev.get("discovery_price") if prev.get("discovery_price") is not None else t.get("discovery_price"),
             "cex_quote_volume_24h_usd": cex_sensor["current_volume_usd"],
             "cex_quote_volume_baseline_usd": cex_sensor["baseline_volume_usd"],
             "cex_relative_volume_multiple": cex_sensor["baseline_multiple"],
