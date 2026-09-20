@@ -1,5 +1,5 @@
 {
-  "version": 9,
+  "version": 10,
   "mode": "POSITION_WATCH_RESEARCH_ONLY",
   "data_integrity": {
     "max_price_source_spread_pct": 2,
@@ -368,5 +368,35 @@
     "automatic_trade": false,
     "notes": "User-requested Unified Watch sends only strict PRE-BUY (all current gates passed, exactly one confirmation scan remains) and FINAL BUY. Generic near-buy/research/watch notifications remain silent. Does not weaken veteran REAL_ALERT policy.",
     "telegram_pre_buy_enabled": true
+  },
+  "cex_final_buy_policy": {
+    "enabled": true,
+    "max_source_age_seconds": 2100,
+    "min_market_age_days": 90,
+    "min_signal_score": 35,
+    "min_relative_signal_score": 30,
+    "min_coherent_confirmations": 2,
+    "min_turnover_usd": 25000,
+    "min_relative_turnover_usd": 10000,
+    "min_relative_volume_multiple": 3,
+    "min_relative_volume_acceleration_pct": 75,
+    "min_current_ignition_change_pct": 3,
+    "min_current_change_pct": -12,
+    "max_current_change_pct": 35,
+    "strong_single_min_score": 55,
+    "strong_single_min_turnover_usd": 250000,
+    "single_relative_max_rank": 3,
+    "max_execution_candidates_per_run": 12,
+    "min_orderbook_side_depth_usd": 5000,
+    "max_orderbook_spread_pct": 1.25,
+    "max_orderbook_price_error_pct": 2,
+    "orderbook_depth_band_pct": 2,
+    "required_consecutive_qualified_scans": 2,
+    "confirmation_max_fade_pct": 1,
+    "confirmation_max_gain_pct": 12,
+    "rearm_after_observable_misses": 2,
+    "telegram_pre_buy_enabled": true,
+    "automatic_trade": false,
+    "notes": "Parallel CEX execution lane: exact CoinGecko/CEX asset identity plus exact live CEX market/order-book execution can reach PRE-BUY/BUY without a DEX pair. DEX execution remains strict and unchanged. Never chase a fresh BUY above the configured 24h extension cap."
   }
 }
