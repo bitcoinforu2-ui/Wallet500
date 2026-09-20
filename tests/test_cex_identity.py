@@ -280,3 +280,65 @@ def test_harmony_one_native_bridge_resolves_to_exact_wrapped_pair(monkeypatch):
     assert row["pair_address"] == "0xONEPAIR"
     assert row["dex_price_usd"] == 0.00264
     assert row["actionable"] is False
+
+
+def test_geckoterminal_harmony_network_id_one_resolves_wone_quote_side(monkeypatch):
+    wone = "0xcF664087a5bB0237a0BAd6742852ec6c8d69A27a"
+    seen = {}
+
+    def fake_get(url, *args, **kwargs):
+        seen["url"] = url
+        return {
+            "data": [{
+                "type": "pool",
+                "id": "one_0xpool",
+                "attributes": {
+                    "address": "0xeb049f1ed546f8efc3ad57f6c7d22f081ccc7375",
+                    "base_token_price_usd": "1987.63",
+                    "quote_token_price_usd": "0.1789",
+                    "reserve_in_usd": "351100",
+                    "volume_usd": {"h1": "5.0", "h24": "13.49"},
+                    "pool_created_at": "2021-08-01T00:00:00Z",
+                },
+                "relationships": {
+                    "base_token": {"data": {"id": "one_0x6983d1e6def3690c4d616b13597a09e6193ea013"}},
+                    "quote_token": {"data": {"id": "one_0xcf664087a5bb0237a0bad6742852ec6c8d69a27a"}},
+                    "dex": {"data": {"id": "sushiswap_harmony"}},
+                },
+            }],
+            "included": [
+                {
+                    "type": "token",
+                    "id": "one_0x6983d1e6def3690c4d616b13597a09e6193ea013",
+                    "attributes": {"address": "0x6983D1E6DEf3690C4d616b13597A09e6193EA013"},
+                },
+                {
+                    "type": "token",
+                    "id": "one_0xcf664087a5bb0237a0bad6742852ec6c8d69a27a",
+                    "attributes": {"address": wone},
+                },
+                {
+                    "type": "dex",
+                    "id": "sushiswap_harmony",
+                    "attributes": {"name": "Sushiswap (Harmony)"},
+                },
+            ],
+        }
+
+    monkeypatch.setattr(c, "_get_json", fake_get)
+    rows = c._geckoterminal_pairs({
+        "chain": "harmony",
+        "token_address": wone,
+        "coingecko_platform": "native-asset-registry",
+        "identity_candidate_source": "NATIVE_ASSET_CANONICAL_WRAPPER_REGISTRY",
+        "native_asset_proxy": True,
+    })
+
+    assert "/networks/one/tokens/" in seen["url"]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["pair_address"] == "0xeb049f1ed546f8efc3ad57f6c7d22f081ccc7375"
+    assert row["exact_token_side"] == "QUOTE"
+    assert row["price_usd"] == 0.1789
+    assert row["liquidity_usd"] == 351100
+    assert row["pair_provider"] == "GECKOTERMINAL_EXACT_TOKEN_POOLS"
