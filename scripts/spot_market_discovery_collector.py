@@ -8,6 +8,8 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+import resilient_http
+
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data/spot-market-discovery.json"
 STATE = ROOT / "data/spot-market-discovery-state.json"
@@ -55,10 +57,14 @@ def now() -> str:
 
 
 def get_json(url: str, timeout: int = 12):
-    req = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": UA})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read().decode("utf-8"))
+        return resilient_http.request_json(
+            url,
+            timeout=timeout,
+            attempts=4,
+            cache_ttl=45,
+            user_agent=UA,
+        )
     except Exception as exc:
         print("SPOT_DISCOVERY_FETCH_ERROR", url.split("?")[0], type(exc).__name__)
         return None
