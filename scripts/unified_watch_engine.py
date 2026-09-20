@@ -26,6 +26,7 @@ ALERTWORTHY_INTEL_FAMILIES = {
     "supply_tokenomics",
     "derivatives",
 }
+QUARTER_WAVE_REVALIDATION_GAIN_PCT = 25.0
 
 
 def now_iso():
@@ -576,6 +577,47 @@ def spot_cex_sensor(t, prev):
     }
 
 
+def quarter_wave_revalidation(prev, live_price, observed_at=None, threshold_pct=QUARTER_WAVE_REVALIDATION_GAIN_PCT):
+    """Persist an immutable exact-pair anchor and arm revalidation after +25%.
+
+    The trigger only opens the strict FINAL-BUY revalidation lane. It never bypasses
+    liquidity, activity, price-coherence, intelligence, hard-risk or confirmation gates.
+    Once armed it stays armed so later scans can catch improving execution quality.
+    """
+    prev = prev if isinstance(prev, dict) else {}
+    try:
+        price = float(live_price or 0)
+    except (TypeError, ValueError):
+        price = 0.0
+    try:
+        anchor = float(prev.get("first_verified_price") or prev.get("price") or 0)
+    except (TypeError, ValueError):
+        anchor = 0.0
+    if anchor <= 0 and price > 0:
+        anchor = price
+
+    gain_pct = ((price / anchor) - 1.0) * 100.0 if price > 0 and anchor > 0 else 0.0
+    already_armed = bool(prev.get("quarter_wave_revalidation_armed"))
+    armed = bool(already_armed or gain_pct >= float(threshold_pct))
+    stamp = str(observed_at or now_iso())
+
+    out = {
+        "first_verified_price": anchor if anchor > 0 else None,
+        "first_verified_at": prev.get("first_verified_at") or (stamp if anchor > 0 else None),
+        "gain_from_first_verified_pct": round(gain_pct, 4),
+        "quarter_wave_revalidation_threshold_pct": float(threshold_pct),
+        "quarter_wave_revalidation_armed": armed,
+    }
+    if armed:
+        out["quarter_wave_revalidation_armed_at"] = (
+            prev.get("quarter_wave_revalidation_armed_at") or stamp
+        )
+        out["quarter_wave_revalidation_trigger_price"] = (
+            prev.get("quarter_wave_revalidation_trigger_price") or price
+        )
+    return out
+
+
 def main():
     cfg = json.loads(CONFIG.read_text())
     state = json.loads(STATE.read_text()) if STATE.exists() else {"version": 3, "tokens": {}}
@@ -691,6 +733,12 @@ def main():
             ):
                 tr.append("ALPHA_CALL_PLUS_BUY_IMBALANCE")
 
+        quarter_wave = (
+            quarter_wave_revalidation(prev, live["price"], live["observed_at"])
+            if t.get("dynamic_spot_candidate")
+            else {}
+        )
+
         current_state = {
             "symbol": sym,
             "network": t["network"],
@@ -720,6 +768,7 @@ def main():
             "intelligence_fusion": fusion,
             "last_alert": last_alert,
             "last_internal_escalation": prev.get("last_internal_escalation") or {},
+            **quarter_wave,
         }
         st[key] = current_state
         intel_rows.append({
@@ -737,6 +786,15 @@ def main():
                 "positive_gainer_rank": current_state.get("positive_gainer_rank"),
                 "cex_led_revival": current_state.get("cex_led_revival"),
             },
+            "quarter_wave_revalidation": {
+                "armed": bool(current_state.get("quarter_wave_revalidation_armed")),
+                "threshold_pct": current_state.get("quarter_wave_revalidation_threshold_pct"),
+                "first_verified_price": current_state.get("first_verified_price"),
+                "first_verified_at": current_state.get("first_verified_at"),
+                "gain_from_first_verified_pct": current_state.get("gain_from_first_verified_pct"),
+                "armed_at": current_state.get("quarter_wave_revalidation_armed_at"),
+                "trigger_price": current_state.get("quarter_wave_revalidation_trigger_price"),
+            } if t.get("dynamic_spot_candidate") else None,
             "intelligence": fusion,
         })
 
