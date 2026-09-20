@@ -558,9 +558,11 @@ def spot_cex_sensor(t, prev):
         triggers.append("CEX_RELATIVE_VOLUME_SHOCK")
     if current_volume >= 1000 and scan_multiple >= 2.5:
         triggers.append("CEX_VOLUME_ACCELERATION")
+    if current_rank <= 10 and previous_rank > 10:
+        triggers.append("CEX_TOP10_ENTRY")
     if current_rank <= 3 and previous_rank > 3:
         triggers.append("CEX_TOP3_BREAKOUT")
-    if previous_rank < 999 and current_rank + 5 <= previous_rank:
+    if current_rank <= 25 and previous_rank < 999 and current_rank + 5 <= previous_rank:
         triggers.append("CEX_RANK_ACCELERATION")
 
     return {
