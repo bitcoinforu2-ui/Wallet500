@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated_at": "2026-09-20T21:06:22.091663+00:00",
+  "generated_at": "2026-09-20T21:28:12.453117+00:00",
   "mode": "USER_REQUESTED_UNIFIED_WATCH_FINAL_BUY_V1",
   "policy": {
     "enabled": true,
@@ -26,7 +26,7 @@
     "notes": "User-requested Unified Watch sends only strict PRE-BUY (all current gates passed, exactly one confirmation scan remains) and FINAL BUY. Generic near-buy/research/watch notifications remain silent. Does not weaken veteran REAL_ALERT policy.",
     "telegram_pre_buy_enabled": true
   },
-  "configured_targets": 18,
+  "configured_targets": 16,
   "buy_zone_count": 0,
   "pre_buy_count": 0,
   "pre_buy_delivered_count": 0,
@@ -81,14 +81,14 @@
       },
       "intelligence": {
         "status": "CURRENT",
-        "score": 20.1,
+        "score": 18.5,
         "positive_families": 2,
-        "current_evidence_count": 15,
-        "evidence_age_minutes": 0.78,
+        "current_evidence_count": 16,
+        "evidence_age_minutes": 0.82,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
-        "market_microstructure_score": 14.32
+        "market_microstructure_score": 13.19
       },
       "truth_contract": {
         "exact_chain_contract_pair_required": true,
@@ -120,6 +120,7 @@
       "blockers": [
         "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN",
         "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
+        "MARKET_SNAPSHOT_STALE_OR_UNTIMED",
         "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED"
       ],
       "proof": [
@@ -149,14 +150,14 @@
       },
       "intelligence": {
         "status": "CURRENT",
-        "score": 8.4,
+        "score": 9.7,
         "positive_families": 1,
-        "current_evidence_count": 14,
-        "evidence_age_minutes": 0.77,
+        "current_evidence_count": 15,
+        "evidence_age_minutes": 0.81,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
-        "market_microstructure_score": 8.38
+        "market_microstructure_score": 9.74
       },
       "truth_contract": {
         "exact_chain_contract_pair_required": true,
@@ -181,20 +182,26 @@
       "alert": false,
       "pre_buy": false,
       "pre_buy_alert": false,
-      "observable": true,
+      "observable": false,
       "qualified_this_scan": false,
       "qualified_streak": 0,
       "required_streak": 2,
       "blockers": [
+        "ACTIVITY_H1_TOO_LOW",
         "BUY_FLOW_NOT_CONFIRMED",
+        "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN",
         "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
+        "LIQUIDITY_BELOW_FINAL_BUY_FLOOR",
+        "MARKET_MICROSTRUCTURE_NOT_POSITIVE",
+        "MARKET_SNAPSHOT_STALE_OR_UNTIMED",
+        "MARKET_STATE_MISSING",
+        "PRICE_MISSING",
+        "PRICE_SOURCE_SPREAD_TOO_WIDE",
         "REBOUND_FROM_WATCH_LOW_NOT_CONFIRMED",
-        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED"
+        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED",
+        "VOLUME_H1_TOO_LOW"
       ],
-      "proof": [
-        "LIQUIDITY_999272",
-        "EXACT_PAIR_VERIFIED"
-      ],
+      "proof": [],
       "quarter_wave_revalidation": {
         "enabled_for_target": false,
         "anchor_price_usd": null,
@@ -204,27 +211,27 @@
         "trigger_is_buy_signal": false
       },
       "market": {
-        "price_usd": 0.0172347075167531,
-        "liquidity_usd": 999272.4529,
-        "volume_h1_usd": 21295.6102076322,
-        "buys_h1": 60,
-        "sells_h1": 79,
-        "buy_sell_ratio": 0.7625,
-        "activity_h1": 139,
-        "spread_pct": 0.9829875751678381,
-        "scan_price_gain_pct": 0.8246,
-        "rebound_from_watch_low_pct": 4.3234
+        "price_usd": 0.0,
+        "liquidity_usd": 0.0,
+        "volume_h1_usd": 0.0,
+        "buys_h1": 0,
+        "sells_h1": 0,
+        "buy_sell_ratio": 1.0,
+        "activity_h1": 0,
+        "spread_pct": 999.0,
+        "scan_price_gain_pct": null,
+        "rebound_from_watch_low_pct": null
       },
       "intelligence": {
         "status": "CURRENT",
-        "score": 11.3,
-        "positive_families": 2,
-        "current_evidence_count": 16,
-        "evidence_age_minutes": 0.18,
+        "score": 0.0,
+        "positive_families": 1,
+        "current_evidence_count": 18,
+        "evidence_age_minutes": 0.85,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
-        "market_microstructure_score": 3.34
+        "market_microstructure_score": -2.49
       },
       "truth_contract": {
         "exact_chain_contract_pair_required": true,
@@ -256,12 +263,12 @@
       "blockers": [
         "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
         "REBOUND_FROM_WATCH_LOW_NOT_CONFIRMED",
-        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED",
         "VOLUME_H1_TOO_LOW"
       ],
       "proof": [
-        "BUY_SELL_2.74X",
-        "LIQUIDITY_597797",
+        "BUY_SELL_5.10X",
+        "SCAN_GAIN_1.51PCT",
+        "LIQUIDITY_605560",
         "EXACT_PAIR_VERIFIED"
       ],
       "quarter_wave_revalidation": {
@@ -273,22 +280,22 @@
         "trigger_is_buy_signal": false
       },
       "market": {
-        "price_usd": 0.00435710588318356,
-        "liquidity_usd": 597796.578,
-        "volume_h1_usd": 13347.4472754898,
-        "buys_h1": 62,
-        "sells_h1": 22,
-        "buy_sell_ratio": 2.7391,
-        "activity_h1": 84,
-        "spread_pct": 1.0049843819926998,
-        "scan_price_gain_pct": 0.7425,
-        "rebound_from_watch_low_pct": 1.7444
+        "price_usd": 0.004422687844912995,
+        "liquidity_usd": 605560.1765,
+        "volume_h1_usd": 6860.1097577686,
+        "buys_h1": 101,
+        "sells_h1": 19,
+        "buy_sell_ratio": 5.1,
+        "activity_h1": 120,
+        "spread_pct": 0.9807540424965951,
+        "scan_price_gain_pct": 1.5052,
+        "rebound_from_watch_low_pct": 3.2758
       },
       "intelligence": {
         "status": "CURRENT",
         "score": 23.0,
         "positive_families": 2,
-        "current_evidence_count": 31,
+        "current_evidence_count": 34,
         "evidence_age_minutes": 0.0,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
@@ -318,25 +325,20 @@
       "alert": false,
       "pre_buy": false,
       "pre_buy_alert": false,
-      "observable": false,
+      "observable": true,
       "qualified_this_scan": false,
       "qualified_streak": 0,
       "required_streak": 2,
       "blockers": [
-        "ACTIVITY_H1_TOO_LOW",
-        "BUY_FLOW_NOT_CONFIRMED",
-        "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN",
         "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
-        "LIQUIDITY_BELOW_FINAL_BUY_FLOOR",
-        "MARKET_SNAPSHOT_STALE_OR_UNTIMED",
-        "MARKET_STATE_MISSING",
-        "PRICE_MISSING",
-        "PRICE_SOURCE_SPREAD_TOO_WIDE",
         "REBOUND_FROM_WATCH_LOW_NOT_CONFIRMED",
-        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED",
-        "VOLUME_H1_TOO_LOW"
+        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED"
       ],
-      "proof": [],
+      "proof": [
+        "BUY_SELL_1.48X",
+        "LIQUIDITY_376757",
+        "EXACT_PAIR_VERIFIED"
+      ],
       "quarter_wave_revalidation": {
         "enabled_for_target": false,
         "anchor_price_usd": null,
@@ -346,27 +348,27 @@
         "trigger_is_buy_signal": false
       },
       "market": {
-        "price_usd": 0.0,
-        "liquidity_usd": 0.0,
-        "volume_h1_usd": 0.0,
-        "buys_h1": 0,
-        "sells_h1": 0,
-        "buy_sell_ratio": 1.0,
-        "activity_h1": 0,
-        "spread_pct": 999.0,
-        "scan_price_gain_pct": null,
-        "rebound_from_watch_low_pct": null
+        "price_usd": 0.01693101307898195,
+        "liquidity_usd": 376757.2533,
+        "volume_h1_usd": 17552.7126564301,
+        "buys_h1": 45,
+        "sells_h1": 30,
+        "buy_sell_ratio": 1.4839,
+        "activity_h1": 75,
+        "spread_pct": 0.6967913939098713,
+        "scan_price_gain_pct": -1.6491,
+        "rebound_from_watch_low_pct": 2.3645
       },
       "intelligence": {
         "status": "CURRENT",
-        "score": 0.0,
+        "score": 21.2,
         "positive_families": 2,
-        "current_evidence_count": 24,
-        "evidence_age_minutes": 0.18,
+        "current_evidence_count": 22,
+        "evidence_age_minutes": 0.87,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
-        "market_microstructure_score": 13.38
+        "market_microstructure_score": 15.0
       },
       "truth_contract": {
         "exact_chain_contract_pair_required": true,
@@ -398,12 +400,12 @@
       "blockers": [
         "BUY_FLOW_NOT_CONFIRMED",
         "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
-        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED",
         "VOLUME_H1_TOO_LOW"
       ],
       "proof": [
-        "REBOUND_6.76PCT",
-        "LIQUIDITY_231621",
+        "REBOUND_8.14PCT",
+        "SCAN_GAIN_1.29PCT",
+        "LIQUIDITY_231843",
         "EXACT_PAIR_VERIFIED"
       ],
       "quarter_wave_revalidation": {
@@ -415,27 +417,27 @@
         "trigger_is_buy_signal": false
       },
       "market": {
-        "price_usd": 0.0021666034731500803,
-        "liquidity_usd": 231620.9718,
-        "volume_h1_usd": 3790.0639383561,
-        "buys_h1": 29,
-        "sells_h1": 45,
-        "buy_sell_ratio": 0.6522,
-        "activity_h1": 74,
-        "spread_pct": 0.9597073925857067,
-        "scan_price_gain_pct": -0.0173,
-        "rebound_from_watch_low_pct": 6.7608
+        "price_usd": 0.0021945498653086802,
+        "liquidity_usd": 231843.2267,
+        "volume_h1_usd": 3720.9271705497,
+        "buys_h1": 40,
+        "sells_h1": 35,
+        "buy_sell_ratio": 1.1389,
+        "activity_h1": 75,
+        "spread_pct": 0.9614605232217797,
+        "scan_price_gain_pct": 1.2899,
+        "rebound_from_watch_low_pct": 8.1379
       },
       "intelligence": {
         "status": "CURRENT",
-        "score": 18.1,
+        "score": 11.8,
         "positive_families": 2,
-        "current_evidence_count": 20,
-        "evidence_age_minutes": 0.18,
+        "current_evidence_count": 17,
+        "evidence_age_minutes": 0.85,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
-        "market_microstructure_score": 10.11
+        "market_microstructure_score": 3.79
       },
       "truth_contract": {
         "exact_chain_contract_pair_required": true,
@@ -460,20 +462,20 @@
       "alert": false,
       "pre_buy": false,
       "pre_buy_alert": false,
-      "observable": true,
+      "observable": false,
       "qualified_this_scan": false,
       "qualified_streak": 0,
       "required_streak": 2,
       "blockers": [
         "BUY_FLOW_NOT_CONFIRMED",
+        "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN",
         "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
-        "MARKET_MICROSTRUCTURE_NOT_POSITIVE"
+        "MARKET_MICROSTRUCTURE_NOT_POSITIVE",
+        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED"
       ],
       "proof": [
         "REBOUND_19.57PCT",
-        "SCAN_GAIN_8.54PCT",
-        "LIQUIDITY_210271",
-        "EXACT_PAIR_VERIFIED"
+        "LIQUIDITY_210271"
       ],
       "quarter_wave_revalidation": {
         "enabled_for_target": false,
@@ -492,19 +494,19 @@
         "buy_sell_ratio": 0.9105,
         "activity_h1": 361,
         "spread_pct": 1.172889985642315,
-        "scan_price_gain_pct": 8.5422,
+        "scan_price_gain_pct": 0.0,
         "rebound_from_watch_low_pct": 19.5728
       },
       "intelligence": {
         "status": "CURRENT",
         "score": 0.0,
         "positive_families": 1,
-        "current_evidence_count": 16,
-        "evidence_age_minutes": 0.18,
+        "current_evidence_count": 17,
+        "evidence_age_minutes": 0.88,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
-        "market_microstructure_score": -1.65
+        "market_microstructure_score": -1.52
       },
       "truth_contract": {
         "exact_chain_contract_pair_required": true,
@@ -529,19 +531,19 @@
       "alert": false,
       "pre_buy": false,
       "pre_buy_alert": false,
-      "observable": true,
+      "observable": false,
       "qualified_this_scan": false,
       "qualified_streak": 0,
       "required_streak": 2,
       "blockers": [
         "BUY_FLOW_NOT_CONFIRMED",
-        "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET"
+        "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN",
+        "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
+        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED"
       ],
       "proof": [
         "REBOUND_16.70PCT",
-        "SCAN_GAIN_1.16PCT",
-        "LIQUIDITY_200843",
-        "EXACT_PAIR_VERIFIED"
+        "LIQUIDITY_200843"
       ],
       "quarter_wave_revalidation": {
         "enabled_for_target": false,
@@ -560,15 +562,15 @@
         "buy_sell_ratio": 0.8804,
         "activity_h1": 171,
         "spread_pct": 0.9901674647269536,
-        "scan_price_gain_pct": 1.155,
+        "scan_price_gain_pct": 0.0,
         "rebound_from_watch_low_pct": 16.6982
       },
       "intelligence": {
         "status": "CURRENT",
         "score": 23.0,
         "positive_families": 2,
-        "current_evidence_count": 32,
-        "evidence_age_minutes": 0.18,
+        "current_evidence_count": 29,
+        "evidence_age_minutes": 0.85,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
@@ -597,13 +599,12 @@
       "alert": false,
       "pre_buy": false,
       "pre_buy_alert": false,
-      "observable": false,
+      "observable": true,
       "qualified_this_scan": false,
       "qualified_streak": 0,
       "required_streak": 2,
       "blockers": [
         "BUY_FLOW_NOT_CONFIRMED",
-        "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN",
         "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
         "MARKET_MICROSTRUCTURE_NOT_POSITIVE",
         "REBOUND_FROM_WATCH_LOW_NOT_CONFIRMED",
@@ -611,7 +612,8 @@
         "VOLUME_H1_TOO_LOW"
       ],
       "proof": [
-        "LIQUIDITY_194565"
+        "LIQUIDITY_194557",
+        "EXACT_PAIR_VERIFIED"
       ],
       "quarter_wave_revalidation": {
         "enabled_for_target": false,
@@ -622,27 +624,27 @@
         "trigger_is_buy_signal": false
       },
       "market": {
-        "price_usd": 0.005998177942769085,
-        "liquidity_usd": 194564.9157,
-        "volume_h1_usd": 1136.1586970903,
-        "buys_h1": 85,
-        "sells_h1": 71,
-        "buy_sell_ratio": 1.1944,
-        "activity_h1": 156,
-        "spread_pct": 0.02741023153226189,
-        "scan_price_gain_pct": 0.0,
-        "rebound_from_watch_low_pct": 0.1481
+        "price_usd": 0.0059921713557998,
+        "liquidity_usd": 194556.67,
+        "volume_h1_usd": 1201.2064031185,
+        "buys_h1": 82,
+        "sells_h1": 78,
+        "buy_sell_ratio": 1.0506,
+        "activity_h1": 160,
+        "spread_pct": 0.027657560206388734,
+        "scan_price_gain_pct": -0.1001,
+        "rebound_from_watch_low_pct": 0.0478
       },
       "intelligence": {
         "status": "CURRENT",
         "score": 0.0,
         "positive_families": 0,
-        "current_evidence_count": 13,
-        "evidence_age_minutes": 0.83,
+        "current_evidence_count": 14,
+        "evidence_age_minutes": 0.86,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
-        "market_microstructure_score": -1.4
+        "market_microstructure_score": -1.29
       },
       "truth_contract": {
         "exact_chain_contract_pair_required": true,
@@ -667,174 +669,89 @@
       "alert": false,
       "pre_buy": false,
       "pre_buy_alert": false,
-      "observable": false,
+      "observable": true,
+      "qualified_this_scan": false,
+      "qualified_streak": 0,
+      "required_streak": 2,
+      "blockers": [
+        "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
+        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED"
+      ],
+      "proof": [
+        "BUY_SELL_1.51X",
+        "REBOUND_8.36PCT",
+        "LIQUIDITY_167532",
+        "EXACT_PAIR_VERIFIED"
+      ],
+      "quarter_wave_revalidation": {
+        "enabled_for_target": false,
+        "anchor_price_usd": null,
+        "gain_from_anchor_pct": null,
+        "armed_at": null,
+        "trigger_price_usd": null,
+        "trigger_is_buy_signal": false
+      },
+      "market": {
+        "price_usd": 0.00121993555174768,
+        "liquidity_usd": 167532.0729,
+        "volume_h1_usd": 31194.9127113451,
+        "buys_h1": 67,
+        "sells_h1": 44,
+        "buy_sell_ratio": 1.5111,
+        "activity_h1": 111,
+        "spread_pct": 0.9942243659728036,
+        "scan_price_gain_pct": -15.5658,
+        "rebound_from_watch_low_pct": 8.3577
+      },
+      "intelligence": {
+        "status": "CURRENT",
+        "score": 18.2,
+        "positive_families": 2,
+        "current_evidence_count": 16,
+        "evidence_age_minutes": 0.87,
+        "hard_risks": [],
+        "wallet_flow_score": 0.0,
+        "holder_network_score": 0.0,
+        "market_microstructure_score": 10.2
+      },
+      "truth_contract": {
+        "exact_chain_contract_pair_required": true,
+        "two_scan_confirmation_required": true,
+        "telegram_final_buy_only": false,
+        "telegram_pre_buy_enabled": true,
+        "pre_buy_requires_all_current_gates_passed": true,
+        "pre_buy_is_one_confirmation_scan_before_final_buy": true,
+        "manual_decision_only": true,
+        "automatic_trade": false,
+        "quarter_wave_revalidation_lane": false,
+        "quarter_wave_trigger_is_not_buy": true,
+        "all_final_buy_gates_still_required": true,
+        "does_not_modify_veteran_real_alert_policy": true
+      }
+    },
+    {
+      "identity_key": "arc:0x8bcb94279fc2c984ec34e0c1f2192df8c69ea4f0:0x0069cb6f70e2f848405f4483f232274c720ce6f9",
+      "symbol": "ARCHITECTS",
+      "state": "WATCH",
+      "recommended_action": "WAIT",
+      "alert": false,
+      "pre_buy": false,
+      "pre_buy_alert": false,
+      "observable": true,
       "qualified_this_scan": false,
       "qualified_streak": 0,
       "required_streak": 2,
       "blockers": [
         "BUY_FLOW_NOT_CONFIRMED",
-        "CURRENT_EVIDENCE_TOO_LOW",
-        "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN",
         "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
-        "INTELLIGENCE_NOT_CURRENT",
-        "INTELLIGENCE_STALE_OR_UNTIMED",
         "MARKET_MICROSTRUCTURE_NOT_POSITIVE",
-        "MARKET_SNAPSHOT_STALE_OR_UNTIMED",
-        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED",
-        "VOLUME_H1_TOO_LOW",
-        "WATCH_REPORT_ROW_MISSING",
-        "WATCH_REPORT_STALE_OR_UNTIMED"
-      ],
-      "proof": [
-        "REBOUND_28.33PCT",
-        "LIQUIDITY_183742"
-      ],
-      "quarter_wave_revalidation": {
-        "enabled_for_target": false,
-        "anchor_price_usd": null,
-        "gain_from_anchor_pct": null,
-        "armed_at": null,
-        "trigger_price_usd": null,
-        "trigger_is_buy_signal": false
-      },
-      "market": {
-        "price_usd": 0.001444835439148105,
-        "liquidity_usd": 183741.9363,
-        "volume_h1_usd": 13712.7058414047,
-        "buys_h1": 18,
-        "sells_h1": 94,
-        "buy_sell_ratio": 0.2,
-        "activity_h1": 112,
-        "spread_pct": 0.8533235944890321,
-        "scan_price_gain_pct": 0.0,
-        "rebound_from_watch_low_pct": 28.3339
-      },
-      "intelligence": {
-        "status": "",
-        "score": 0.0,
-        "positive_families": 0,
-        "current_evidence_count": 0,
-        "evidence_age_minutes": null,
-        "hard_risks": [],
-        "wallet_flow_score": 0.0,
-        "holder_network_score": 0.0,
-        "market_microstructure_score": 0.0
-      },
-      "truth_contract": {
-        "exact_chain_contract_pair_required": true,
-        "two_scan_confirmation_required": true,
-        "telegram_final_buy_only": false,
-        "telegram_pre_buy_enabled": true,
-        "pre_buy_requires_all_current_gates_passed": true,
-        "pre_buy_is_one_confirmation_scan_before_final_buy": true,
-        "manual_decision_only": true,
-        "automatic_trade": false,
-        "quarter_wave_revalidation_lane": false,
-        "quarter_wave_trigger_is_not_buy": true,
-        "all_final_buy_gates_still_required": true,
-        "does_not_modify_veteran_real_alert_policy": true
-      }
-    },
-    {
-      "identity_key": "arc:0x394d38f807ee0027a182216f5e67a15ae441fa2e:0xd9133187331e20885fd1b4ff2f18b892f94793ddaf808b1db6d4ef29ca58b943",
-      "symbol": "FAZE",
-      "state": "WATCH",
-      "recommended_action": "WAIT",
-      "alert": false,
-      "pre_buy": false,
-      "pre_buy_alert": false,
-      "observable": false,
-      "qualified_this_scan": false,
-      "qualified_streak": 0,
-      "required_streak": 2,
-      "blockers": [
-        "ACTIVITY_H1_TOO_LOW",
-        "CURRENT_EVIDENCE_TOO_LOW",
-        "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN",
-        "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
-        "INTELLIGENCE_NOT_CURRENT",
-        "INTELLIGENCE_STALE_OR_UNTIMED",
-        "MARKET_MICROSTRUCTURE_NOT_POSITIVE",
-        "REBOUND_FROM_WATCH_LOW_NOT_CONFIRMED",
-        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED",
-        "VOLUME_H1_TOO_LOW",
-        "WATCH_REPORT_ROW_MISSING",
-        "WATCH_REPORT_STALE_OR_UNTIMED"
-      ],
-      "proof": [
-        "BUY_SELL_1.29X",
-        "LIQUIDITY_166066"
-      ],
-      "quarter_wave_revalidation": {
-        "enabled_for_target": false,
-        "anchor_price_usd": null,
-        "gain_from_anchor_pct": null,
-        "armed_at": null,
-        "trigger_price_usd": null,
-        "trigger_is_buy_signal": false
-      },
-      "market": {
-        "price_usd": 0.00194510460850323,
-        "liquidity_usd": 166066.1938,
-        "volume_h1_usd": 8765.3072713548,
-        "buys_h1": 17,
-        "sells_h1": 13,
-        "buy_sell_ratio": 1.2857,
-        "activity_h1": 30,
-        "spread_pct": 0.113578313310362,
-        "scan_price_gain_pct": 0.0,
-        "rebound_from_watch_low_pct": 2.2574
-      },
-      "intelligence": {
-        "status": "",
-        "score": 0.0,
-        "positive_families": 0,
-        "current_evidence_count": 0,
-        "evidence_age_minutes": null,
-        "hard_risks": [],
-        "wallet_flow_score": 0.0,
-        "holder_network_score": 0.0,
-        "market_microstructure_score": 0.0
-      },
-      "truth_contract": {
-        "exact_chain_contract_pair_required": true,
-        "two_scan_confirmation_required": true,
-        "telegram_final_buy_only": false,
-        "telegram_pre_buy_enabled": true,
-        "pre_buy_requires_all_current_gates_passed": true,
-        "pre_buy_is_one_confirmation_scan_before_final_buy": true,
-        "manual_decision_only": true,
-        "automatic_trade": false,
-        "quarter_wave_revalidation_lane": false,
-        "quarter_wave_trigger_is_not_buy": true,
-        "all_final_buy_gates_still_required": true,
-        "does_not_modify_veteran_real_alert_policy": true
-      }
-    },
-    {
-      "identity_key": "arc:0x0bffa97f774824e9da843699aedd2835cb1b8022:0x7dbcec05f12b14e21a79a0dc15ea9859322a4ab2",
-      "symbol": "ARCASH",
-      "state": "WATCH",
-      "recommended_action": "WAIT",
-      "alert": false,
-      "pre_buy": false,
-      "pre_buy_alert": false,
-      "observable": false,
-      "qualified_this_scan": false,
-      "qualified_streak": 0,
-      "required_streak": 2,
-      "blockers": [
-        "ACTIVITY_H1_TOO_LOW",
-        "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN",
-        "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
-        "MARKET_SNAPSHOT_STALE_OR_UNTIMED",
-        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED",
         "VOLUME_H1_TOO_LOW"
       ],
       "proof": [
-        "BUY_SELL_2.36X",
-        "REBOUND_15.51PCT",
-        "LIQUIDITY_94907"
+        "REBOUND_86.27PCT",
+        "SCAN_GAIN_21.62PCT",
+        "LIQUIDITY_89074",
+        "EXACT_PAIR_VERIFIED"
       ],
       "quarter_wave_revalidation": {
         "enabled_for_target": false,
@@ -845,27 +762,27 @@
         "trigger_is_buy_signal": false
       },
       "market": {
-        "price_usd": 0.0007983164361839395,
-        "liquidity_usd": 94906.6301,
-        "volume_h1_usd": 2279.9672116064,
-        "buys_h1": 32,
-        "sells_h1": 13,
-        "buy_sell_ratio": 2.3571,
-        "activity_h1": 45,
-        "spread_pct": 0.9228330143541663,
-        "scan_price_gain_pct": 0.0,
-        "rebound_from_watch_low_pct": 15.5129
+        "price_usd": 0.0006204942275777104,
+        "liquidity_usd": 89073.76,
+        "volume_h1_usd": 6818.5302713368,
+        "buys_h1": 54,
+        "sells_h1": 56,
+        "buy_sell_ratio": 0.9649,
+        "activity_h1": 110,
+        "spread_pct": 0.8076698576460625,
+        "scan_price_gain_pct": 21.6234,
+        "rebound_from_watch_low_pct": 86.2715
       },
       "intelligence": {
         "status": "CURRENT",
-        "score": 15.3,
-        "positive_families": 2,
-        "current_evidence_count": 3,
-        "evidence_age_minutes": 0.18,
+        "score": 2.7,
+        "positive_families": 1,
+        "current_evidence_count": 8,
+        "evidence_age_minutes": 0.86,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
-        "market_microstructure_score": 12.26
+        "market_microstructure_score": 0.0
       },
       "truth_contract": {
         "exact_chain_contract_pair_required": true,
@@ -890,20 +807,20 @@
       "alert": false,
       "pre_buy": false,
       "pre_buy_alert": false,
-      "observable": true,
+      "observable": false,
       "qualified_this_scan": false,
       "qualified_streak": 0,
       "required_streak": 2,
       "blockers": [
+        "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN",
         "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
+        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED",
         "VOLUME_H1_TOO_LOW"
       ],
       "proof": [
         "BUY_SELL_1.48X",
         "REBOUND_31.31PCT",
-        "SCAN_GAIN_14.03PCT",
-        "LIQUIDITY_80241",
-        "EXACT_PAIR_VERIFIED"
+        "LIQUIDITY_80241"
       ],
       "quarter_wave_revalidation": {
         "enabled_for_target": false,
@@ -922,19 +839,19 @@
         "buy_sell_ratio": 1.4762,
         "activity_h1": 50,
         "spread_pct": 0.9386196612971671,
-        "scan_price_gain_pct": 14.0329,
+        "scan_price_gain_pct": 0.0,
         "rebound_from_watch_low_pct": 31.3133
       },
       "intelligence": {
         "status": "CURRENT",
-        "score": 16.8,
+        "score": 19.6,
         "positive_families": 2,
-        "current_evidence_count": 12,
-        "evidence_age_minutes": 0.18,
+        "current_evidence_count": 13,
+        "evidence_age_minutes": 0.87,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
-        "market_microstructure_score": 8.84
+        "market_microstructure_score": 11.79
       },
       "truth_contract": {
         "exact_chain_contract_pair_required": true,
@@ -959,21 +876,21 @@
       "alert": false,
       "pre_buy": false,
       "pre_buy_alert": false,
-      "observable": true,
+      "observable": false,
       "qualified_this_scan": false,
       "qualified_streak": 0,
       "required_streak": 2,
       "blockers": [
         "ACTIVITY_H1_TOO_LOW",
+        "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN",
         "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
+        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED",
         "VOLUME_H1_TOO_LOW"
       ],
       "proof": [
         "BUY_SELL_1.83X",
         "REBOUND_89.39PCT",
-        "SCAN_GAIN_2.12PCT",
-        "LIQUIDITY_75676",
-        "EXACT_PAIR_VERIFIED"
+        "LIQUIDITY_75676"
       ],
       "quarter_wave_revalidation": {
         "enabled_for_target": false,
@@ -992,15 +909,15 @@
         "buy_sell_ratio": 1.8333,
         "activity_h1": 49,
         "spread_pct": 0.7160254155160327,
-        "scan_price_gain_pct": 2.1181,
+        "scan_price_gain_pct": 0.0,
         "rebound_from_watch_low_pct": 89.3894
       },
       "intelligence": {
         "status": "CURRENT",
         "score": 23.0,
         "positive_families": 2,
-        "current_evidence_count": 36,
-        "evidence_age_minutes": 0.18,
+        "current_evidence_count": 37,
+        "evidence_age_minutes": 0.86,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
@@ -1022,8 +939,8 @@
       }
     },
     {
-      "identity_key": "arc:0xa39c8e2ceb2a0f9d6e9d059f5e470edfda691c15:0xc362f08b2d304500e7299eaaf6184492ba3653d831615fe521d0791147f5a0f2",
-      "symbol": "AI",
+      "identity_key": "arc:0x876eea383347ac1138e3d1fcdfa38783f785f32e:0x2318d64adfb13dd6ed59247004b942d8db813e19bcd8bd7b3015aa8d13fad0e5",
+      "symbol": "ARCADE",
       "state": "WATCH",
       "recommended_action": "WAIT",
       "alert": false,
@@ -1034,16 +951,14 @@
       "qualified_streak": 0,
       "required_streak": 2,
       "blockers": [
-        "BUY_FLOW_NOT_CONFIRMED",
         "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
-        "MARKET_MICROSTRUCTURE_NOT_POSITIVE",
+        "LIQUIDITY_BELOW_FINAL_BUY_FLOOR",
         "NEED_SECOND_VERIFIED_SCAN",
         "REBOUND_FROM_WATCH_LOW_NOT_CONFIRMED",
-        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED",
-        "VOLUME_H1_TOO_LOW"
+        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED"
       ],
       "proof": [
-        "LIQUIDITY_51281",
+        "BUY_SELL_1.70X",
         "EXACT_PAIR_VERIFIED"
       ],
       "quarter_wave_revalidation": {
@@ -1055,101 +970,27 @@
         "trigger_is_buy_signal": false
       },
       "market": {
-        "price_usd": 0.00024697759711970297,
-        "liquidity_usd": 51281.0632,
-        "volume_h1_usd": 4688.7357603612,
-        "buys_h1": 38,
-        "sells_h1": 35,
-        "buy_sell_ratio": 1.0833,
-        "activity_h1": 73,
-        "spread_pct": 0.989889685990065,
+        "price_usd": 0.0001334863704356615,
+        "liquidity_usd": 30262.7543,
+        "volume_h1_usd": 25608.8335499236,
+        "buys_h1": 2135,
+        "sells_h1": 1254,
+        "buy_sell_ratio": 1.702,
+        "activity_h1": 3389,
+        "spread_pct": 0.27923515345161176,
         "scan_price_gain_pct": null,
         "rebound_from_watch_low_pct": 0.0
       },
       "intelligence": {
         "status": "CURRENT",
-        "score": 4.7,
-        "positive_families": 1,
-        "current_evidence_count": 5,
-        "evidence_age_minutes": 0.0,
+        "score": 14.6,
+        "positive_families": 3,
+        "current_evidence_count": 4,
+        "evidence_age_minutes": 0.18,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
-        "market_microstructure_score": 0.0
-      },
-      "truth_contract": {
-        "exact_chain_contract_pair_required": true,
-        "two_scan_confirmation_required": true,
-        "telegram_final_buy_only": false,
-        "telegram_pre_buy_enabled": true,
-        "pre_buy_requires_all_current_gates_passed": true,
-        "pre_buy_is_one_confirmation_scan_before_final_buy": true,
-        "manual_decision_only": true,
-        "automatic_trade": false,
-        "quarter_wave_revalidation_lane": false,
-        "quarter_wave_trigger_is_not_buy": true,
-        "all_final_buy_gates_still_required": true,
-        "does_not_modify_veteran_real_alert_policy": true
-      }
-    },
-    {
-      "identity_key": "arc:0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1:0x6fd5f2fb831940dcd61a98c5b3acb7d8c6f3bfc1",
-      "symbol": "EURC",
-      "state": "WATCH",
-      "recommended_action": "WAIT",
-      "alert": false,
-      "pre_buy": false,
-      "pre_buy_alert": false,
-      "observable": false,
-      "qualified_this_scan": false,
-      "qualified_streak": 0,
-      "required_streak": 2,
-      "blockers": [
-        "ACTIVITY_H1_TOO_LOW",
-        "BUY_FLOW_NOT_CONFIRMED",
-        "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN",
-        "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
-        "LIQUIDITY_BELOW_FINAL_BUY_FLOOR",
-        "MARKET_SNAPSHOT_STALE_OR_UNTIMED",
-        "MARKET_STATE_MISSING",
-        "NEED_SECOND_VERIFIED_SCAN",
-        "PRICE_MISSING",
-        "PRICE_SOURCE_SPREAD_TOO_WIDE",
-        "REBOUND_FROM_WATCH_LOW_NOT_CONFIRMED",
-        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED",
-        "VOLUME_H1_TOO_LOW"
-      ],
-      "proof": [],
-      "quarter_wave_revalidation": {
-        "enabled_for_target": false,
-        "anchor_price_usd": null,
-        "gain_from_anchor_pct": null,
-        "armed_at": null,
-        "trigger_price_usd": null,
-        "trigger_is_buy_signal": false
-      },
-      "market": {
-        "price_usd": 0.0,
-        "liquidity_usd": 0.0,
-        "volume_h1_usd": 0.0,
-        "buys_h1": 0,
-        "sells_h1": 0,
-        "buy_sell_ratio": 1.0,
-        "activity_h1": 0,
-        "spread_pct": 999.0,
-        "scan_price_gain_pct": null,
-        "rebound_from_watch_low_pct": null
-      },
-      "intelligence": {
-        "status": "CURRENT",
-        "score": 12.3,
-        "positive_families": 1,
-        "current_evidence_count": 2,
-        "evidence_age_minutes": 0.82,
-        "hard_risks": [],
-        "wallet_flow_score": 0.0,
-        "holder_network_score": 0.0,
-        "market_microstructure_score": 12.26
+        "market_microstructure_score": 7.76
       },
       "truth_contract": {
         "exact_chain_contract_pair_required": true,
@@ -1174,43 +1015,42 @@
       "alert": false,
       "pre_buy": false,
       "pre_buy_alert": false,
-      "observable": false,
+      "observable": true,
       "qualified_this_scan": false,
       "qualified_streak": 0,
       "required_streak": 2,
       "blockers": [
         "ACTIVITY_H1_TOO_LOW",
-        "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN",
+        "BUY_FLOW_NOT_CONFIRMED",
         "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
         "INTELLIGENCE_STALE_OR_UNTIMED",
         "LIQUIDITY_BELOW_FINAL_BUY_FLOOR",
-        "MARKET_SNAPSHOT_STALE_OR_UNTIMED",
         "REBOUND_FROM_WATCH_LOW_NOT_CONFIRMED",
         "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED",
         "VOLUME_H1_TOO_LOW"
       ],
       "proof": [
-        "QUARTER_WAVE_REVALIDATION_ARMED_37.69PCT",
-        "BUY_SELL_1.75X"
+        "QUARTER_WAVE_REVALIDATION_ARMED_4.14PCT",
+        "EXACT_PAIR_VERIFIED"
       ],
       "quarter_wave_revalidation": {
         "enabled_for_target": true,
         "anchor_price_usd": 0.000217012933050945,
-        "gain_from_anchor_pct": 37.6932,
+        "gain_from_anchor_pct": 4.1417,
         "armed_at": "2026-09-20T20:01:45.215116+00:00",
         "trigger_price_usd": 0.000309893716396635,
         "trigger_is_buy_signal": false
       },
       "market": {
-        "price_usd": 0.000298812062548911,
-        "liquidity_usd": 2021.3541,
-        "volume_h1_usd": 593.8461970225,
-        "buys_h1": 20,
-        "sells_h1": 11,
-        "buy_sell_ratio": 1.75,
-        "activity_h1": 31,
-        "spread_pct": 1.93294569600335,
-        "scan_price_gain_pct": 0.0,
+        "price_usd": 0.0002260009708747,
+        "liquidity_usd": 1799.292,
+        "volume_h1_usd": 143.1927991361,
+        "buys_h1": 4,
+        "sells_h1": 5,
+        "buy_sell_ratio": 0.8333,
+        "activity_h1": 9,
+        "spread_pct": 0.7973159329474958,
+        "scan_price_gain_pct": -24.3669,
         "rebound_from_watch_low_pct": 0.0
       },
       "intelligence": {
@@ -1218,7 +1058,7 @@
         "score": 15.0,
         "positive_families": 1,
         "current_evidence_count": 14,
-        "evidence_age_minutes": 56.53,
+        "evidence_age_minutes": 77.82,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
@@ -1260,6 +1100,7 @@
         "INTELLIGENCE_STALE_OR_UNTIMED",
         "LIQUIDITY_BELOW_FINAL_BUY_FLOOR",
         "MARKET_MICROSTRUCTURE_NOT_POSITIVE",
+        "MARKET_SNAPSHOT_STALE_OR_UNTIMED",
         "REBOUND_FROM_WATCH_LOW_NOT_CONFIRMED",
         "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED"
       ],
@@ -1291,7 +1132,7 @@
         "score": 0.0,
         "positive_families": 0,
         "current_evidence_count": 0,
-        "evidence_age_minutes": 242.09,
+        "evidence_age_minutes": 263.38,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
