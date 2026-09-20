@@ -1,0 +1,46 @@
+name: Branch New Chain Bootstrap Validation
+
+on:
+  push:
+    branches:
+      - fix/new-chain-bootstrap-arc
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Compile changed runtime
+        run: >-
+          python -m py_compile
+          scripts/new_chain_bootstrap_radar.py
+          scripts/unified_candidate_bridge.py
+          scripts/unified_watch_engine.py
+          scripts/resilient_unified_watch_runner.py
+          scripts/cross_domain_intelligence_collector.py
+          scripts/free_intelligence_collector.py
+          scripts/intelligence_fusion.py
+          scripts/user_watch_final_buy.py
+          scripts/narrative_dependency_collector.py
+          scripts/derivatives_intelligence_collector.py
+          scripts/alpha_caller_intake.py
+          scripts/public_alpha_source_collector.py
+          src/wallet500/market_discovery.py
+          src/wallet500/market_data.py
+          src/wallet500/genesis_live.py
+          src/wallet500/candidate_lifecycle.py
+      - name: Bootstrap contract
+        run: python scripts/test_new_chain_bootstrap_contract.py
+      - name: Final BUY contract
+        run: python scripts/test_user_watch_final_buy_contract.py
+      - name: Focused regression tests
+        run: python -m pytest -q tests/test_market_discovery_coverage.py tests/test_candidate_lifecycle.py tests/test_genesis_live.py
