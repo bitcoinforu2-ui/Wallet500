@@ -229,6 +229,12 @@ def _policy(config: dict) -> dict:
         "telegram_final_buy_only": False,
         "telegram_pre_buy_enabled": True,
         "automatic_trade": False,
+        "cex_quarter_wave_fast_path_enabled": True,
+        "cex_quarter_wave_min_turnover_usd": 20000.0,
+        "cex_quarter_wave_min_relative_volume_multiple": 4.0,
+        "cex_quarter_wave_max_gainer_rank": 15,
+        "cex_quarter_wave_min_microstructure_score": 5.0,
+        "cex_quarter_wave_min_current_evidence": 2,
     }
     for k, v in defaults.items():
         p.setdefault(k, v)
@@ -288,6 +294,11 @@ def evaluate(
     activity = buys + sells
     ratio = (buys + 1.0) / (sells + 1.0)
     spread = num((market or {}).get("spread_pct"), 999.0) or 999.0
+    cex_turnover = num((market or {}).get("cex_quote_volume_24h_usd"), 0.0) or 0.0
+    cex_relative_multiple = num((market or {}).get("cex_relative_volume_multiple"), 0.0) or 0.0
+    cex_rank_raw = num((market or {}).get("positive_gainer_rank"))
+    cex_rank = int(cex_rank_raw) if cex_rank_raw is not None and cex_rank_raw > 0 else None
+    cex_led = bool((market or {}).get("cex_led_revival"))
 
     if price <= 0:
         blockers.append("PRICE_MISSING")
@@ -340,6 +351,34 @@ def evaluate(
         proof.append(f"FUSION_PLUS_WALLET_HOLDER_{score:.1f}_{families}F")
     else:
         blockers.append("FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET")
+
+    cex_quarter_wave_fast_path = bool(
+        quarter_wave_lane
+        and policy.get("cex_quarter_wave_fast_path_enabled") is True
+        and report_verified
+        and status == "CURRENT"
+        and evidence >= int(policy["cex_quarter_wave_min_current_evidence"])
+        and not hard_risks
+        and micro >= float(policy["cex_quarter_wave_min_microstructure_score"])
+        and spread <= float(policy["max_source_spread_pct"])
+        and cex_turnover >= float(policy["cex_quarter_wave_min_turnover_usd"])
+        and cex_relative_multiple >= float(policy["cex_quarter_wave_min_relative_volume_multiple"])
+        and cex_rank is not None
+        and cex_rank <= int(policy["cex_quarter_wave_max_gainer_rank"])
+        and cex_led
+    )
+    if cex_quarter_wave_fast_path:
+        bypass = {
+            "LIQUIDITY_BELOW_FINAL_BUY_FLOOR",
+            "VOLUME_H1_TOO_LOW",
+            "ACTIVITY_H1_TOO_LOW",
+            "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
+        }
+        blockers = [b for b in blockers if b not in bypass]
+        proof.append(
+            f"CEX_QUARTER_WAVE_FAST_PATH_VOL_{cex_turnover:.0f}"
+            f"_REL_{cex_relative_multiple:.2f}X_RANK_{cex_rank}"
+        )
 
     previous_price = num(prior.get("last_price"))
     previous_low = num(prior.get("watch_low_price"))
@@ -443,6 +482,7 @@ def evaluate(
         "proof": list(dict.fromkeys(proof)),
         "quarter_wave_revalidation": {
             "enabled_for_target": quarter_wave_lane,
+            "cex_fast_path": cex_quarter_wave_fast_path,
             "anchor_price_usd": quarter_wave_anchor if quarter_wave_anchor > 0 else None,
             "gain_from_anchor_pct": round(quarter_wave_gain, 4) if quarter_wave_gain is not None else None,
             "armed_at": target.get("quarter_wave_armed_at"),
@@ -458,6 +498,10 @@ def evaluate(
             "buy_sell_ratio": round(ratio, 4),
             "activity_h1": activity,
             "spread_pct": spread,
+            "cex_turnover_24h_usd": cex_turnover,
+            "cex_relative_volume_multiple": cex_relative_multiple,
+            "cex_gainer_rank": cex_rank,
+            "cex_led_revival": cex_led,
             "scan_price_gain_pct": round(scan_gain, 4) if scan_gain is not None else None,
             "rebound_from_watch_low_pct": round(rebound, 4) if rebound is not None else None,
         },
@@ -484,6 +528,8 @@ def evaluate(
             "quarter_wave_revalidation_lane": quarter_wave_lane,
             "quarter_wave_trigger_is_not_buy": True,
             "all_final_buy_gates_still_required": True,
+            "cex_fast_path_only_bypasses_dex_execution_floor_and_high_fusion_score": True,
+            "cex_fast_path_still_requires_current_intelligence_no_hard_risk_microstructure_and_two_scans": True,
             "does_not_modify_veteran_real_alert_policy": True,
         },
     }
