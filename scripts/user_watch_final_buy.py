@@ -328,7 +328,10 @@ def evaluate(
     cex_orderbook_spread = num((market or {}).get("cex_orderbook_spread_pct"), 999.0) or 999.0
     cex_depth_1pct = num((market or {}).get("cex_depth_1pct_usd"), 0.0) or 0.0
     cex_bid_ask_depth_ratio = num((market or {}).get("cex_bid_ask_depth_ratio"), 0.0) or 0.0
-    cex_market_only = cex_execution_scope == "EXACT_CEX_MARKET" or str(target.get("execution_identity_scope") or "").upper() == "EXACT_CEX_MARKET"
+    cex_market_only = (
+        str(target.get("execution_identity_scope") or "").upper() == "EXACT_CEX_MARKET"
+        or key.startswith("cex:")
+    )
 
     if price <= 0:
         blockers.append("PRICE_MISSING")
