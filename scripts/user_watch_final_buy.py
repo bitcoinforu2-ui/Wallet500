@@ -147,6 +147,44 @@ def eligible_targets(
         })
         seen.add(key)
         rows.append(target)
+
+    # Armed +25% CEX candidates remain in FINAL-BUY revalidation even after
+    # they fall out of the current mover list. The exact identity comes from
+    # the persisted Unified Watch market state.
+    state_rows = (watch_state or {}).get("tokens") if isinstance(watch_state, dict) else {}
+    for live in state_rows.values() if isinstance(state_rows, dict) else []:
+        if not isinstance(live, dict):
+            continue
+        if live.get("dynamic_spot_candidate") is not True:
+            continue
+        if live.get("quarter_wave_revalidation_armed") is not True:
+            continue
+        key = identity_key(live)
+        if not key or key in seen:
+            continue
+        target = {
+            "candidate_type": str(live.get("candidate_type") or "GATE_SPOT_DISCOVERY").upper(),
+            "symbol": str(live.get("symbol") or "CEX").upper(),
+            "network": live.get("network"),
+            "contract": live.get("contract"),
+            "pair": live.get("pair"),
+            "dex_url": live.get("dex_url") or "",
+            "source": live.get("source") or "Persisted +25% CEX Revalidation",
+            "source_url": live.get("source_url") or "",
+            "first_seen_at": live.get("first_seen_at"),
+            "discovery_price": live.get("discovery_price"),
+            "user_watch_final_buy_lane": True,
+            "telegram_policy": "FINAL_BUY_ONLY",
+            "exact_identity_required": True,
+            "exact_pair_required": True,
+            "quarter_wave_revalidation_lane": True,
+            "quarter_wave_anchor_price_usd": live.get("first_verified_price"),
+            "quarter_wave_gain_from_anchor_pct": live.get("gain_from_first_verified_pct"),
+            "quarter_wave_armed_at": live.get("quarter_wave_revalidation_armed_at"),
+            "quarter_wave_trigger_price_usd": live.get("quarter_wave_revalidation_trigger_price"),
+        }
+        seen.add(key)
+        rows.append(target)
     return rows
 
 
