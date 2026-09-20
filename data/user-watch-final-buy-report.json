@@ -1,14 +1,147 @@
 {
   "version": 1,
-  "generated_at": null,
+  "generated_at": "2026-09-20T00:06:04.142192+00:00",
   "mode": "USER_REQUESTED_UNIFIED_WATCH_FINAL_BUY_V1",
-  "status": "INITIALIZED_WAITING_FOR_UNIFIED_WATCH",
-  "configured_targets": 0,
+  "policy": {
+    "enabled": true,
+    "max_source_spread_pct": 2,
+    "max_snapshot_age_seconds": 2100,
+    "min_liquidity_usd": 50000,
+    "min_volume_h1_usd": 15000,
+    "min_activity_h1": 50,
+    "min_buy_sell_ratio": 1.2,
+    "min_rebound_from_watch_low_pct": 5,
+    "min_scan_price_gain_pct": 1,
+    "max_scan_price_gain_pct": 25,
+    "strong_min_fusion_score": 55,
+    "strong_min_positive_families": 3,
+    "relaxed_min_fusion_score": 30,
+    "relaxed_min_positive_families": 2,
+    "relaxed_min_wallet_or_holder_score": 3,
+    "min_current_evidence": 2,
+    "required_consecutive_qualified_scans": 2,
+    "rearm_after_observable_misses": 2,
+    "telegram_final_buy_only": true,
+    "automatic_trade": false,
+    "notes": "Separate final-BUY decision gate for explicitly user-requested Unified Watch targets. Does not weaken or alter the veteran REAL_ALERT production policy."
+  },
+  "configured_targets": 2,
   "buy_zone_count": 0,
   "delivered_count": 0,
+  "delivered": [],
   "error_count": 0,
-  "decisions": [],
+  "errors": [],
+  "decisions": [
+    {
+      "identity_key": "solana:EbT2jpoeRJVFNWAFJE97EGfQF3iwHsEY8sh17fGbL5ER:9TRKbpkWfbR6dmFAX1kGx1MReZ48K1j9VPcjUBMM4Toq",
+      "symbol": "ZDOG",
+      "state": "WATCH",
+      "recommended_action": "WAIT",
+      "alert": false,
+      "observable": false,
+      "qualified_this_scan": false,
+      "qualified_streak": 0,
+      "required_streak": 2,
+      "blockers": [
+        "BUY_FLOW_NOT_CONFIRMED",
+        "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
+        "MARKET_SNAPSHOT_STALE_OR_UNTIMED",
+        "NEED_SECOND_VERIFIED_SCAN",
+        "REBOUND_FROM_WATCH_LOW_NOT_CONFIRMED",
+        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED"
+      ],
+      "proof": [
+        "LIQUIDITY_215797",
+        "EXACT_PAIR_VERIFIED"
+      ],
+      "market": {
+        "price_usd": 0.001298652376450481,
+        "liquidity_usd": 215797.1386,
+        "volume_h1_usd": 71941.0347548909,
+        "buys_h1": 209,
+        "sells_h1": 344,
+        "buy_sell_ratio": 0.6087,
+        "activity_h1": 553,
+        "spread_pct": 1.747599858945282,
+        "scan_price_gain_pct": null,
+        "rebound_from_watch_low_pct": 0.0
+      },
+      "intelligence": {
+        "status": "CURRENT",
+        "score": 0.0,
+        "positive_families": 1,
+        "current_evidence_count": 20,
+        "evidence_age_minutes": 0.0,
+        "hard_risks": [],
+        "wallet_flow_score": 0.0,
+        "holder_network_score": 0.0,
+        "market_microstructure_score": 13.66
+      },
+      "truth_contract": {
+        "exact_chain_contract_pair_required": true,
+        "two_scan_confirmation_required": true,
+        "telegram_final_buy_only": true,
+        "manual_decision_only": true,
+        "automatic_trade": false,
+        "does_not_modify_veteran_real_alert_policy": true
+      }
+    },
+    {
+      "identity_key": "solana:241aTYhVXZ4WBVSFpfY37RqoCGBQ73KiRFAKvTtnmoon:EcFsXQJjVCjCYWHsuhXUnZH4XB2MzF7iZ3dJu48wmoa9",
+      "symbol": "MCAT",
+      "state": "WATCH",
+      "recommended_action": "WAIT",
+      "alert": false,
+      "observable": true,
+      "qualified_this_scan": false,
+      "qualified_streak": 0,
+      "required_streak": 2,
+      "blockers": [
+        "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
+        "NEED_SECOND_VERIFIED_SCAN",
+        "REBOUND_FROM_WATCH_LOW_NOT_CONFIRMED",
+        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED"
+      ],
+      "proof": [
+        "BUY_SELL_1.26X",
+        "LIQUIDITY_57807",
+        "EXACT_PAIR_VERIFIED"
+      ],
+      "market": {
+        "price_usd": 0.00019058613879184994,
+        "liquidity_usd": 57807.2956,
+        "volume_h1_usd": 42062.9374127697,
+        "buys_h1": 267,
+        "sells_h1": 211,
+        "buy_sell_ratio": 1.2642,
+        "activity_h1": 478,
+        "spread_pct": 0.43430357608750736,
+        "scan_price_gain_pct": null,
+        "rebound_from_watch_low_pct": 0.0
+      },
+      "intelligence": {
+        "status": "CURRENT",
+        "score": 3.6,
+        "positive_families": 1,
+        "current_evidence_count": 15,
+        "evidence_age_minutes": 2.03,
+        "hard_risks": [],
+        "wallet_flow_score": 0.0,
+        "holder_network_score": 0.0,
+        "market_microstructure_score": 3.6
+      },
+      "truth_contract": {
+        "exact_chain_contract_pair_required": true,
+        "two_scan_confirmation_required": true,
+        "telegram_final_buy_only": true,
+        "manual_decision_only": true,
+        "automatic_trade": false,
+        "does_not_modify_veteran_real_alert_policy": true
+      }
+    }
+  ],
   "truth_contract": {
+    "source": "Unified Watch exact-pair state + current intelligence report",
     "user_requested_targets_only": true,
     "telegram_final_buy_only": true,
     "research_watch_notifications": false,
