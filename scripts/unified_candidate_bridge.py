@@ -223,6 +223,48 @@ def main():
             "research_only_identity": bool(row.get("research_only_identity")),
         })
 
+    # Strong CEX movers that do not expose a supported on-chain contract still
+    # receive an exact venue-market identity. This keeps BRC-20/native/unsupported
+    # chain assets observable without pretending they have a DEX identity.
+    for row in spot.get("candidates") or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("identity_status") == "RESOLVED_EXACT":
+            continue
+        change = float(row.get("change_24h_pct") or 0)
+        rank = int(row.get("positive_gainer_rank") or 999999)
+        first_change = float(row.get("first_seen_change_24h_pct") or change or 0)
+        if max(change, first_change) < 25.0 and rank > 10:
+            continue
+        currency_pair = str(row.get("currency_pair") or "").upper().strip()
+        if not currency_pair:
+            continue
+        cex_key = f"cex:gate:{currency_pair}"
+        if cex_key in seen:
+            continue
+        seen.add(cex_key)
+        out.append({
+            "candidate_type": "CEX_MARKET_DISCOVERY",
+            "symbol": str(row.get("symbol") or "").upper(),
+            "exchange": "gate",
+            "currency_pair": currency_pair,
+            "execution_identity_scope": "EXACT_CEX_MARKET",
+            "source": "Gate Spot",
+            "source_url": row.get("source_url") or "",
+            "first_seen_at": row.get("first_seen_at"),
+            "first_seen_price": row.get("first_seen_price") or row.get("discovery_price"),
+            "first_seen_change_24h_pct": row.get("first_seen_change_24h_pct"),
+            "first_seen_quote_volume_24h_usd": row.get("first_seen_quote_volume_24h_usd"),
+            "discovery_price": row.get("discovery_price"),
+            "change_24h_pct": row.get("change_24h_pct"),
+            "quote_volume_24h_usd": row.get("quote_volume_24h_usd"),
+            "positive_gainer_rank": row.get("positive_gainer_rank"),
+            "identity_key": cex_key,
+            "identity_reason": row.get("identity_reason"),
+            "research_only_identity": False,
+            "telegram_policy": "FINAL_BUY_ONLY",
+        })
+
     for row in bootstrap.get("candidates") or []:
         if not isinstance(row, dict) or row.get("bootstrap_actionable_watch") is not True:
             continue
@@ -290,7 +332,7 @@ def main():
         })
 
     out.sort(key=lambda x: (
-        0 if x["candidate_type"] == "BUY_ZONE" else 1 if x["candidate_type"] == "NEW_CHAIN_BOOTSTRAP" else 2 if x["candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"} else 3,
+        0 if x["candidate_type"] == "BUY_ZONE" else 1 if x["candidate_type"] == "NEW_CHAIN_BOOTSTRAP" else 2 if x["candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"} else 3,
         (
             x.get("alpha_age_minutes", 999999)
             if x["candidate_type"] == "PUBLIC_ALPHA"
@@ -306,6 +348,7 @@ def main():
             "buy_zone": sum(x["candidate_type"] == "BUY_ZONE" for x in out),
             "cex_spot": sum(x["candidate_type"] == "CEX_SPOT_DISCOVERY" for x in out),
             "gate_spot": sum(x["candidate_type"] == "GATE_SPOT_DISCOVERY" for x in out),
+            "cex_market": sum(x["candidate_type"] == "CEX_MARKET_DISCOVERY" for x in out),
             "new_chain_bootstrap": sum(x["candidate_type"] == "NEW_CHAIN_BOOTSTRAP" for x in out),
             "public_alpha": sum(x["candidate_type"] == "PUBLIC_ALPHA" for x in out),
             "public_alpha_stale_excluded": stale_alpha_excluded,
