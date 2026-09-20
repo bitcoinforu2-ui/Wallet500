@@ -2,6 +2,9 @@ name: Wallet500 Unified Verified Watch Engine
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Wallet500 CEX Fast Promotion"]
+    types: [completed]
   schedule:
     - cron: '7,22,37,52 * * * *'
   push:
@@ -27,7 +30,9 @@ on:
       - 'scripts/intelligence_fusion.py'
       - 'scripts/test_intelligence_fusion_contract.py'
       - 'scripts/user_watch_final_buy.py'
+      - 'scripts/cex_final_buy_lane.py'
       - 'scripts/test_user_watch_final_buy_contract.py'
+      - 'scripts/test_cex_final_buy_lane_contract.py'
       - 'data/unified-watch-config.json'
       - 'data/new-chain-bootstrap-state.json'
       - 'data/new-chain-bootstrap-radar.json'
@@ -44,6 +49,7 @@ concurrency:
 
 jobs:
   watch:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 14
     steps:
@@ -55,16 +61,18 @@ jobs:
       - name: Validate unified watcher, collectors and intelligence fusion
         id: validate
         run: |
-          python -m py_compile scripts/resilient_http.py scripts/new_chain_bootstrap_radar.py scripts/test_new_chain_bootstrap_contract.py scripts/resilient_unified_watch_runner.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/spot_cex_fast_handoff.py scripts/native_asset_intelligence.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py scripts/user_watch_final_buy.py scripts/test_user_watch_final_buy_contract.py
+          python -m py_compile scripts/resilient_http.py scripts/new_chain_bootstrap_radar.py scripts/test_new_chain_bootstrap_contract.py scripts/resilient_unified_watch_runner.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/spot_cex_fast_handoff.py scripts/native_asset_intelligence.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py scripts/cex_final_buy_lane.py scripts/user_watch_final_buy.py scripts/test_user_watch_final_buy_contract.py scripts/test_cex_final_buy_lane_contract.py
           for f in data/unified-watch-config.json data/user-watch-final-buy-state.json data/user-watch-final-buy-report.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/buy-zone-close-watch-registry.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/narrative-dependency-state.json data/http-resilience-state.json data/new-chain-bootstrap-state.json data/new-chain-bootstrap-radar.json; do python -m json.tool "$f" >/dev/null; done
 
       - name: Test exact-identity intelligence fusion contract
         id: contract
         run: python scripts/test_intelligence_fusion_contract.py
 
-      - name: Test user-requested FINAL BUY contract
+      - name: Test user-requested FINAL BUY contracts
         id: user_buy_contract
-        run: python scripts/test_user_watch_final_buy_contract.py
+        run: |
+          python scripts/test_user_watch_final_buy_contract.py
+          python scripts/test_cex_final_buy_lane_contract.py
 
       - name: Refresh persisted unified state before any sensor handoff
         run: |
@@ -271,6 +279,10 @@ jobs:
                   'dynamic_alpha_targets_watched': (report or {}).get('dynamic_alpha_targets') if isinstance(report, dict) else None,
                   'user_watch_final_buy_mode': (user_buy or {}).get('mode') if isinstance(user_buy, dict) else None,
                   'user_watch_final_buy_zone_count': (user_buy or {}).get('buy_zone_count') if isinstance(user_buy, dict) else None,
+                  'cex_final_buy_candidate_count': (user_buy or {}).get('cex_candidate_count') if isinstance(user_buy, dict) else None,
+                  'cex_final_buy_zone_count': (user_buy or {}).get('cex_buy_zone_count') if isinstance(user_buy, dict) else None,
+                  'cex_final_pre_buy_count': (user_buy or {}).get('cex_pre_buy_count') if isinstance(user_buy, dict) else None,
+                  'cex_final_buy_status': (user_buy or {}).get('cex_status') if isinstance(user_buy, dict) else None,
                   'user_watch_final_buy_delivered_count': (user_buy or {}).get('delivered_count') if isinstance(user_buy, dict) else None,
                   'user_watch_final_buy_error_count': (user_buy or {}).get('error_count') if isinstance(user_buy, dict) else None,
               },
