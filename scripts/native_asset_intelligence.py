@@ -93,6 +93,23 @@ def _identity_rows(doc: dict | None = None) -> dict[tuple[str, str], dict]:
     return out
 
 
+def _cex_reference_price(row: dict, symbol: str) -> float:
+    for field in ("cex_reference_price_usd", "current_price_usd", "reference_price"):
+        value = _f(row.get(field))
+        if value > 0:
+            return value
+    for market in row.get("markets") or []:
+        if not isinstance(market, dict):
+            continue
+        market_symbol = str(market.get("symbol") or market.get("market_id") or "").upper().replace("-", "").replace("_", "")
+        if market_symbol != f"{symbol}USDT":
+            continue
+        value = _f(market.get("price"))
+        if value > 0:
+            return value
+    return 0.0
+
+
 def _gate_pair(row: dict, symbol: str) -> str:
     for market in row.get("markets") or []:
         if not isinstance(market, dict):
@@ -250,7 +267,7 @@ def build(handoff: dict, identity: dict, registry: dict) -> dict:
         if sensor.get("cex_led") is not True:
             continue
         ident = identities.get((cgid, symbol), {})
-        reference = _f(h.get("cex_reference_price_usd") or ident.get("cex_reference_price_usd"))
+        reference = _f(h.get("cex_reference_price_usd")) or _cex_reference_price(ident, symbol)
         pair = _gate_pair(ident, symbol)
         execution = _orderbook_execution(pair, reference)
         score, reasons = _score(h, ident, execution)
