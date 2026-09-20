@@ -1,22 +1,22 @@
 # Wallet500 Cohort Research
 
-Generated: 2026-09-20T10:37:55.562750+00:00
-Source snapshot: 2026-09-20T10:31:51.195452+00:00
+Generated: 2026-09-20T10:52:54.323990+00:00
+Source snapshot: 2026-09-20T10:46:49.797319+00:00
 
 ## Baseline
-- N=359 ROI=-1.0319% P/L=$-3.704527
+- N=359 ROI=-1.0324% P/L=$-3.706159
 
 ## Best post-hoc counterfactuals (min 5 retained)
-- liq>=250k: N=128 ROI=-0.3864% delta=0.6455pp
-- turnover<=1: N=193 ROI=-0.3948% delta=0.6371pp
-- liq>=500k: N=174 ROI=-0.4421% delta=0.5898pp
-- liq>=100k: N=232 ROI=-0.7594% delta=0.2725pp
-- liq>=100k & vol>=50k: N=232 ROI=-0.7594% delta=0.2725pp
-- liq>=75k: N=286 ROI=-0.9656% delta=0.0663pp
-- tx>=500: N=184 ROI=-1.0003% delta=0.0316pp
-- tx>=250: N=283 ROI=-1.0037% delta=0.0282pp
-- vol>=50k: N=359 ROI=-1.0319% delta=0.0pp
-- liq>=100k & tx>=250: N=182 ROI=-1.0427% delta=-0.0108pp
+- liq>=250k: N=128 ROI=-0.3864% delta=0.646pp
+- turnover<=1: N=193 ROI=-0.3957% delta=0.6367pp
+- liq>=500k: N=174 ROI=-0.4421% delta=0.5903pp
+- liq>=100k: N=232 ROI=-0.7601% delta=0.2723pp
+- liq>=100k & vol>=50k: N=232 ROI=-0.7601% delta=0.2723pp
+- liq>=75k: N=286 ROI=-0.9662% delta=0.0662pp
+- tx>=500: N=184 ROI=-1.0012% delta=0.0312pp
+- tx>=250: N=283 ROI=-1.0043% delta=0.0281pp
+- vol>=50k: N=359 ROI=-1.0324% delta=0.0pp
+- liq>=100k & tx>=250: N=182 ROI=-1.0436% delta=-0.0112pp
 
 ## Missed-star scan
 - Candidates: 1165
