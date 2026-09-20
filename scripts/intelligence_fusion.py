@@ -12,7 +12,7 @@ EVENTS = ROOT / "data/close-watch-events.json"
 CONFIG = ROOT / "data/unified-watch-config.json"
 OUTPUT = ROOT / "data/close-watch-intelligence.json"
 
-EVM = {"ethereum", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche"}
+EVM = {"ethereum", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc"}
 CHAIN_ALIASES = {"eth": "ethereum", "bnb": "bsc"}
 
 
