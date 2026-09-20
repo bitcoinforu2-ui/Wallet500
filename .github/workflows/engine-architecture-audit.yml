@@ -1,0 +1,99 @@
+name: Wallet500 Engine Architecture Audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
+      - 'data/unified-watch-config.json'
+      - 'data/cex-identity-registry.json'
+  push:
+    branches:
+      - 'audit/engine-end-to-end-hardening-v1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-architecture-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install runtime
+        run: python -m pip install -e . pytest ruff
+
+      - name: Compile complete Python estate
+        run: python -m compileall -q src scripts tests
+
+      - name: Fatal lint defects across production and tests
+        run: python -m ruff check src scripts tests --select=E9,F63,F7,F82
+
+      - name: Run existing fail-closed Full Guard
+        run: python scripts/full_guard.py
+
+      - name: Run complete regression suite
+        run: python -m pytest -q
+
+      - name: Scan architecture, workflow ownership and live bottlenecks
+        id: architecture
+        shell: bash
+        run: |
+          set +e
+          python scripts/engine_architecture_audit.py --fail-on critical
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Publish architecture audit summary
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          p=Path('data/engine-architecture-audit.json')
+          if not p.exists():
+              print('# Wallet500 Engine Architecture Audit')
+              print('Audit report was not created.')
+              raise SystemExit(0)
+          d=json.loads(p.read_text())
+          print('# Wallet500 Engine Architecture Audit')
+          print()
+          print(f"**Status:** {d.get('status')}  ")
+          print(f"**Severity:** {d.get('severity_counts')}  ")
+          print(f"**Python files scanned:** {((d.get('metrics') or {}).get('python') or {}).get('files')}  ")
+          print(f"**Workflow files scanned:** {((d.get('metrics') or {}).get('workflows') or {}).get('workflow_count')}  ")
+          print()
+          print('## Critical / High findings')
+          for x in (d.get('top_findings') or [])[:40]:
+              print(f"- **{x.get('severity')} · {x.get('code')}** — {x.get('message')}")
+          PY
+
+      - name: Upload architecture audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wallet500-engine-architecture-audit-${{ github.run_id }}
+          path: data/engine-architecture-audit.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce critical findings
+        if: always()
+        run: |
+          test "${{ steps.architecture.outputs.exit_code }}" = "0" || {
+            echo 'CRITICAL ENGINE ARCHITECTURE FINDING — see audit artifact.'
+            exit 1
+          }
