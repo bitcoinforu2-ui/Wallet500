@@ -1,4 +1,4 @@
-from scripts.unified_watch_engine import alpha_telegram_gate
+from scripts.unified_watch_engine import alpha_telegram_gate, quarter_wave_revalidation
 
 
 POLICY = {
@@ -61,5 +61,24 @@ assert check(True, f=fusion(score=14.0))
 
 # Risk alerts must never be hidden by the noise gate.
 assert check(True, risk=True) == ["RISK_BYPASS"]
+
+# +25% CEX revalidation uses an immutable verified-price anchor and stays armed.
+q1 = quarter_wave_revalidation({}, 0.00010000, "2026-09-20T10:00:00+00:00")
+assert q1["first_verified_price"] == 0.00010000
+assert q1["quarter_wave_revalidation_armed"] is False
+
+q2 = quarter_wave_revalidation(q1, 0.00012499, "2026-09-20T10:10:00+00:00")
+assert q2["quarter_wave_revalidation_armed"] is False
+assert q2["first_verified_price"] == q1["first_verified_price"]
+
+q3 = quarter_wave_revalidation(q2, 0.00012500, "2026-09-20T10:20:00+00:00")
+assert q3["quarter_wave_revalidation_armed"] is True
+assert round(q3["gain_from_first_verified_pct"], 4) == 25.0
+assert q3["quarter_wave_revalidation_trigger_price"] == 0.00012500
+
+q4 = quarter_wave_revalidation(q3, 0.00011500, "2026-09-20T10:30:00+00:00")
+assert q4["quarter_wave_revalidation_armed"] is True
+assert q4["first_verified_price"] == 0.00010000
+assert q4["quarter_wave_revalidation_trigger_price"] == 0.00012500
 
 print("UNIFIED_WATCH_ALPHA_ALERT_GATE_PASS")
