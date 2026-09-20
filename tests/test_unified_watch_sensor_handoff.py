@@ -133,3 +133,42 @@ def test_one_identity_pending_replay_keeps_cex_sensors_alive_without_contract():
     assert sensor["cex_led"] is True
     assert "CEX_TOP3_BREAKOUT" in sensor["triggers"]
     assert "CEX_RANK_ACCELERATION" in sensor["triggers"]
+
+
+def test_one_replay_fresh_top10_entry_triggers_at_0429_local():
+    previous = {}
+    sequence = [
+        ("2026-09-18T23:42:04.216157+00:00", 2805531.04, 1160, 0.0019262, 0.20),
+        ("2026-09-18T23:56:38.689587+00:00", 2806980.14, 643, 0.0020093, 4.52),
+        ("2026-09-19T00:25:07.269007+00:00", 2712308.71, 209, 0.0020570, 1.66),
+        ("2026-09-19T00:48:12.570923+00:00", 2720543.77, None, 0.0019653, -2.87),
+        ("2026-09-19T00:57:38.562641+00:00", 2639614.33, None, 0.0019906, -1.62),
+        ("2026-09-19T01:16:19.825569+00:00", 2591951.76, None, 0.0019955, -1.37),
+        ("2026-09-19T01:29:54.294192+00:00", 2597624.56, 8, 0.0022797, 12.66),
+    ]
+    first_trigger = None
+    for observed_at, volume, rank, price, change in sequence:
+        target = {
+            "dynamic_spot_candidate": True,
+            "quote_volume_24h_usd": volume,
+            "positive_gainer_rank": rank,
+            "change_24h_pct": change,
+        }
+        sensor = spot_cex_sensor(target, previous)
+        if sensor["triggers"] and first_trigger is None:
+            first_trigger = (observed_at, volume, rank, price, change, sensor)
+        previous = {
+            **previous,
+            "cex_quote_volume_24h_usd": sensor["current_volume_usd"],
+            "cex_quote_volume_baseline_usd": sensor["baseline_volume_usd"],
+            "positive_gainer_rank": sensor["current_rank"],
+        }
+
+    assert first_trigger is not None
+    observed_at, volume, rank, price, change, sensor = first_trigger
+    assert observed_at == "2026-09-19T01:29:54.294192+00:00"
+    assert volume == 2597624.56
+    assert rank == 8
+    assert price == 0.0022797
+    assert change == 12.66
+    assert sensor["triggers"] == ["CEX_TOP10_ENTRY"]

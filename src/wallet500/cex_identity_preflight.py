@@ -12,7 +12,8 @@ from urllib.request import Request, urlopen
 
 DATA = Path("data")
 MIN_MARKET_AGE_DAYS = 90
-UA = {"User-Agent": "Wallet500/1.7", "Accept": "application/json"}
+UA = {"User-Agent": "Wallet500/1.8", "Accept": "application/json"}
+NATIVE_IDENTITY = DATA / "native-asset-identity-registry.json"
 
 EXCHANGE_ALIASES = {
     "gate": {"gate.io", "gate"},
@@ -81,6 +82,74 @@ def _base_symbol(symbol: object) -> str:
     if s.endswith("USDT"):
         return s[:-4]
     return s
+
+
+def _load_curated_native_registry(path: Path = NATIVE_IDENTITY) -> dict[str, dict]:
+    """Return unique, explicitly curated native-asset identity seeds by symbol.
+
+    These seeds are research identity hints only. They never bypass exact CoinGecko ID,
+    exact wrapped-native contract/pair resolution, CEX/DEX price coherence, liquidity,
+    holder, survival or BUY gates downstream.
+    """
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception:
+        return {}
+    assets = raw.get("assets") if isinstance(raw, dict) else {}
+    out: dict[str, dict] = {}
+    ambiguous: set[str] = set()
+    for coin_id, row in (assets or {}).items():
+        if not isinstance(row, dict):
+            continue
+        if row.get("discovery_symbol_lookup") is not True:
+            continue
+        if str(row.get("representation_type") or "") != "CANONICAL_WRAPPED_NATIVE":
+            continue
+        symbol = str(row.get("symbol") or "").upper().strip()
+        chain = str(row.get("chain") or "").lower().strip()
+        token = str(row.get("token_address") or "").strip()
+        if not symbol or not chain or not token:
+            continue
+        if symbol in out:
+            ambiguous.add(symbol)
+            continue
+        out[symbol] = {
+            "coingecko_id": str(coin_id),
+            **row,
+        }
+    for symbol in ambiguous:
+        out.pop(symbol, None)
+    return out
+
+
+def _resolve_from_curated_native_registry(
+    alert: dict,
+    base: str,
+    matches: list[dict],
+    registry: dict[str, dict],
+) -> tuple[dict | None, dict | None]:
+    """Disambiguate a ticker only when a unique curated native seed matches an exact CG ID."""
+    reg = registry.get(base) if isinstance(registry, dict) else None
+    if not isinstance(reg, dict):
+        return None, None
+    coin_id = str(reg.get("coingecko_id") or "").strip()
+    exact = [row for row in matches if str(row.get("id") or "").strip() == coin_id]
+    if len(exact) != 1:
+        return None, None
+    ref = _cex_reference_price(alert)
+    err = _price_error(exact[0], ref)
+    return exact[0], {
+        "method": "CURATED_NATIVE_REGISTRY_EXACT_COINGECKO_ID",
+        "reference_price": ref,
+        "relative_log_error": None if err is None else round(err, 6),
+        "candidate_count": len(matches),
+        "registry_symbol": base,
+        "registry_coingecko_id": coin_id,
+        "registry_chain": reg.get("chain"),
+        "registry_representation_type": reg.get("representation_type"),
+        "registry_evidence_source": reg.get("evidence_source"),
+        "research_only_identity_hint": True,
+    }
 
 
 def _parse_dt(value: object) -> datetime | None:
@@ -235,6 +304,7 @@ def run(path: Path = DATA / "cex-revival-radar.json") -> dict:
     raw = list(payload.get("alerts") or [])
     symbols = [_base_symbol(x.get("symbol")) for x in raw]
     market_by_symbol = _fetch_by_symbols(symbols) if symbols else {}
+    native_registry = _load_curated_native_registry(path.parent / "native-asset-identity-registry.json")
 
     kept, rejected = [], []
     for alert in raw:
@@ -246,7 +316,11 @@ def run(path: Path = DATA / "cex-revival-radar.json") -> dict:
             chosen = matches[0]
             identity_evidence = {"method": "UNIQUE_COINGECKO_SYMBOL", "candidate_count": 1}
         elif len(matches) > 1:
-            chosen, identity_evidence = _resolve_ambiguous(alert, base, matches)
+            chosen, identity_evidence = _resolve_from_curated_native_registry(
+                alert, base, matches, native_registry
+            )
+            if chosen is None:
+                chosen, identity_evidence = _resolve_ambiguous(alert, base, matches)
         if chosen is None:
             rejected.append({
                 "symbol": alert.get("symbol"),
@@ -283,7 +357,11 @@ def run(path: Path = DATA / "cex-revival-radar.json") -> dict:
         "minimum_market_age_days": MIN_MARKET_AGE_DAYS,
         "accepted": len(kept),
         "rejected": len(rejected),
-        "identity_rule": "UNIQUE_SYMBOL_OR_STRICT_CEX_PRICE/TICKER_COHERENCE_TO_ONE_COINGECKO_ID",
+        "identity_rule": "UNIQUE_SYMBOL_OR_UNIQUE_CURATED_NATIVE_REGISTRY_EXACT_CGID_OR_STRICT_CEX_PRICE/TICKER_COHERENCE_TO_ONE_COINGECKO_ID",
+        "curated_native_registry_enabled": True,
+        "curated_native_registry_symbols": sorted(native_registry),
+        "curated_native_registry_is_research_identity_hint_only": True,
+        "curated_native_registry_never_bypasses_downstream_exact_pair_or_buy_safety": True,
         "evidence_rule": "EXACT_COINGECKO_ID_THEN_OLD_ATH_OR_ATL_CAN_PROVE_MINIMUM_90D_AGE; RECENT_EXTREMA_ARE_INCONCLUSIVE_NOT_YOUTH_EVIDENCE",
         "recent_extrema_never_prove_young": True,
         "unknown_or_unresolved_identity": "REJECT",
