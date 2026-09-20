@@ -114,3 +114,12 @@ def test_native_asset_execution_fails_closed_when_orderbook_is_thin(monkeypatch)
     assert row["execution_identity_verified"] is False
     assert "CEX_DEPTH_BELOW_15K_PER_SIDE" in row["execution"]["blockers"]
     assert row["stage"] == "CEX_NATIVE_ASSET_CLOSE_WATCH"
+
+
+def test_native_asset_reference_price_falls_back_to_exact_gate_market(monkeypatch):
+    handoff = _handoff(ref=0)
+    monkeypatch.setattr(mod, "_get_json", lambda url, timeout=12: _healthy_book(0.0027884))
+    out = mod.build(handoff, _identity(), _registry())
+    row = out["candidates"][0]
+    assert row["cex_reference_price_usd"] == 0.0027884
+    assert row["execution"]["reference_price"] == 0.0027884
