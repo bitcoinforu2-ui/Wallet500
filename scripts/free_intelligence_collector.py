@@ -11,11 +11,12 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 CFG = ROOT / "data/unified-watch-config.json"
 DYNAMIC = ROOT / "data/unified-dynamic-candidates.json"
+BOOTSTRAP = ROOT / "data/new-chain-bootstrap-radar.json"
 BUY_REGISTRY = ROOT / "data/buy-zone-close-watch-registry.json"
 EVENTS = ROOT / "data/close-watch-events.json"
 STATE = ROOT / "data/free-intelligence-collector-state.json"
 UA = "Wallet500-FreeIntel/2.1"
-EVM = {"ethereum", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche"}
+EVM = {"ethereum", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc"}
 CHAIN_ALIASES = {"eth": "ethereum", "bnb": "bsc"}
 HONEYPOT_CHAIN_IDS = {
     "ethereum": 1,
@@ -293,6 +294,10 @@ def targets():
         registry = json.loads(BUY_REGISTRY.read_text()) if BUY_REGISTRY.exists() else {"entries": {}}
     except Exception:
         registry = {"entries": {}}
+    try:
+        bootstrap = json.loads(BOOTSTRAP.read_text()) if BOOTSTRAP.exists() else {"candidates": []}
+    except Exception:
+        bootstrap = {"candidates": []}
 
     # Read the durable BUY registry directly so a newly persisted BUY gets full
     # intelligence in this same workflow even before the dynamic bridge refresh.
@@ -305,7 +310,11 @@ def targets():
         t for t in (dyn.get("candidates") or [])
         if isinstance(t, dict) and str(t.get("candidate_type") or "").upper() == "BUY_ZONE"
     ]
-    raw_targets = registry_buy_targets + dynamic_buy_targets + [t for t in (cfg.get("tokens") or []) if isinstance(t, dict)]
+    bootstrap_targets = [
+        t for t in (bootstrap.get("candidates") or [])
+        if isinstance(t, dict) and t.get("bootstrap_actionable_watch") is True
+    ]
+    raw_targets = registry_buy_targets + dynamic_buy_targets + bootstrap_targets + [t for t in (cfg.get("tokens") or []) if isinstance(t, dict)]
     tokens = []
     seen = set()
     for t in raw_targets:
