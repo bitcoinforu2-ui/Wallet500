@@ -83,6 +83,14 @@ def norm(chain: str, value: Any) -> str:
 
 
 def identity_key(row: dict) -> str:
+    existing = str(row.get("identity_key") or "").strip()
+    scope = str(row.get("execution_identity_scope") or "").upper()
+    if scope == "EXACT_CEX_MARKET" or existing.startswith("cex:"):
+        if existing.startswith("cex:"):
+            return existing
+        exchange = str(row.get("exchange") or "").lower().strip()
+        market = str(row.get("currency_pair") or "").upper().strip()
+        return f"cex:{exchange}:{market}" if exchange and market else ""
     chain = chain_name(row.get("chain") or row.get("network"))
     token = norm(chain, row.get("token_address") or row.get("token") or row.get("contract") or row.get("mint"))
     pair = norm(chain, row.get("pair_address") or row.get("pair") or row.get("exact_pair"))
@@ -127,7 +135,7 @@ def eligible_targets(
             rows.append(row)
             continue
 
-        if ctype not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"}:
+        if ctype not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"}:
             continue
         live = market_row(watch_state or {}, key)
         if not isinstance(live, dict) or live.get("quarter_wave_revalidation_armed") is not True:
@@ -137,8 +145,9 @@ def eligible_targets(
         target.update({
             "user_watch_final_buy_lane": True,
             "telegram_policy": "FINAL_BUY_ONLY",
-            "exact_identity_required": True,
-            "exact_pair_required": True,
+            "exact_identity_required": ctype != "CEX_MARKET_DISCOVERY",
+            "exact_pair_required": ctype != "CEX_MARKET_DISCOVERY",
+            "exact_cex_market_required": ctype == "CEX_MARKET_DISCOVERY",
             "quarter_wave_revalidation_lane": True,
             "quarter_wave_anchor_price_usd": live.get("first_verified_price"),
             "quarter_wave_gain_from_anchor_pct": live.get("gain_from_first_verified_pct"),
@@ -168,6 +177,10 @@ def eligible_targets(
             "network": live.get("network"),
             "contract": live.get("contract"),
             "pair": live.get("pair"),
+            "exchange": live.get("exchange"),
+            "currency_pair": live.get("currency_pair"),
+            "execution_identity_scope": live.get("execution_identity_scope"),
+            "identity_key": live.get("identity_key"),
             "dex_url": live.get("dex_url") or "",
             "source": live.get("source") or "Persisted +25% CEX Revalidation",
             "source_url": live.get("source_url") or "",
@@ -175,8 +188,9 @@ def eligible_targets(
             "discovery_price": live.get("discovery_price"),
             "user_watch_final_buy_lane": True,
             "telegram_policy": "FINAL_BUY_ONLY",
-            "exact_identity_required": True,
-            "exact_pair_required": True,
+            "exact_identity_required": str(live.get("execution_identity_scope") or "").upper() != "EXACT_CEX_MARKET",
+            "exact_pair_required": str(live.get("execution_identity_scope") or "").upper() != "EXACT_CEX_MARKET",
+            "exact_cex_market_required": str(live.get("execution_identity_scope") or "").upper() == "EXACT_CEX_MARKET",
             "quarter_wave_revalidation_lane": True,
             "quarter_wave_anchor_price_usd": live.get("first_verified_price"),
             "quarter_wave_gain_from_anchor_pct": live.get("gain_from_first_verified_pct"),
@@ -235,6 +249,15 @@ def _policy(config: dict) -> dict:
         "cex_quarter_wave_max_gainer_rank": 15,
         "cex_quarter_wave_min_microstructure_score": 5.0,
         "cex_quarter_wave_min_current_evidence": 2,
+        "cex_quarter_wave_min_depth_1pct_usd": 3000.0,
+        "cex_quarter_wave_max_orderbook_spread_pct": 1.5,
+        "cex_quarter_wave_min_bid_ask_depth_ratio": 1.05,
+        "cex_market_only_min_turnover_usd": 30000.0,
+        "cex_market_only_min_relative_volume_multiple": 4.0,
+        "cex_market_only_max_gainer_rank": 10,
+        "cex_market_only_min_depth_1pct_usd": 10000.0,
+        "cex_market_only_max_orderbook_spread_pct": 1.0,
+        "cex_market_only_min_bid_ask_depth_ratio": 1.10,
     }
     for k, v in defaults.items():
         p.setdefault(k, v)
@@ -299,6 +322,12 @@ def evaluate(
     cex_rank_raw = num((market or {}).get("positive_gainer_rank"))
     cex_rank = int(cex_rank_raw) if cex_rank_raw is not None and cex_rank_raw > 0 else None
     cex_led = bool((market or {}).get("cex_led_revival"))
+    cex_execution_verified = bool((market or {}).get("cex_execution_verified"))
+    cex_execution_scope = str((market or {}).get("cex_execution_scope") or target.get("execution_identity_scope") or "").upper()
+    cex_orderbook_spread = num((market or {}).get("cex_orderbook_spread_pct"), 999.0) or 999.0
+    cex_depth_1pct = num((market or {}).get("cex_depth_1pct_usd"), 0.0) or 0.0
+    cex_bid_ask_depth_ratio = num((market or {}).get("cex_bid_ask_depth_ratio"), 0.0) or 0.0
+    cex_market_only = cex_execution_scope == "EXACT_CEX_MARKET" or str(target.get("execution_identity_scope") or "").upper() == "EXACT_CEX_MARKET"
 
     if price <= 0:
         blockers.append("PRICE_MISSING")
@@ -354,6 +383,7 @@ def evaluate(
 
     cex_quarter_wave_fast_path = bool(
         quarter_wave_lane
+        and not cex_market_only
         and policy.get("cex_quarter_wave_fast_path_enabled") is True
         and report_verified
         and status == "CURRENT"
@@ -361,12 +391,33 @@ def evaluate(
         and not hard_risks
         and micro >= float(policy["cex_quarter_wave_min_microstructure_score"])
         and spread <= float(policy["max_source_spread_pct"])
+        and cex_execution_verified
+        and cex_depth_1pct >= float(policy["cex_quarter_wave_min_depth_1pct_usd"])
+        and cex_orderbook_spread <= float(policy["cex_quarter_wave_max_orderbook_spread_pct"])
+        and cex_bid_ask_depth_ratio >= float(policy["cex_quarter_wave_min_bid_ask_depth_ratio"])
         and cex_turnover >= float(policy["cex_quarter_wave_min_turnover_usd"])
         and cex_relative_multiple >= float(policy["cex_quarter_wave_min_relative_volume_multiple"])
         and cex_rank is not None
         and cex_rank <= int(policy["cex_quarter_wave_max_gainer_rank"])
         and cex_led
     )
+
+    cex_market_only_fast_path = bool(
+        quarter_wave_lane
+        and cex_market_only
+        and report_verified
+        and cex_execution_verified
+        and not hard_risks
+        and cex_turnover >= float(policy["cex_market_only_min_turnover_usd"])
+        and cex_relative_multiple >= float(policy["cex_market_only_min_relative_volume_multiple"])
+        and cex_rank is not None
+        and cex_rank <= int(policy["cex_market_only_max_gainer_rank"])
+        and cex_depth_1pct >= float(policy["cex_market_only_min_depth_1pct_usd"])
+        and cex_orderbook_spread <= float(policy["cex_market_only_max_orderbook_spread_pct"])
+        and cex_bid_ask_depth_ratio >= float(policy["cex_market_only_min_bid_ask_depth_ratio"])
+        and cex_led
+    )
+
     if cex_quarter_wave_fast_path:
         bypass = {
             "LIQUIDITY_BELOW_FINAL_BUY_FLOOR",
@@ -378,6 +429,28 @@ def evaluate(
         proof.append(
             f"CEX_QUARTER_WAVE_FAST_PATH_VOL_{cex_turnover:.0f}"
             f"_REL_{cex_relative_multiple:.2f}X_RANK_{cex_rank}"
+        )
+
+    if cex_market_only_fast_path:
+        bypass = {
+            "LIQUIDITY_BELOW_FINAL_BUY_FLOOR",
+            "VOLUME_H1_TOO_LOW",
+            "ACTIVITY_H1_TOO_LOW",
+            "BUY_FLOW_NOT_CONFIRMED",
+            "INTELLIGENCE_NOT_CURRENT",
+            "INTELLIGENCE_STALE_OR_UNTIMED",
+            "CURRENT_EVIDENCE_TOO_LOW",
+            "MARKET_MICROSTRUCTURE_NOT_POSITIVE",
+            "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
+        }
+        blockers = [b for b in blockers if b not in bypass]
+        proof.append(
+            f"EXACT_CEX_MARKET_FAST_PATH_VOL_{cex_turnover:.0f}"
+            f"_REL_{cex_relative_multiple:.2f}X_RANK_{cex_rank}"
+        )
+        proof.append(
+            f"CEX_DEPTH_{cex_depth_1pct:.0f}_SPREAD_{cex_orderbook_spread:.3f}PCT"
+            f"_BIDASK_{cex_bid_ask_depth_ratio:.2f}X"
         )
 
     previous_price = num(prior.get("last_price"))
@@ -483,6 +556,7 @@ def evaluate(
         "quarter_wave_revalidation": {
             "enabled_for_target": quarter_wave_lane,
             "cex_fast_path": cex_quarter_wave_fast_path,
+            "cex_market_only_fast_path": cex_market_only_fast_path,
             "anchor_price_usd": quarter_wave_anchor if quarter_wave_anchor > 0 else None,
             "gain_from_anchor_pct": round(quarter_wave_gain, 4) if quarter_wave_gain is not None else None,
             "armed_at": target.get("quarter_wave_armed_at"),
@@ -502,6 +576,11 @@ def evaluate(
             "cex_relative_volume_multiple": cex_relative_multiple,
             "cex_gainer_rank": cex_rank,
             "cex_led_revival": cex_led,
+            "cex_execution_verified": cex_execution_verified,
+            "cex_execution_scope": cex_execution_scope,
+            "cex_orderbook_spread_pct": cex_orderbook_spread,
+            "cex_depth_1pct_usd": cex_depth_1pct,
+            "cex_bid_ask_depth_ratio": cex_bid_ask_depth_ratio,
             "scan_price_gain_pct": round(scan_gain, 4) if scan_gain is not None else None,
             "rebound_from_watch_low_pct": round(rebound, 4) if rebound is not None else None,
         },
@@ -517,7 +596,8 @@ def evaluate(
             "market_microstructure_score": micro,
         },
         "truth_contract": {
-            "exact_chain_contract_pair_required": True,
+            "exact_chain_contract_pair_required": not cex_market_only,
+            "exact_cex_market_identity_required": cex_market_only,
             "two_scan_confirmation_required": required_streak >= 2,
             "telegram_final_buy_only": False,
             "telegram_pre_buy_enabled": bool(policy.get("telegram_pre_buy_enabled")),
