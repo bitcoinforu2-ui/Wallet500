@@ -15,7 +15,7 @@ DYNAMIC = ROOT / "data/unified-dynamic-candidates.json"
 EVENTS = ROOT / "data/close-watch-events.json"
 STATE = ROOT / "data/derivatives-intelligence-state.json"
 ALIASES = {"eth": "ethereum", "bnb": "bsc"}
-EVM = {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche"}
+EVM = {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc"}
 
 
 def now():
