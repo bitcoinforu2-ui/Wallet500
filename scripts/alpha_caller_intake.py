@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 INBOX = ROOT / "data/alpha-caller-inbox.json"
 EVENTS = ROOT / "data/close-watch-events.json"
 OUT = ROOT / "data/alpha-caller-candidates.json"
-UA = "Wallet500-AlphaCallerIntel/1.2"
+UA = "Wallet500-AlphaCallerIntel/1.3"
+LIVE_WINDOW_MINUTES = 180
 
 CHAIN = {
     "eth": "ethereum",
@@ -88,6 +89,8 @@ def main() -> None:
     events = bus.get("events") or []
     results = []
     added = 0
+    current = datetime.now(timezone.utc)
+    stale_skipped = 0
 
     for call in calls:
         caller = str(call.get("caller") or "").strip()
@@ -111,6 +114,17 @@ def main() -> None:
 
         if not caller or not source or not ts:
             result["reasons"].append("MISSING_CALL_IDENTITY_OR_TIMESTAMP")
+
+        if ts is not None:
+            age_minutes = max(0.0, (current - ts).total_seconds() / 60.0)
+            result["age_minutes"] = round(age_minutes, 2)
+            if age_minutes > LIVE_WINDOW_MINUTES:
+                result["status"] = "STALE_HISTORY_SKIPPED"
+                result["reasons"].append("OUTSIDE_LIVE_WINDOW_NO_NETWORK_LOOKUP")
+                results.append(result)
+                stale_skipped += 1
+                continue
+
         if input_network == "evm":
             if not valid_evm(contract):
                 result["reasons"].append("INVALID_EVM_CONTRACT")
@@ -230,6 +244,8 @@ def main() -> None:
                 "gated_candidates": sum(x["status"] == "GATED_RESEARCH_CANDIDATE" for x in results),
                 "confirmation_only": sum(x["status"] == "GATED_CONFIRMATION_ONLY" for x in results),
                 "rejected": sum(x["status"] == "REJECTED" for x in results),
+                "stale_history_skipped": stale_skipped,
+                "live_window_minutes": LIVE_WINDOW_MINUTES,
             }
         )
     )
