@@ -396,13 +396,16 @@ def dynamic_candidates(persisted_tokens=None):
         if not key or key in current_ids:
             continue
         ctype = str(prev.get("candidate_type") or "GATE_SPOT_DISCOVERY").upper()
-        if ctype not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"}:
+        if ctype not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"}:
             ctype = "GATE_SPOT_DISCOVERY"
         out.append({
             "symbol": str(prev.get("symbol") or "CEX").upper(),
             "network": str(prev.get("network") or ""),
             "contract": str(prev.get("contract") or ""),
             "pair": str(prev.get("pair") or ""),
+            "exchange": prev.get("exchange"),
+            "currency_pair": prev.get("currency_pair"),
+            "execution_identity_scope": prev.get("execution_identity_scope"),
             "dex_url": prev.get("dex_url") or "",
             "up_levels": [],
             "down_levels": [],
@@ -413,6 +416,7 @@ def dynamic_candidates(persisted_tokens=None):
             "dynamic_alpha_candidate": False,
             "dynamic_bootstrap_candidate": False,
             "dynamic_spot_candidate": True,
+            "dynamic_cex_market_candidate": ctype == "CEX_MARKET_DISCOVERY",
             "candidate_type": ctype,
             "priority": "HIGH",
             "close_watch": "HIGHEST",
@@ -934,9 +938,12 @@ def main():
 
         current_state = {
             "symbol": sym,
-            "network": t["network"],
-            "contract": t["contract"],
-            "pair": t["pair"],
+            "network": t.get("network") or "",
+            "contract": t.get("contract") or "",
+            "pair": t.get("pair") or "",
+            "exchange": t.get("exchange"),
+            "currency_pair": t.get("currency_pair"),
+            "execution_identity_scope": t.get("execution_identity_scope"),
             "dex_url": t.get("dex_url") or prev.get("dex_url") or "",
             "source": t.get("source") or prev.get("source") or "",
             "source_url": t.get("source_url") or prev.get("source_url") or "",
