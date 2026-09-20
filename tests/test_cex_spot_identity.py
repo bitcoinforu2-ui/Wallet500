@@ -553,6 +553,8 @@ def test_one_learning_recovery_reenters_identity_queue_from_immutable_signal_and
     assert row["persistent_until_exact_identity_resolution"] is True
     assert row["identity_recovery_source"] == "IMMUTABLE_LEARNING_PLUS_CURRENT_CEX_DISCOVERY"
     assert row["identity_recovery_never_actionable"] is True
+    assert row["current_identity_reactivation_priority"] is True
+    assert row["current_identity_reactivation_rank"] == 1
     assert row["leaderboard_best_rank"] == 1
     assert row["markets"][0]["price"] == 0.0044948
     assert row["markets"][0]["volume_24h"] == 4_088_611.11
@@ -563,7 +565,13 @@ def test_one_learning_recovery_reenters_identity_queue_from_immutable_signal_and
         {},
     )
     assert [x["symbol"] for x in selected] == ["ONEUSDT"]
-    assert report["selected_persistent_backlog_only_count"] == 1
+    assert report["current_reactivation_recovery_count"] == 1
+    assert report["selected_current_count"] == 1
+    assert report["selected_persistent_backlog_only_count"] == 0
+    assert report["current_reactivation_capacity_protected"] is True
+    assert report["current_reactivation_selected_count"] == 1
+    assert report["current_reactivation_priority_slot_cap"] == mod.CURRENT_REACTIVATION_PRIORITY_SLOTS
+    assert report["current_reactivation_never_satisfies_identity_or_actionability"] is True
     assert report["ordering_only"] is True
 
 
@@ -589,3 +597,52 @@ def test_learning_recovery_refuses_stale_history_without_current_cex_price():
         }]
     }
     assert mod._learning_recovery_candidates(learning, leaderboard, {"candidates": []}) == []
+
+
+def test_current_learning_reactivation_cannot_be_starved_by_large_persistent_backlog():
+    recovery = {
+        "symbol": "ONEUSDT",
+        "base_symbol": "ONE",
+        "persistent_until_exact_identity_resolution": True,
+        "timing_quality": "IMMUTABLE_LEARNING_RECOVERY",
+        "identity_recovery_source": "IMMUTABLE_LEARNING_PLUS_CURRENT_CEX_DISCOVERY",
+        "identity_recovery_research_only": True,
+        "identity_recovery_never_actionable": True,
+        "current_identity_reactivation_priority": True,
+        "current_identity_reactivation_rank": 1,
+        "leaderboard_best_rank": 1,
+        "first_alert_score": 39,
+        "first_alert_coherent_confirmations": 4,
+        "markets": [{
+            "exchange": "gate",
+            "market_type": "spot",
+            "symbol": "ONEUSDT",
+            "quote_symbol": "USDT",
+            "price": 0.00449,
+            "volume_24h": 4_000_000,
+            "volume_comparable_usd_like": True,
+            "regional_market": False,
+        }],
+    }
+    backlog = [
+        {
+            "symbol": f"OLD{i}USDT",
+            "persistent_until_exact_identity_resolution": True,
+            "first_alert_score": 99,
+            "first_alert_coherent_confirmations": 9,
+        }
+        for i in range(700)
+    ]
+
+    selected, report = mod._build_identity_queue(
+        {"watchlist": [], "shadow_watchlist": []},
+        {"candidates": [recovery, *backlog]},
+        {},
+    )
+
+    symbols = [x["symbol"] for x in selected]
+    assert "ONEUSDT" in symbols
+    assert symbols.index("ONEUSDT") < mod.CURRENT_REACTIVATION_PRIORITY_SLOTS
+    assert report["current_reactivation_recovery_count"] == 1
+    assert report["selected_current_count"] >= 1
+    assert report["selected_persistent_backlog_only_count"] <= mod.MAX_PERSISTENT_PRIORITY_SLOTS
