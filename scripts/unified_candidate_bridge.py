@@ -209,6 +209,11 @@ def main():
             "positive_gainer_rank": row.get("positive_gainer_rank"),
             "dex_liquidity_usd": row.get("dex_liquidity_usd"),
             "identity_key": i[3],
+            "identity_source": row.get("identity_source"),
+            "identity_reason": row.get("identity_reason"),
+            "native_asset_proxy": bool(row.get("native_asset_proxy")),
+            "native_asset_coingecko_id": row.get("native_asset_coingecko_id"),
+            "research_only_identity": bool(row.get("research_only_identity")),
         })
 
     for row in alpha.get("candidates") or []:

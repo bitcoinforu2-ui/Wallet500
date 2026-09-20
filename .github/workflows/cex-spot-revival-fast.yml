@@ -15,12 +15,14 @@ on:
       - 'src/wallet500/cex_spot_identity_fallback.py'
       - 'src/wallet500/market_data.py'
       - 'src/wallet500/cex_early_revival_pending.py'
+      - 'scripts/spot_market_discovery_collector.py'
       - 'data/native-asset-identity-registry.json'
       - 'tests/test_cex_identity.py'
       - 'tests/test_cex_spot_identity.py'
       - 'tests/test_cex_spot_revival.py'
       - 'tests/test_cex_early_revival_pending.py'
       - 'tests/test_cex_identity_certainty_1_5.py'
+      - 'tests/test_spot_market_discovery_native_identity.py'
 
 permissions:
   contents: write
@@ -53,6 +55,10 @@ jobs:
           tests/test_cex_identity_preflight.py
           tests/test_cex_identity.py
           tests/test_multichain_veteran_revival.py
+          tests/test_spot_market_discovery_native_identity.py
+      - name: Refresh current Gate spot discovery before identity queue
+        run: python scripts/spot_market_discovery_collector.py
+
       - name: Refresh veteran Spot momentum, dynamic exact identity and persistent pending lane
         env:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
@@ -185,6 +191,8 @@ jobs:
             data/cex-spot-state.json
             data/cex-spot-state.json.gz
             data/cex-identity-registry.json
+            data/spot-market-discovery.json
+            data/spot-market-discovery-state.json
           )
           snap="$(mktemp -d)"
           for f in "${targets[@]}"; do

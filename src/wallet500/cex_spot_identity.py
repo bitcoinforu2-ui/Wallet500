@@ -13,6 +13,7 @@ MAX_WATCH_CANDIDATES = 60
 MAX_PERSISTENT_PRIORITY_SLOTS = 30
 PERSISTENT_BACKLOG_TARGET_SLOTS = 30
 PREWAVE_IDENTITY_PRIORITY_SLOTS = 12
+CURRENT_REACTIVATION_PRIORITY_SLOTS = 12
 PREWAVE_MIN_VOLUME_ACCEL_PCT = 50.0
 PREWAVE_MIN_VOLUME_WINDOW_MULTIPLE = 3.0
 PREWAVE_MIN_CURRENT_CHANGE_PCT = -10.0
@@ -173,6 +174,8 @@ def _is_prewave_shadow_identity_candidate(row: dict) -> bool:
 
 def _identity_priority(row: dict) -> tuple:
     persistent = bool(row.get("persistent_until_exact_identity_resolution"))
+    current_reactivation = bool(row.get("current_identity_reactivation_priority"))
+    current_rank = int(_num(row.get("current_identity_reactivation_rank") or row.get("leaderboard_best_rank") or 999))
     precursor = row.get("cross_lane_derivatives_precursor") if isinstance(row.get("cross_lane_derivatives_precursor"), dict) else {}
     cross_lane = bool(
         precursor.get("identity_priority") is True
@@ -202,7 +205,19 @@ def _identity_priority(row: dict) -> tuple:
         _num(row.get("volume_acceleration_max_pct")),
         _num(row.get("volume_window_multiple_max")) * 10.0,
     )
-    return (cross_lane, prewave, early, coherent, alert_score, watch_score, prewave_strength, accel, persistent)
+    return (
+        current_reactivation,
+        -current_rank if current_reactivation else -999,
+        cross_lane,
+        prewave,
+        early,
+        coherent,
+        alert_score,
+        watch_score,
+        prewave_strength,
+        accel,
+        persistent,
+    )
 
 
 def _learning_recovery_candidates(learning: dict, leaderboard: dict, discovery: dict) -> list[dict]:
@@ -277,6 +292,8 @@ def _learning_recovery_candidates(learning: dict, leaderboard: dict, discovery: 
                 "identity_recovery_source": "IMMUTABLE_LEARNING_PLUS_CURRENT_CEX_DISCOVERY",
                 "identity_recovery_research_only": True,
                 "identity_recovery_never_actionable": True,
+                "current_identity_reactivation_priority": True,
+                "current_identity_reactivation_rank": None if rank >= 999 else rank,
                 "first_watch_score": watch.get("score"),
                 "first_watch_coherent_confirmations": watch.get("coherent_confirmations"),
                 "first_watch_observed_at": watch.get("observed_at"),
@@ -338,6 +355,13 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
     recent_attempts = _last_attempted_symbols(previous_identity)
     watch_rows = [x for x in (spot.get("watchlist") or []) if isinstance(x, dict)]
     shadow_rows = [x for x in (spot.get("shadow_watchlist") or []) if isinstance(x, dict)]
+    pending_rows = [x for x in (pending.get("candidates") or []) if isinstance(x, dict)]
+    current_recovery_rows = [
+        x for x in pending_rows
+        if x.get("current_identity_reactivation_priority") is True
+        and int(_num(x.get("current_identity_reactivation_rank") or x.get("leaderboard_best_rank") or 999)) <= 10
+        and any(_num(m.get("price")) > 0 for m in (x.get("markets") or []) if isinstance(m, dict))
+    ]
     cross_lane_rows = [
         x for x in shadow_rows
         if isinstance(x.get("cross_lane_derivatives_precursor"), dict)
@@ -347,13 +371,12 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
     prewave_rows = [x for x in shadow_rows if _is_prewave_shadow_identity_candidate(x)]
     current_rows = []
     current_seen = set()
-    for row in cross_lane_rows + prewave_rows + watch_rows:
+    for row in current_recovery_rows + cross_lane_rows + prewave_rows + watch_rows:
         symbol = _base_symbol(row.get("symbol"))
         if not symbol or symbol in current_seen:
             continue
         current_rows.append(row)
         current_seen.add(symbol)
-    pending_rows = [x for x in (pending.get("candidates") or []) if isinstance(x, dict)]
     pending_symbols_seed = {
         _base_symbol(x.get("symbol"))
         for x in pending_rows
@@ -428,6 +451,10 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         row for row in current_ordered
         if _base_symbol(row.get("symbol")) in prewave_symbols
     ]
+    current_reactivation_ordered = [
+        row for row in current_ordered
+        if row.get("current_identity_reactivation_priority") is True
+    ]
     pending_only_symbols = pending_symbols - current_symbols
     pending_only_ordered = sorted(
         [
@@ -459,6 +486,10 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
             added += 1
         return added
 
+    current_reactivation_selected = add_rows(
+        current_reactivation_ordered,
+        CURRENT_REACTIVATION_PRIORITY_SLOTS,
+    )
     prewave_selected = add_rows(prewave_ordered, PREWAVE_IDENTITY_PRIORITY_SLOTS)
     backlog_selected = add_rows(
         pending_only_ordered,
@@ -470,6 +501,10 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
     pending_not_recent = len(pending_only_symbols - recent_attempts)
     report = {
         "current_watch_count": len(current_rows),
+        "current_reactivation_recovery_count": len(current_recovery_rows),
+        "current_reactivation_recovery_symbols": [_base_symbol(x.get("symbol")) for x in current_recovery_rows[:30]],
+        "current_reactivation_selected_count": current_reactivation_selected,
+        "current_reactivation_priority_slot_cap": CURRENT_REACTIVATION_PRIORITY_SLOTS,
         "regular_watch_count": len(watch_rows),
         "cross_lane_identity_priority_count": len(cross_lane_rows),
         "prewave_shadow_identity_priority_count": len(prewave_rows),
@@ -494,6 +529,8 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         "persistent_backlog_selected_this_run": backlog_selected,
         "persistent_backlog_cap_enforced": backlog_selected <= MAX_PERSISTENT_PRIORITY_SLOTS,
         "fresh_watch_capacity_protected": True,
+        "current_reactivation_capacity_protected": True,
+        "current_reactivation_never_satisfies_identity_or_actionability": True,
         "prewave_shadow_capacity_protected": True,
         "one_cycle_backlog_rotation": True,
         "ordering_only": True,
@@ -742,6 +779,8 @@ def run(data_dir: Path = DATA) -> dict:
             "immutable_learning_recovery_identity_priority_only": True,
             "immutable_learning_recovery_requires_current_cex_price": True,
             "immutable_learning_recovery_never_satisfies_identity_or_actionability": True,
+            "current_learning_reactivation_promoted_to_current_identity_queue": True,
+            "current_learning_reactivation_never_satisfies_identity_or_actionability": True,
             "no_hindsight": True,
         },
         "source_watch_count": len(watch),
