@@ -6,6 +6,7 @@ import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -37,7 +38,7 @@ IGNORE_NETWORK_PARTS = (
 )
 STABLE_OR_BASE_SYMBOLS = {
     "USDC", "USDT", "DAI", "USDS", "USDE", "WETH", "ETH",
-    "WBNB", "BNB", "WSOL", "SOL", "WBTC", "BTC",
+    "WBNB", "BNB", "WSOL", "SOL", "WBTC", "BTC", "CIRBTC",
 }
 
 NETWORK_FAST_SCAN_PAGES = max(1, min(8, int(os.getenv("NEW_CHAIN_NETWORK_FAST_SCAN_PAGES", "3"))))
@@ -107,23 +108,38 @@ def parse_dt(value):
         return None
 
 
-def _get(url: str, timeout: int = 20):
+def _get(url: str, timeout: int = 20, attempts: int = 3):
     global _last_http_at
-    wait = HTTP_MIN_INTERVAL_SECONDS - (time.monotonic() - _last_http_at)
-    if wait > 0:
-        time.sleep(wait)
-    try:
-        req = Request(
-            url,
-            headers={
-                "Accept": "application/json;version=20230203",
-                "User-Agent": UA,
-            },
-        )
-        with urlopen(req, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
-    finally:
-        _last_http_at = time.monotonic()
+    last_error = None
+    for attempt in range(max(1, attempts)):
+        wait = HTTP_MIN_INTERVAL_SECONDS - (time.monotonic() - _last_http_at)
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            req = Request(
+                url,
+                headers={
+                    "Accept": "application/json;version=20230203",
+                    "User-Agent": UA,
+                },
+            )
+            with urlopen(req, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            last_error = exc
+            if exc.code != 429 or attempt + 1 >= attempts:
+                raise
+            retry_after = exc.headers.get("Retry-After") if exc.headers else None
+            try:
+                delay = max(8.0, float(retry_after or 0))
+            except Exception:
+                delay = 8.0 * (attempt + 1)
+            time.sleep(delay)
+        finally:
+            _last_http_at = time.monotonic()
+    if last_error:
+        raise last_error
+    raise RuntimeError("HTTP_REQUEST_FAILED")
 
 
 def _extract_token_id(token_id: str, token_obj: dict) -> str:
@@ -343,9 +359,18 @@ def discover_supported_networks(max_pages: int) -> tuple[list[str], list[dict]]:
     for page in range(1, max(1, int(max_pages)) + 1):
         try:
             payload = _get(f"{GECKO}/networks?{urlencode({'page': page})}")
+        except HTTPError as exc:
+            # GeckoTerminal returns HTTP 400 when pagination has moved past the
+            # current network catalog. Treat that as end-of-catalog, not as an
+            # error; continuing only creates a rate-limit storm that can starve
+            # the actual Arc/new-pool scan.
+            if exc.code == 400 and found:
+                break
+            errors.append({"stage": "network_index", "page": page, "error": f"HTTPError:{exc.code}"})
+            break
         except Exception as exc:
             errors.append({"stage": "network_index", "page": page, "error": f"{type(exc).__name__}:{str(exc)[:180]}"})
-            continue
+            break
         data = payload.get("data") if isinstance(payload, dict) else []
         if not isinstance(data, list) or not data:
             break
