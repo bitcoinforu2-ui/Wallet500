@@ -8,6 +8,8 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+import resilient_http
+
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "data/unified-watch-config.json"
 STATE = ROOT / "data/unified-watch-state.json"
@@ -60,8 +62,13 @@ def load_intelligence():
 
 
 def http_json(url):
-    req = urllib.request.Request(url, headers={"accept": "application/json", "user-agent": "Wallet500-UnifiedWatch/1.4"})
-    return json.load(urllib.request.urlopen(req, timeout=20))
+    return resilient_http.request_json(
+        url,
+        timeout=20,
+        attempts=4,
+        cache_ttl=45,
+        user_agent="Wallet500-UnifiedWatch/1.5",
+    )
 
 
 def live_exact_pair(t, max_spread):
@@ -272,6 +279,9 @@ def dynamic_candidates(persisted_tokens=None):
                 "source": c.get("source") or "",
                 "source_url": c.get("source_url") or "",
                 "first_seen_at": c.get("first_seen_at"),
+                "first_seen_price": c.get("first_seen_price"),
+                "first_seen_change_24h_pct": c.get("first_seen_change_24h_pct"),
+                "first_seen_quote_volume_24h_usd": c.get("first_seen_quote_volume_24h_usd"),
                 "discovery_price": c.get("discovery_price"),
                 "change_24h_pct": c.get("change_24h_pct"),
                 "quote_volume_24h_usd": c.get("quote_volume_24h_usd"),
@@ -323,6 +333,9 @@ def dynamic_candidates(persisted_tokens=None):
             "source": prev.get("source") or "Persisted +25% CEX Revalidation",
             "source_url": prev.get("source_url") or "",
             "first_seen_at": prev.get("first_seen_at"),
+            "first_seen_price": prev.get("first_seen_price") or prev.get("quarter_wave_anchor_price"),
+            "first_seen_change_24h_pct": prev.get("first_seen_change_24h_pct"),
+            "first_seen_quote_volume_24h_usd": prev.get("first_seen_quote_volume_24h_usd"),
             "discovery_price": prev.get("discovery_price"),
             "change_24h_pct": prev.get("change_24h_pct"),
             "quote_volume_24h_usd": prev.get("cex_quote_volume_24h_usd"),
@@ -626,46 +639,71 @@ def spot_cex_sensor(t, prev):
     }
 
 
-def quarter_wave_revalidation(prev, live_price, observed_at=None, threshold_pct=QUARTER_WAVE_REVALIDATION_GAIN_PCT):
-    """Persist an immutable exact-pair anchor and arm revalidation after +25%.
-
-    The trigger only opens the strict FINAL-BUY revalidation lane. It never bypasses
-    liquidity, activity, price-coherence, intelligence, hard-risk or confirmation gates.
-    Once armed it stays armed so later scans can catch improving execution quality.
-    """
+def quarter_wave_revalidation(
+    prev,
+    live_price,
+    observed_at=None,
+    threshold_pct=QUARTER_WAVE_REVALIDATION_GAIN_PCT,
+    *,
+    anchor_price=None,
+    anchor_change_24h_pct=None,
+    anchor_at=None,
+):
+    """Arm strict revalidation after a real +25% wave without losing late discoveries."""
     prev = prev if isinstance(prev, dict) else {}
-    try:
-        price = float(live_price or 0)
-    except (TypeError, ValueError):
-        price = 0.0
-    try:
-        anchor = float(prev.get("first_verified_price") or prev.get("price") or 0)
-    except (TypeError, ValueError):
-        anchor = 0.0
+
+    def fnum(value, default=0.0):
+        try:
+            return float(value if value is not None else default)
+        except (TypeError, ValueError):
+            return default
+
+    price = fnum(live_price)
+    threshold = float(threshold_pct)
+    supplied_anchor = fnum(anchor_price)
+    persisted_anchor = fnum(prev.get("quarter_wave_anchor_price"))
+    legacy_anchor = fnum(prev.get("first_verified_price") or prev.get("price"))
+    anchor = persisted_anchor or supplied_anchor or legacy_anchor
     if anchor <= 0 and price > 0:
         anchor = price
 
+    first_change = fnum(
+        prev.get("first_seen_change_24h_pct")
+        if prev.get("first_seen_change_24h_pct") is not None
+        else anchor_change_24h_pct
+    )
     gain_pct = ((price / anchor) - 1.0) * 100.0 if price > 0 and anchor > 0 else 0.0
+    late_discovery = first_change >= threshold
+    gain_trigger = gain_pct >= threshold
     already_armed = bool(prev.get("quarter_wave_revalidation_armed"))
-    armed = bool(already_armed or gain_pct >= float(threshold_pct))
+    armed = bool(already_armed or late_discovery or gain_trigger)
     stamp = str(observed_at or now_iso())
 
+    if already_armed:
+        basis = str(prev.get("quarter_wave_revalidation_basis") or "PERSISTED")
+    elif late_discovery:
+        basis = "FIRST_DISCOVERY_ALREADY_GE_25PCT_24H"
+    elif gain_trigger:
+        basis = "GAIN_GE_25PCT_FROM_IMMUTABLE_FIRST_SEEN_PRICE"
+    else:
+        basis = "WAITING_FOR_25PCT_REVALIDATION"
+
     out = {
+        "quarter_wave_anchor_price": anchor if anchor > 0 else None,
+        "quarter_wave_anchor_at": prev.get("quarter_wave_anchor_at") or anchor_at or observed_at,
         "first_verified_price": anchor if anchor > 0 else None,
-        "first_verified_at": prev.get("first_verified_at") or (stamp if anchor > 0 else None),
+        "first_verified_at": prev.get("first_verified_at") or anchor_at or (stamp if anchor > 0 else None),
+        "first_seen_change_24h_pct": first_change,
         "gain_from_first_verified_pct": round(gain_pct, 4),
-        "quarter_wave_revalidation_threshold_pct": float(threshold_pct),
+        "quarter_wave_revalidation_threshold_pct": threshold,
         "quarter_wave_revalidation_armed": armed,
+        "quarter_wave_revalidation_basis": basis,
+        "quarter_wave_late_discovery": late_discovery,
     }
     if armed:
-        out["quarter_wave_revalidation_armed_at"] = (
-            prev.get("quarter_wave_revalidation_armed_at") or stamp
-        )
-        out["quarter_wave_revalidation_trigger_price"] = (
-            prev.get("quarter_wave_revalidation_trigger_price") or price
-        )
+        out["quarter_wave_revalidation_armed_at"] = prev.get("quarter_wave_revalidation_armed_at") or stamp
+        out["quarter_wave_revalidation_trigger_price"] = prev.get("quarter_wave_revalidation_trigger_price") or price
     return out
-
 
 def main():
     cfg = json.loads(CONFIG.read_text())
@@ -783,7 +821,14 @@ def main():
                 tr.append("ALPHA_CALL_PLUS_BUY_IMBALANCE")
 
         quarter_wave = (
-            quarter_wave_revalidation(prev, live["price"], live["observed_at"])
+            quarter_wave_revalidation(
+                prev,
+                live["price"],
+                live["observed_at"],
+                anchor_price=t.get("first_seen_price") or t.get("discovery_price"),
+                anchor_change_24h_pct=t.get("first_seen_change_24h_pct"),
+                anchor_at=t.get("first_seen_at"),
+            )
             if t.get("dynamic_spot_candidate")
             else {}
         )
@@ -810,6 +855,9 @@ def main():
             "dynamic_alpha_candidate": bool(t.get("dynamic_alpha_candidate")),
             "dynamic_spot_candidate": bool(t.get("dynamic_spot_candidate")),
             "first_seen_at": prev.get("first_seen_at") or t.get("first_seen_at"),
+            "first_seen_price": prev.get("first_seen_price") if prev.get("first_seen_price") is not None else t.get("first_seen_price"),
+            "first_seen_change_24h_pct": prev.get("first_seen_change_24h_pct") if prev.get("first_seen_change_24h_pct") is not None else t.get("first_seen_change_24h_pct"),
+            "first_seen_quote_volume_24h_usd": prev.get("first_seen_quote_volume_24h_usd") if prev.get("first_seen_quote_volume_24h_usd") is not None else t.get("first_seen_quote_volume_24h_usd"),
             "discovery_price": prev.get("discovery_price") if prev.get("discovery_price") is not None else t.get("discovery_price"),
             "cex_quote_volume_24h_usd": cex_sensor["current_volume_usd"],
             "cex_quote_volume_baseline_usd": cex_sensor["baseline_volume_usd"],
@@ -846,6 +894,9 @@ def main():
                 "gain_from_first_verified_pct": current_state.get("gain_from_first_verified_pct"),
                 "armed_at": current_state.get("quarter_wave_revalidation_armed_at"),
                 "trigger_price": current_state.get("quarter_wave_revalidation_trigger_price"),
+                "basis": current_state.get("quarter_wave_revalidation_basis"),
+                "late_discovery": current_state.get("quarter_wave_late_discovery"),
+                "anchor_price": current_state.get("quarter_wave_anchor_price"),
             } if t.get("dynamic_spot_candidate") else None,
             "intelligence": fusion,
         })
