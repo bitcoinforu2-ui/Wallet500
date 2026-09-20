@@ -116,6 +116,11 @@ def test_one_identity_pending_replay_keeps_cex_sensors_alive_without_contract():
     target = targets[0]
     assert target["candidate_type"] == "CEX_IDENTITY_PENDING"
     assert target["coingecko_id"] == "harmony"
+    assert target["asset_identity_verified"] is True
+    assert target["asset_identity_scope"] == "CURATED_NATIVE_ASSET_PLUS_CANONICAL_WRAPPER"
+    assert target["asset_network"] == "harmony"
+    assert target["canonical_wrapper_contract"].lower() == "0xcf664087a5bb0237a0bad6742852ec6c8d69a27a"
+    assert target["execution_identity_verified"] is False
     assert "contract" not in target
     assert "pair" not in target
 

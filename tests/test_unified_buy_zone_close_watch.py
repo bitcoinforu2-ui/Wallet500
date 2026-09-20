@@ -36,6 +36,7 @@ def test_buy_registry_bridges_to_unified_watch_at_highest_priority(tmp_path, mon
     cex_identity = tmp_path / "cex_identity.json"
     alpha = tmp_path / "alpha.json"
     registry = tmp_path / "registry.json"
+    bootstrap = tmp_path / "bootstrap.json"
     output = tmp_path / "dynamic.json"
     events = tmp_path / "events.json"
 
@@ -43,12 +44,14 @@ def test_buy_registry_bridges_to_unified_watch_at_highest_priority(tmp_path, mon
     _write(cex_identity, {"candidates": []})
     _write(alpha, {"candidates": []})
     _write(registry, {"entries": {"ethereum:0xabc:0xpair": _buy_entry()}})
+    _write(bootstrap, {"candidates": []})
     _write(events, {"version": 3, "events": []})
 
     monkeypatch.setattr(bridge, "SPOT", spot)
     monkeypatch.setattr(bridge, "CEX_SPOT_IDENTITY", cex_identity)
     monkeypatch.setattr(bridge, "ALPHA", alpha)
     monkeypatch.setattr(bridge, "BUY_REGISTRY", registry)
+    monkeypatch.setattr(bridge, "BOOTSTRAP", bootstrap)
     monkeypatch.setattr(bridge, "OUT", output)
     monkeypatch.setattr(bridge, "EVENTS", events)
 
@@ -74,14 +77,17 @@ def test_free_intelligence_reads_new_buy_registry_directly(tmp_path, monkeypatch
     cfg = tmp_path / "config.json"
     dynamic = tmp_path / "dynamic.json"
     registry = tmp_path / "registry.json"
+    bootstrap = tmp_path / "bootstrap.json"
 
     _write(cfg, {"tokens": []})
     _write(dynamic, {"candidates": []})
     _write(registry, {"entries": {"ethereum:0xabc:0xpair": _buy_entry()}})
+    _write(bootstrap, {"candidates": []})
 
     monkeypatch.setattr(free, "CFG", cfg)
     monkeypatch.setattr(free, "DYNAMIC", dynamic)
     monkeypatch.setattr(free, "BUY_REGISTRY", registry)
+    monkeypatch.setattr(free, "BOOTSTRAP", bootstrap)
 
     targets = free.targets()
     assert len(targets) == 1

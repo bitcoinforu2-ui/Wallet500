@@ -8,6 +8,7 @@ import unified_watch_engine as engine
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "data/cex-sensor-handoff.json"
 IDENTITY_RADAR = ROOT / "data/cex-spot-identity-radar.json"
+NATIVE_REGISTRY = ROOT / "data/native-asset-identity-registry.json"
 
 
 def _load(path: Path, default):
@@ -30,6 +31,30 @@ def _i(value, default=999) -> int:
         return out if out > 0 else default
     except (TypeError, ValueError):
         return default
+
+
+def _native_asset_identity(symbol: str, coingecko_id: str, registry: dict | None = None) -> dict | None:
+    registry = registry if isinstance(registry, dict) else _load(NATIVE_REGISTRY, {})
+    row = (registry.get("assets") or {}).get(str(coingecko_id or "").strip())
+    if not isinstance(row, dict):
+        return None
+    if str(row.get("symbol") or "").upper().strip() != str(symbol or "").upper().strip():
+        return None
+    if str(row.get("representation_type") or "") != "CANONICAL_WRAPPED_NATIVE":
+        return None
+    chain = str(row.get("chain") or "").lower().strip()
+    wrapper = str(row.get("token_address") or "").strip()
+    if not chain or not wrapper:
+        return None
+    return {
+        "asset_identity_verified": True,
+        "asset_identity_scope": "CURATED_NATIVE_ASSET_PLUS_CANONICAL_WRAPPER",
+        "asset_network": chain,
+        "canonical_wrapper_contract": wrapper,
+        "native_asset_evidence_source": row.get("evidence_source"),
+        "native_asset_evidence_url": row.get("evidence_url"),
+        "execution_identity_verified": False,
+    }
 
 
 def _freshest_milestone(row: dict) -> dict:
@@ -87,6 +112,7 @@ def _pending_identity_candidates(doc: dict | None = None) -> list[dict]:
     prevent identity latency from silencing momentum, volume and rank sensors.
     """
     doc = doc if isinstance(doc, dict) else _load(IDENTITY_RADAR, {})
+    native_registry = _load(NATIVE_REGISTRY, {})
     out = []
     seen = set()
     for row in doc.get("candidates") or []:
@@ -108,6 +134,7 @@ def _pending_identity_candidates(doc: dict | None = None) -> list[dict]:
             continue
         seen.add(key)
         milestone = _freshest_milestone(row)
+        native_identity = _native_asset_identity(symbol, cid, native_registry) or {}
         out.append({
             "symbol": symbol,
             "candidate_type": "CEX_IDENTITY_PENDING",
@@ -117,6 +144,7 @@ def _pending_identity_candidates(doc: dict | None = None) -> list[dict]:
             "identity_status": status,
             "identity_blocker": row.get("identity_blocker"),
             "market_age_verified": True,
+            **native_identity,
             "coherent_confirmations": coherent,
             "quote_volume_24h_usd": _max_cex_turnover(row),
             "positive_gainer_rank": None if rank >= 999 else rank,
@@ -261,13 +289,22 @@ def main() -> int:
             sensor["cex_led"] = True
 
         current = dict(previous)
+        native_asset_verified = target.get("asset_identity_verified") is True
         current.update({
             "symbol": symbol,
             "coingecko_id": cid,
-            "candidate_type": "CEX_IDENTITY_PENDING",
+            "candidate_type": "CEX_NATIVE_ASSET" if native_asset_verified else "CEX_IDENTITY_PENDING",
             "identity_status": target.get("identity_status"),
             "identity_blocker": target.get("identity_blocker"),
-            "identity_resolution_required": True,
+            "asset_identity_verified": native_asset_verified,
+            "asset_identity_scope": target.get("asset_identity_scope"),
+            "asset_network": target.get("asset_network"),
+            "canonical_wrapper_contract": target.get("canonical_wrapper_contract"),
+            "native_asset_evidence_source": target.get("native_asset_evidence_source"),
+            "native_asset_evidence_url": target.get("native_asset_evidence_url"),
+            "asset_identity_resolution_required": not native_asset_verified,
+            "execution_identity_required": True,
+            "execution_identity_verified": False,
             "buy_eligible": False,
             "telegram_delivery_enabled": False,
             "first_seen_at": target.get("first_seen_at") or previous.get("first_seen_at"),
@@ -285,16 +322,21 @@ def main() -> int:
         result = {
             "symbol": symbol,
             "coingecko_id": cid,
-            "status": "CEX_IDENTITY_PENDING_BASELINE",
+            "status": "CEX_NATIVE_ASSET_BASELINE" if native_asset_verified else "CEX_IDENTITY_PENDING_BASELINE",
             "identity_status": current["identity_status"],
             "identity_blocker": current["identity_blocker"],
+            "asset_identity_verified": native_asset_verified,
+            "asset_identity_scope": current.get("asset_identity_scope"),
+            "asset_network": current.get("asset_network"),
+            "canonical_wrapper_contract": current.get("canonical_wrapper_contract"),
+            "execution_identity_verified": False,
             "cex_sensor": sensor,
             "buy_eligible": False,
             "telegram_delivery_enabled": False,
         }
         if sensor["cex_led"] and _should_refresh(previous, sensor):
             observed = engine.now_iso()
-            current["close_watch_mode"] = "CEX_IDENTITY_PENDING_CLOSE_WATCH"
+            current["close_watch_mode"] = "CEX_NATIVE_ASSET_CLOSE_WATCH" if native_asset_verified else "CEX_IDENTITY_PENDING_CLOSE_WATCH"
             current["last_internal_escalation"] = {
                 "sent_at": observed,
                 "cex_reference_price_usd": target.get("cex_reference_price_usd"),
@@ -306,13 +348,16 @@ def main() -> int:
                 "cex_relative_volume_multiple": sensor["baseline_multiple"],
                 "cex_scan_volume_multiple": sensor["scan_multiple"],
                 "positive_gainer_rank": sensor["current_rank"],
-                "identity_resolution_required": True,
+                "asset_identity_verified": native_asset_verified,
+                "asset_identity_scope": current.get("asset_identity_scope"),
+                "execution_identity_required": True,
+                "execution_identity_verified": False,
                 "buy_eligible": False,
                 "internal_only": True,
                 "telegram_suppressed_by_policy": "IDENTITY_PENDING_NEVER_USER_FACING",
             }
             result.update({
-                "status": "CEX_IDENTITY_PENDING_CLOSE_WATCH",
+                "status": "CEX_NATIVE_ASSET_CLOSE_WATCH" if native_asset_verified else "CEX_IDENTITY_PENDING_CLOSE_WATCH",
                 "observed_at": observed,
                 "cex_reference_price_usd": target.get("cex_reference_price_usd"),
             })
@@ -323,15 +368,17 @@ def main() -> int:
     state["updated_at"] = engine.now_iso()
     engine.STATE.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n")
     report = {
-        "version": 2,
+        "version": 3,
         "generated_at": engine.now_iso(),
-        "mode": "CEX_SENSOR_FAST_HANDOFF_INTERNAL_ONLY_PLUS_IDENTITY_PENDING",
+        "mode": "CEX_SENSOR_FAST_HANDOFF_WITH_ASSET_IDENTITY_EXECUTION_SEPARATION",
         "evaluated_spot_candidates": evaluated,
         "escalated_close_watch": escalated,
         "pending_exact_pair": pending_exact_pair,
         "identity_pending_evaluated": identity_pending_evaluated,
         "identity_pending_escalated": identity_pending_escalated,
         "identity_pending_buy_eligible": False,
+        "asset_identity_close_watch_buy_eligible": False,
+        "asset_identity_does_not_satisfy_execution_identity": True,
         "telegram_delivery_enabled": False,
         "telegram_policy": "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE",
         "rows": rows,
