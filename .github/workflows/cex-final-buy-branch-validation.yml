@@ -3,6 +3,17 @@ name: Wallet500 CEX Final Buy Branch Validation
 on:
   pull_request:
     branches: [main]
+    paths:
+      - 'scripts/cex_final_buy_lane.py'
+      - 'scripts/user_watch_final_buy.py'
+      - 'scripts/test_cex_final_buy_lane_contract.py'
+      - 'scripts/test_user_watch_final_buy_contract.py'
+      - 'scripts/spot_cex_fast_handoff.py'
+      - 'src/wallet500/cex_fast_promotion.py'
+      - 'src/wallet500/cex_spot_identity.py'
+      - 'data/unified-watch-config.json'
+      - '.github/workflows/unified-watch-engine.yml'
+      - '.github/workflows/cex-final-buy-branch-validation.yml'
   push:
     branches:
       - 'fix/cex-final-buy-execution-lane-v2'
@@ -29,6 +40,8 @@ jobs:
           python scripts/test_cex_final_buy_lane_contract.py
           python scripts/test_user_watch_final_buy_contract.py
       - name: Run adjacent CEX and Unified Watch regression tests
+        env:
+          PYTHONPATH: scripts
         run: |
           pytest -q \
             tests/test_cex_fast_promotion.py \
