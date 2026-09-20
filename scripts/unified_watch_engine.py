@@ -52,6 +52,14 @@ def exact_identity_key(row):
     return f"{chain}:{token}:{pair}" if chain and token and pair else ""
 
 
+def candidate_identity_key(row):
+    if str(row.get("execution_identity_scope") or "").upper() == "EXACT_CEX_MARKET":
+        exchange = str(row.get("exchange") or "").lower().strip()
+        market = str(row.get("currency_pair") or "").upper().strip()
+        return f"cex:{exchange}:{market}" if exchange and market else ""
+    return exact_identity_key(row)
+
+
 def load_intelligence():
     try:
         doc = json.loads(INTEL.read_text()) if INTEL.exists() else {}
@@ -69,6 +77,80 @@ def http_json(url):
         cache_ttl=45,
         user_agent="Wallet500-UnifiedWatch/1.5",
     )
+
+
+def gate_execution_snapshot(currency_pair):
+    market = str(currency_pair or "").upper().strip()
+    if not market or not market.endswith("_USDT"):
+        raise RuntimeError("GATE_EXACT_MARKET_IDENTITY_MISSING")
+    meta = http_json(f"https://api.gateio.ws/api/v4/spot/currency_pairs/{market}")
+    if str(meta.get("id") or "").upper() != market:
+        raise RuntimeError("GATE_MARKET_IDENTITY_MISMATCH")
+    if str(meta.get("trade_status") or "tradable").lower() != "tradable":
+        raise RuntimeError("GATE_MARKET_NOT_TRADABLE")
+    if str(meta.get("type") or "normal").lower() != "normal":
+        raise RuntimeError("GATE_MARKET_NOT_NORMAL_SPOT")
+
+    tickers = http_json(f"https://api.gateio.ws/api/v4/spot/tickers?currency_pair={market}")
+    ticker = tickers[0] if isinstance(tickers, list) and tickers else {}
+    if str(ticker.get("currency_pair") or "").upper() != market:
+        raise RuntimeError("GATE_TICKER_IDENTITY_MISMATCH")
+    last = float(ticker.get("last") or 0)
+    turnover = float(ticker.get("quote_volume") or 0)
+    change24 = float(ticker.get("change_percentage") or 0)
+    if last <= 0:
+        raise RuntimeError("GATE_PRICE_MISSING")
+
+    book = http_json(f"https://api.gateio.ws/api/v4/spot/order_book?currency_pair={market}&limit=100")
+    bids = book.get("bids") or []
+    asks = book.get("asks") or []
+    if not bids or not asks:
+        raise RuntimeError("GATE_ORDER_BOOK_MISSING")
+    best_bid = float(bids[0][0]); best_ask = float(asks[0][0])
+    if best_bid <= 0 or best_ask <= 0 or best_ask < best_bid:
+        raise RuntimeError("GATE_ORDER_BOOK_INVALID")
+    mid = (best_bid + best_ask) / 2.0
+    spread_pct = ((best_ask - best_bid) / mid) * 100.0 if mid > 0 else 999.0
+
+    bid_floor = mid * 0.99
+    ask_ceiling = mid * 1.01
+    bid_depth = sum(float(p) * float(q) for p, q in bids if float(p) >= bid_floor)
+    ask_depth = sum(float(p) * float(q) for p, q in asks if float(p) <= ask_ceiling)
+    total_depth = bid_depth + ask_depth
+    imbalance = (bid_depth + 1.0) / (ask_depth + 1.0)
+
+    return {
+        "cex_execution_verified": True,
+        "cex_execution_scope": "EXACT_CEX_MARKET",
+        "cex_exchange": "gate",
+        "cex_currency_pair": market,
+        "cex_price": last,
+        "cex_turnover_24h_usd": turnover,
+        "cex_change_24h_pct": change24,
+        "cex_orderbook_spread_pct": spread_pct,
+        "cex_bid_depth_1pct_usd": bid_depth,
+        "cex_ask_depth_1pct_usd": ask_depth,
+        "cex_depth_1pct_usd": total_depth,
+        "cex_bid_ask_depth_ratio": imbalance,
+    }
+
+
+def live_cex_market(t):
+    snap = gate_execution_snapshot(t.get("currency_pair"))
+    depth = float(snap.get("cex_depth_1pct_usd") or 0)
+    return {
+        "price": float(snap["cex_price"]),
+        "liquidity": depth,
+        "volume_h1": 0.0,
+        "volume_h24": float(snap.get("cex_turnover_24h_usd") or 0),
+        "buys_h1": 0,
+        "sells_h1": 0,
+        "change_h1": 0.0,
+        "change_h24": float(snap.get("cex_change_24h_pct") or 0),
+        "spread_pct": float(snap.get("cex_orderbook_spread_pct") or 999),
+        "observed_at": now_iso(),
+        **snap,
+    }
 
 
 def live_exact_pair(t, max_spread):
@@ -189,14 +271,17 @@ def dynamic_candidates(persisted_tokens=None):
     seen = set()
     for c in d.get("candidates") or []:
         ctype = str(c.get("candidate_type") or "").upper()
-        if ctype not in {"BUY_ZONE", "PUBLIC_ALPHA", "GATE_SPOT_DISCOVERY", "CEX_SPOT_DISCOVERY", "NEW_CHAIN_BOOTSTRAP"}:
+        if ctype not in {"BUY_ZONE", "PUBLIC_ALPHA", "GATE_SPOT_DISCOVERY", "CEX_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY", "NEW_CHAIN_BOOTSTRAP"}:
             continue
         ca = str(c.get("contract") or "")
         pair = str(c.get("pair") or "")
         network = str(c.get("network") or "")
-        if not ca or not pair or not network:
-            continue
-        key = exact_identity_key({"network": network, "contract": ca, "pair": pair})
+        if ctype == "CEX_MARKET_DISCOVERY":
+            key = candidate_identity_key(c)
+        else:
+            if not ca or not pair or not network:
+                continue
+            key = exact_identity_key({"network": network, "contract": ca, "pair": pair})
         if not key or key in seen:
             continue
         seen.add(key)
@@ -212,7 +297,7 @@ def dynamic_candidates(persisted_tokens=None):
     buy_zone = [x for x in rows if x["_candidate_type"] == "BUY_ZONE"]
     spot = [
         x for x in rows
-        if x["_candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"}
+        if x["_candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"}
     ]
     bootstrap = [x for x in rows if x["_candidate_type"] == "NEW_CHAIN_BOOTSTRAP"]
     bootstrap = sorted(
@@ -255,6 +340,9 @@ def dynamic_candidates(persisted_tokens=None):
                 "network": str(c.get("network") or ""),
                 "contract": str(c.get("contract") or ""),
                 "pair": str(c.get("pair") or ""),
+                "exchange": c.get("exchange"),
+                "currency_pair": c.get("currency_pair"),
+                "execution_identity_scope": c.get("execution_identity_scope"),
                 "dex_url": c.get("dex_url") or "",
                 "up_levels": [],
                 "down_levels": [],
@@ -264,7 +352,8 @@ def dynamic_candidates(persisted_tokens=None):
                 "dynamic_buy_candidate": ctype == "BUY_ZONE",
                 "dynamic_alpha_candidate": ctype == "PUBLIC_ALPHA",
                 "dynamic_bootstrap_candidate": ctype == "NEW_CHAIN_BOOTSTRAP",
-                "dynamic_spot_candidate": ctype in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"},
+                "dynamic_spot_candidate": ctype in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"},
+                "dynamic_cex_market_candidate": ctype == "CEX_MARKET_DISCOVERY",
                 "candidate_type": ctype,
                 "priority": c.get("priority") or ("HIGHEST" if ctype == "BUY_ZONE" else None),
                 "close_watch": c.get("close_watch") or ("HIGHEST" if ctype == "BUY_ZONE" else None),
@@ -295,7 +384,7 @@ def dynamic_candidates(persisted_tokens=None):
 
     # Once a CEX spot candidate crosses the +25% verified-price threshold it must
     # stay watched even if it later drops out of the live mover leaderboard.
-    current_ids = {exact_identity_key(x) for x in out if exact_identity_key(x)}
+    current_ids = {candidate_identity_key(x) for x in out if candidate_identity_key(x)}
     for prev in (persisted_tokens or {}).values():
         if not isinstance(prev, dict):
             continue
@@ -303,7 +392,7 @@ def dynamic_candidates(persisted_tokens=None):
             continue
         if prev.get("quarter_wave_revalidation_armed") is not True:
             continue
-        key = exact_identity_key(prev)
+        key = candidate_identity_key(prev)
         if not key or key in current_ids:
             continue
         ctype = str(prev.get("candidate_type") or "GATE_SPOT_DISCOVERY").upper()
@@ -752,7 +841,7 @@ def main():
             used.add(identity)
 
     for item in dynamic_all:
-        identity = exact_identity_key(item)
+        identity = candidate_identity_key(item)
         if identity and identity not in used:
             tokens.append(item)
             used.add(identity)
@@ -767,7 +856,8 @@ def main():
 
     for t in tokens:
         sym = t["symbol"].upper()
-        identity_key = exact_identity_key(t)
+        identity_key = candidate_identity_key(t)
+        chain_identity_key = exact_identity_key(t)
         if t.get("dynamic_buy_candidate"):
             key = f"BUY:{identity_key}"
         elif t.get("dynamic_alpha_candidate"):
@@ -778,10 +868,19 @@ def main():
             key = sym
         prev = st.get(key) or {}
         last_alert = prev.get("last_alert") or {}
-        fusion = fusion_summary(intel_index.get(identity_key), notable_min_raw=notable_min_raw)
+        fusion = fusion_summary(intel_index.get(chain_identity_key), notable_min_raw=notable_min_raw)
 
         try:
-            live = live_exact_pair(t, spread)
+            if t.get("dynamic_cex_market_candidate"):
+                live = live_cex_market(t)
+            else:
+                live = live_exact_pair(t, spread)
+                if str(t.get("exchange") or "").lower() == "gate" and t.get("currency_pair"):
+                    try:
+                        live.update(gate_execution_snapshot(t.get("currency_pair")))
+                    except Exception as cex_exc:
+                        live["cex_execution_verified"] = False
+                        live["cex_execution_error"] = f"{type(cex_exc).__name__}:{str(cex_exc)[:160]}"
         except Exception as e:
             print(key, "UNVERIFIED", str(e), "INTELLIGENCE", fusion)
             intel_rows.append({
@@ -850,6 +949,13 @@ def main():
             "sells_h1": live["sells_h1"],
             "spread_pct": live["spread_pct"],
             "observed_at": live["observed_at"],
+            "cex_execution_verified": live.get("cex_execution_verified"),
+            "cex_execution_scope": live.get("cex_execution_scope"),
+            "cex_orderbook_spread_pct": live.get("cex_orderbook_spread_pct"),
+            "cex_bid_depth_1pct_usd": live.get("cex_bid_depth_1pct_usd"),
+            "cex_ask_depth_1pct_usd": live.get("cex_ask_depth_1pct_usd"),
+            "cex_depth_1pct_usd": live.get("cex_depth_1pct_usd"),
+            "cex_bid_ask_depth_ratio": live.get("cex_bid_ask_depth_ratio"),
             "candidate_type": t.get("candidate_type") or "CONFIGURED",
             "dynamic_buy_candidate": bool(t.get("dynamic_buy_candidate")),
             "dynamic_alpha_candidate": bool(t.get("dynamic_alpha_candidate")),
