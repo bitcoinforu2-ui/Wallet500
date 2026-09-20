@@ -218,6 +218,111 @@ def main() -> None:
     assert persisted_selected[0]["symbol"] == "MGT"
     assert persisted_selected[0]["quarter_wave_revalidation_lane"] is True
 
+    # Strong exact CEX execution can replace a weak DEX execution floor, but it
+    # still needs current intelligence, no hard risk and the normal two-scan confirm.
+    mgt_target = dict(selected_cex[0])
+    mgt_market = {
+        "identity_key": cex_key,
+        "price": 0.000125,
+        "liquidity": 2000,
+        "volume_h1": 100,
+        "buys_h1": 8,
+        "sells_h1": 4,
+        "spread_pct": 0.2,
+        "observed_at": t2.isoformat(),
+        "cex_quote_volume_24h_usd": 30000,
+        "cex_relative_volume_multiple": 10.0,
+        "positive_gainer_rank": 1,
+        "cex_led_revival": True,
+        "cex_execution_verified": True,
+        "cex_execution_scope": "EXACT_CEX_MARKET",
+        "cex_orderbook_spread_pct": 0.25,
+        "cex_depth_1pct_usd": 12000,
+        "cex_bid_ask_depth_ratio": 1.30,
+    }
+    mgt_obs = observed(score=15, families=1)
+    mgt_obs["identity_key"] = cex_key
+    mgt_obs["intelligence"]["current_evidence_count"] = 4
+    mgt_obs["intelligence"]["family_scores"]["market_microstructure"] = 15
+    mgt_q, _ = gate.evaluate(
+        mgt_target,
+        mgt_market,
+        mgt_obs,
+        {"last_price": 0.00012, "watch_low_price": 0.00010},
+        POLICY,
+        now=t2,
+    )
+    assert mgt_q["quarter_wave_revalidation"]["cex_fast_path"] is True
+    assert "LIQUIDITY_BELOW_FINAL_BUY_FLOOR" not in mgt_q["blockers"]
+    assert "VOLUME_H1_TOO_LOW" not in mgt_q["blockers"]
+    assert "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET" not in mgt_q["blockers"]
+    assert mgt_q["pre_buy"] is True
+
+    # Unsupported-chain/BRC-style assets are not discarded: an exact Gate market
+    # identity can qualify on a stricter order-book path without inventing a DEX CA.
+    trio_target = {
+        "candidate_type": "CEX_MARKET_DISCOVERY",
+        "symbol": "TRIO",
+        "exchange": "gate",
+        "currency_pair": "TRIO_USDT",
+        "execution_identity_scope": "EXACT_CEX_MARKET",
+        "identity_key": "cex:gate:TRIO_USDT",
+        "quarter_wave_revalidation_lane": True,
+        "quarter_wave_anchor_price_usd": 0.0100,
+        "quarter_wave_gain_from_anchor_pct": 35.0,
+    }
+    trio_key = gate.identity_key(trio_target)
+    assert trio_key == "cex:gate:TRIO_USDT"
+    trio_market = {
+        "identity_key": trio_key,
+        "price": 0.0115,
+        "liquidity": 15000,
+        "volume_h1": 0,
+        "buys_h1": 0,
+        "sells_h1": 0,
+        "spread_pct": 0.40,
+        "observed_at": t2.isoformat(),
+        "cex_quote_volume_24h_usd": 60000,
+        "cex_relative_volume_multiple": 5.0,
+        "positive_gainer_rank": 5,
+        "cex_led_revival": True,
+        "cex_execution_verified": True,
+        "cex_execution_scope": "EXACT_CEX_MARKET",
+        "cex_orderbook_spread_pct": 0.40,
+        "cex_depth_1pct_usd": 25000,
+        "cex_bid_ask_depth_ratio": 1.25,
+    }
+    trio_obs = {
+        "identity_key": trio_key,
+        "market_verified": True,
+        "_report_age_seconds": 0,
+        "intelligence": {
+            "status": "NOT_AVAILABLE",
+            "score": 0,
+            "families": 0,
+            "current_evidence_count": 0,
+            "evidence_age_minutes": None,
+            "hard_risks": [],
+            "family_scores": {},
+        },
+    }
+    trio_q, trio_s1 = gate.evaluate(
+        trio_target,
+        trio_market,
+        trio_obs,
+        {"last_price": 0.0110, "watch_low_price": 0.0100},
+        POLICY,
+        now=t2,
+    )
+    assert trio_q["quarter_wave_revalidation"]["cex_market_only_fast_path"] is True
+    assert trio_q["pre_buy"] is True
+    assert "INTELLIGENCE_NOT_CURRENT" not in trio_q["blockers"]
+
+    trio_market2 = dict(trio_market, price=0.0117, observed_at=t3.isoformat())
+    trio_buy, _ = gate.evaluate(trio_target, trio_market2, trio_obs, trio_s1, POLICY, now=t3)
+    assert trio_buy["recommended_action"] == "BUY"
+    assert trio_buy["alert"] is True
+
     print("USER_WATCH_FINAL_BUY_CONTRACT_OK")
 
 
