@@ -158,7 +158,7 @@ def _pending_identity_candidates(doc: dict | None = None) -> list[dict]:
 
 
 def _spot_key(target: dict) -> str:
-    identity = engine.exact_identity_key(target)
+    identity = engine.candidate_identity_key(target)
     return f"SPOT:{identity}" if identity else ""
 
 
@@ -187,7 +187,7 @@ def main() -> int:
     identity_pending_escalated = 0
     rows = []
 
-    for target in engine.dynamic_candidates():
+    for target in engine.dynamic_candidates(tokens):
         if not target.get("dynamic_spot_candidate"):
             continue
         key = _spot_key(target)
@@ -203,10 +203,17 @@ def main() -> int:
             "network": target.get("network"),
             "contract": target.get("contract"),
             "pair": target.get("pair"),
-            "identity_key": engine.exact_identity_key(target),
+            "exchange": target.get("exchange"),
+            "currency_pair": target.get("currency_pair"),
+            "execution_identity_scope": target.get("execution_identity_scope"),
+            "identity_key": engine.candidate_identity_key(target),
             "candidate_type": target.get("candidate_type") or "GATE_SPOT_DISCOVERY",
             "dynamic_spot_candidate": True,
-            "first_seen_at": target.get("first_seen_at") or previous.get("first_seen_at"),
+            "dynamic_cex_market_candidate": bool(target.get("dynamic_cex_market_candidate")),
+            "first_seen_at": previous.get("first_seen_at") or target.get("first_seen_at"),
+            "first_seen_price": previous.get("first_seen_price") if previous.get("first_seen_price") is not None else target.get("first_seen_price"),
+            "first_seen_change_24h_pct": previous.get("first_seen_change_24h_pct") if previous.get("first_seen_change_24h_pct") is not None else target.get("first_seen_change_24h_pct"),
+            "first_seen_quote_volume_24h_usd": previous.get("first_seen_quote_volume_24h_usd") if previous.get("first_seen_quote_volume_24h_usd") is not None else target.get("first_seen_quote_volume_24h_usd"),
             "discovery_price": previous.get("discovery_price") if previous.get("discovery_price") is not None else target.get("discovery_price"),
             "cex_quote_volume_24h_usd": sensor["current_volume_usd"],
             "cex_quote_volume_baseline_usd": sensor["baseline_volume_usd"],
@@ -225,9 +232,23 @@ def main() -> int:
 
         if sensor["cex_led"] and _should_refresh(previous, sensor):
             try:
-                live = engine.live_exact_pair(target, spread)
+                if target.get("dynamic_cex_market_candidate"):
+                    live = engine.live_cex_market(target)
+                else:
+                    live = engine.live_exact_pair(target, spread)
+                    if str(target.get("exchange") or "").lower() == "gate" and target.get("currency_pair"):
+                        try:
+                            live.update(engine.gate_execution_snapshot(target.get("currency_pair")))
+                        except Exception as cex_exc:
+                            live["cex_execution_verified"] = False
+                            live["cex_execution_error"] = f"{type(cex_exc).__name__}:{str(cex_exc)[:160]}"
                 quarter_wave = engine.quarter_wave_revalidation(
-                    previous, live["price"], live["observed_at"]
+                    previous,
+                    live["price"],
+                    live["observed_at"],
+                    anchor_price=target.get("first_seen_price") or target.get("discovery_price"),
+                    anchor_change_24h_pct=target.get("first_seen_change_24h_pct"),
+                    anchor_at=target.get("first_seen_at"),
                 )
                 current.update({
                     "price": live["price"],
@@ -238,6 +259,13 @@ def main() -> int:
                     "sells_h1": live["sells_h1"],
                     "spread_pct": live["spread_pct"],
                     "observed_at": live["observed_at"],
+                    "cex_execution_verified": live.get("cex_execution_verified"),
+                    "cex_execution_scope": live.get("cex_execution_scope"),
+                    "cex_orderbook_spread_pct": live.get("cex_orderbook_spread_pct"),
+                    "cex_bid_depth_1pct_usd": live.get("cex_bid_depth_1pct_usd"),
+                    "cex_ask_depth_1pct_usd": live.get("cex_ask_depth_1pct_usd"),
+                    "cex_depth_1pct_usd": live.get("cex_depth_1pct_usd"),
+                    "cex_bid_ask_depth_ratio": live.get("cex_bid_ask_depth_ratio"),
                     "close_watch_mode": "CEX_LED_REVIVAL",
                     **quarter_wave,
                 })
@@ -270,6 +298,11 @@ def main() -> int:
                         "gain_from_first_verified_pct"
                     ),
                     "first_verified_price": current.get("first_verified_price"),
+                    "quarter_wave_revalidation_basis": current.get("quarter_wave_revalidation_basis"),
+                    "cex_execution_verified": current.get("cex_execution_verified"),
+                    "cex_depth_1pct_usd": current.get("cex_depth_1pct_usd"),
+                    "cex_orderbook_spread_pct": current.get("cex_orderbook_spread_pct"),
+                    "cex_bid_ask_depth_ratio": current.get("cex_bid_ask_depth_ratio"),
                 })
                 escalated += 1
             except Exception as exc:
