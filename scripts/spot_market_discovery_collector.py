@@ -344,9 +344,15 @@ def run() -> dict:
         key = row["currency_pair"]
         old = old_pairs.get(key) or {}
         first_seen = str(old.get("first_seen_at") or ts.isoformat())
+        first_seen_price = num(old.get("first_seen_price"), row["discovery_price"])
+        first_seen_change = num(old.get("first_seen_change_24h_pct"), row["change_24h_pct"])
+        first_seen_volume = num(old.get("first_seen_quote_volume_24h_usd"), row["quote_volume_24h_usd"])
         is_new = key not in old_pairs
         row["positive_gainer_rank"] = rank.get(key)
         row["first_seen_at"] = first_seen
+        row["first_seen_price"] = first_seen_price
+        row["first_seen_change_24h_pct"] = first_seen_change
+        row["first_seen_quote_volume_24h_usd"] = first_seen_volume
         row["observed_at"] = ts.isoformat()
         row["new_first_seen"] = is_new
         row["forced_cex_watch"] = key in configured_watch
@@ -363,6 +369,9 @@ def run() -> dict:
         new_pairs[key] = {
             "symbol": row["symbol"],
             "first_seen_at": first_seen,
+            "first_seen_price": first_seen_price,
+            "first_seen_change_24h_pct": first_seen_change,
+            "first_seen_quote_volume_24h_usd": first_seen_volume,
             "last_seen_at": ts.isoformat(),
             "last_price": row["discovery_price"],
             "last_change_24h_pct": row["change_24h_pct"],
