@@ -756,7 +756,9 @@ def quarter_wave_revalidation(
     supplied_anchor = fnum(anchor_price)
     persisted_anchor = fnum(prev.get("quarter_wave_anchor_price"))
     legacy_anchor = fnum(prev.get("first_verified_price") or prev.get("price"))
-    anchor = persisted_anchor or supplied_anchor or legacy_anchor
+    # Repository first-seen evidence is the canonical anchor and may repair
+    # a bad legacy anchor that was created after the move had already started.
+    anchor = supplied_anchor or persisted_anchor or legacy_anchor
     if anchor <= 0 and price > 0:
         anchor = price
 
