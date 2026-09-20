@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import cex_final_buy_lane as cex_lane
+
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "data/unified-watch-config.json"
 WATCH_STATE = ROOT / "data/unified-watch-state.json"
@@ -497,143 +499,202 @@ def send_telegram(text: str) -> None:
 def main() -> int:
     config = load(CONFIG, {})
     policy = _policy(config)
-    if policy.get("enabled") is not True:
+    cex_policy = cex_lane.policy(config)
+    if policy.get("enabled") is not True and cex_policy.get("enabled") is not True:
         write(REPORT, {
-            "version": 1,
+            "version": 2,
             "generated_at": now_iso(),
             "mode": POLICY_MODE,
             "status": "DISABLED",
             "targets": [],
+            "cex_decisions": [],
         })
         return 0
 
     watch_state = load(WATCH_STATE, {})
     watch_report = load(WATCH_REPORT, {})
     dynamic = load(DYNAMIC, {"candidates": []})
-    persistent = load(STATE, {"version": 1, "targets": {}})
-
-    upstream = os.environ.get("WALLET500_MARKET_WATCH_OUTCOME", "success").strip().lower()
-    if upstream != "success":
-        write(STATE, persistent)
-        write(REPORT, {
-            "version": 1,
-            "generated_at": now_iso(),
-            "mode": POLICY_MODE,
-            "status": "BLOCKED_UPSTREAM_MARKET_WATCH",
-            "upstream_outcome": upstream,
-            "configured_targets": len(eligible_targets(config, dynamic)),
-            "buy_zone_count": 0,
-            "pre_buy_count": 0,
-            "pre_buy_delivered_count": 0,
-            "delivered_count": 0,
-            "error_count": 0,
-            "decisions": [],
-            "truth_contract": {
-                "fail_closed_on_upstream_failure": True,
-                "telegram_final_buy_only": False,
-                "telegram_pre_buy_enabled": bool(policy.get("telegram_pre_buy_enabled")),
-                "automatic_trade": False,
-            },
-        })
-        print(json.dumps({"status": "BLOCKED_UPSTREAM_MARKET_WATCH", "upstream_outcome": upstream}))
-        return 0
+    persistent = load(STATE, {"version": 2, "targets": {}, "cex_targets": {}})
     target_state = persistent.get("targets") if isinstance(persistent.get("targets"), dict) else {}
     target_state = dict(target_state)
+    prior_cex_state = persistent.get("cex_targets") if isinstance(persistent.get("cex_targets"), dict) else {}
+    prior_cex_state = dict(prior_cex_state)
+
+    upstream = os.environ.get("WALLET500_MARKET_WATCH_OUTCOME", "success").strip().lower()
+    dex_lane_enabled = upstream == "success"
 
     now = now_utc()
     top_report_age = age_seconds(watch_report.get("updated_at"), now)
-    decisions: list[dict] = []
+    dex_decisions: list[dict] = []
+    cex_decisions: list[dict] = []
     delivered: list[str] = []
     pre_buy_delivered: list[str] = []
     errors: list[dict] = []
 
-    for target in eligible_targets(config, dynamic):
-        key = identity_key(target)
-        m = market_row(watch_state, key)
-        rr = report_row(watch_report, key)
-        if rr is not None:
-            rr = dict(rr)
-            rr["_report_age_seconds"] = top_report_age
-        decision, next_state = evaluate(
-            target, m, rr, target_state.get(key), policy, now=now
-        )
+    if dex_lane_enabled:
+        for target in eligible_targets(config, dynamic):
+            key = identity_key(target)
+            m = market_row(watch_state, key)
+            rr = report_row(watch_report, key)
+            if rr is not None:
+                rr = dict(rr)
+                rr["_report_age_seconds"] = top_report_age
+            decision, next_state = evaluate(
+                target, m, rr, target_state.get(key), policy, now=now
+            )
+
+            if decision.get("pre_buy_alert") is True:
+                try:
+                    send_telegram(telegram_message(target, decision))
+                    pre_buy_delivered.append(key)
+                    next_state["last_pre_buy_delivery_status"] = "DELIVERED"
+                except Exception as exc:
+                    next_state["pre_buy_armed"] = True
+                    next_state.pop("last_pre_buy_alert_at", None)
+                    next_state.pop("last_pre_buy_alert_price", None)
+                    next_state["pre_buy_episode_count"] = int((target_state.get(key) or {}).get("pre_buy_episode_count") or 0)
+                    next_state["last_pre_buy_delivery_status"] = f"ERROR:{type(exc).__name__}"
+                    decision["pre_buy_alert"] = False
+                    decision["pre_buy_delivery_error"] = f"{type(exc).__name__}:{str(exc)[:180]}"
+                    errors.append({"identity_key": key, "execution_mode": "DEX", "event": "PRE_BUY", "error": decision["pre_buy_delivery_error"]})
+
+            if decision.get("alert") is True:
+                try:
+                    send_telegram(telegram_message(target, decision))
+                    delivered.append(key)
+                    next_state["last_delivery_status"] = "DELIVERED"
+                except Exception as exc:
+                    next_state["armed"] = True
+                    next_state.pop("last_alert_at", None)
+                    next_state.pop("last_alert_price", None)
+                    next_state["buy_episode_count"] = int((target_state.get(key) or {}).get("buy_episode_count") or 0)
+                    next_state["last_delivery_status"] = f"ERROR:{type(exc).__name__}"
+                    decision["alert"] = False
+                    decision["delivery_error"] = f"{type(exc).__name__}:{str(exc)[:180]}"
+                    errors.append({"identity_key": key, "execution_mode": "DEX", "event": "FINAL_BUY", "error": decision["delivery_error"]})
+
+            target_state[key] = next_state
+            dex_decisions.append(decision)
+
+    cex_result = cex_lane.evaluate_from_files(
+        ROOT,
+        config,
+        prior_cex_state,
+        now=now,
+    )
+    cex_target_state = dict(cex_result.get("state") or prior_cex_state)
+    for decision in cex_result.get("decisions") or []:
+        if not isinstance(decision, dict):
+            continue
+        key = str(decision.get("identity_key") or "")
+        next_state = cex_target_state.get(key) if isinstance(cex_target_state.get(key), dict) else {}
+        previous = prior_cex_state.get(key) if isinstance(prior_cex_state.get(key), dict) else {}
 
         if decision.get("pre_buy_alert") is True:
             try:
-                send_telegram(telegram_message(target, decision))
+                send_telegram(cex_lane.telegram_message(decision))
                 pre_buy_delivered.append(key)
                 next_state["last_pre_buy_delivery_status"] = "DELIVERED"
             except Exception as exc:
                 next_state["pre_buy_armed"] = True
                 next_state.pop("last_pre_buy_alert_at", None)
                 next_state.pop("last_pre_buy_alert_price", None)
-                next_state["pre_buy_episode_count"] = int((target_state.get(key) or {}).get("pre_buy_episode_count") or 0)
+                next_state["pre_buy_episode_count"] = int(previous.get("pre_buy_episode_count") or 0)
                 next_state["last_pre_buy_delivery_status"] = f"ERROR:{type(exc).__name__}"
                 decision["pre_buy_alert"] = False
                 decision["pre_buy_delivery_error"] = f"{type(exc).__name__}:{str(exc)[:180]}"
-                errors.append({"identity_key": key, "event": "PRE_BUY", "error": decision["pre_buy_delivery_error"]})
+                errors.append({"identity_key": key, "execution_mode": "CEX_SPOT", "event": "PRE_BUY", "error": decision["pre_buy_delivery_error"]})
 
         if decision.get("alert") is True:
             try:
-                send_telegram(telegram_message(target, decision))
+                send_telegram(cex_lane.telegram_message(decision))
                 delivered.append(key)
                 next_state["last_delivery_status"] = "DELIVERED"
             except Exception as exc:
                 next_state["armed"] = True
                 next_state.pop("last_alert_at", None)
                 next_state.pop("last_alert_price", None)
-                next_state["buy_episode_count"] = int((target_state.get(key) or {}).get("buy_episode_count") or 0)
+                next_state["buy_episode_count"] = int(previous.get("buy_episode_count") or 0)
                 next_state["last_delivery_status"] = f"ERROR:{type(exc).__name__}"
                 decision["alert"] = False
                 decision["delivery_error"] = f"{type(exc).__name__}:{str(exc)[:180]}"
-                errors.append({"identity_key": key, "event": "FINAL_BUY", "error": decision["delivery_error"]})
+                errors.append({"identity_key": key, "execution_mode": "CEX_SPOT", "event": "FINAL_BUY", "error": decision["delivery_error"]})
 
-        target_state[key] = next_state
-        decisions.append(decision)
+        cex_target_state[key] = next_state
+        cex_decisions.append(decision)
 
     persistent = {
-        "version": 1,
+        "version": 2,
         "updated_at": now.isoformat(),
         "mode": POLICY_MODE,
         "targets": target_state,
+        "cex_targets": cex_target_state,
     }
     write(STATE, persistent)
 
+    all_decisions = dex_decisions + cex_decisions
+    status = "DELIVERY_ERROR" if errors else "OK"
+    if not errors and not dex_lane_enabled:
+        status = "CEX_ACTIVE_DEX_UPSTREAM_BLOCKED" if cex_result.get("status") == "OK" else "DEX_AND_CEX_BLOCKED"
+    elif not errors and cex_result.get("status") not in {"OK", "DISABLED"}:
+        status = "OK_CEX_SOURCE_BLOCKED"
+
     report = {
-        "version": 1,
+        "version": 2,
         "generated_at": now.isoformat(),
         "mode": POLICY_MODE,
+        "status": status,
+        "upstream_market_watch_outcome": upstream,
+        "dex_lane_enabled": dex_lane_enabled,
         "policy": policy,
+        "cex_policy": cex_policy,
         "configured_targets": len(eligible_targets(config, dynamic)),
-        "buy_zone_count": sum(1 for x in decisions if x.get("state") == "BUY_ZONE"),
-        "pre_buy_count": sum(1 for x in decisions if x.get("pre_buy") is True),
+        "cex_status": cex_result.get("status"),
+        "cex_source_status": cex_result.get("source_status"),
+        "cex_candidate_count": int(cex_result.get("candidate_count") or 0),
+        "cex_execution_checked_count": int(cex_result.get("execution_checked_count") or 0),
+        "buy_zone_count": sum(1 for x in all_decisions if x.get("state") == "BUY_ZONE"),
+        "dex_buy_zone_count": sum(1 for x in dex_decisions if x.get("state") == "BUY_ZONE"),
+        "cex_buy_zone_count": sum(1 for x in cex_decisions if x.get("state") == "BUY_ZONE"),
+        "pre_buy_count": sum(1 for x in all_decisions if x.get("pre_buy") is True),
+        "dex_pre_buy_count": sum(1 for x in dex_decisions if x.get("pre_buy") is True),
+        "cex_pre_buy_count": sum(1 for x in cex_decisions if x.get("pre_buy") is True),
         "pre_buy_delivered_count": len(pre_buy_delivered),
         "pre_buy_delivered": pre_buy_delivered,
         "delivered_count": len(delivered),
         "delivered": delivered,
         "error_count": len(errors),
         "errors": errors,
-        "decisions": decisions,
+        "decisions": all_decisions,
+        "dex_decisions": dex_decisions,
+        "cex_decisions": cex_decisions,
         "truth_contract": {
-            "source": "Unified Watch exact-pair state + current intelligence report",
-            "user_requested_targets_and_new_chain_bootstrap_only": True,
-            "new_chain_bootstrap_uses_same_strict_final_buy_gate": True,
-            "telegram_final_buy_only": False,
-            "telegram_pre_buy_enabled": bool(policy.get("telegram_pre_buy_enabled")),
-            "pre_buy_definition": "ALL_CURRENT_GATES_PASSED_AND_EXACTLY_ONE_CONFIRMATION_SCAN_REMAINS",
+            "source": "Unified Watch exact-pair state plus independent exact CEX execution lane",
+            "dex_exact_chain_contract_pair_required": True,
+            "cex_asset_identity_and_execution_identity_separate": True,
+            "cex_exact_dex_pair_required": False,
+            "cex_exact_market_and_live_orderbook_required": True,
+            "cex_two_scan_confirmation_required": True,
+            "cex_late_move_chase_blocked": True,
+            "user_requested_targets_and_new_chain_bootstrap_only_for_dex_lane": True,
+            "new_chain_bootstrap_uses_same_strict_dex_final_buy_gate": True,
+            "telegram_pre_buy_enabled": bool(policy.get("telegram_pre_buy_enabled")) or bool(cex_policy.get("telegram_pre_buy_enabled")),
+            "pre_buy_definition": "ALL_EXECUTION_AND_SIGNAL_GATES_PASSED_AND_EXACTLY_ONE_CONFIRMATION_SCAN_REMAINS",
             "research_watch_notifications": False,
-            "near_buy_notifications": True,
             "generic_near_buy_notifications": False,
             "automatic_trade": False,
-            "veteran_production_real_alert_policy_unchanged": True,
+            "dex_and_cex_execution_lanes_fail_closed_independently": True,
         },
     }
     write(REPORT, report)
     print(json.dumps({
-        "status": "OK" if not errors else "DELIVERY_ERROR",
+        "status": status,
         "mode": POLICY_MODE,
         "configured_targets": report["configured_targets"],
+        "cex_candidate_count": report["cex_candidate_count"],
         "buy_zone_count": report["buy_zone_count"],
+        "dex_buy_zone_count": report["dex_buy_zone_count"],
+        "cex_buy_zone_count": report["cex_buy_zone_count"],
         "pre_buy_count": report["pre_buy_count"],
         "pre_buy_delivered_count": report["pre_buy_delivered_count"],
         "delivered_count": report["delivered_count"],
