@@ -20,8 +20,9 @@ UA = "Wallet500-PublicAlphaCollector/1.2"
 
 SOL_LINK = re.compile(r"(?:/terminal/solana/|/t/)([1-9A-HJ-NP-Za-km-z]{32,44})")
 EVM_LINK = re.compile(
-    r"(?:/terminal/(?:ethereum|eth|base|arbitrum|bsc|optimism|polygon|arc)/|/t/)(0x[a-fA-F0-9]{40})"
+    r"/terminal/(ethereum|eth|base|arbitrum|bsc|optimism|polygon|arc)/(0x[a-fA-F0-9]{40})"
 )
+EVM_GENERIC_LINK = re.compile(r"/t/(0x[a-fA-F0-9]{40})")
 SOL_RAW = re.compile(r"(?<![1-9A-HJ-NP-Za-km-z])([1-9A-HJ-NP-Za-km-z]{32,44})(?![1-9A-HJ-NP-Za-km-z])")
 EVM_RAW = re.compile(r"(?<![0-9a-fA-F])(0x[a-fA-F0-9]{40})(?![0-9a-fA-F])")
 TAG = re.compile(r"<[^>]+>")
@@ -60,7 +61,10 @@ def dedupe_preserve(rows: list[tuple[str, str]]) -> list[tuple[str, str]]:
 
 def extract_candidates(body: str, source: dict) -> list[tuple[str, str]]:
     rows: list[tuple[str, str]] = []
-    rows.extend(("eth", m.group(1)) for m in EVM_LINK.finditer(body))
+    for m in EVM_LINK.finditer(body):
+        network = "eth" if m.group(1) in {"eth", "ethereum"} else m.group(1)
+        rows.append((network, m.group(2)))
+    rows.extend(("evm", m.group(1)) for m in EVM_GENERIC_LINK.finditer(body))
     rows.extend(("solana", m.group(1)) for m in SOL_LINK.finditer(body))
     if source.get("extract_raw_contracts"):
         visible = plain_text(body)
