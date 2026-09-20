@@ -56,6 +56,7 @@ DEX_TO_GT = {
     "blast": "blast",
     "tron": "tron",
     "aptos": "aptos",
+    "harmony": "one",
 }
 
 
