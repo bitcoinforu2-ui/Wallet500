@@ -113,6 +113,14 @@ def main():
     stale_alpha_excluded = 0
     invalid_time_alpha_excluded = 0
 
+    gate_spot_by_identity = {}
+    for gate_row in spot.get("candidates") or []:
+        if not isinstance(gate_row, dict) or gate_row.get("identity_status") != "RESOLVED_EXACT":
+            continue
+        gate_ident = ident(gate_row)
+        if gate_ident:
+            gate_spot_by_identity[gate_ident[3]] = gate_row
+
     buy_entries = buy_registry.get("entries") if isinstance(buy_registry, dict) and isinstance(buy_registry.get("entries"), dict) else {}
     for row in buy_entries.values():
         if not isinstance(row, dict) or row.get("active") is not True:
@@ -163,6 +171,7 @@ def main():
             continue
         seen.add(i[3])
         milestone = cex_signal_milestone(row)
+        gate_exec = gate_spot_by_identity.get(i[3]) or {}
         out.append({
             "candidate_type": "CEX_SPOT_DISCOVERY",
             "symbol": str(row.get("symbol") or "").upper(),
@@ -171,6 +180,13 @@ def main():
             "pair": row.get("pair_address"),
             "dex_url": row.get("dex_url") or row.get("url") or "",
             "source": "CEX Spot Multi-Venue Exact Identity",
+            "exchange": "gate" if gate_exec.get("currency_pair") else None,
+            "currency_pair": gate_exec.get("currency_pair"),
+            "execution_identity_scope": (
+                "EXACT_CHAIN_CONTRACT_PAIR_PLUS_CEX_MARKET"
+                if gate_exec.get("currency_pair")
+                else "EXACT_CHAIN_CONTRACT_PAIR"
+            ),
             "first_seen_at": milestone.get("observed_at") or row.get("identity_attempted_at"),
             "first_seen_price": milestone.get("reference_price"),
             "first_seen_change_24h_pct": milestone.get("reference_change_24h_pct"),
