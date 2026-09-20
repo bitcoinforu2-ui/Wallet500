@@ -160,7 +160,8 @@ def _policy(config: dict) -> dict:
         "min_current_evidence": 2,
         "required_consecutive_qualified_scans": 2,
         "rearm_after_observable_misses": 2,
-        "telegram_final_buy_only": True,
+        "telegram_final_buy_only": False,
+        "telegram_pre_buy_enabled": True,
         "automatic_trade": False,
     }
     for k, v in defaults.items():
@@ -319,6 +320,26 @@ def evaluate(
     if alert:
         armed = False
 
+    # Strict PRE-BUY: every current market/intelligence/safety gate passed,
+    # with exactly one configured confirmation scan remaining before FINAL BUY.
+    pre_buy_armed = bool(prior.get("pre_buy_armed", True))
+    if (
+        observable
+        and not qualified
+        and miss_streak >= max(1, int(policy["rearm_after_observable_misses"]))
+    ):
+        pre_buy_armed = True
+    pre_buy = bool(
+        policy.get("telegram_pre_buy_enabled") is True
+        and required_streak > 1
+        and qualified
+        and not final_buy
+        and streak == required_streak - 1
+    )
+    pre_buy_alert = bool(pre_buy and pre_buy_armed)
+    if pre_buy_alert:
+        pre_buy_armed = False
+
     if ratio >= float(policy["min_buy_sell_ratio"]):
         proof.append(f"BUY_SELL_{ratio:.2f}X")
     if rebound is not None and rebound >= float(policy["min_rebound_from_watch_low_pct"]):
@@ -336,6 +357,8 @@ def evaluate(
         "state": "BUY_ZONE" if final_buy else ("QUALIFYING" if qualified else "WATCH"),
         "recommended_action": "BUY" if final_buy else "WAIT",
         "alert": alert,
+        "pre_buy": pre_buy,
+        "pre_buy_alert": pre_buy_alert,
         "observable": observable,
         "qualified_this_scan": qualified,
         "qualified_streak": streak,
@@ -368,7 +391,10 @@ def evaluate(
         "truth_contract": {
             "exact_chain_contract_pair_required": True,
             "two_scan_confirmation_required": required_streak >= 2,
-            "telegram_final_buy_only": True,
+            "telegram_final_buy_only": False,
+            "telegram_pre_buy_enabled": bool(policy.get("telegram_pre_buy_enabled")),
+            "pre_buy_requires_all_current_gates_passed": True,
+            "pre_buy_is_one_confirmation_scan_before_final_buy": True,
             "manual_decision_only": True,
             "automatic_trade": False,
             "does_not_modify_veteran_real_alert_policy": True,
@@ -388,11 +414,17 @@ def evaluate(
         "qualified_streak": streak,
         "observable_miss_streak": miss_streak,
         "armed": armed,
+        "pre_buy_armed": pre_buy_armed,
         "last_state": result["state"],
         "last_blockers": unique_blockers,
     }
     if not next_state.get("first_seen_at"):
         next_state["first_seen_at"] = now.isoformat()
+    if pre_buy_alert:
+        next_state["last_pre_buy_alert_at"] = now.isoformat()
+        next_state["last_pre_buy_alert_price"] = price
+        next_state["pre_buy_episode_count"] = int(prior.get("pre_buy_episode_count") or 0) + 1
+
     if alert:
         next_state["last_alert_at"] = now.isoformat()
         next_state["last_alert_price"] = price
