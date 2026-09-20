@@ -467,7 +467,8 @@ def run(now: datetime | None = None) -> dict:
         row["exact_identity_required"] = True
         row["exact_pair_required"] = True
         row["telegram_policy"] = "FINAL_BUY_ONLY"
-        row["first_seen_at"] = (
+        row["first_seen_at"] = row.get("pair_created_at") or now.isoformat()
+        row["bootstrap_network_first_seen_at"] = (
             (state.get("known_networks", {}).get(row["network"]) or {}).get("first_seen_at")
             or now.isoformat()
         )
