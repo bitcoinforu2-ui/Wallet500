@@ -13,10 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "data/unified-watch-config.json"
 WATCH_STATE = ROOT / "data/unified-watch-state.json"
 WATCH_REPORT = ROOT / "data/unified-watch-intelligence-report.json"
+DYNAMIC = ROOT / "data/unified-dynamic-candidates.json"
 STATE = ROOT / "data/user-watch-final-buy-state.json"
 REPORT = ROOT / "data/user-watch-final-buy-report.json"
 
-EVM = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche"}
+EVM = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc"}
 ALIASES = {"eth": "ethereum", "bnb": "bsc"}
 POLICY_MODE = "USER_REQUESTED_UNIFIED_WATCH_FINAL_BUY_V1"
 
@@ -88,8 +89,9 @@ def identity_key(row: dict) -> str:
     return f"{chain}:{token}:{pair}" if chain and token and pair else ""
 
 
-def eligible_targets(config: dict) -> list[dict]:
+def eligible_targets(config: dict, dynamic: dict | None = None) -> list[dict]:
     rows = []
+    seen = set()
     for row in config.get("tokens") or []:
         if not isinstance(row, dict):
             continue
@@ -99,7 +101,23 @@ def eligible_targets(config: dict) -> list[dict]:
             continue
         if row.get("exact_identity_required") is not True or row.get("exact_pair_required") is not True:
             continue
-        if identity_key(row):
+        key = identity_key(row)
+        if key and key not in seen:
+            seen.add(key)
+            rows.append(row)
+
+    # User explicitly enabled the New Chain Bootstrap lane. It can reach Telegram
+    # only through this same strict FINAL BUY gate; research/watch events stay silent.
+    for row in (dynamic or {}).get("candidates") or []:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("candidate_type") or "").upper() != "NEW_CHAIN_BOOTSTRAP":
+            continue
+        if row.get("bootstrap_final_buy_lane") is not True:
+            continue
+        key = identity_key(row)
+        if key and key not in seen:
+            seen.add(key)
             rows.append(row)
     return rows
 
@@ -397,6 +415,7 @@ def telegram_message(target: dict, decision: dict) -> str:
         f"Scan-to-scan price gain: {m['scan_price_gain_pct']:.2f}%",
         f"Intelligence Fusion: {intel['score']:.1f}/100 | {intel['positive_families']} positive families",
         "Proof: " + " | ".join(decision.get("proof") or []),
+        ("New Chain Bootstrap Radar candidate." if str(target.get("candidate_type") or "").upper() == "NEW_CHAIN_BOOTSTRAP" else "Unified user watch candidate."),
         "Manual decision only. No automatic trade.",
         f"CA: {target.get('contract')}",
         f"Pair: {target.get('pair')}",
@@ -440,6 +459,7 @@ def main() -> int:
 
     watch_state = load(WATCH_STATE, {})
     watch_report = load(WATCH_REPORT, {})
+    dynamic = load(DYNAMIC, {"candidates": []})
     persistent = load(STATE, {"version": 1, "targets": {}})
 
     upstream = os.environ.get("WALLET500_MARKET_WATCH_OUTCOME", "success").strip().lower()
@@ -451,7 +471,7 @@ def main() -> int:
             "mode": POLICY_MODE,
             "status": "BLOCKED_UPSTREAM_MARKET_WATCH",
             "upstream_outcome": upstream,
-            "configured_targets": len(eligible_targets(config)),
+            "configured_targets": len(eligible_targets(config, dynamic)),
             "buy_zone_count": 0,
             "delivered_count": 0,
             "error_count": 0,
@@ -473,7 +493,7 @@ def main() -> int:
     delivered: list[str] = []
     errors: list[dict] = []
 
-    for target in eligible_targets(config):
+    for target in eligible_targets(config, dynamic):
         key = identity_key(target)
         m = market_row(watch_state, key)
         rr = report_row(watch_report, key)
@@ -515,7 +535,7 @@ def main() -> int:
         "generated_at": now.isoformat(),
         "mode": POLICY_MODE,
         "policy": policy,
-        "configured_targets": len(eligible_targets(config)),
+        "configured_targets": len(eligible_targets(config, dynamic)),
         "buy_zone_count": sum(1 for x in decisions if x.get("state") == "BUY_ZONE"),
         "delivered_count": len(delivered),
         "delivered": delivered,
@@ -524,7 +544,8 @@ def main() -> int:
         "decisions": decisions,
         "truth_contract": {
             "source": "Unified Watch exact-pair state + current intelligence report",
-            "user_requested_targets_only": True,
+            "user_requested_targets_and_new_chain_bootstrap_only": True,
+            "new_chain_bootstrap_uses_same_strict_final_buy_gate": True,
             "telegram_final_buy_only": True,
             "research_watch_notifications": False,
             "near_buy_notifications": False,
