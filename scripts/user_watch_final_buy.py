@@ -437,6 +437,24 @@ def telegram_message(target: dict, decision: dict) -> str:
     m = decision["market"]
     intel = decision["intelligence"]
     dex = str(target.get("dex_url") or "")
+    if decision.get("pre_buy_alert") is True:
+        return "\n".join([
+            f"🟠⚡ רגע לפני קנייה / PRE-BUY — {decision['symbol']} — WALLET500",
+            "כל השערים הנוכחיים עברו ✅",
+            "חסרה רק סריקת אישור רצופה אחת לפני FINAL BUY.",
+            f"Price USD: {m['price_usd']:.10f}",
+            f"Liquidity USD: {m['liquidity_usd']:,.0f} | Vol 1H USD: {m['volume_h1_usd']:,.0f}",
+            f"Buys/Sells 1H: {m['buys_h1']}/{m['sells_h1']} ({m['buy_sell_ratio']:.2f}x)",
+            f"Rebound from watch low: {m['rebound_from_watch_low_pct']:.2f}%",
+            f"Scan-to-scan price gain: {m['scan_price_gain_pct']:.2f}%",
+            f"Intelligence Fusion: {intel['score']:.1f}/100 | {intel['positive_families']} positive families",
+            "Proof: " + " | ".join(decision.get("proof") or []),
+            "PRE-BUY = confirmation pending; this is not FINAL BUY yet.",
+            "Manual decision only. No automatic trade.",
+            f"CA: {target.get('contract')}",
+            f"Pair: {target.get('pair')}",
+            dex,
+        ])
     return "\n".join([
         f"🟢🔥 קנייה / BUY — {decision['symbol']} — WALLET500",
         "Unified Watch FINAL BUY ✅",
@@ -505,12 +523,15 @@ def main() -> int:
             "upstream_outcome": upstream,
             "configured_targets": len(eligible_targets(config, dynamic)),
             "buy_zone_count": 0,
+            "pre_buy_count": 0,
+            "pre_buy_delivered_count": 0,
             "delivered_count": 0,
             "error_count": 0,
             "decisions": [],
             "truth_contract": {
                 "fail_closed_on_upstream_failure": True,
-                "telegram_final_buy_only": True,
+                "telegram_final_buy_only": False,
+                "telegram_pre_buy_enabled": bool(policy.get("telegram_pre_buy_enabled")),
                 "automatic_trade": False,
             },
         })
@@ -523,6 +544,7 @@ def main() -> int:
     top_report_age = age_seconds(watch_report.get("updated_at"), now)
     decisions: list[dict] = []
     delivered: list[str] = []
+    pre_buy_delivered: list[str] = []
     errors: list[dict] = []
 
     for target in eligible_targets(config, dynamic):
@@ -535,6 +557,21 @@ def main() -> int:
         decision, next_state = evaluate(
             target, m, rr, target_state.get(key), policy, now=now
         )
+
+        if decision.get("pre_buy_alert") is True:
+            try:
+                send_telegram(telegram_message(target, decision))
+                pre_buy_delivered.append(key)
+                next_state["last_pre_buy_delivery_status"] = "DELIVERED"
+            except Exception as exc:
+                next_state["pre_buy_armed"] = True
+                next_state.pop("last_pre_buy_alert_at", None)
+                next_state.pop("last_pre_buy_alert_price", None)
+                next_state["pre_buy_episode_count"] = int((target_state.get(key) or {}).get("pre_buy_episode_count") or 0)
+                next_state["last_pre_buy_delivery_status"] = f"ERROR:{type(exc).__name__}"
+                decision["pre_buy_alert"] = False
+                decision["pre_buy_delivery_error"] = f"{type(exc).__name__}:{str(exc)[:180]}"
+                errors.append({"identity_key": key, "event": "PRE_BUY", "error": decision["pre_buy_delivery_error"]})
 
         if decision.get("alert") is True:
             try:
@@ -549,7 +586,7 @@ def main() -> int:
                 next_state["last_delivery_status"] = f"ERROR:{type(exc).__name__}"
                 decision["alert"] = False
                 decision["delivery_error"] = f"{type(exc).__name__}:{str(exc)[:180]}"
-                errors.append({"identity_key": key, "error": decision["delivery_error"]})
+                errors.append({"identity_key": key, "event": "FINAL_BUY", "error": decision["delivery_error"]})
 
         target_state[key] = next_state
         decisions.append(decision)
@@ -569,6 +606,9 @@ def main() -> int:
         "policy": policy,
         "configured_targets": len(eligible_targets(config, dynamic)),
         "buy_zone_count": sum(1 for x in decisions if x.get("state") == "BUY_ZONE"),
+        "pre_buy_count": sum(1 for x in decisions if x.get("pre_buy") is True),
+        "pre_buy_delivered_count": len(pre_buy_delivered),
+        "pre_buy_delivered": pre_buy_delivered,
         "delivered_count": len(delivered),
         "delivered": delivered,
         "error_count": len(errors),
@@ -578,9 +618,12 @@ def main() -> int:
             "source": "Unified Watch exact-pair state + current intelligence report",
             "user_requested_targets_and_new_chain_bootstrap_only": True,
             "new_chain_bootstrap_uses_same_strict_final_buy_gate": True,
-            "telegram_final_buy_only": True,
+            "telegram_final_buy_only": False,
+            "telegram_pre_buy_enabled": bool(policy.get("telegram_pre_buy_enabled")),
+            "pre_buy_definition": "ALL_CURRENT_GATES_PASSED_AND_EXACTLY_ONE_CONFIRMATION_SCAN_REMAINS",
             "research_watch_notifications": False,
-            "near_buy_notifications": False,
+            "near_buy_notifications": True,
+            "generic_near_buy_notifications": False,
             "automatic_trade": False,
             "veteran_production_real_alert_policy_unchanged": True,
         },
@@ -591,6 +634,8 @@ def main() -> int:
         "mode": POLICY_MODE,
         "configured_targets": report["configured_targets"],
         "buy_zone_count": report["buy_zone_count"],
+        "pre_buy_count": report["pre_buy_count"],
+        "pre_buy_delivered_count": report["pre_buy_delivered_count"],
         "delivered_count": report["delivered_count"],
         "error_count": report["error_count"],
     }, ensure_ascii=False))
