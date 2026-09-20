@@ -133,3 +133,53 @@ def test_one_identity_pending_replay_keeps_cex_sensors_alive_without_contract():
     assert sensor["cex_led"] is True
     assert "CEX_TOP3_BREAKOUT" in sensor["triggers"]
     assert "CEX_RANK_ACCELERATION" in sensor["triggers"]
+
+
+def test_one_historical_rank_bridge_triggers_pending_native_lane_at_0456_israel():
+    identity_doc = {
+        "candidates": [{
+            "symbol": "ONEUSDT",
+            "base_symbol": "ONE",
+            "coingecko_id": "harmony",
+            "market_age_verified": True,
+            "identity_status": "IDENTITY_PENDING",
+            "identity_blocker": "NO_EXACT_ONCHAIN_PLATFORM_IDENTITY",
+            "current_coherent_confirmations": 3,
+            "current_change_24h_max_pct": 44.95,
+            "markets": [
+                {"exchange": "okx", "price": 0.002305, "volume_24h": 2554382.31, "volume_comparable_usd_like": True},
+                {"exchange": "kucoin", "price": 0.002199, "volume_24h": 1670596.08, "volume_comparable_usd_like": True},
+                {"exchange": "gate", "price": 0.00233, "volume_24h": 2624156.85, "volume_comparable_usd_like": True},
+            ],
+            "milestones": {
+                "first_watch": {"observed_at": "2026-09-06T02:15:44+00:00", "reference_price": 0.000736},
+                "first_alert": {"observed_at": "2026-09-13T00:24:06+00:00", "reference_price": 0.000655},
+            },
+        }]
+    }
+    spot_doc = {
+        "candidates": [{
+            "symbol": "ONE",
+            "currency_pair": "ONE_USDT",
+            "discovery_price": 0.0023316,
+            "change_24h_pct": 15.23,
+            "quote_volume_24h_usd": 2628548.50,
+            "positive_gainer_rank": 5,
+            "observed_at": "2026-09-19T01:56:06.674192+00:00",
+        }]
+    }
+    targets = _pending_identity_candidates(identity_doc, spot_doc)
+    assert len(targets) == 1
+    target = targets[0]
+    assert target["symbol"] == "ONE"
+    assert target["asset_identity_verified"] is True
+    assert target["positive_gainer_rank"] == 5
+    assert target["gate_discovery_price"] == 0.0023316
+    assert target["gate_observed_at"] == "2026-09-19T01:56:06.674192+00:00"
+    assert target["change_24h_pct"] == 44.95
+    assert target["coherent_confirmations"] == 3
+    assert (
+        target["change_24h_pct"] >= 20
+        and target["positive_gainer_rank"] <= 10
+        and target["coherent_confirmations"] >= 2
+    )

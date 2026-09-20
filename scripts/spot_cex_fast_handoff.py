@@ -8,6 +8,7 @@ import unified_watch_engine as engine
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "data/cex-sensor-handoff.json"
 IDENTITY_RADAR = ROOT / "data/cex-spot-identity-radar.json"
+SPOT_DISCOVERY = ROOT / "data/spot-market-discovery.json"
 NATIVE_REGISTRY = ROOT / "data/native-asset-identity-registry.json"
 
 
@@ -105,13 +106,26 @@ def _median_cex_price(row: dict) -> float:
     return values[n // 2] if n % 2 else (values[n // 2 - 1] + values[n // 2]) / 2.0
 
 
-def _pending_identity_candidates(doc: dict | None = None) -> list[dict]:
+def _spot_discovery_index(doc: dict | None = None) -> dict[str, dict]:
+    doc = doc if isinstance(doc, dict) else _load(SPOT_DISCOVERY, {})
+    out = {}
+    for row in doc.get("candidates") or []:
+        if not isinstance(row, dict):
+            continue
+        symbol = str(row.get("symbol") or "").upper().strip()
+        if symbol:
+            out[symbol] = row
+    return out
+
+
+def _pending_identity_candidates(doc: dict | None = None, spot_doc: dict | None = None) -> list[dict]:
     """Keep high-quality CEX discoveries alive while exact on-chain identity is unresolved.
 
     This lane is internal-only and cannot satisfy BUY/actionability. It exists solely to
     prevent identity latency from silencing momentum, volume and rank sensors.
     """
     doc = doc if isinstance(doc, dict) else _load(IDENTITY_RADAR, {})
+    spot_index = _spot_discovery_index(spot_doc)
     native_registry = _load(NATIVE_REGISTRY, {})
     out = []
     seen = set()
@@ -126,7 +140,12 @@ def _pending_identity_candidates(doc: dict | None = None) -> list[dict]:
         if not cid or not symbol or row.get("market_age_verified") is not True:
             continue
         coherent = _i(row.get("current_coherent_confirmations") or row.get("coherent_confirmations"), 0)
-        rank = _i(row.get("leaderboard_best_rank") or row.get("positive_gainer_rank"))
+        spot_row = spot_index.get(symbol) or {}
+        rank = _i(
+            row.get("leaderboard_best_rank")
+            or row.get("positive_gainer_rank")
+            or spot_row.get("positive_gainer_rank")
+        )
         if coherent < 2 and rank > 15:
             continue
         key = f"{cid}:{symbol}"
@@ -146,9 +165,16 @@ def _pending_identity_candidates(doc: dict | None = None) -> list[dict]:
             "market_age_verified": True,
             **native_identity,
             "coherent_confirmations": coherent,
-            "quote_volume_24h_usd": _max_cex_turnover(row),
+            "quote_volume_24h_usd": max(_max_cex_turnover(row), _f(spot_row.get("quote_volume_24h_usd"))),
             "positive_gainer_rank": None if rank >= 999 else rank,
-            "change_24h_pct": _f(row.get("current_change_24h_max_pct") or row.get("change_24h_max_pct")),
+            "gate_positive_gainer_rank": spot_row.get("positive_gainer_rank"),
+            "gate_quote_volume_24h_usd": _f(spot_row.get("quote_volume_24h_usd")),
+            "gate_observed_at": spot_row.get("observed_at"),
+            "gate_discovery_price": _f(spot_row.get("discovery_price")),
+            "change_24h_pct": max(
+                _f(row.get("current_change_24h_max_pct") or row.get("change_24h_max_pct")),
+                _f(spot_row.get("change_24h_pct")),
+            ),
             "cex_reference_price_usd": _median_cex_price(row),
             "first_seen_at": (row.get("milestones") or {}).get("first_seen", {}).get("observed_at"),
             "discovery_price": milestone.get("reference_price"),
