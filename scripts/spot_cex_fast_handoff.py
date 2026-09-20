@@ -207,7 +207,7 @@ def main() -> int:
             "candidate_type": target.get("candidate_type") or "GATE_SPOT_DISCOVERY",
             "dynamic_spot_candidate": True,
             "first_seen_at": target.get("first_seen_at") or previous.get("first_seen_at"),
-            "discovery_price": target.get("discovery_price") if target.get("discovery_price") is not None else previous.get("discovery_price"),
+            "discovery_price": previous.get("discovery_price") if previous.get("discovery_price") is not None else target.get("discovery_price"),
             "cex_quote_volume_24h_usd": sensor["current_volume_usd"],
             "cex_quote_volume_baseline_usd": sensor["baseline_volume_usd"],
             "cex_relative_volume_multiple": sensor["baseline_multiple"],
@@ -226,6 +226,9 @@ def main() -> int:
         if sensor["cex_led"] and _should_refresh(previous, sensor):
             try:
                 live = engine.live_exact_pair(target, spread)
+                quarter_wave = engine.quarter_wave_revalidation(
+                    previous, live["price"], live["observed_at"]
+                )
                 current.update({
                     "price": live["price"],
                     "liquidity": live["liquidity"],
@@ -236,6 +239,7 @@ def main() -> int:
                     "spread_pct": live["spread_pct"],
                     "observed_at": live["observed_at"],
                     "close_watch_mode": "CEX_LED_REVIVAL",
+                    **quarter_wave,
                 })
                 current["last_internal_escalation"] = {
                     "sent_at": live["observed_at"],
@@ -259,6 +263,13 @@ def main() -> int:
                     "verified_liquidity": live["liquidity"],
                     "verified_volume_h1": live["volume_h1"],
                     "observed_at": live["observed_at"],
+                    "quarter_wave_revalidation_armed": bool(
+                        current.get("quarter_wave_revalidation_armed")
+                    ),
+                    "gain_from_first_verified_pct": current.get(
+                        "gain_from_first_verified_pct"
+                    ),
+                    "first_verified_price": current.get("first_verified_price"),
                 })
                 escalated += 1
             except Exception as exc:
@@ -308,7 +319,7 @@ def main() -> int:
             "buy_eligible": False,
             "telegram_delivery_enabled": False,
             "first_seen_at": target.get("first_seen_at") or previous.get("first_seen_at"),
-            "discovery_price": target.get("discovery_price") if target.get("discovery_price") is not None else previous.get("discovery_price"),
+            "discovery_price": previous.get("discovery_price") if previous.get("discovery_price") is not None else target.get("discovery_price"),
             "cex_reference_price_usd": target.get("cex_reference_price_usd"),
             "current_change_24h_pct": change,
             "coherent_confirmations": coherent,
