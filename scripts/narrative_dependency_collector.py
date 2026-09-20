@@ -43,7 +43,7 @@ def norm_chain(value):
 
 def norm_addr(chain, value):
     raw = str(value or "").strip()
-    return raw.lower() if chain in {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche"} else raw
+    return raw.lower() if chain in {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc"} else raw
 
 
 def identity(t):

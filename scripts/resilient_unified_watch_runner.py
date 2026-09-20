@@ -215,6 +215,8 @@ def _state_key(t):
         return f"BUY:{identity_key}"
     if t.get("dynamic_alpha_candidate"):
         return f"ALPHA:{identity_key}"
+    if t.get("dynamic_bootstrap_candidate"):
+        return f"BOOTSTRAP:{identity_key}"
     if t.get("dynamic_spot_candidate"):
         return f"SPOT:{identity_key}"
     return str(t.get("symbol") or "").upper()

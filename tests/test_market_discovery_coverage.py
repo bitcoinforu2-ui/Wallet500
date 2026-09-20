@@ -1,4 +1,11 @@
-from wallet500.market_discovery import BSC_MIN_DISCOVERY_CAP, FRESH_PAGE_COUNT, _add, _chain_limit
+from wallet500.market_discovery import (
+    BSC_MIN_DISCOVERY_CAP,
+    CHAINS,
+    FRESH_PAGE_COUNT,
+    GECKO_NETWORK,
+    _add,
+    _chain_limit,
+)
 
 
 def test_bsc_has_expanded_initial_discovery_cap():
@@ -18,3 +25,16 @@ def test_bsc_candidate_is_not_dropped_at_legacy_120_cap():
     _add(rows,seen,counts,filtered,"bsc",token,"test",120)
     assert counts["bsc"] == 121
     assert rows and rows[0]["token"] == token
+
+
+def test_arc_is_in_default_discovery_and_uses_native_gecko_network():
+    assert "arc" in CHAINS
+    assert GECKO_NETWORK["arc"] == "arc"
+
+
+def test_arc_evm_addresses_are_case_insensitive():
+    rows=[];seen=set();counts={"arc":0};filtered={"arc":0}
+    _add(rows,seen,counts,filtered,"arc","0xABCDEF","first",120)
+    _add(rows,seen,counts,filtered,"arc","0xabcdef","second",120)
+    assert counts["arc"] == 1
+    assert rows[0]["source_confirmations"] == 2

@@ -9,10 +9,11 @@ SPOT = ROOT / "data/spot-market-discovery.json"
 CEX_SPOT_IDENTITY = ROOT / "data/cex-spot-identity-radar.json"
 ALPHA = ROOT / "data/alpha-caller-candidates.json"
 BUY_REGISTRY = ROOT / "data/buy-zone-close-watch-registry.json"
+BOOTSTRAP = ROOT / "data/new-chain-bootstrap-radar.json"
 OUT = ROOT / "data/unified-dynamic-candidates.json"
 EVENTS = ROOT / "data/close-watch-events.json"
 
-EVM = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche"}
+EVM = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc"}
 ALIASES = {"eth": "ethereum", "bnb": "bsc"}
 PUBLIC_ALPHA_LIVE_WINDOW_MINUTES = 180
 
@@ -104,6 +105,7 @@ def main():
     cex_identity = load(CEX_SPOT_IDENTITY, {"candidates": []})
     alpha = load(ALPHA, {"candidates": []})
     buy_registry = load(BUY_REGISTRY, {"entries": {}})
+    bootstrap = load(BOOTSTRAP, {"candidates": []})
     event_doc = load(EVENTS, {"version": 3, "events": []})
     out = []
     seen = set()
@@ -211,6 +213,44 @@ def main():
             "identity_key": i[3],
         })
 
+    for row in bootstrap.get("candidates") or []:
+        if not isinstance(row, dict) or row.get("bootstrap_actionable_watch") is not True:
+            continue
+        if float(row.get("liquidity_usd") or 0) <= 0:
+            continue
+        i = ident(row)
+        if not i or i[3] in seen:
+            continue
+        seen.add(i[3])
+        score = float(row.get("bootstrap_score") or 0)
+        out.append({
+            "candidate_type": "NEW_CHAIN_BOOTSTRAP",
+            "symbol": str(row.get("symbol") or "BOOTSTRAP").upper(),
+            "network": row.get("network") or row.get("chain"),
+            "contract": row.get("contract") or row.get("token_address"),
+            "pair": row.get("pair") or row.get("pair_address"),
+            "dex_url": row.get("dex_url") or "",
+            "source": "New Chain Bootstrap Radar",
+            "source_url": row.get("dex_url") or "",
+            "first_seen_at": row.get("first_seen_at") or row.get("pair_created_at"),
+            "discovery_price": row.get("price_usd"),
+            "change_24h_pct": row.get("price_change_h24"),
+            "quote_volume_24h_usd": row.get("volume_h24"),
+            "dex_liquidity_usd": row.get("liquidity_usd"),
+            "bootstrap_score": score,
+            "bootstrap_reasons": row.get("bootstrap_reasons") or [],
+            "bootstrap_final_buy_lane": True,
+            "exact_identity_required": True,
+            "exact_pair_required": True,
+            "telegram_policy": "FINAL_BUY_ONLY",
+            "priority": "HIGHEST" if score >= 70 else "HIGH",
+            "close_watch": "HIGHEST",
+            "collector_priority": 1,
+            "deep_investigation": True,
+            "full_intelligence": True,
+            "identity_key": i[3],
+        })
+
     for row in alpha.get("candidates") or []:
         if row.get("status") != "GATED_RESEARCH_CANDIDATE":
             continue
@@ -240,7 +280,7 @@ def main():
         })
 
     out.sort(key=lambda x: (
-        0 if x["candidate_type"] == "BUY_ZONE" else 1 if x["candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"} else 2,
+        0 if x["candidate_type"] == "BUY_ZONE" else 1 if x["candidate_type"] == "NEW_CHAIN_BOOTSTRAP" else 2 if x["candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"} else 3,
         (
             x.get("alpha_age_minutes", 999999)
             if x["candidate_type"] == "PUBLIC_ALPHA"
@@ -256,6 +296,7 @@ def main():
             "buy_zone": sum(x["candidate_type"] == "BUY_ZONE" for x in out),
             "cex_spot": sum(x["candidate_type"] == "CEX_SPOT_DISCOVERY" for x in out),
             "gate_spot": sum(x["candidate_type"] == "GATE_SPOT_DISCOVERY" for x in out),
+            "new_chain_bootstrap": sum(x["candidate_type"] == "NEW_CHAIN_BOOTSTRAP" for x in out),
             "public_alpha": sum(x["candidate_type"] == "PUBLIC_ALPHA" for x in out),
             "public_alpha_stale_excluded": stale_alpha_excluded,
             "public_alpha_invalid_time_excluded": invalid_time_alpha_excluded,
@@ -270,27 +311,28 @@ def main():
     existing = {str(e.get("canonical_event_id") or "") for e in events}
     added = 0
     for c in out:
-        if c["candidate_type"] not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"}:
+        if c["candidate_type"] not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "NEW_CHAIN_BOOTSTRAP"}:
             continue
-        cid = "cex-spot-discovery:" + c["identity_key"]
+        is_bootstrap = c["candidate_type"] == "NEW_CHAIN_BOOTSTRAP"
+        cid = ("new-chain-bootstrap:" if is_bootstrap else "cex-spot-discovery:") + c["identity_key"]
         if cid in existing:
             continue
         change = max(0.0, float(c.get("change_24h_pct") or 0))
-        strength = min(75.0, 20.0 + change * 0.35)
+        strength = min(85.0, max(25.0, float(c.get("bootstrap_score") or 0))) if is_bootstrap else min(75.0, 20.0 + change * 0.35)
         events.append({
             "symbol": c["symbol"],
             "network": c["network"],
             "contract": c["contract"],
             "pair": c["pair"],
             "identity_key": c["identity_key"],
-            "family": "search_discovery",
-            "kind": "cex_spot_mover",
+            "family": "catalyst_news" if is_bootstrap else "search_discovery",
+            "kind": "new_chain_bootstrap" if is_bootstrap else "cex_spot_mover",
             "direction": 1,
             "strength": round(strength, 1),
             "confidence": 72,
-            "source": c.get("source") or "CEX Spot",
+            "source": c.get("source") or ("New Chain Bootstrap Radar" if is_bootstrap else "CEX Spot"),
             "source_url": c.get("source_url") or "",
-            "subject": f"rank={c.get('positive_gainer_rank')} change24h={c.get('change_24h_pct')}",
+            "subject": (f"bootstrap_score={c.get('bootstrap_score')} chain={c.get('network')}" if is_bootstrap else f"rank={c.get('positive_gainer_rank')} change24h={c.get('change_24h_pct')}"),
             "canonical_event_id": cid,
             "event_time": c.get("first_seen_at") or now(),
             "observed_at": now(),

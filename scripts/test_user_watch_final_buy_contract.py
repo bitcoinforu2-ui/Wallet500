@@ -139,6 +139,23 @@ def main() -> None:
     assert unverified["recommended_action"] == "WAIT"
     assert "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN" in unverified["blockers"]
 
+    bootstrap = {
+        "candidate_type": "NEW_CHAIN_BOOTSTRAP",
+        "symbol": "ARCUS",
+        "network": "arc",
+        "contract": "0xB7C934FF18730c24e6113BB4bC5A68feEf16fD29",
+        "pair": "0x0000000000000000000000000000000000000001",
+        "bootstrap_final_buy_lane": True,
+        "dex_url": "https://dexscreener.com/arc/example",
+    }
+    selected = gate.eligible_targets({"tokens": []}, {"candidates": [bootstrap]})
+    assert len(selected) == 1
+    assert selected[0]["symbol"] == "ARCUS"
+    assert gate.identity_key(selected[0]).startswith("arc:0xb7c934")
+
+    research_only = dict(bootstrap, bootstrap_final_buy_lane=False)
+    assert gate.eligible_targets({"tokens": []}, {"candidates": [research_only]}) == []
+
     print("USER_WATCH_FINAL_BUY_CONTRACT_OK")
 
 

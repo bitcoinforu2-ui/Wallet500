@@ -14,7 +14,7 @@ STATE = ROOT / "data/unified-watch-state.json"
 DYNAMIC = ROOT / "data/unified-dynamic-candidates.json"
 INTEL = ROOT / "data/close-watch-intelligence.json"
 INTEL_REPORT = ROOT / "data/unified-watch-intelligence-report.json"
-EVM = {"ethereum", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche"}
+EVM = {"ethereum", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc"}
 CHAIN_ALIASES = {"eth": "ethereum", "bnb": "bsc"}
 ALERTWORTHY_INTEL_FAMILIES = {
     "wallet_flow",
@@ -181,7 +181,7 @@ def dynamic_candidates():
     seen = set()
     for c in d.get("candidates") or []:
         ctype = str(c.get("candidate_type") or "").upper()
-        if ctype not in {"BUY_ZONE", "PUBLIC_ALPHA", "GATE_SPOT_DISCOVERY", "CEX_SPOT_DISCOVERY"}:
+        if ctype not in {"BUY_ZONE", "PUBLIC_ALPHA", "GATE_SPOT_DISCOVERY", "CEX_SPOT_DISCOVERY", "NEW_CHAIN_BOOTSTRAP"}:
             continue
         ca = str(c.get("contract") or "")
         pair = str(c.get("pair") or "")
@@ -206,9 +206,15 @@ def dynamic_candidates():
         x for x in rows
         if x["_candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"}
     ]
+    bootstrap = [x for x in rows if x["_candidate_type"] == "NEW_CHAIN_BOOTSTRAP"]
+    bootstrap = sorted(
+        bootstrap,
+        key=lambda x: (float(x.get("bootstrap_score") or 0), float(x.get("dex_liquidity_usd") or 0)),
+        reverse=True,
+    )[:12]
     alpha = [x for x in rows if x["_candidate_type"] == "PUBLIC_ALPHA"]
-    dynamic_cap = 36
-    alpha_budget = max(0, dynamic_cap - len(buy_zone) - len(spot))
+    dynamic_cap = 48
+    alpha_budget = max(0, dynamic_cap - len(buy_zone) - len(bootstrap) - len(spot))
 
     def _liq(x):
         try:
@@ -231,7 +237,7 @@ def dynamic_candidates():
             chosen_ids.add(key)
             chosen.append(x)
 
-    selected = buy_zone + spot + chosen
+    selected = buy_zone + bootstrap + spot + chosen
     out = []
     for c in selected:
         ctype = c["_candidate_type"]
@@ -249,13 +255,14 @@ def dynamic_candidates():
                 "min_volume_h1_for_momentum": 0,
                 "dynamic_buy_candidate": ctype == "BUY_ZONE",
                 "dynamic_alpha_candidate": ctype == "PUBLIC_ALPHA",
+                "dynamic_bootstrap_candidate": ctype == "NEW_CHAIN_BOOTSTRAP",
                 "dynamic_spot_candidate": ctype in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"},
                 "candidate_type": ctype,
                 "priority": c.get("priority") or ("HIGHEST" if ctype == "BUY_ZONE" else None),
                 "close_watch": c.get("close_watch") or ("HIGHEST" if ctype == "BUY_ZONE" else None),
                 "collector_priority": c.get("collector_priority", 0 if ctype == "BUY_ZONE" else None),
-                "deep_investigation": bool(c.get("deep_investigation") or ctype == "BUY_ZONE"),
-                "full_intelligence": bool(c.get("full_intelligence") or ctype == "BUY_ZONE"),
+                "deep_investigation": bool(c.get("deep_investigation") or ctype in {"BUY_ZONE", "NEW_CHAIN_BOOTSTRAP"}),
+                "full_intelligence": bool(c.get("full_intelligence") or ctype in {"BUY_ZONE", "NEW_CHAIN_BOOTSTRAP"}),
                 "derivatives_intelligence": bool(c.get("derivatives_intelligence")),
                 "derivatives_symbol": c.get("derivatives_symbol"),
                 "buy_zone_price_usd": c.get("buy_zone_price_usd"),
@@ -269,6 +276,9 @@ def dynamic_candidates():
                 "quote_volume_24h_usd": c.get("quote_volume_24h_usd"),
                 "positive_gainer_rank": c.get("positive_gainer_rank"),
                 "dex_liquidity_usd": c.get("dex_liquidity_usd"),
+                "bootstrap_score": c.get("bootstrap_score"),
+                "bootstrap_reasons": c.get("bootstrap_reasons") or [],
+                "bootstrap_final_buy_lane": bool(c.get("bootstrap_final_buy_lane")),
             }
         )
     return out
@@ -852,6 +862,7 @@ def main():
         "configured_targets": len(static_tokens),
         "dynamic_buy_targets": sum(bool(x.get("dynamic_buy_candidate")) for x in dynamic),
         "dynamic_alpha_targets": sum(bool(x.get("dynamic_alpha_candidate")) for x in dynamic),
+        "dynamic_bootstrap_targets": sum(bool(x.get("dynamic_bootstrap_candidate")) for x in dynamic),
         "dynamic_spot_targets": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
         "targets": intel_rows,
     }
@@ -861,6 +872,7 @@ def main():
         "configured": len(static_tokens),
         "dynamic_buy": sum(bool(x.get("dynamic_buy_candidate")) for x in dynamic),
         "dynamic_alpha": sum(bool(x.get("dynamic_alpha_candidate")) for x in dynamic),
+        "dynamic_bootstrap": sum(bool(x.get("dynamic_bootstrap_candidate")) for x in dynamic),
         "dynamic_spot": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
         "intelligence_targets": len(intel_rows),
         "sent_alerts": sent_alerts,

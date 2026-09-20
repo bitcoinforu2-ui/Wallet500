@@ -18,7 +18,7 @@ STATE = ROOT / "data/cross-domain-intelligence-state.json"
 UA = "Wallet500-CrossDomain/1.0"
 
 ALIASES = {"eth": "ethereum", "bnb": "bsc"}
-EVM = {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche"}
+EVM = {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc"}
 GT_NET = {
     "ethereum": "eth",
     "bsc": "bsc",
@@ -28,6 +28,7 @@ GT_NET = {
     "polygon": "polygon_pos",
     "avalanche": "avax",
     "solana": "solana",
+    "arc": "arc",
 }
 BLOCKSCOUT = {
     "ethereum": "https://eth.blockscout.com",
@@ -156,9 +157,15 @@ def targets():
     return rows[:max(40, buy_count)]
 
 
-def global_attention_maps():
+def global_attention_maps(rows=None):
     trending = {}
-    for network in ("eth", "bsc", "base", "arbitrum", "solana"):
+    networks = {"eth", "bsc", "base", "arbitrum", "solana", "arc"}
+    for row in rows or []:
+        chain = chain_name((row or {}).get("network") or (row or {}).get("chain"))
+        network = GT_NET.get(chain)
+        if network:
+            networks.add(network)
+    for network in sorted(networks)[:10]:
         d = get_json(f"https://api.geckoterminal.com/api/v2/networks/{network}/trending_pools", timeout=6) or {}
         for rank, item in enumerate(d.get("data") or [], 1):
             attrs = item.get("attributes") or {}
@@ -303,7 +310,7 @@ def main():
     old_state = load(STATE, {"version": 1, "tokens": {}})
     old_tokens = old_state.get("tokens") or {}
     rows = targets()
-    trending, boosts = global_attention_maps()
+    trending, boosts = global_attention_maps(rows)
     fresh = []
     new_state = {
         "version": 1,
@@ -327,8 +334,9 @@ def main():
         rows,
         key=lambda x: (
             0 if str(x.get("candidate_type") or "").upper() == "BUY_ZONE"
-            else 1 if x.get("candidate_type") == "GATE_SPOT_DISCOVERY"
-            else 2,
+            else 1 if str(x.get("candidate_type") or "").upper() == "NEW_CHAIN_BOOTSTRAP"
+            else 2 if x.get("candidate_type") == "GATE_SPOT_DISCOVERY"
+            else 3,
             x.get("positive_gainer_rank") or 999999,
         ),
     )[:12]

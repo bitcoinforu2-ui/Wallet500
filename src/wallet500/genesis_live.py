@@ -15,7 +15,8 @@ from .market_data import snapshot
 from .market_discovery import discover_tokens, discovery_diagnostics
 from .solana_mintability_gate import resolve as resolve_mintability
 
-CHAINS = ("solana", "ethereum", "bsc")
+CHAINS = ("solana", "ethereum", "bsc", "arc")
+EVM_CHAINS = {"ethereum", "bsc", "arc"}
 LEGACY_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 ACTIONABLE = {"PAPER_BUY_CANDIDATE", "STRONG_GENESIS", "EXCEPTIONAL_GENESIS"}
 PAPER_AGE_BANDS = {"EARLY_WATCH", "PRIME_GENESIS_WINDOW", "LATE_GENESIS_WINDOW"}
@@ -65,7 +66,7 @@ def _maybe(value: Any) -> float | None:
 def _same(chain: str, a: Any, b: Any) -> bool:
     if not a or not b:
         return False
-    return str(a).lower() == str(b).lower() if chain in {"ethereum", "bsc"} else str(a) == str(b)
+    return str(a).lower() == str(b).lower() if chain in EVM_CHAINS else str(a) == str(b)
 
 
 def _pair_age_minutes(created_at: Any, now: datetime) -> float | None:
@@ -79,7 +80,7 @@ def _pair_age_minutes(created_at: Any, now: datetime) -> float | None:
 
 
 def _key(chain: str, token: str, pair: str) -> str:
-    if chain in {"ethereum", "bsc"}:
+    if chain in EVM_CHAINS:
         token, pair = token.lower(), pair.lower()
     return f"{chain}:{token}:{pair}"
 

@@ -21,6 +21,7 @@ CHAIN = {
     "optimism": "optimism",
     "polygon": "polygon",
     "solana": "solana",
+    "arc": "arc",
 }
 DS_TO_NETWORK = {
     "ethereum": "eth",
@@ -29,6 +30,7 @@ DS_TO_NETWORK = {
     "bsc": "bsc",
     "optimism": "optimism",
     "polygon": "polygon",
+    "arc": "arc",
 }
 
 
