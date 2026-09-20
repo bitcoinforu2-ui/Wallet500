@@ -89,7 +89,11 @@ def main() -> None:
     )
     assert qualifying["state"] == "QUALIFYING"
     assert qualifying["qualified_streak"] == 1
+    assert qualifying["pre_buy"] is True
+    assert qualifying["pre_buy_alert"] is True
     assert qualifying["alert"] is False
+    assert "רגע לפני קנייה / PRE-BUY" in gate.telegram_message(TARGET, qualifying)
+    assert s2["pre_buy_armed"] is False
 
     t3 = t2 + timedelta(minutes=15)
     buy, s3 = gate.evaluate(
@@ -102,6 +106,8 @@ def main() -> None:
     )
     assert buy["state"] == "BUY_ZONE"
     assert buy["recommended_action"] == "BUY"
+    assert buy["pre_buy"] is False
+    assert buy["pre_buy_alert"] is False
     assert buy["alert"] is True
     assert s3["armed"] is False
 
