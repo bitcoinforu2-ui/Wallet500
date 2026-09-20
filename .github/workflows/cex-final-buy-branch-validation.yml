@@ -1,0 +1,35 @@
+name: Wallet500 CEX Final Buy Branch Validation
+
+on:
+  push:
+    branches:
+      - 'fix/cex-final-buy-execution-lane-v2'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . pytest
+      - name: Compile CEX final-buy integration
+        run: |
+          python -m py_compile scripts/cex_final_buy_lane.py scripts/user_watch_final_buy.py scripts/test_cex_final_buy_lane_contract.py scripts/test_user_watch_final_buy_contract.py
+      - name: Run final-buy contracts
+        run: |
+          python scripts/test_cex_final_buy_lane_contract.py
+          python scripts/test_user_watch_final_buy_contract.py
+      - name: Run adjacent CEX and Unified Watch regression tests
+        run: |
+          pytest -q \
+            tests/test_cex_fast_promotion.py \
+            tests/test_cex_spot_identity.py \
+            tests/test_unified_watch_sensor_handoff.py \
+            tests/test_telegram_buy_only_policy.py
