@@ -1,49 +1,32 @@
 {
   "version": 1,
   "mode": "INDEPENDENT_OBSERVABILITY_NO_TRADING_POLICY_EFFECT",
-  "updated_at": "2026-09-21T16:32:10.263162+00:00",
-  "overall": "CRITICAL",
-  "incident_count": 5,
-  "critical_count": 1,
-  "high_count": 4,
-  "new_notifications": [
-    {
-      "code": "REAL_ALERT_FEED_STALE",
-      "severity": "CRITICAL",
-      "detail": "real-alerts.json age=2775.6s max=2700s"
-    },
-    {
-      "code": "SCHEDULER_TELEMETRY_STALE",
-      "severity": "HIGH",
-      "detail": "scheduler-health.json age=2775.1s max=2700s"
-    },
-    {
-      "code": "SYSTEM_HEALTH_STALE",
-      "severity": "HIGH",
-      "detail": "system-health.json age=2775.2s max=2700s"
-    }
-  ],
+  "updated_at": "2026-09-21T17:08:52.154269+00:00",
+  "overall": "DEGRADED",
+  "incident_count": 3,
+  "critical_count": 0,
+  "high_count": 3,
+  "new_notifications": [],
   "recovered_codes": [
-    "NEW_REAL_ALERT_TELEGRAM_GAP",
-    "PUBLIC_REAL_ALERT_FEED_STALE"
+    "REAL_ALERT_FEED_STALE",
+    "SCHEDULER_TELEMETRY_STALE",
+    "SYSTEM_HEALTH_STALE"
   ],
-  "real_alert_transitions_entered": [],
+  "real_alert_transitions_entered": [
+    "bsc:0x5b73a93b4e5e4f1fd27d8b3f8c97d69908b5e284:0x7cb113b487e025b3a69537fca579559433240cb5",
+    "solana:ukHH6c7mMyiWCf1b9pnWe25TSpkDDt3H5pQZgZ74J82:DSUvc5qf5LJHHV5e2tD184ixotSnCnwj7i4jJa4Xsrmt"
+  ],
   "buy_only_policy_active": true,
   "final_buy_keys_expected": [],
   "pre_buy_delivery_gaps": [],
   "incidents": [
     {
-      "code": "REAL_ALERT_FEED_STALE",
-      "severity": "CRITICAL",
-      "detail": "real-alerts.json age=2775.6s max=2700s"
-    },
-    {
       "code": "GITHUB_ACTIONS_CAPACITY_PRESSURE",
       "severity": "HIGH",
-      "detail": "queued=39, in_progress=20, runs_today=8967",
-      "queued": 39,
-      "in_progress": 20,
-      "runs_today": 8967,
+      "detail": "queued=25, in_progress=17, runs_today=9348",
+      "queued": 25,
+      "in_progress": 17,
+      "runs_today": 9348,
       "thresholds": {
         "queued": 8,
         "in_progress": 12,
@@ -53,90 +36,88 @@
     {
       "code": "GITHUB_ACTIONS_FAILURE_PRESSURE",
       "severity": "HIGH",
-      "detail": "workflow failures today=166",
-      "failures_today": 166,
+      "detail": "workflow failures today=227",
+      "failures_today": 227,
       "threshold": 20
     },
     {
-      "code": "SCHEDULER_TELEMETRY_STALE",
+      "code": "REVIVAL_NEWER_RUN_FAILED_TO_PUBLISH",
       "severity": "HIGH",
-      "detail": "scheduler-health.json age=2775.1s max=2700s"
-    },
-    {
-      "code": "SYSTEM_HEALTH_STALE",
-      "severity": "HIGH",
-      "detail": "system-health.json age=2775.2s max=2700s"
+      "detail": "latest Revival run failed after the currently published snapshot was generated",
+      "run_id": 35627922180,
+      "run_updated_at": "2026-09-21T16:52:09Z",
+      "published_generated_at": "2026-09-21T16:23:29.048977+00:00"
     }
   ],
   "checks": {
     "real-alerts.json": {
-      "timestamp": "2026-09-21T15:45:54.663915+00:00",
-      "age_seconds": 2775.6,
+      "timestamp": "2026-09-21T16:59:56.252767+00:00",
+      "age_seconds": 535.9,
       "max_age_seconds": 2700,
-      "ok": false
+      "ok": true
     },
     "system-health.json": {
-      "timestamp": "2026-09-21T15:45:55.108318+00:00",
-      "age_seconds": 2775.2,
+      "timestamp": "2026-09-21T16:59:56.726743+00:00",
+      "age_seconds": 535.4,
       "max_age_seconds": 2700,
-      "ok": false
+      "ok": true
     },
     "scheduler-health.json": {
-      "timestamp": "2026-09-21T15:45:55.143447+00:00",
-      "age_seconds": 2775.1,
+      "timestamp": "2026-09-21T16:59:56.776029+00:00",
+      "age_seconds": 535.4,
       "max_age_seconds": 2700,
-      "ok": false
+      "ok": true
     },
     "telegram-alert-report.json": {
-      "timestamp": "2026-09-21T16:11:14.516711+00:00",
-      "age_seconds": 1255.7,
+      "timestamp": "2026-09-21T17:03:40.940031+00:00",
+      "age_seconds": 311.2,
       "max_age_seconds": 3600,
       "ok": true
     },
     "real-alert-10usd-summary.json": {
-      "timestamp": "2026-09-21T16:27:23.689582+00:00",
-      "age_seconds": 286.6,
+      "timestamp": "2026-09-21T17:03:46.519833+00:00",
+      "age_seconds": 305.6,
       "max_age_seconds": 3600,
       "ok": true
     },
     "github_live_scan": {
-      "latest_status": "pending",
+      "latest_status": "in_progress",
       "latest_conclusion": null,
-      "latest_event": "schedule",
-      "latest_created_at": "2026-09-21T16:30:15Z",
-      "latest_updated_at": "2026-09-21T16:30:16Z",
-      "latest_run_id": 35626010292,
-      "last_success_at": "2026-09-21T16:26:43Z",
-      "last_success_run_id": 35624674661,
+      "latest_event": "workflow_dispatch",
+      "latest_created_at": "2026-09-21T17:04:53Z",
+      "latest_updated_at": "2026-09-21T17:05:07Z",
+      "latest_run_id": 35629697935,
+      "last_success_at": "2026-09-21T17:00:09Z",
+      "last_success_run_id": 35628682957,
       "cancellations_since_success": 0,
       "latest_cancelled_run_id": null,
       "latest_hard_failure_conclusion": null,
       "latest_hard_failure_run_id": null,
       "active_run_count": 1,
-      "ignored_non_operational_run_count": 21
+      "ignored_non_operational_run_count": 18
     },
     "public_surface": {
       "dashboard_ok": true,
       "real_feed_ok": true,
-      "real_feed_generated_at": "2026-09-21T15:45:54.663915+00:00"
+      "real_feed_generated_at": "2026-09-21T16:59:56.252767+00:00"
     },
     "github_actions_capacity": {
-      "queued": 39,
-      "in_progress": 20,
-      "runs_today": 8967,
-      "failures_today": 166,
+      "queued": 25,
+      "in_progress": 17,
+      "runs_today": 9348,
+      "failures_today": 227,
       "ok": false
     },
     "revival_publish_freshness": {
-      "latest_run_id": 35625170046,
+      "latest_run_id": 35627922180,
       "latest_status": "completed",
-      "latest_conclusion": "success",
-      "latest_updated_at": "2026-09-21T16:25:23Z",
+      "latest_conclusion": "failure",
+      "latest_updated_at": "2026-09-21T16:52:09Z",
       "published_generated_at": "2026-09-21T16:23:29.048977+00:00",
-      "ok": true
+      "ok": false
     },
     "candidate_starvation": {
-      "zero_active_started_at": "2026-09-21T16:32:11.858026+00:00",
+      "zero_active_started_at": "2026-09-21T17:08:54.450704+00:00",
       "zero_active_age_seconds": 0.0,
       "active_qualified": 0,
       "market_scan": 384,
@@ -165,7 +146,7 @@
     "attempted": false,
     "sent": false,
     "reason": "WATCHDOG_USER_TELEGRAM_DISABLED_BY_NEAR_BUY_AND_BUY_ONLY_POLICY",
-    "suppressed_technical_notification_count": 3
+    "suppressed_technical_notification_count": 0
   },
-  "operational_guard_updated_at": "2026-09-21T16:32:11.858026+00:00"
+  "operational_guard_updated_at": "2026-09-21T17:08:54.450704+00:00"
 }
