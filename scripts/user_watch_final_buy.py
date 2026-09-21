@@ -725,6 +725,25 @@ def evaluate(
     if report_verified:
         proof.append("EXACT_PAIR_VERIFIED")
 
+    execution_path = (
+        "HYBRID_CEX_DEX_BREAKOUT" if hybrid_breakout_continuation else
+        "CEX_BREAKOUT_CONTINUATION" if cex_breakout_continuation else
+        "CEX_QUARTER_WAVE_FAST_PATH" if cex_quarter_wave_fast_path else
+        "EXACT_CEX_MARKET_FAST_PATH" if cex_market_only_fast_path else
+        "FUSION_STRONG" if strong else
+        "FUSION_RELAXED" if relaxed else
+        "STANDARD"
+    )
+    fusion_bypassed = bool(
+        execution_path in {
+            "HYBRID_CEX_DEX_BREAKOUT",
+            "CEX_BREAKOUT_CONTINUATION",
+            "CEX_QUARTER_WAVE_FAST_PATH",
+            "EXACT_CEX_MARKET_FAST_PATH",
+        }
+        and not (strong or relaxed)
+    )
+
     result = {
         "identity_key": key,
         "symbol": str(target.get("symbol") or "").upper(),
@@ -786,6 +805,8 @@ def evaluate(
             "wallet_flow_score": wallet,
             "holder_network_score": holder,
             "market_microstructure_score": micro,
+            "execution_path": execution_path,
+            "fusion_gate_bypassed": fusion_bypassed,
         },
         "truth_contract": {
             "exact_chain_contract_pair_required": not cex_market_only,
@@ -794,7 +815,8 @@ def evaluate(
             "telegram_final_buy_only": False,
             "telegram_pre_buy_enabled": bool(policy.get("telegram_pre_buy_enabled")),
             "pre_buy_requires_all_current_gates_passed": True,
-            "pre_buy_is_one_confirmation_scan_before_final_buy": True,\n            "pre_buy_never_after_delivered_final_buy_same_episode": True,
+            "pre_buy_is_one_confirmation_scan_before_final_buy": True,
+            "pre_buy_never_after_delivered_final_buy_same_episode": True,
             "manual_decision_only": True,
             "automatic_trade": False,
             "quarter_wave_revalidation_lane": quarter_wave_lane,
@@ -859,7 +881,12 @@ def telegram_message(target: dict, decision: dict) -> str:
             f"Buys/Sells 1H: {m['buys_h1']}/{m['sells_h1']} ({m['buy_sell_ratio']:.2f}x)",
             f"Rebound from watch low: {m['rebound_from_watch_low_pct']:.2f}%",
             f"Scan-to-scan price gain: {m['scan_price_gain_pct']:.2f}%",
-            f"Intelligence Fusion: {intel['score']:.1f}/100 | {intel['positive_families']} positive families",
+            (
+                f"Intelligence: alternate verified path {intel['execution_path']} | "
+                f"Fusion {intel['score']:.1f}/100 is informational, not the approving gate"
+                if intel.get("fusion_gate_bypassed")
+                else f"Intelligence Fusion: {intel['score']:.1f}/100 | {intel['positive_families']} positive families"
+            ),
             "Proof: " + " | ".join(decision.get("proof") or []),
             "PRE-BUY = confirmation pending; this is not FINAL BUY yet.",
             "Manual decision only. No automatic trade.",
