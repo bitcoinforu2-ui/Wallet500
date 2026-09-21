@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "updated_at": "2026-09-04T09:45:00Z",
+  "version": 2,
+  "updated_at": "2026-09-21T19:30:00Z",
   "policy": "EXACT_CHAIN_ADDRESS_ROLES_ONLY; EXCLUDE_FROM_WHALE_CONCENTRATION_ONLY_AT_CONFIDENCE_GE_0_90; UNKNOWN_ADDRESSES_REMAIN_COUNTED",
   "entries": [
     {
@@ -17,6 +17,22 @@
           "Independent Binance Alpha custody/aggregation corroboration"
         ],
         "truth_note": "Custody concentration represents an exchange/aggregate address, not one beneficial-owner whale. Funds are not assumed locked or harmless; custody share must be monitored separately for flows."
+      }
+    },
+    {
+      "chain": "ROBINHOOD",
+      "address": "0x267444D099b10fB5Ed7c3Cc7B7c767AdcA574952",
+      "role": "LOCKED_VAULT",
+      "label": "Pons V2 Launch Locker",
+      "confidence": 1,
+      "evidence": {
+        "status": "OFFICIAL_PROTOCOL_DEPLOYED_ADDRESS_CORROBORATED_ONCHAIN",
+        "sources": [
+          "Pons V2 official docs: Launch locker deployed on Robinhood Chain",
+          "Robinhood Chain official docs: chain id 4663 and EVM-compatible mainnet",
+          "FOMOBAG regression case: exact locker balance must not be counted as a beneficial-owner whale"
+        ],
+        "truth_note": "Exclude only this exact Robinhood-chain locker address from beneficial-owner whale concentration. Do not infer that other Pons, creator, factory, escrow, or similarly named addresses are locked. Unknown addresses remain counted fail-closed."
       }
     }
   ]
