@@ -206,10 +206,26 @@ def market_row(state: dict, key: str) -> dict | None:
     rows = state.get("tokens") if isinstance(state, dict) else {}
     if not isinstance(rows, dict):
         return None
-    for row in rows.values():
-        if isinstance(row, dict) and str(row.get("identity_key") or "") == key:
-            return row
-    return None
+    matches = [
+        row for row in rows.values()
+        if isinstance(row, dict) and str(row.get("identity_key") or "") == key
+    ]
+    if not matches:
+        return None
+
+    # The same exact identity can arrive through configured/public-alpha/CEX lanes.
+    # Never let dict insertion order select an old snapshot over a fresher exact row.
+    def freshness(row: dict) -> tuple:
+        observed = parse_dt(row.get("observed_at"))
+        observed_ts = observed.timestamp() if observed is not None else float("-inf")
+        dynamic_spot = 1 if row.get("dynamic_spot_candidate") is True else 0
+        cex_context = 1 if (
+            row.get("cex_execution_verified") is True
+            or (num(row.get("cex_quote_volume_24h_usd"), 0.0) or 0.0) > 0
+        ) else 0
+        return (observed_ts, dynamic_spot, cex_context)
+
+    return max(matches, key=freshness)
 
 
 def report_row(report: dict, key: str) -> dict | None:
@@ -279,7 +295,9 @@ def _policy(config: dict) -> dict:
         "hybrid_breakout_enabled": True,
         "hybrid_breakout_min_cex_turnover_usd": 100000.0,
         "hybrid_breakout_min_relative_volume_multiple": 4.0,
-        "hybrid_breakout_max_gainer_rank": 5,
+        "hybrid_breakout_absolute_turnover_fallback_usd": 250000.0,
+        "hybrid_breakout_absolute_turnover_max_gainer_rank": 8,
+        "hybrid_breakout_max_gainer_rank": 8,
         "hybrid_breakout_min_dex_liquidity_usd": 150000.0,
         "hybrid_breakout_min_dex_volume_h1_usd": 100000.0,
         "hybrid_breakout_min_activity_h1": 500,
@@ -527,6 +545,19 @@ def evaluate(
         )
 
     previous_price = num(prior.get("last_price"))
+    previous_market_at = parse_dt(prior.get("last_market_observed_at"))
+    current_market_at = parse_dt((market or {}).get("observed_at"))
+    if (
+        previous_price is not None
+        and previous_market_at is not None
+        and current_market_at is not None
+        and (
+            current_market_at < previous_market_at
+            or (current_market_at - previous_market_at).total_seconds() > max_age
+        )
+    ):
+        # A stale lane/source handoff is not a real scan-to-scan move.
+        previous_price = None
     previous_low = num(prior.get("watch_low_price"))
     low = price if price > 0 and previous_low is None else previous_low
     if price > 0 and low is not None:
@@ -605,6 +636,14 @@ def evaluate(
     # heuristic would otherwise veto a real continuation. It never bypasses
     # hard risk, stale intelligence, price disagreement, weak execution, or the
     # two-scan confirmation requirement.
+    hybrid_cex_momentum_confirmed = bool(
+        cex_relative_multiple >= float(policy["hybrid_breakout_min_relative_volume_multiple"])
+        or (
+            cex_turnover >= float(policy["hybrid_breakout_absolute_turnover_fallback_usd"])
+            and cex_rank is not None
+            and cex_rank <= int(policy["hybrid_breakout_absolute_turnover_max_gainer_rank"])
+        )
+    )
     hybrid_breakout_continuation = bool(
         policy.get("hybrid_breakout_enabled") is True
         and quarter_wave_lane
@@ -623,7 +662,7 @@ def evaluate(
         and activity >= int(policy["hybrid_breakout_min_activity_h1"])
         and ratio >= float(policy["hybrid_breakout_min_buy_sell_ratio"])
         and cex_turnover >= float(policy["hybrid_breakout_min_cex_turnover_usd"])
-        and cex_relative_multiple >= float(policy["hybrid_breakout_min_relative_volume_multiple"])
+        and hybrid_cex_momentum_confirmed
         and cex_rank is not None
         and cex_rank <= int(policy["hybrid_breakout_max_gainer_rank"])
         and scan_gain is not None
@@ -840,6 +879,7 @@ def evaluate(
         "identity_key": key,
         "symbol": result["symbol"],
         "last_seen_at": now.isoformat(),
+        "last_market_observed_at": (market or {}).get("observed_at") or prior.get("last_market_observed_at"),
         "last_price": price if price > 0 else prior.get("last_price"),
         "last_liquidity": liquidity,
         "last_volume_h1": volume_h1,
