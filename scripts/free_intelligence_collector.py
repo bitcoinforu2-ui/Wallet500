@@ -204,9 +204,9 @@ def honeypot(t, prev=None, with_snapshot=False, market_snapshot=None):
     st = num(sim.get("sellTax"))
     previous = prev if isinstance(prev, dict) else {}
     market = market_snapshot if isinstance(market_snapshot, dict) else {}
-    real_sells = int(num(market.get("sells_h1"), 0) or 0)
-    real_volume = num(market.get("volume_h1"), 0.0) or 0.0
-    real_liquidity = num(market.get("liquidity"), 0.0) or 0.0
+    real_sells = int(num(market.get("sells_h1")) or 0)
+    real_volume = num(market.get("volume_h1")) or 0.0
+    real_liquidity = num(market.get("liquidity")) or 0.0
     low_sell_tax = st is not None and st <= 5
     contradictory_real_sell_flow = bool(
         hp is True
