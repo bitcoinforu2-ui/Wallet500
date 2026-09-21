@@ -210,10 +210,10 @@ def main() -> int:
             "candidate_type": target.get("candidate_type") or "GATE_SPOT_DISCOVERY",
             "dynamic_spot_candidate": True,
             "dynamic_cex_market_candidate": bool(target.get("dynamic_cex_market_candidate")),
-            "first_seen_at": previous.get("first_seen_at") or target.get("first_seen_at"),
-            "first_seen_price": previous.get("first_seen_price") if previous.get("first_seen_price") is not None else target.get("first_seen_price"),
-            "first_seen_change_24h_pct": previous.get("first_seen_change_24h_pct") if previous.get("first_seen_change_24h_pct") is not None else target.get("first_seen_change_24h_pct"),
-            "first_seen_quote_volume_24h_usd": previous.get("first_seen_quote_volume_24h_usd") if previous.get("first_seen_quote_volume_24h_usd") is not None else target.get("first_seen_quote_volume_24h_usd"),
+            "first_seen_at": target.get("first_seen_at") or previous.get("first_seen_at"),
+            "first_seen_price": target.get("first_seen_price") if target.get("first_seen_price") is not None else previous.get("first_seen_price"),
+            "first_seen_change_24h_pct": target.get("first_seen_change_24h_pct") if target.get("first_seen_change_24h_pct") is not None else previous.get("first_seen_change_24h_pct"),
+            "first_seen_quote_volume_24h_usd": target.get("first_seen_quote_volume_24h_usd") if target.get("first_seen_quote_volume_24h_usd") is not None else previous.get("first_seen_quote_volume_24h_usd"),
             "discovery_price": previous.get("discovery_price") if previous.get("discovery_price") is not None else target.get("discovery_price"),
             "cex_quote_volume_24h_usd": sensor["current_volume_usd"],
             "cex_quote_volume_baseline_usd": sensor["baseline_volume_usd"],
@@ -238,7 +238,15 @@ def main() -> int:
                     live = engine.live_exact_pair(target, spread)
                     if str(target.get("exchange") or "").lower() == "gate" and target.get("currency_pair"):
                         try:
-                            live.update(engine.gate_execution_snapshot(target.get("currency_pair")))
+                            cex_snap = engine.gate_execution_snapshot(target.get("currency_pair"))
+                            live.update(cex_snap)
+                            cex_price = float(cex_snap.get("cex_price") or 0)
+                            dex_price = float(live.get("price") or 0)
+                            if cex_price > 0 and dex_price > 0:
+                                med = (cex_price + dex_price) / 2.0
+                                live["cex_market_price_spread_pct"] = (
+                                    abs(cex_price - dex_price) / med * 100.0 if med else 999.0
+                                )
                         except Exception as cex_exc:
                             live["cex_execution_verified"] = False
                             live["cex_execution_error"] = f"{type(cex_exc).__name__}:{str(cex_exc)[:160]}"
@@ -258,9 +266,15 @@ def main() -> int:
                     "buys_h1": live["buys_h1"],
                     "sells_h1": live["sells_h1"],
                     "spread_pct": live["spread_pct"],
+                    "price_source_count": int(live.get("price_source_count") or (1 if target.get("dynamic_cex_market_candidate") else 0)),
+                    "price_sources": list(live.get("price_sources") or (["gate"] if target.get("dynamic_cex_market_candidate") else [])),
+                    "single_source_degraded": bool(live.get("single_source_degraded")),
+                    "single_source_error": live.get("single_source_error"),
                     "observed_at": live["observed_at"],
                     "cex_execution_verified": live.get("cex_execution_verified"),
                     "cex_execution_scope": live.get("cex_execution_scope"),
+                    "cex_price": live.get("cex_price"),
+                    "cex_market_price_spread_pct": live.get("cex_market_price_spread_pct"),
                     "cex_orderbook_spread_pct": live.get("cex_orderbook_spread_pct"),
                     "cex_bid_depth_1pct_usd": live.get("cex_bid_depth_1pct_usd"),
                     "cex_ask_depth_1pct_usd": live.get("cex_ask_depth_1pct_usd"),
