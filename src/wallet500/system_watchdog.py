@@ -70,7 +70,7 @@ def _key(row: dict[str, Any]) -> str:
     chain = str(row.get("chain") or "").strip().lower()
     token = str(row.get("token_address") or row.get("token") or row.get("mint") or "").strip()
     pair = str(row.get("pair_address") or "").strip()
-    if chain in {"ethereum", "bsc", "bnb", "eth", "base", "arbitrum", "optimism", "polygon", "avalanche"}:
+    if chain in {"ethereum", "bsc", "bnb", "eth", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc"}:
         token, pair = token.lower(), pair.lower()
     return f"{chain}:{token}:{pair}" if chain and token and pair else ""
 
