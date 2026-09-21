@@ -83,3 +83,58 @@ def test_honeypot_provider_conflict_with_real_sells_stays_soft(monkeypatch):
     assert conflict
     assert conflict[0]["hard_risk"] is False
     assert conflict[0]["security_confirmation"] == "PROVIDER_CONFLICT_WITH_VERIFIED_REAL_SELL_FLOW"
+
+
+
+def test_goplus_young_authority_combo_requires_recheck_then_hard_blocks():
+    token = _token()
+    market = {"age_minutes": 30}
+    raw = {
+        "is_open_source": "1",
+        "owner_address": "0x1111111111111111111111111111111111111111",
+        "hidden_owner": "1",
+        "transfer_pausable": "1",
+        "is_mintable": "0",
+        "owner_change_balance": "0",
+        "selfdestruct": "0",
+        "can_take_back_ownership": "0",
+        "is_honeypot": "0",
+    }
+
+    first_events, first = free.goplus_authority(
+        token, raw, {}, market_snapshot=market
+    )
+    risk1 = [e for e in first_events if e["kind"] == "evm_contract_authority_risk"]
+    assert risk1
+    assert risk1[0]["hard_risk"] is False
+    assert first["buy_eligible"] is False
+    assert not any(e["kind"] == "evm_contract_authority_buy_eligible" for e in first_events)
+
+    second_events, second = free.goplus_authority(
+        token, raw, first, market_snapshot={"age_minutes": 45}
+    )
+    risk2 = [e for e in second_events if e["kind"] == "evm_contract_authority_risk"]
+    assert risk2 and risk2[0]["hard_risk"] is True
+    assert second["hard_risk"] is True
+
+
+def test_goplus_clean_young_contract_emits_buy_eligible_evidence():
+    raw = {
+        "is_open_source": "1",
+        "owner_address": "",
+        "hidden_owner": "0",
+        "transfer_pausable": "0",
+        "is_mintable": "0",
+        "owner_change_balance": "0",
+        "selfdestruct": "0",
+        "can_take_back_ownership": "0",
+        "is_honeypot": "0",
+        "is_blacklisted": "0",
+        "slippage_modifiable": "0",
+    }
+    events, snap = free.goplus_authority(
+        _token(), raw, {}, market_snapshot={"age_minutes": 60}
+    )
+    assert snap["buy_eligible"] is True
+    assert any(e["kind"] == "evm_contract_authority_verified" for e in events)
+    assert any(e["kind"] == "evm_contract_authority_buy_eligible" for e in events)

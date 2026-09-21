@@ -579,6 +579,7 @@ def fusion_summary(row, notable_min_raw=0.30):
             "updated_at": None,
             "evidence_age_minutes": None,
             "current_evidence_count": 0,
+            "current_evidence_kinds": [],
         }
 
     notable = set()
@@ -604,6 +605,7 @@ def fusion_summary(row, notable_min_raw=0.30):
         "freshest_event_at": row.get("freshest_event_at"),
         "evidence_age_minutes": row.get("evidence_age_minutes"),
         "current_evidence_count": int(row.get("current_evidence_count") or 0),
+        "current_evidence_kinds": sorted(set(row.get("current_evidence_kinds") or [])),
     }
 
 
