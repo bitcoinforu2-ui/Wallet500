@@ -387,7 +387,7 @@ def _send(bot_token: str, chat_id: str, text: str, max_attempts: int = 3) -> tup
     raise RuntimeError(f"Telegram delivery failed after {max_attempts} attempts: {last_error}")
 
 
-def run(send_func=None) -> dict:
+def run(send_func=None, delivery_func=None) -> dict:
     out = Path(os.getenv("WALLET500_OUTPUT_DIR", "data"))
     source_name = os.getenv("WALLET500_ALERT_INPUT", "active-qualified-candidates.json")
     real_source_name = os.getenv("WALLET500_REAL_ALERT_INPUT", "real-alerts.json")
@@ -459,7 +459,58 @@ def run(send_func=None) -> dict:
             continue
         event_id = _alert_event_id(key, now)
         try:
-            telegram_message_id, attempts = sender(bot_token, chat_id, _message(display, tier, sent_at=now, alert_event_id=event_id))
+            if callable(delivery_func):
+                source_token = str(
+                    real.get("first_alert_at")
+                    or real.get("promoted_at")
+                    or real.get("alerted_at")
+                    or fingerprint
+                )
+                outcome = delivery_func(
+                    alert_type="REAL_ALERT",
+                    stream_key=key,
+                    source_token=source_token,
+                    metadata={
+                        "tier": tier,
+                        "symbol": display.get("symbol"),
+                        "pair_address": pair_address,
+                        "fingerprint": fingerprint,
+                    },
+                    build_text=lambda stable_id: _message(
+                        display, tier, sent_at=now, alert_event_id=stable_id
+                    ),
+                )
+                status = str((outcome or {}).get("status") or "").upper()
+                event_id = str((outcome or {}).get("event_id") or event_id)
+                if status == "ALREADY_DELIVERED":
+                    sent[key] = {
+                        **previous,
+                        "fingerprint": fingerprint,
+                        "alert_event_id": event_id,
+                        "telegram_message_id": outcome.get("telegram_message_id"),
+                        "delivery_attempts": outcome.get("delivery_attempts"),
+                        "tier": tier,
+                        "symbol": display.get("symbol"),
+                        "pair_address": pair_address,
+                        "actionable": True,
+                        "sent_at": previous.get("sent_at") or now,
+                        "sent_at_israel": previous.get("sent_at_israel") or now_israel,
+                        "dex_url": display.get("dex_url") or display.get("url"),
+                        "delivery_truth_source": "SHARED_DELIVERY_LEDGER",
+                    }
+                    continue
+                if status != "DELIVERED":
+                    raise RuntimeError(
+                        f"SHARED_DELIVERY_LEDGER_FAIL_CLOSED:{status or 'UNKNOWN'}"
+                    )
+                telegram_message_id = outcome.get("telegram_message_id")
+                attempts = int(outcome.get("delivery_attempts") or 1)
+            else:
+                telegram_message_id, attempts = sender(
+                    bot_token,
+                    chat_id,
+                    _message(display, tier, sent_at=now, alert_event_id=event_id),
+                )
             sent[key] = {
                 "fingerprint": fingerprint,
                 "alert_event_id": event_id,
@@ -472,7 +523,7 @@ def run(send_func=None) -> dict:
                 "sent_at": now,
                 "sent_at_israel": now_israel,
                 "dex_url": display.get("dex_url") or display.get("url"),
-                "delivery_truth_source": "CANONICAL_REAL_ALERT",
+                "delivery_truth_source": "SHARED_DELIVERY_LEDGER" if callable(delivery_func) else "CANONICAL_REAL_ALERT",
             }
             delivered.append({
                 "alert_type": "REAL_ALERT",
@@ -486,7 +537,7 @@ def run(send_func=None) -> dict:
                 "sent_at": now,
                 "sent_at_israel": now_israel,
                 "dex_url": display.get("dex_url") or display.get("url"),
-                "delivery_truth_source": "CANONICAL_REAL_ALERT",
+                "delivery_truth_source": "SHARED_DELIVERY_LEDGER" if callable(delivery_func) else "CANONICAL_REAL_ALERT",
             })
         except Exception as exc:
             errors.append({"alert_type": "REAL_ALERT", "key": key, "alert_event_id": event_id, "error": f"{type(exc).__name__}: {exc}"[:300]})
@@ -512,7 +563,56 @@ def run(send_func=None) -> dict:
             continue
         event_id = _alert_event_id(state_key, now)
         try:
-            telegram_message_id, attempts = sender(bot_token, chat_id, _pre_wave_message(row, sent_at=now, alert_event_id=event_id))
+            if callable(delivery_func):
+                source_token = str(
+                    row.get("first_alert_at")
+                    or row.get("observed_at")
+                    or f"PRE_WAVE:{_norm_addr(row.get('pair_address'))}"
+                )
+                outcome = delivery_func(
+                    alert_type="PRE_WAVE_ALERT",
+                    stream_key=state_key,
+                    source_token=source_token,
+                    metadata={
+                        "tier": "PRE_WAVE",
+                        "symbol": row.get("symbol"),
+                        "pair_address": row.get("pair_address"),
+                    },
+                    build_text=lambda stable_id: _pre_wave_message(
+                        row, sent_at=now, alert_event_id=stable_id
+                    ),
+                )
+                status = str((outcome or {}).get("status") or "").upper()
+                event_id = str((outcome or {}).get("event_id") or event_id)
+                if status == "ALREADY_DELIVERED":
+                    sent[state_key] = {
+                        **previous,
+                        "fingerprint": f"PRE_WAVE:{_norm_addr(row.get('pair_address'))}",
+                        "alert_event_id": event_id,
+                        "telegram_message_id": outcome.get("telegram_message_id"),
+                        "delivery_attempts": outcome.get("delivery_attempts"),
+                        "tier": "PRE_WAVE",
+                        "symbol": row.get("symbol"),
+                        "pair_address": row.get("pair_address"),
+                        "pre_wave_active": True,
+                        "actionable": False,
+                        "sent_at": previous.get("sent_at") or now,
+                        "sent_at_israel": previous.get("sent_at_israel") or now_israel,
+                        "dex_url": row.get("dex_url") or row.get("url"),
+                    }
+                    continue
+                if status != "DELIVERED":
+                    raise RuntimeError(
+                        f"SHARED_DELIVERY_LEDGER_FAIL_CLOSED:{status or 'UNKNOWN'}"
+                    )
+                telegram_message_id = outcome.get("telegram_message_id")
+                attempts = int(outcome.get("delivery_attempts") or 1)
+            else:
+                telegram_message_id, attempts = sender(
+                    bot_token,
+                    chat_id,
+                    _pre_wave_message(row, sent_at=now, alert_event_id=event_id),
+                )
             sent[state_key] = {
                 "fingerprint": f"PRE_WAVE:{_norm_addr(row.get('pair_address'))}",
                 "alert_event_id": event_id,
@@ -612,8 +712,9 @@ def run(send_func=None) -> dict:
             "manual_execution": "Telegram alerts are review alerts only; no automatic trade is executed",
             "dedupe": "separate transition state for REAL_ALERT and PRE_WAVE per chain+token+exact_pair; later REAL_ALERT remains independently deliverable",
             "telegram_timestamp": "every delivered message includes explicit Asia/Jerusalem send date/time plus original signal T0",
-            "delivery_retries": "up to 3 attempts on transient Telegram/network failures",
-            "audit_id": "each delivery has a stable alert_event_id derived from exact-pair stage key plus send timestamp",
+            "delivery_retries": "legacy sender may retry; shared production ledger sends once after durable reservation and fails closed on ambiguity",
+            "audit_id": "shared production delivery uses a stable event id derived from alert type + stream key + source episode token",
+            "shared_delivery_ledger": bool(callable(delivery_func)),
             "state_writer": "only configured production lanes may write Telegram state/report; unconfigured scan lanes are read-only no-ops",
         },
     }
