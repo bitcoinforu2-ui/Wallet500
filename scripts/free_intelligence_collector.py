@@ -8,7 +8,10 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-import resilient_http
+try:
+    import resilient_http
+except ImportError:  # package import in pytest / module mode
+    from scripts import resilient_http
 
 ROOT = Path(__file__).resolve().parents[1]
 CFG = ROOT / "data/unified-watch-config.json"
