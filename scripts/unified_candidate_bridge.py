@@ -22,6 +22,14 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def first_present(*values):
+    """Return the first explicitly present value; numeric zero is valid evidence."""
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
 def chain_name(v):
     raw = str(v or "").strip().lower()
     return ALIASES.get(raw, raw)
@@ -243,10 +251,10 @@ def main():
             "change_24h_pct": row.get("change_24h_max_pct"),
             "quote_volume_24h_usd": max_cex_turnover(row),
             "positive_gainer_rank": row.get("leaderboard_best_rank"),
-            "dex_liquidity_usd": (
-                row.get("execution_pool_liquidity_usd")
-                or row.get("dex_pair_liquidity_usd")
-                or row.get("dex_liquidity_usd")
+            "dex_liquidity_usd": first_present(
+                row.get("execution_pool_liquidity_usd"),
+                row.get("dex_pair_liquidity_usd"),
+                row.get("dex_liquidity_usd"),
             ),
             "spot_revival_score": row.get("spot_revival_score"),
             "coherent_confirmations": row.get("coherent_confirmations"),
