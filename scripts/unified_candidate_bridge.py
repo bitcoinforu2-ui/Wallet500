@@ -149,20 +149,6 @@ def main():
         i = ident(row)
         if not i or i[3] in seen:
             continue
-
-        cex_hist = cex_identity_by_base.get(str(row.get("symbol") or "").upper()) or {}
-        milestone = cex_signal_milestone(cex_hist) if cex_hist else {}
-        gate_first_at = parse_ts(row.get("first_seen_at"))
-        cex_first_at = parse_ts(milestone.get("observed_at"))
-        use_cex_anchor = bool(
-            cex_first_at is not None
-            and (gate_first_at is None or cex_first_at < gate_first_at)
-            and milestone.get("reference_price") is not None
-        )
-        merged_first_seen_at = milestone.get("observed_at") if use_cex_anchor else row.get("first_seen_at")
-        merged_first_seen_price = milestone.get("reference_price") if use_cex_anchor else row.get("first_seen_price")
-        merged_first_seen_change = milestone.get("reference_change_24h_pct") if use_cex_anchor else row.get("first_seen_change_24h_pct")
-
         seen.add(i[3])
         out.append({
             "candidate_type": "BUY_ZONE",
@@ -258,6 +244,20 @@ def main():
         i = ident(row)
         if not i or i[3] in seen:
             continue
+
+        cex_hist = cex_identity_by_base.get(str(row.get("symbol") or "").upper()) or {}
+        milestone = cex_signal_milestone(cex_hist) if cex_hist else {}
+        gate_first_at = parse_ts(row.get("first_seen_at"))
+        cex_first_at = parse_ts(milestone.get("observed_at"))
+        use_cex_anchor = bool(
+            cex_first_at is not None
+            and (gate_first_at is None or cex_first_at < gate_first_at)
+            and milestone.get("reference_price") is not None
+        )
+        merged_first_seen_at = milestone.get("observed_at") if use_cex_anchor else row.get("first_seen_at")
+        merged_first_seen_price = milestone.get("reference_price") if use_cex_anchor else row.get("first_seen_price")
+        merged_first_seen_change = milestone.get("reference_change_24h_pct") if use_cex_anchor else row.get("first_seen_change_24h_pct")
+
         seen.add(i[3])
         out.append({
             "candidate_type": "GATE_SPOT_DISCOVERY",
