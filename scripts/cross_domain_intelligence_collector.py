@@ -10,7 +10,10 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-import resilient_http
+try:
+    import resilient_http
+except ImportError:  # package import in pytest / module mode
+    from scripts import resilient_http
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "data/unified-watch-config.json"
