@@ -29,9 +29,13 @@ RADAR_FILE = "cex-spot-revival-radar.json"
 STATE_FILE = "cex-fast-current-bypass-state.json"
 IDENTITY_FILE = "cex-spot-identity-radar.json"
 MAX_STRICT_RESOLVES_PER_RUN = 24
+MAX_LIVE_LEADERBOARD_STRICT_RESOLVES_PER_RUN = 12
 MAX_PREWAVE_STRICT_RESOLVES_PER_RUN = 8
 MAX_DELIVER_PER_RUN = 6
 MIN_PRIORITY_SCORE = 35
+LIVE_LEADERBOARD_MAX_RANK = 10
+LIVE_LEADERBOARD_MIN_CHANGE_PCT = 8.0
+LIVE_LEADERBOARD_MIN_TURNOVER_USD = 20_000.0
 MAX_PRE_RESOLVE_24H_CHANGE_PCT = 45.0
 
 
@@ -44,6 +48,30 @@ def _milestone_score(row: dict) -> int:
         _i(alert.get("score")),
         _i(watch.get("score")),
     )
+
+
+def _live_leaderboard_identity_candidate(row: dict) -> bool:
+    """Pre-resolve current top gainers before score promotion can outrun identity work.
+
+    This is identity-only. It does not change signal score, does not create a BUY, and
+    still requires strict exact identity plus all downstream eligibility gates.
+    """
+    if row.get("leveraged_product") is True:
+        return False
+    rank = _i(row.get("leaderboard_best_rank"), 999)
+    change = _f(row.get("change_24h_max_pct"))
+    if rank < 1 or rank > LIVE_LEADERBOARD_MAX_RANK:
+        return False
+    if change < LIVE_LEADERBOARD_MIN_CHANGE_PCT or change > MAX_PRE_RESOLVE_24H_CHANGE_PCT:
+        return False
+    markets = [
+        x for x in (row.get("markets") or [])
+        if isinstance(x, dict)
+        and _f(x.get("price")) > 0
+        and x.get("volume_comparable_usd_like", True)
+        and not x.get("regional_market", False)
+    ]
+    return max((_f(x.get("volume_24h")) for x in markets), default=0.0) >= LIVE_LEADERBOARD_MIN_TURNOVER_USD
 
 
 def _prewave_shadow_strength(row: dict) -> float:
@@ -71,18 +99,20 @@ def _priority_candidates(radar: dict) -> list[dict]:
             continue
         old = by_symbol.get(symbol)
         rank = (
+            1 if _live_leaderboard_identity_candidate(row) else 0,
             1 if _is_prewave_shadow_identity_candidate(row) else 0,
             _milestone_score(row),
             _prewave_shadow_strength(row),
         )
         old_rank = (
             (
+                1 if _live_leaderboard_identity_candidate(old) else 0,
                 1 if _is_prewave_shadow_identity_candidate(old) else 0,
                 _milestone_score(old),
                 _prewave_shadow_strength(old),
             )
             if old
-            else (-1, -1, -1.0)
+            else (-1, -1, -1, -1.0)
         )
         if old is None or rank > old_rank:
             by_symbol[symbol] = row
@@ -92,10 +122,11 @@ def _priority_candidates(radar: dict) -> list[dict]:
         if row.get("leveraged_product") is True:
             continue
         score = _milestone_score(row)
+        live_leaderboard = _live_leaderboard_identity_candidate(row)
         prewave = _is_prewave_shadow_identity_candidate(row)
         prewave_strength = _prewave_shadow_strength(row)
         change = _f(row.get("change_24h_max_pct"))
-        if score < MIN_PRIORITY_SCORE and not prewave:
+        if score < MIN_PRIORITY_SCORE and not prewave and not live_leaderboard:
             continue
         if change > MAX_PRE_RESOLVE_24H_CHANGE_PCT:
             continue
@@ -104,8 +135,11 @@ def _priority_candidates(radar: dict) -> list[dict]:
             continue
         row["_fast_priority_score"] = score
         row["_prewave_shadow_priority"] = round(prewave_strength, 4)
+        row["_live_leaderboard_priority"] = bool(live_leaderboard)
         row["_fast_priority_reason"] = (
-            "PREWAVE_SPOT_SHADOW"
+            "LIVE_LEADERBOARD_PREBUY_IDENTITY"
+            if live_leaderboard
+            else "PREWAVE_SPOT_SHADOW"
             if score < MIN_PRIORITY_SCORE and prewave
             else "CEX_SIGNAL_SCORE"
         )
@@ -120,25 +154,55 @@ def _priority_candidates(radar: dict) -> list[dict]:
             max((_f(m.get("volume_24h")) for m in x.get("markets") or [] if isinstance(m, dict)), default=0.0),
         )
 
+    def leaderboard_sort_key(x):
+        return (
+            -_i(x.get("leaderboard_best_rank"), 999),
+            _f(x.get("change_24h_max_pct")),
+            _i(x.get("_fast_priority_score")),
+            max((_f(m.get("volume_24h")) for m in x.get("markets") or [] if isinstance(m, dict)), default=0.0),
+        )
+
+    leaderboard_rows = sorted(
+        [x for x in selected if x.get("_live_leaderboard_priority") is True],
+        key=leaderboard_sort_key,
+        reverse=True,
+    )
     prewave_rows = sorted(
-        [x for x in selected if _is_prewave_shadow_identity_candidate(x)],
+        [
+            x for x in selected
+            if x.get("_live_leaderboard_priority") is not True
+            and _is_prewave_shadow_identity_candidate(x)
+        ],
         key=sort_key,
         reverse=True,
     )
     regular_rows = sorted(
-        [x for x in selected if not _is_prewave_shadow_identity_candidate(x)],
+        [
+            x for x in selected
+            if x.get("_live_leaderboard_priority") is not True
+            and not _is_prewave_shadow_identity_candidate(x)
+        ],
         key=sort_key,
         reverse=True,
     )
 
-    # Pre-wave work gets protected capacity, but cannot starve already-qualified
-    # current signals. Unused regular capacity can still be filled by more pre-wave
-    # rows, so the strict-resolve budget is never wasted.
-    chosen = prewave_rows[:MAX_PREWAVE_STRICT_RESOLVES_PER_RUN]
+    # Current top gainers receive protected identity capacity before backlog-style
+    # signal work. Pre-wave work remains protected too. Neither lane changes score
+    # or actionability; both only reduce time-to-exact-identity.
+    chosen = leaderboard_rows[:MAX_LIVE_LEADERBOARD_STRICT_RESOLVES_PER_RUN]
+    for row in prewave_rows[:MAX_PREWAVE_STRICT_RESOLVES_PER_RUN]:
+        if len(chosen) >= MAX_STRICT_RESOLVES_PER_RUN:
+            break
+        chosen.append(row)
     for row in regular_rows:
         if len(chosen) >= MAX_STRICT_RESOLVES_PER_RUN:
             break
         chosen.append(row)
+    if len(chosen) < MAX_STRICT_RESOLVES_PER_RUN:
+        for row in leaderboard_rows[MAX_LIVE_LEADERBOARD_STRICT_RESOLVES_PER_RUN:]:
+            if len(chosen) >= MAX_STRICT_RESOLVES_PER_RUN:
+                break
+            chosen.append(row)
     if len(chosen) < MAX_STRICT_RESOLVES_PER_RUN:
         for row in prewave_rows[MAX_PREWAVE_STRICT_RESOLVES_PER_RUN:]:
             if len(chosen) >= MAX_STRICT_RESOLVES_PER_RUN:
@@ -344,6 +408,10 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
         "current_watch_bypass_requires_strict_dex_identity": True,
         "current_watch_bypass_symbol_only_never_actionable": True,
         "current_watch_strict_resolve_limit_per_run": MAX_STRICT_RESOLVES_PER_RUN,
+        "live_leaderboard_identity_priority_enabled": True,
+        "live_leaderboard_identity_priority_is_identity_only": True,
+        "live_leaderboard_identity_priority_never_waives_buy_gates": True,
+        "live_leaderboard_identity_priority_slot_cap": MAX_LIVE_LEADERBOARD_STRICT_RESOLVES_PER_RUN,
         "current_watch_max_telegram_deliveries_per_run": 0,
         "direct_telegram_delivery_disabled": True,
     })
@@ -360,6 +428,12 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
         "resolve_failures": resolve_failures[:30],
         "errors": errors,
         "resolve_limit": MAX_STRICT_RESOLVES_PER_RUN,
+        "live_leaderboard_strict_resolve_reserved_cap": MAX_LIVE_LEADERBOARD_STRICT_RESOLVES_PER_RUN,
+        "live_leaderboard_max_rank": LIVE_LEADERBOARD_MAX_RANK,
+        "live_leaderboard_min_change_pct": LIVE_LEADERBOARD_MIN_CHANGE_PCT,
+        "live_leaderboard_min_turnover_usd": LIVE_LEADERBOARD_MIN_TURNOVER_USD,
+        "live_leaderboard_priority_enabled": True,
+        "live_leaderboard_priority_is_identity_only": True,
         "prewave_strict_resolve_reserved_cap": MAX_PREWAVE_STRICT_RESOLVES_PER_RUN,
         "prewave_shadow_priority_enabled": True,
         "prewave_shadow_priority_is_identity_only": True,
