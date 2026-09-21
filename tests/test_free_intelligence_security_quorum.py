@@ -46,3 +46,39 @@ def test_honeypot_second_consecutive_observation_confirms_hard_risk(monkeypatch)
     assert second["confirmed_hard_risk"] is True
     hard = [e for e in second_events if e["kind"] == "honeypot_or_transfer_block"]
     assert hard and hard[0]["hard_risk"] is True
+
+
+
+def test_honeypot_provider_conflict_with_real_sells_stays_soft(monkeypatch):
+    monkeypatch.setattr(
+        free,
+        "get_json",
+        lambda url, headers=None, timeout=12: {
+            "honeypotResult": {"isHoneypot": True},
+            "simulationResult": {"buyTax": 0, "sellTax": 0},
+        },
+    )
+    first_events, first = free.honeypot(_token(), {}, with_snapshot=True)
+    assert first_events[0]["hard_risk"] is False
+
+    market = {
+        "sells_h1": 96,
+        "volume_h1": 12000,
+        "liquidity": 175000,
+    }
+    second_events, second = free.honeypot(
+        _token(),
+        first,
+        with_snapshot=True,
+        market_snapshot=market,
+    )
+
+    assert second["confirmed_hard_risk"] is False
+    assert second["provider_conflict_with_real_sell_flow"] is True
+    conflict = [
+        e for e in second_events
+        if e["kind"] == "honeypot_provider_conflict_real_sells"
+    ]
+    assert conflict
+    assert conflict[0]["hard_risk"] is False
+    assert conflict[0]["security_confirmation"] == "PROVIDER_CONFLICT_WITH_VERIFIED_REAL_SELL_FLOW"
