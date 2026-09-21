@@ -213,6 +213,7 @@ def build_observation_intel(out: Path, now: str | None = None) -> dict:
         if isinstance(x, dict)
     }
     identity_by_symbol = _identity_index(identity)
+    milestones_by_symbol = state.get("signal_milestones") if isinstance(state.get("signal_milestones"), dict) else {}
 
     current_symbols: dict[str, list[dict]] = {}
     diagnostics = []
@@ -236,7 +237,12 @@ def build_observation_intel(out: Path, now: str | None = None) -> dict:
         if max_change < POSTMORTEM_MOVE_PCT:
             continue
         ident = identity_by_symbol.get(symbol, {})
-        promoted = symbol in watch_symbols
+        milestones = milestones_by_symbol.get(symbol) if isinstance(milestones_by_symbol.get(symbol), dict) else {}
+        immutable_promotion = bool(
+            isinstance(milestones.get("first_watch"), dict)
+            or isinstance(milestones.get("first_alert"), dict)
+        )
+        promoted = symbol in watch_symbols or immutable_promotion
         identity_verified = ident.get("identity_verified") if "identity_verified" in ident else None
         liquidity_gate = ident.get("liquidity_execution_gate_eligible") if "liquidity_execution_gate_eligible" in ident else None
         cls = classify_postmortem(
@@ -250,6 +256,8 @@ def build_observation_intel(out: Path, now: str | None = None) -> dict:
             "change_24h_max_pct": round(max_change, 6),
             "class": cls,
             "promoted_to_research_watch": promoted,
+            "current_watch_membership": symbol in watch_symbols,
+            "immutable_promotion_milestone": immutable_promotion,
             "identity_verified": identity_verified,
             "liquidity_execution_gate_eligible": liquidity_gate,
             "identity_status": ident.get("identity_status"),
