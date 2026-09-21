@@ -1004,30 +1004,13 @@ def main() -> int:
     persistent = load(STATE, {"version": 1, "targets": {}})
 
     upstream = os.environ.get("WALLET500_MARKET_WATCH_OUTCOME", "success").strip().lower()
-    if upstream != "success":
-        write(STATE, persistent)
-        write(REPORT, {
-            "version": 1,
-            "generated_at": now_iso(),
-            "mode": POLICY_MODE,
-            "status": "BLOCKED_UPSTREAM_MARKET_WATCH",
-            "upstream_outcome": upstream,
-            "configured_targets": len(eligible_targets(config, dynamic, watch_state)),
-            "buy_zone_count": 0,
-            "pre_buy_count": 0,
-            "pre_buy_delivered_count": 0,
-            "delivered_count": 0,
-            "error_count": 0,
-            "decisions": [],
-            "truth_contract": {
-                "fail_closed_on_upstream_failure": True,
-                "telegram_final_buy_only": False,
-                "telegram_pre_buy_enabled": bool(policy.get("telegram_pre_buy_enabled")),
-                "automatic_trade": False,
-            },
-        })
-        print(json.dumps({"status": "BLOCKED_UPSTREAM_MARKET_WATCH", "upstream_outcome": upstream}))
-        return 0
+    partial_upstream = upstream != "success"
+    # A cancelled long scan must not globally erase fresh high-priority decisions.
+    # On partial upstream, evaluate only targets refreshed in the last five minutes;
+    # all older targets fail closed and keep their previous confirmation state.
+    partial_upstream_max_age_seconds = min(
+        300.0, float(policy.get("max_snapshot_age_seconds", 2100))
+    )
     target_state = persistent.get("targets") if isinstance(persistent.get("targets"), dict) else {}
     target_state = dict(target_state)
 
@@ -1038,6 +1021,8 @@ def main() -> int:
     pre_buy_delivered: list[str] = []
     errors: list[dict] = []
 
+    partial_upstream_skipped = 0
+    partial_upstream_evaluated = 0
     for target in eligible_targets(config, dynamic, watch_state):
         key = identity_key(target)
         m = market_row(watch_state, key)
@@ -1045,6 +1030,38 @@ def main() -> int:
         if rr is not None:
             rr = dict(rr)
             rr["_report_age_seconds"] = top_report_age
+
+        if partial_upstream:
+            market_age = age_seconds((m or {}).get("observed_at"), now)
+            report_time = (rr or {}).get("observed_at") or (rr or {}).get("updated_at")
+            report_age = age_seconds(report_time, now)
+            if report_age is None:
+                report_age = top_report_age
+            fresh_partial = bool(
+                market_age is not None
+                and 0 <= market_age <= partial_upstream_max_age_seconds
+                and report_age is not None
+                and 0 <= report_age <= partial_upstream_max_age_seconds
+                and (rr or {}).get("market_verified") is True
+            )
+            if not fresh_partial:
+                partial_upstream_skipped += 1
+                decisions.append({
+                    "symbol": target.get("symbol"),
+                    "identity_key": key,
+                    "state": "WATCH",
+                    "recommended_action": "WAIT",
+                    "alert": False,
+                    "pre_buy": False,
+                    "qualified_this_scan": False,
+                    "qualified_streak": int((target_state.get(key) or {}).get("qualified_streak") or 0),
+                    "blockers": ["UPSTREAM_PARTIAL_SNAPSHOT_NOT_FRESH"],
+                    "proof": [],
+                    "upstream_outcome": upstream,
+                })
+                continue
+            partial_upstream_evaluated += 1
+
         decision, next_state = evaluate(
             target, m, rr, target_state.get(key), policy, now=now
         )
@@ -1095,6 +1112,10 @@ def main() -> int:
         "generated_at": now.isoformat(),
         "mode": POLICY_MODE,
         "policy": policy,
+        "status": "PARTIAL_UPSTREAM_FRESH_TARGETS_ONLY" if partial_upstream else "OK",
+        "upstream_outcome": upstream,
+        "partial_upstream_evaluated": partial_upstream_evaluated,
+        "partial_upstream_skipped": partial_upstream_skipped,
         "configured_targets": len(eligible_targets(config, dynamic, watch_state)),
         "buy_zone_count": sum(1 for x in decisions if x.get("state") == "BUY_ZONE"),
         "pre_buy_count": sum(1 for x in decisions if x.get("pre_buy") is True),
@@ -1118,13 +1139,15 @@ def main() -> int:
             "research_watch_notifications": False,
             "near_buy_notifications": True,
             "generic_near_buy_notifications": False,
+            "fail_closed_per_target_on_partial_upstream": True,
+            "partial_upstream_max_snapshot_age_seconds": partial_upstream_max_age_seconds,
             "automatic_trade": False,
             "veteran_production_real_alert_policy_unchanged": True,
         },
     }
     write(REPORT, report)
     print(json.dumps({
-        "status": "OK" if not errors else "DELIVERY_ERROR",
+        "status": ("DELIVERY_ERROR" if errors else ("PARTIAL_UPSTREAM_FRESH_TARGETS_ONLY" if partial_upstream else "OK")),
         "mode": POLICY_MODE,
         "configured_targets": report["configured_targets"],
         "buy_zone_count": report["buy_zone_count"],
