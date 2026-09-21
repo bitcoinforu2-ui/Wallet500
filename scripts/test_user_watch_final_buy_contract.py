@@ -402,6 +402,88 @@ def main() -> None:
     assert trio_buy["recommended_action"] == "BUY"
     assert trio_buy["alert"] is True
 
+    # R2-like hybrid continuation: strong exact DEX execution + CEX shock/rank
+    # can override a slightly sub-threshold buy/sell ratio and shallow rebound.
+    r2_target = dict(mgt_target)
+    r2_target.update({
+        "symbol": "R2",
+        "network": "bsc",
+        "contract": "0x223a20e1b83aa3832e78d4b7b132df022e739222",
+        "pair": "0xfdbeffa804bc58e9edd720165f41a62b2ee251b6",
+        "quarter_wave_anchor_price_usd": 0.0074577,
+        "quarter_wave_gain_from_anchor_pct": 142.0,
+    })
+    r2_key = gate.identity_key(r2_target)
+    r2_market = {
+        "identity_key": r2_key,
+        "price": 0.01812,
+        "liquidity": 247000,
+        "volume_h1": 376000,
+        "buys_h1": 1597,
+        "sells_h1": 1698,
+        "spread_pct": 1.65,
+        "observed_at": t2.isoformat(),
+        "cex_quote_volume_24h_usd": 221000,
+        "cex_relative_volume_multiple": 4.25,
+        "positive_gainer_rank": 3,
+        "cex_led_revival": True,
+        "cex_execution_verified": True,
+        "cex_execution_scope": "EXACT_CEX_MARKET",
+        "price_source_count": 2,
+        "cex_market_price_spread_pct": 0.65,
+        "cex_orderbook_spread_pct": 1.58,
+        "cex_depth_1pct_usd": 836,
+        "cex_bid_ask_depth_ratio": 14.7,
+    }
+    r2_obs = {
+        "identity_key": r2_key,
+        "market_verified": True,
+        "_report_age_seconds": 0,
+        "intelligence": {
+            "status": "CURRENT",
+            "score": 15,
+            "families": 1,
+            "current_evidence_count": 15,
+            "evidence_age_minutes": 0.2,
+            "hard_risks": [],
+            "family_scores": {
+                "market_microstructure": 15,
+                "wallet_flow": 0,
+                "holder_network": 0,
+            },
+        },
+    }
+    r2_q, _ = gate.evaluate(
+        r2_target,
+        r2_market,
+        r2_obs,
+        {"last_price": 0.01786, "watch_low_price": 0.01786},
+        POLICY,
+        now=t2,
+    )
+    assert r2_q["quarter_wave_revalidation"]["hybrid_breakout_continuation"] is True
+    assert "BUY_FLOW_NOT_CONFIRMED" not in r2_q["blockers"]
+    assert "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET" not in r2_q["blockers"]
+    assert "REBOUND_FROM_WATCH_LOW_NOT_CONFIRMED" not in r2_q["blockers"]
+    assert r2_q["pre_buy"] is True
+    assert any(x.startswith("HYBRID_CEX_DEX_BREAKOUT") for x in r2_q["proof"])
+
+    r2_risky_obs = dict(r2_obs)
+    r2_risky_obs["intelligence"] = dict(
+        r2_obs["intelligence"], hard_risks=["critical_transfer_block"]
+    )
+    r2_risky, _ = gate.evaluate(
+        r2_target,
+        r2_market,
+        r2_risky_obs,
+        {"last_price": 0.01786, "watch_low_price": 0.01786},
+        POLICY,
+        now=t2,
+    )
+    assert r2_risky["quarter_wave_revalidation"]["hybrid_breakout_continuation"] is False
+    assert "HARD_RISK_PRESENT" in r2_risky["blockers"]
+    assert r2_risky["recommended_action"] == "WAIT"
+
     print("USER_WATCH_FINAL_BUY_CONTRACT_OK")
 
 
