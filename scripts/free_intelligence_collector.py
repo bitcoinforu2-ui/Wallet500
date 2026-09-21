@@ -8,9 +8,12 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+import resilient_http
+
 ROOT = Path(__file__).resolve().parents[1]
 CFG = ROOT / "data/unified-watch-config.json"
 DYNAMIC = ROOT / "data/unified-dynamic-candidates.json"
+SPOT = ROOT / "data/spot-market-discovery.json"
 BOOTSTRAP = ROOT / "data/new-chain-bootstrap-radar.json"
 BUY_REGISTRY = ROOT / "data/buy-zone-close-watch-registry.json"
 EVENTS = ROOT / "data/close-watch-events.json"
@@ -54,12 +57,16 @@ def same_addr(chain: str, left: object, right: object) -> bool:
 
 
 def get_json(url: str, headers=None, timeout: int = 12):
-    h = {"User-Agent": UA, "Accept": "application/json"}
-    h.update(headers or {})
     try:
-        with urlopen(Request(url, headers=h), timeout=timeout) as r:
-            return json.loads(r.read().decode())
-    except (HTTPError, URLError, TimeoutError, ValueError, OSError):
+        return resilient_http.request_json(
+            url,
+            headers=headers or {},
+            timeout=timeout,
+            attempts=4,
+            cache_ttl=45,
+            user_agent=UA,
+        )
+    except Exception:
         return None
 
 
@@ -291,6 +298,10 @@ def targets():
     except Exception:
         dyn = {"candidates": []}
     try:
+        spot = json.loads(SPOT.read_text()) if SPOT.exists() else {"candidates": []}
+    except Exception:
+        spot = {"candidates": []}
+    try:
         registry = json.loads(BUY_REGISTRY.read_text()) if BUY_REGISTRY.exists() else {"entries": {}}
     except Exception:
         registry = {"entries": {}}
@@ -314,7 +325,27 @@ def targets():
         t for t in (bootstrap.get("candidates") or [])
         if isinstance(t, dict) and t.get("bootstrap_actionable_watch") is True
     ]
-    raw_targets = registry_buy_targets + dynamic_buy_targets + bootstrap_targets + [t for t in (cfg.get("tokens") or []) if isinstance(t, dict)]
+    # Same-run CEX movers must receive fresh microstructure/security intelligence.
+    # Reading Spot Discovery directly avoids the one-workflow lag caused by the
+    # dynamic bridge running later in the pipeline.
+    spot_hot_targets = []
+    for t in (spot.get("resolved_candidates") or []):
+        if not isinstance(t, dict):
+            continue
+        momentum = num(t.get("discovery_momentum_change_pct") or t.get("change_24h_pct")) or 0.0
+        gain = num(t.get("gain_from_first_seen_pct")) or 0.0
+        rank = int(num(t.get("positive_gainer_rank")) or 999999)
+        turnover = num(t.get("quote_volume_24h_usd")) or 0.0
+        if momentum >= 25.0 or gain >= 25.0 or (rank <= 15 and turnover >= 20000.0):
+            spot_hot_targets.append(t)
+
+    raw_targets = (
+        registry_buy_targets
+        + dynamic_buy_targets
+        + spot_hot_targets
+        + bootstrap_targets
+        + [t for t in (cfg.get("tokens") or []) if isinstance(t, dict)]
+    )
     tokens = []
     seen = set()
     for t in raw_targets:
