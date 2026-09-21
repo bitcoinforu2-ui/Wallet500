@@ -67,7 +67,7 @@ jobs:
         run: |
           python scripts/test_intelligence_fusion_contract.py
           python -m pip install --disable-pip-version-check -q pytest
-          python -m pytest -q tests/test_unified_watch_cex_resilience.py tests/test_spot_market_discovery_native_identity.py tests/test_chain_context_shadow.py
+          python -m pytest -q tests/test_unified_watch_cex_resilience.py tests/test_spot_market_discovery_native_identity.py tests/test_chain_context_shadow.py tests/test_protocol_buyback_sensor.py
 
       - name: Test user-requested FINAL BUY contract
         id: user_buy_contract
@@ -309,6 +309,8 @@ jobs:
                   'http_resilience_metrics': (http_state or {}).get('metrics') if isinstance(http_state, dict) else None,
                   'close_watch_events_exists': (root/'data/close-watch-events.json').exists(),
                   'close_watch_event_count': len(events.get('events') or []) if isinstance(events, dict) else None,
+                  'buyback_event_count': sum(1 for e in (events.get('events') or []) if isinstance(e, dict) and e.get('kind') in ('buyback_execution', 'buyback_acceleration')) if isinstance(events, dict) else None,
+                  'buyback_lead_event_count': sum(1 for e in (events.get('events') or []) if isinstance(e, dict) and e.get('lead_signal') is True) if isinstance(events, dict) else None,
                   'fusion_snapshot_exists': fusion is not None,
                   'fusion_token_count': len((fusion or {}).get('tokens') or []) if isinstance(fusion, dict) else None,
                   'fusion_generated_at': (fusion or {}).get('generated_at') if isinstance(fusion, dict) else None,

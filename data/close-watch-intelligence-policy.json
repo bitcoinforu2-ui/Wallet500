@@ -1,36 +1,322 @@
 {
-  "version": 3,
+  "version": 4,
   "name": "Wallet500 Close Watch Intelligence Fusion",
-  "principles": {"fail_closed":true,"exact_identity_required":true,"missing_is_not_zero":true,"independent_source_deduplication":true,"event_time_decay":true,"contradiction_penalty":true,"alert_only_material_change":true,"same_wallet_perp_requires_public_address_proof":true,"short_is_not_manipulation_proof":true},
+  "principles": {
+    "fail_closed": true,
+    "exact_identity_required": true,
+    "missing_is_not_zero": true,
+    "independent_source_deduplication": true,
+    "event_time_decay": true,
+    "contradiction_penalty": true,
+    "alert_only_material_change": true,
+    "same_wallet_perp_requires_public_address_proof": true,
+    "short_is_not_manipulation_proof": true
+  },
   "signal_families": {
-    "market_microstructure":{"weight":15,"signals":["price_structure","volume_acceleration","liquidity_change","buy_sell_imbalance","spread_slippage","dex_cex_dislocation","pool_fragmentation"]},
-    "wallet_flow":{"weight":20,"signals":["smart_money_netflow","whale_netflow","top_pnl_traders","fresh_wallet_netflow","exchange_netflow","top_holder_balance_change","wallet_cluster_accumulation","wallet_counterparty_quality","verified_same_wallet_perp_exposure","spot_holder_short_hedge","net_directional_exposure","hedge_ratio","distribution_plus_short_build"]},
-    "holder_network":{"weight":10,"signals":["holder_growth","holder_concentration","new_holder_velocity","active_addresses","network_growth","distribution_quality","sybil_cluster_penalty"]},
-    "attention_social":{"weight":12,"signals":["unique_social_volume","social_dominance","mention_velocity","unique_author_velocity","influencer_quality","sentiment_change","narrative_emergence","narrative_leader_momentum","narrative_rotation_early","narrative_dependency_breakdown","bot_duplicate_penalty"]},
-    "search_discovery":{"weight":8,"signals":["google_search_interest","coingecko_trending_rank","geckoterminal_trending_pool","search_acceleration","regional_breadth"]},
-    "catalyst_news":{"weight":12,"signals":["official_announcement","exchange_listing_status","product_launch","partnership","governance_execution","regulatory_event","security_event","news_velocity","source_independence"]},
-    "fundamental_usage":{"weight":8,"signals":["tvl_change","fees_change","revenue_change","stablecoin_change","dex_volume_change","bridge_flow","protocol_users","rwa_change"]},
-    "supply_tokenomics":{"weight":8,"signals":["unlock_proximity","unlock_size_float_pct","emissions_change","buyback_execution","burn_execution","treasury_transfer","circulating_supply_change"]},
-    "developer_project":{"weight":4,"signals":["github_release","commit_velocity","unique_contributors","repo_activity","contract_upgrade","admin_key_change"]},
-    "derivatives":{"weight":3,"signals":["open_interest_change","funding_extreme","liquidation_imbalance","basis_dislocation","long_short_crowding","taker_flow","oi_price_divergence","verified_same_wallet_perp_exposure","spot_holder_short_hedge"]}
+    "market_microstructure": {
+      "weight": 15,
+      "signals": [
+        "price_structure",
+        "volume_acceleration",
+        "liquidity_change",
+        "buy_sell_imbalance",
+        "spread_slippage",
+        "dex_cex_dislocation",
+        "pool_fragmentation"
+      ]
+    },
+    "wallet_flow": {
+      "weight": 20,
+      "signals": [
+        "smart_money_netflow",
+        "whale_netflow",
+        "top_pnl_traders",
+        "fresh_wallet_netflow",
+        "exchange_netflow",
+        "top_holder_balance_change",
+        "wallet_cluster_accumulation",
+        "wallet_counterparty_quality",
+        "verified_same_wallet_perp_exposure",
+        "spot_holder_short_hedge",
+        "net_directional_exposure",
+        "hedge_ratio",
+        "distribution_plus_short_build"
+      ]
+    },
+    "holder_network": {
+      "weight": 10,
+      "signals": [
+        "holder_growth",
+        "holder_concentration",
+        "new_holder_velocity",
+        "active_addresses",
+        "network_growth",
+        "distribution_quality",
+        "sybil_cluster_penalty"
+      ]
+    },
+    "attention_social": {
+      "weight": 12,
+      "signals": [
+        "unique_social_volume",
+        "social_dominance",
+        "mention_velocity",
+        "unique_author_velocity",
+        "influencer_quality",
+        "sentiment_change",
+        "narrative_emergence",
+        "narrative_leader_momentum",
+        "narrative_rotation_early",
+        "narrative_dependency_breakdown",
+        "bot_duplicate_penalty"
+      ]
+    },
+    "search_discovery": {
+      "weight": 8,
+      "signals": [
+        "google_search_interest",
+        "coingecko_trending_rank",
+        "geckoterminal_trending_pool",
+        "search_acceleration",
+        "regional_breadth"
+      ]
+    },
+    "catalyst_news": {
+      "weight": 12,
+      "signals": [
+        "official_announcement",
+        "exchange_listing_status",
+        "product_launch",
+        "partnership",
+        "governance_execution",
+        "regulatory_event",
+        "security_event",
+        "news_velocity",
+        "source_independence"
+      ]
+    },
+    "fundamental_usage": {
+      "weight": 8,
+      "signals": [
+        "tvl_change",
+        "fees_change",
+        "revenue_change",
+        "stablecoin_change",
+        "dex_volume_change",
+        "bridge_flow",
+        "protocol_users",
+        "rwa_change"
+      ]
+    },
+    "supply_tokenomics": {
+      "weight": 8,
+      "signals": [
+        "unlock_proximity",
+        "unlock_size_float_pct",
+        "emissions_change",
+        "buyback_execution",
+        "burn_execution",
+        "treasury_transfer",
+        "circulating_supply_change",
+        "buyback_acceleration",
+        "buyback_pressure"
+      ]
+    },
+    "developer_project": {
+      "weight": 4,
+      "signals": [
+        "github_release",
+        "commit_velocity",
+        "unique_contributors",
+        "repo_activity",
+        "contract_upgrade",
+        "admin_key_change"
+      ]
+    },
+    "derivatives": {
+      "weight": 3,
+      "signals": [
+        "open_interest_change",
+        "funding_extreme",
+        "liquidation_imbalance",
+        "basis_dislocation",
+        "long_short_crowding",
+        "taker_flow",
+        "oi_price_divergence",
+        "verified_same_wallet_perp_exposure",
+        "spot_holder_short_hedge"
+      ]
+    }
   },
-  "fusion":{"window_minutes":180,"minimum_independent_families_for_strong":3,"minimum_independent_families_for_confirmed":4,"source_duplicate_discount":0.15,"single_family_score_cap":45,"freshness_half_life_minutes":180,"contradiction_penalty_max":35,"labels":{"0-29":"WATCH","30-54":"BUILDING","55-74":"CONFLUENCE","75-89":"STRONG_CONFLUENCE","90-100":"EXCEPTIONAL_CONFLUENCE"}},
+  "fusion": {
+    "window_minutes": 180,
+    "minimum_independent_families_for_strong": 3,
+    "minimum_independent_families_for_confirmed": 4,
+    "source_duplicate_discount": 0.15,
+    "single_family_score_cap": 45,
+    "freshness_half_life_minutes": 180,
+    "contradiction_penalty_max": 35,
+    "labels": {
+      "0-29": "WATCH",
+      "30-54": "BUILDING",
+      "55-74": "CONFLUENCE",
+      "75-89": "STRONG_CONFLUENCE",
+      "90-100": "EXCEPTIONAL_CONFLUENCE"
+    }
+  },
   "special_patterns": {
-    "quiet_accumulation":["smart_money_accumulation","exchange_outflow","price_flat","social_quiet"],
-    "attention_before_price":["search_acceleration","unique_social_acceleration","price_not_extended"],
-    "narrative_rotation":["verified_leader_or_root_momentum","follower_not_extended","follower_volume_active","relative_lag_positive"],
-    "fundamental_before_attention":["usage_growth","revenue_growth","wallet_growth","social_quiet"],
-    "revival":["dormant_asset","volume_return","holder_growth","fresh_wallets","catalyst_or_attention"],
-    "distribution_into_hype":["social_fomo","price_up","whale_distribution_or_cex_inflow"],
-    "unlock_absorption":["unlock_event","price_resilience","exchange_outflow","smart_money_accumulation"],
-    "squeeze_risk":["open_interest_up","funding_extreme","spot_flow_weak","price_acceleration"],
-    "organic_breakout":["spot_volume_up","unique_buyers_up","liquidity_stable_or_up","wallet_accumulation","attention_broadening"],
-    "whale_directional_conviction":["verified_whale_spot_accumulation","same_wallet_long_build","open_interest_up","funding_not_extreme"],
-    "hedged_distribution_risk":["verified_whale_spot_holding","same_wallet_short_build","spot_distribution_or_cex_inflow","open_interest_up"],
-    "sell_pressure_short_profit_loop_risk":["verified_same_wallet_or_cluster","large_spot_distribution","same_wallet_short_exposure","liquidity_thin_or_falling","negative_price_acceleration"],
-    "short_cover_reaccumulation":["same_wallet_short_reduction","spot_reaccumulation","exchange_outflow","price_stabilization"]
+    "quiet_accumulation": [
+      "smart_money_accumulation",
+      "exchange_outflow",
+      "price_flat",
+      "social_quiet"
+    ],
+    "attention_before_price": [
+      "search_acceleration",
+      "unique_social_acceleration",
+      "price_not_extended"
+    ],
+    "narrative_rotation": [
+      "verified_leader_or_root_momentum",
+      "follower_not_extended",
+      "follower_volume_active",
+      "relative_lag_positive"
+    ],
+    "fundamental_before_attention": [
+      "usage_growth",
+      "revenue_growth",
+      "wallet_growth",
+      "social_quiet"
+    ],
+    "revival": [
+      "dormant_asset",
+      "volume_return",
+      "holder_growth",
+      "fresh_wallets",
+      "catalyst_or_attention"
+    ],
+    "distribution_into_hype": [
+      "social_fomo",
+      "price_up",
+      "whale_distribution_or_cex_inflow"
+    ],
+    "unlock_absorption": [
+      "unlock_event",
+      "price_resilience",
+      "exchange_outflow",
+      "smart_money_accumulation"
+    ],
+    "squeeze_risk": [
+      "open_interest_up",
+      "funding_extreme",
+      "spot_flow_weak",
+      "price_acceleration"
+    ],
+    "organic_breakout": [
+      "spot_volume_up",
+      "unique_buyers_up",
+      "liquidity_stable_or_up",
+      "wallet_accumulation",
+      "attention_broadening"
+    ],
+    "whale_directional_conviction": [
+      "verified_whale_spot_accumulation",
+      "same_wallet_long_build",
+      "open_interest_up",
+      "funding_not_extreme"
+    ],
+    "hedged_distribution_risk": [
+      "verified_whale_spot_holding",
+      "same_wallet_short_build",
+      "spot_distribution_or_cex_inflow",
+      "open_interest_up"
+    ],
+    "sell_pressure_short_profit_loop_risk": [
+      "verified_same_wallet_or_cluster",
+      "large_spot_distribution",
+      "same_wallet_short_exposure",
+      "liquidity_thin_or_falling",
+      "negative_price_acceleration"
+    ],
+    "short_cover_reaccumulation": [
+      "same_wallet_short_reduction",
+      "spot_reaccumulation",
+      "exchange_outflow",
+      "price_stabilization"
+    ],
+    "buyback_pressure_breakout": [
+      "buyback_execution_or_acceleration",
+      "protocol_revenue_acceleration_when_mechanically_linked",
+      "exact_pair_market_confirmation",
+      "liquidity_stable_or_up",
+      "no_hard_risk"
+    ]
   },
-  "interpretation_rules": {"short_plus_spot":"treat as hedge until directional change or distribution evidence confirms","cex_deposit_plus_short":"risk evidence only; never claim coordinated manipulation without proof","same_wallet_required_for_identity_claim":true,"linked_cluster_requires_verified_onchain_link":true,"derivatives_alone_cannot_create_strong_confluence":true,"narrative_dependency_alone_cannot_create_strong_confluence":true},
-  "hard_risk_gates":["identity_mismatch","price_source_mismatch","honeypot_or_transfer_block","extreme_tax","mint_or_freeze_risk","critical_liquidity_drain","unverified_contract_migration"],
-  "provider_targets":{"market":["GeckoTerminal","DexScreener","CoinGecko"],"wallets":["native_chain_rpc","Hyperliquid_public_accounts","GMX_public_accounts","dYdX_public_indexer","Nansen_optional"],"derivatives":["Binance_public_futures","Hyperliquid_public_state","GMX_public_api","dYdX_public_indexer"],"fundamentals":["DefiLlama"],"search":["CoinGecko_trending","GeckoTerminal_trending","Google_Trends_when_available"],"social":["official_accounts","public_social_feeds","Santiment_optional","LunarCrush_optional","Kaito_optional"],"security":["native_contract_checks","Honeypot_is_EVM","GoPlus_optional"],"developer":["GitHub_public_activity"],"tokenomics":["official_docs_contracts","unlock_trackers_secondary"]}
+  "interpretation_rules": {
+    "short_plus_spot": "treat as hedge until directional change or distribution evidence confirms",
+    "cex_deposit_plus_short": "risk evidence only; never claim coordinated manipulation without proof",
+    "same_wallet_required_for_identity_claim": true,
+    "linked_cluster_requires_verified_onchain_link": true,
+    "derivatives_alone_cannot_create_strong_confluence": true,
+    "narrative_dependency_alone_cannot_create_strong_confluence": true,
+    "buyback_alone_cannot_create_buy": true,
+    "revenue_buyback_funding_does_not_prove_execution": true,
+    "buyback_requires_exact_protocol_token_mapping": true
+  },
+  "hard_risk_gates": [
+    "identity_mismatch",
+    "price_source_mismatch",
+    "honeypot_or_transfer_block",
+    "extreme_tax",
+    "mint_or_freeze_risk",
+    "critical_liquidity_drain",
+    "unverified_contract_migration"
+  ],
+  "provider_targets": {
+    "market": [
+      "GeckoTerminal",
+      "DexScreener",
+      "CoinGecko"
+    ],
+    "wallets": [
+      "native_chain_rpc",
+      "Hyperliquid_public_accounts",
+      "GMX_public_accounts",
+      "dYdX_public_indexer",
+      "Nansen_optional"
+    ],
+    "derivatives": [
+      "Binance_public_futures",
+      "Hyperliquid_public_state",
+      "GMX_public_api",
+      "dYdX_public_indexer"
+    ],
+    "fundamentals": [
+      "DefiLlama"
+    ],
+    "search": [
+      "CoinGecko_trending",
+      "GeckoTerminal_trending",
+      "Google_Trends_when_available"
+    ],
+    "social": [
+      "official_accounts",
+      "public_social_feeds",
+      "Santiment_optional",
+      "LunarCrush_optional",
+      "Kaito_optional"
+    ],
+    "security": [
+      "native_contract_checks",
+      "Honeypot_is_EVM",
+      "GoPlus_optional"
+    ],
+    "developer": [
+      "GitHub_public_activity"
+    ],
+    "tokenomics": [
+      "official_docs_contracts",
+      "unlock_trackers_secondary"
+    ]
+  }
 }
