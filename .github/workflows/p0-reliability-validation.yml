@@ -1,0 +1,65 @@
+name: Wallet500 P0 Reliability Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/unified_candidate_bridge.py'
+      - 'scripts/unified_watch_engine.py'
+      - 'scripts/spot_cex_fast_handoff.py'
+      - 'scripts/user_watch_final_buy.py'
+      - 'scripts/run_telegram_with_intelligence_shadow.py'
+      - 'scripts/deliver_user_watch_outbox.py'
+      - 'scripts/test_unified_candidate_bridge_contract.py'
+      - 'scripts/test_critical_cex_queue_contract.py'
+      - 'src/wallet500/telegram_alerts.py'
+      - 'src/wallet500/telegram_delivery_ledger.py'
+      - 'tests/test_telegram_delivery_ledger.py'
+      - 'tests/test_unified_watch_cex_resilience.py'
+      - '.github/workflows/unified-watch-engine.yml'
+      - '.github/workflows/telegram-production-alerts.yml'
+      - '.github/workflows/p0-reliability-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wallet500-p0-reliability-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test environment
+        run: pip install -e . pytest
+      - name: Compile P0 execution and delivery paths
+        run: |
+          python -m py_compile \
+            scripts/unified_candidate_bridge.py \
+            scripts/unified_watch_engine.py \
+            scripts/spot_cex_fast_handoff.py \
+            scripts/user_watch_final_buy.py \
+            scripts/run_telegram_with_intelligence_shadow.py \
+            scripts/deliver_user_watch_outbox.py \
+            src/wallet500/telegram_alerts.py \
+            src/wallet500/telegram_delivery_ledger.py
+      - name: Zero-vs-None liquidity regression
+        run: python scripts/test_unified_candidate_bridge_contract.py
+      - name: FINAL-BUY and CEX-only fail-closed contract
+        run: python scripts/test_user_watch_final_buy_contract.py
+      - name: Critical CEX hard-bound fair-rotation contract
+        run: python scripts/test_critical_cex_queue_contract.py
+      - name: Failure-injection and integration regressions
+        run: |
+          python -m pytest -q \
+            tests/test_telegram_delivery_ledger.py \
+            tests/test_unified_watch_cex_resilience.py \
+            tests/test_telegram_exact_pair.py \
+            tests/test_telegram_buy_only_policy.py
