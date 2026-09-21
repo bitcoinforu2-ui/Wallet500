@@ -16,7 +16,7 @@ REPO = "bitcoinforu2-ui/Wallet500"
 LIVE_WORKFLOW = "live-scan.yml"
 PUBLIC_ROOT = "https://bitcoinforu2-ui.github.io/Wallet500/"
 PUBLIC_REAL = PUBLIC_ROOT + "data/real-alerts.json"
-BUY_ONLY_POLICY = "NEAR_BUY_AND_BUY_ONLY_V1"
+BUY_ONLY_POLICIES = {"NEAR_BUY_AND_BUY_ONLY_V1", "BUY_ONLY_V2"}
 PRE_BUY_REPORT = "stage-transition-telegram-report.json"
 
 FRESHNESS = {
@@ -84,7 +84,10 @@ def _buy_only_mode(telegram: object) -> bool:
         return False
     buy = telegram.get("buy_only_policy") if isinstance(telegram.get("buy_only_policy"), dict) else {}
     policy = telegram.get("policy") if isinstance(telegram.get("policy"), dict) else {}
-    return buy.get("mode") == BUY_ONLY_POLICY or policy.get("user_facing_mode") == BUY_ONLY_POLICY
+    return (
+        str(buy.get("mode") or "") in BUY_ONLY_POLICIES
+        or str(policy.get("user_facing_mode") or "") in BUY_ONLY_POLICIES
+    )
 
 
 def _matched_buy_keys(telegram: object) -> set[str]:
