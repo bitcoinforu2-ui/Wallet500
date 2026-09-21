@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
+import resilient_http
+
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "data/unified-watch-config.json"
 DYNAMIC = ROOT / "data/unified-dynamic-candidates.json"
@@ -55,34 +57,42 @@ def load(path, default):
 
 
 def get_json(url, timeout=7):
-    req = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": UA})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read().decode("utf-8"))
+        return resilient_http.request_json(
+            url,
+            timeout=timeout,
+            attempts=4,
+            cache_ttl=45,
+            user_agent=UA,
+        )
     except Exception:
         return None
 
 
 def get_text(url, timeout=7):
-    req = urllib.request.Request(url, headers={"Accept": "application/rss+xml,text/xml,*/*", "User-Agent": UA})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.read().decode("utf-8", "ignore")
+        return resilient_http.request_text(
+            url,
+            timeout=timeout,
+            attempts=4,
+            cache_ttl=90,
+            user_agent=UA,
+            accept="application/rss+xml,text/xml,*/*",
+        )
     except Exception:
         return None
 
 
 def post_json(url, payload, timeout=7):
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={"content-type": "application/json", "User-Agent": UA},
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read().decode("utf-8"))
+        return resilient_http.request_json(
+            url,
+            method="POST",
+            payload=payload,
+            timeout=timeout,
+            attempts=4,
+            user_agent=UA,
+        )
     except Exception:
         return None
 
@@ -139,13 +149,38 @@ def targets():
     dyn = load(DYNAMIC, {"candidates": []})
     dynamic_rows = [x for x in (dyn.get("candidates") or []) if isinstance(x, dict)]
     buy_rows = [x for x in dynamic_rows if str(x.get("candidate_type") or "").upper() == "BUY_ZONE"]
-    other_dynamic = [x for x in dynamic_rows if str(x.get("candidate_type") or "").upper() != "BUY_ZONE"]
 
-    # BUY_ZONE identities are always first so holder/news/social coverage cannot
-    # be displaced by the ordinary 40-target research cap.
+    def hot_cex(x):
+        ctype = str(x.get("candidate_type") or "").upper()
+        if ctype not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"}:
+            return False
+        try:
+            momentum = float(x.get("discovery_momentum_change_pct") or x.get("change_24h_pct") or 0)
+            gain = float(x.get("gain_from_first_seen_pct") or 0)
+            rank = int(x.get("positive_gainer_rank") or 999999)
+            turnover = float(x.get("quote_volume_24h_usd") or 0)
+        except (TypeError, ValueError):
+            return False
+        return momentum >= 25.0 or gain >= 25.0 or (rank <= 15 and turnover >= 20000.0)
+
+    hot_rows = [x for x in dynamic_rows if hot_cex(x)]
+    hot_ids = {id(x) for x in hot_rows}
+    other_dynamic = [
+        x for x in dynamic_rows
+        if str(x.get("candidate_type") or "").upper() != "BUY_ZONE" and id(x) not in hot_ids
+    ]
+    hot_rows.sort(
+        key=lambda x: (
+            int(x.get("positive_gainer_rank") or 999999),
+            -float(x.get("discovery_momentum_change_pct") or x.get("change_24h_pct") or 0),
+        )
+    )
+
+    # BUY and hot CEX identities are never displaced by the ordinary research cap.
     rows = []
     seen = set()
-    for x in buy_rows + list(cfg.get("tokens") or []) + other_dynamic:
+    ordered = buy_rows + hot_rows + list(cfg.get("tokens") or []) + other_dynamic
+    for x in ordered:
         if not isinstance(x, dict):
             continue
         i = ident(x)
@@ -154,7 +189,8 @@ def targets():
         seen.add(i[3])
         rows.append(x)
     buy_count = len([x for x in rows if str(x.get("candidate_type") or "").upper() == "BUY_ZONE"])
-    return rows[:max(40, buy_count)]
+    hot_count = sum(1 for x in rows if hot_cex(x))
+    return rows[:max(60, buy_count + hot_count)]
 
 
 def global_attention_maps(rows=None):
