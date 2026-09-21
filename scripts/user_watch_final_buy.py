@@ -547,7 +547,11 @@ def evaluate(
     previous_price = num(prior.get("last_price"))
     previous_market_at = parse_dt(prior.get("last_market_observed_at"))
     current_market_at = parse_dt((market or {}).get("observed_at"))
-    if (
+    legacy_stale_prior = bool(
+        previous_market_at is None
+        and "MARKET_SNAPSHOT_STALE_OR_UNTIMED" in (prior.get("last_blockers") or [])
+    )
+    if legacy_stale_prior or (
         previous_price is not None
         and previous_market_at is not None
         and current_market_at is not None
@@ -556,7 +560,7 @@ def evaluate(
             or (current_market_at - previous_market_at).total_seconds() > max_age
         )
     ):
-        # A stale lane/source handoff is not a real scan-to-scan move.
+        # A known-stale lane/source handoff is not a real scan-to-scan move.
         previous_price = None
     previous_low = num(prior.get("watch_low_price"))
     low = price if price > 0 and previous_low is None else previous_low
