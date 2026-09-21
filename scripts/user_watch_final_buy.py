@@ -257,6 +257,7 @@ def _policy(config: dict) -> dict:
         "cex_market_only_min_turnover_usd": 30000.0,
         "cex_market_only_min_relative_volume_multiple": 4.0,
         "cex_market_only_max_gainer_rank": 10,
+        "cex_market_only_min_current_evidence": 2,
         "cex_market_only_min_depth_1pct_usd": 10000.0,
         "cex_market_only_max_orderbook_spread_pct": 1.0,
         "cex_market_only_min_bid_ask_depth_ratio": 1.10,
@@ -477,6 +478,10 @@ def evaluate(
         and cex_market_only
         and report_verified
         and cex_execution_verified
+        and status == "CURRENT"
+        and intel_age is not None
+        and 0 <= intel_age * 60 <= max_age
+        and evidence >= int(policy["cex_market_only_min_current_evidence"])
         and not hard_risks
         and cex_turnover >= float(policy["cex_market_only_min_turnover_usd"])
         and cex_relative_multiple >= float(policy["cex_market_only_min_relative_volume_multiple"])
@@ -510,9 +515,6 @@ def evaluate(
             "VOLUME_H1_TOO_LOW",
             "ACTIVITY_H1_TOO_LOW",
             "BUY_FLOW_NOT_CONFIRMED",
-            "INTELLIGENCE_NOT_CURRENT",
-            "INTELLIGENCE_STALE_OR_UNTIMED",
-            "CURRENT_EVIDENCE_TOO_LOW",
             "MARKET_MICROSTRUCTURE_NOT_POSITIVE",
             "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
         }
@@ -790,6 +792,7 @@ def evaluate(
             "contextual_execution_gates_may_be_satisfied_by_verified_alternate_path": True,
             "cex_fast_path_bypasses_only_replaceable_dex_and_fusion_gates": True,
             "cex_fast_path_still_requires_current_intelligence_no_hard_risk_microstructure_and_two_scans": True,
+            "cex_market_only_fast_path_requires_fresh_current_intelligence": True,
             "cex_breakout_continuation_requires_current_intelligence": True,
             "cex_breakout_continuation_requires_exact_cex_execution": True,
             "cex_breakout_continuation_never_bypasses_hard_risk": True,
