@@ -369,6 +369,30 @@ def dynamic_candidates(persisted_tokens=None):
         x for x in rows
         if x["_candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"}
     ]
+    # Hot CEX movers are the time-sensitive decision lane. Process them before
+    # bootstrap/research candidates so API budgets or runtime limits cannot starve
+    # MGT/R2/ASP/PTB-like moves.
+    def _spot_priority(x):
+        try:
+            rank = int(x.get("positive_gainer_rank") or 999999)
+        except (TypeError, ValueError):
+            rank = 999999
+        try:
+            gain = float(x.get("gain_from_first_seen_pct") or 0)
+        except (TypeError, ValueError):
+            gain = 0.0
+        try:
+            momentum = float(x.get("discovery_momentum_change_pct") or x.get("change_24h_pct") or 0)
+        except (TypeError, ValueError):
+            momentum = 0.0
+        try:
+            turnover = float(x.get("quote_volume_24h_usd") or 0)
+        except (TypeError, ValueError):
+            turnover = 0.0
+        armed_hint = 0 if max(gain, momentum) >= QUARTER_WAVE_REVALIDATION_GAIN_PCT else 1
+        return (armed_hint, rank, -max(gain, momentum), -turnover)
+
+    spot = sorted(spot, key=_spot_priority)
     bootstrap = [x for x in rows if x["_candidate_type"] == "NEW_CHAIN_BOOTSTRAP"]
     bootstrap = sorted(
         bootstrap,
@@ -400,7 +424,7 @@ def dynamic_candidates(persisted_tokens=None):
             chosen_ids.add(key)
             chosen.append(x)
 
-    selected = buy_zone + bootstrap + spot + chosen
+    selected = buy_zone + spot + bootstrap + chosen
     out = []
     for c in selected:
         ctype = c["_candidate_type"]
