@@ -112,6 +112,7 @@ def main():
     current = datetime.now(timezone.utc)
     stale_alpha_excluded = 0
     invalid_time_alpha_excluded = 0
+    canonical_gate_market_suppressed = 0
 
     gate_spot_by_identity = {}
     gate_spot_by_market = {}
@@ -186,12 +187,28 @@ def main():
             or str(row.get("symbol") or "").upper().removesuffix("USDT")
         ).upper().strip()
         gate_market = f"{base}_USDT" if base else ""
-        # One Gate market must have one canonical actionable candidate. When the
-        # live Gate discovery already knows this market, merge historical CEX
-        # evidence into that candidate below instead of emitting a second
-        # chain representation for the same ticker/venue market.
-        if gate_market and gate_market in gate_spot_by_market:
-            continue
+        # One Gate market must have one canonical actionable candidate. Suppress
+        # the multi-venue representation only when the Gate row can itself stay
+        # actionable/watchable (resolved exact, >=25% mover, or top-10). Otherwise
+        # retain the verified multi-venue DEX identity so weak-but-valid candidates
+        # are not lost merely because Gate also lists the ticker.
+        gate_row = gate_spot_by_market.get(gate_market) if gate_market else None
+        if isinstance(gate_row, dict):
+            gate_change = float(
+                gate_row.get("discovery_momentum_change_pct")
+                or gate_row.get("change_24h_pct")
+                or 0
+            )
+            gate_first_change = float(gate_row.get("first_seen_change_24h_pct") or 0)
+            gate_rank = int(gate_row.get("positive_gainer_rank") or 999999)
+            gate_can_own_market = bool(
+                gate_row.get("identity_status") == "RESOLVED_EXACT"
+                or max(gate_change, gate_first_change) >= 25.0
+                or gate_rank <= 10
+            )
+            if gate_can_own_market:
+                canonical_gate_market_suppressed += 1
+                continue
         if row.get("identity_status") != "DEX_VERIFIED" or row.get("identity_verified") is not True:
             continue
         if row.get("execution_pair_price_coherent") is not True:
@@ -424,6 +441,7 @@ def main():
             "public_alpha": sum(x["candidate_type"] == "PUBLIC_ALPHA" for x in out),
             "public_alpha_stale_excluded": stale_alpha_excluded,
             "public_alpha_invalid_time_excluded": invalid_time_alpha_excluded,
+            "canonical_gate_market_suppressed": canonical_gate_market_suppressed,
             "public_alpha_live_window_minutes": PUBLIC_ALPHA_LIVE_WINDOW_MINUTES,
             "total": len(out),
         },
