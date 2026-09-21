@@ -5,7 +5,7 @@ import re
 import time
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import resilient_http
@@ -257,7 +257,10 @@ def load_state() -> dict:
 
 
 def run() -> dict:
-    tickers = get_json(f"{GATE}/spot/tickers?timezone=utc0")
+    # Request all Gate change windows. A single timezone-selected percentage can
+    # collapse around a reference-window boundary while the app still shows a
+    # large 24h move; discovery must not lose the asset at that boundary.
+    tickers = get_json(f"{GATE}/spot/tickers?timezone=all")
     pairs = get_json(f"{GATE}/spot/currency_pairs")
     if not isinstance(tickers, list) or not isinstance(pairs, list):
         raise RuntimeError("GATE_SPOT_MARKET_DATA_UNAVAILABLE")
@@ -287,9 +290,13 @@ def run() -> dict:
             continue
         last = num(t.get("last"))
         change = num(t.get("change_percentage"))
+        change_utc0 = num(t.get("change_utc0"))
+        change_utc8 = num(t.get("change_utc8"))
+        change_windows = [x for x in (change, change_utc0, change_utc8) if x is not None]
         quote_volume = num(t.get("quote_volume"), 0.0) or 0.0
-        if last is None or last <= 0 or change is None:
+        if last is None or last <= 0 or not change_windows:
             continue
+        discovery_change = max(change_windows)
         buy_start = int(num(p.get("buy_start"), 0) or 0)
         eligible.append({
             "symbol": base,
@@ -297,7 +304,11 @@ def run() -> dict:
             "source": "Gate Spot",
             "source_url": str(p.get("trade_url") or f"https://www.gate.com/trade/{pair_id}"),
             "discovery_price": last,
-            "change_24h_pct": change,
+            "change_24h_pct": change if change is not None else discovery_change,
+            "discovery_momentum_change_pct": discovery_change,
+            "change_percentage_raw": change,
+            "change_utc0_pct": change_utc0,
+            "change_utc8_pct": change_utc8,
             "quote_volume_24h_usd": round(quote_volume, 2),
             "high_24h": num(t.get("high_24h")),
             "low_24h": num(t.get("low_24h")),
@@ -307,7 +318,13 @@ def run() -> dict:
         })
 
     eligible_by_pair = {r["currency_pair"]: r for r in eligible}
-    positive = sorted((r for r in eligible if r["change_24h_pct"] > 0), key=lambda r: (r["change_24h_pct"], r["quote_volume_24h_usd"]), reverse=True)
+    state = load_state()
+    old_pairs = state.get("pairs") or {}
+    positive = sorted(
+        (r for r in eligible if float(r.get("discovery_momentum_change_pct") or 0) > 0),
+        key=lambda r: (float(r.get("discovery_momentum_change_pct") or 0), r["quote_volume_24h_usd"]),
+        reverse=True,
+    )
     rank = {r["currency_pair"]: i for i, r in enumerate(positive, 1)}
     ts = now_dt()
     recent_cutoff = int(ts.timestamp()) - 14 * 86400
@@ -317,7 +334,7 @@ def run() -> dict:
     selected = []
     seen = set()
     for row in positive[:100]:
-        if row["change_24h_pct"] < 3.0:
+        if float(row.get("discovery_momentum_change_pct") or 0) < 3.0:
             continue
         selected.append(row)
         seen.add(row["currency_pair"])
@@ -327,6 +344,29 @@ def run() -> dict:
         if row.get("buy_start") and int(row["buy_start"]) >= recent_cutoff:
             selected.append(row)
             seen.add(row["currency_pair"])
+
+    # Keep recently hot markets in the candidate set across Gate percentage-window
+    # boundaries. This is discovery/state only; FINAL BUY safety gates still apply.
+    for pair_id, old in old_pairs.items():
+        if pair_id in seen or not isinstance(old, dict):
+            continue
+        row = eligible_by_pair.get(pair_id)
+        if not row:
+            continue
+        hot_until_raw = str(old.get("hot_until") or "")
+        try:
+            hot_until = datetime.fromisoformat(hot_until_raw.replace("Z", "+00:00")) if hot_until_raw else None
+            if hot_until is not None and hot_until.tzinfo is None:
+                hot_until = hot_until.replace(tzinfo=timezone.utc)
+        except Exception:
+            hot_until = None
+        peak_change = num(old.get("peak_discovery_momentum_change_pct"), old.get("peak_change_24h_pct", 0)) or 0.0
+        peak_gain = num(old.get("peak_gain_from_first_seen_pct"), 0) or 0.0
+        if (hot_until and hot_until >= ts) or peak_change >= 25.0 or peak_gain >= 25.0:
+            row = dict(row)
+            row["forced_hot_watch"] = True
+            selected.append(row)
+            seen.add(pair_id)
 
     # Configured CEX research watches are sticky: keep observing the exact Gate
     # market every run even if momentum fades or the pair leaves the top gainers.
@@ -338,10 +378,31 @@ def run() -> dict:
             selected.append(row)
             seen.add(pair_id)
 
-    state = load_state()
-    old_pairs = state.get("pairs") or {}
+    # Retain historical state even when a market temporarily leaves discovery.
+    # Without this, first-seen anchors reset and +25% revalidation can never be trusted.
+    retention_cutoff = ts - timedelta(days=7)
     new_pairs = {}
-    selected.sort(key=lambda r: (0 if r["currency_pair"] in configured_watch else 1, rank.get(r["currency_pair"], 999999), -r["change_24h_pct"]))
+    for pair_id, old in old_pairs.items():
+        if not isinstance(old, dict):
+            continue
+        raw = str(old.get("last_seen_at") or old.get("first_seen_at") or "")
+        try:
+            last_seen_dt = datetime.fromisoformat(raw.replace("Z", "+00:00")) if raw else None
+            if last_seen_dt is not None and last_seen_dt.tzinfo is None:
+                last_seen_dt = last_seen_dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            last_seen_dt = None
+        if last_seen_dt is None or last_seen_dt >= retention_cutoff or old.get("forced_cex_watch"):
+            new_pairs[pair_id] = dict(old)
+
+    selected.sort(
+        key=lambda r: (
+            0 if r["currency_pair"] in configured_watch else 1,
+            0 if r.get("forced_hot_watch") else 1,
+            rank.get(r["currency_pair"], 999999),
+            -float(r.get("discovery_momentum_change_pct") or r.get("change_24h_pct") or 0),
+        )
+    )
 
     # Resolve the strongest movers/new listings first. Unresolved rows are still
     # retained as CEX discoveries so the engine can never silently miss them.
@@ -362,16 +423,56 @@ def run() -> dict:
         row["observed_at"] = ts.isoformat()
         row["new_first_seen"] = is_new
         row["forced_cex_watch"] = key in configured_watch
+        row["forced_hot_watch"] = bool(row.get("forced_hot_watch"))
         row["status"] = "DISCOVERED_CEX_SPOT"
-        if idx < resolution_budget:
+
+        old_exact = (
+            old.get("identity_status") == "RESOLVED_EXACT"
+            and old.get("network") and old.get("contract") and old.get("pair")
+        )
+        should_resolve = idx < resolution_budget or row.get("forced_hot_watch") or key in configured_watch
+        if should_resolve:
             ident = resolve_identity(row["symbol"], native_registry=native_registry)
+            if ident.get("identity_status") != "RESOLVED_EXACT" and old_exact:
+                ident = {
+                    "identity_status": "RESOLVED_EXACT",
+                    "identity_reason": old.get("identity_reason") or "PERSISTED_EXACT_IDENTITY",
+                    "network": old.get("network"),
+                    "contract": old.get("contract"),
+                    "pair": old.get("pair"),
+                    "dex_url": old.get("dex_url") or "",
+                    "dex_liquidity_usd": old.get("dex_liquidity_usd"),
+                    "identity_source": old.get("identity_source") or "Persisted exact identity",
+                }
             row.update(ident)
             if ident.get("identity_status") == "RESOLVED_EXACT":
                 row["status"] = "IDENTITY_RESOLVED"
+        elif old_exact:
+            row.update({
+                "identity_status": "RESOLVED_EXACT",
+                "identity_reason": old.get("identity_reason") or "PERSISTED_EXACT_IDENTITY",
+                "network": old.get("network"),
+                "contract": old.get("contract"),
+                "pair": old.get("pair"),
+                "dex_url": old.get("dex_url") or "",
+                "dex_liquidity_usd": old.get("dex_liquidity_usd"),
+                "identity_source": old.get("identity_source") or "Persisted exact identity",
+            })
+            row["status"] = "IDENTITY_RESOLVED"
         else:
             row.update({"identity_status": "PENDING", "identity_reason": "RESOLUTION_BUDGET"})
 
+        current_gain = ((row["discovery_price"] / first_seen_price) - 1.0) * 100.0 if first_seen_price and first_seen_price > 0 else 0.0
+        row["gain_from_first_seen_pct"] = round(current_gain, 4)
         old_peak = num(old.get("peak_change_24h_pct"), row["change_24h_pct"])
+        old_peak_momentum = num(old.get("peak_discovery_momentum_change_pct"), row.get("discovery_momentum_change_pct")) or 0.0
+        old_peak_gain = num(old.get("peak_gain_from_first_seen_pct"), current_gain) or current_gain
+        peak_momentum = max(old_peak_momentum, float(row.get("discovery_momentum_change_pct") or 0))
+        peak_gain = max(old_peak_gain, current_gain)
+        hot_until = old.get("hot_until")
+        if peak_momentum >= 25.0 or peak_gain >= 25.0:
+            hot_until = (ts + timedelta(hours=36)).isoformat()
+
         new_pairs[key] = {
             "symbol": row["symbol"],
             "first_seen_at": first_seen,
@@ -381,9 +482,21 @@ def run() -> dict:
             "last_seen_at": ts.isoformat(),
             "last_price": row["discovery_price"],
             "last_change_24h_pct": row["change_24h_pct"],
+            "last_discovery_momentum_change_pct": row.get("discovery_momentum_change_pct"),
             "peak_change_24h_pct": max(old_peak if old_peak is not None else row["change_24h_pct"], row["change_24h_pct"]),
+            "peak_discovery_momentum_change_pct": peak_momentum,
+            "peak_gain_from_first_seen_pct": peak_gain,
+            "hot_until": hot_until,
             "identity_status": row.get("identity_status"),
+            "identity_reason": row.get("identity_reason"),
+            "network": row.get("network") or old.get("network"),
+            "contract": row.get("contract") or old.get("contract"),
+            "pair": row.get("pair") or old.get("pair"),
+            "dex_url": row.get("dex_url") or old.get("dex_url"),
+            "dex_liquidity_usd": row.get("dex_liquidity_usd") if row.get("dex_liquidity_usd") is not None else old.get("dex_liquidity_usd"),
+            "identity_source": row.get("identity_source") or old.get("identity_source"),
             "forced_cex_watch": bool(row.get("forced_cex_watch")),
+            "forced_hot_watch": bool(row.get("forced_hot_watch")),
         }
 
     resolved = [r for r in selected if r.get("status") == "IDENTITY_RESOLVED"]
@@ -396,6 +509,11 @@ def run() -> dict:
             "quote": "USDT",
             "top_positive_scan": 100,
             "minimum_positive_change_pct": 3.0,
+            "gate_change_windows": ["change_percentage", "change_utc0", "change_utc8"],
+            "discovery_uses_max_positive_change_window": True,
+            "hot_mover_sticky_hours": 36,
+            "state_retention_days": 7,
+            "persist_exact_identity_across_resolution_budget": True,
             "new_listing_window_days": 14,
             "identity_resolution_budget": resolution_budget,
             "configured_cex_research_watch_pairs": sorted(configured_watch),
