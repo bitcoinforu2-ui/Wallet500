@@ -982,7 +982,15 @@ def main():
                 live = live_exact_pair(t, spread)
                 if str(t.get("exchange") or "").lower() == "gate" and t.get("currency_pair"):
                     try:
-                        live.update(gate_execution_snapshot(t.get("currency_pair")))
+                        cex_snap = gate_execution_snapshot(t.get("currency_pair"))
+                        live.update(cex_snap)
+                        cex_price = float(cex_snap.get("cex_price") or 0)
+                        dex_price = float(live.get("price") or 0)
+                        if cex_price > 0 and dex_price > 0:
+                            med = statistics.median([cex_price, dex_price])
+                            live["cex_market_price_spread_pct"] = (
+                                abs(cex_price - dex_price) / med * 100.0 if med else 999.0
+                            )
                     except Exception as cex_exc:
                         live["cex_execution_verified"] = False
                         live["cex_execution_error"] = f"{type(cex_exc).__name__}:{str(cex_exc)[:160]}"
@@ -1024,15 +1032,9 @@ def main():
             ):
                 tr.append("ALPHA_CALL_PLUS_BUY_IMBALANCE")
 
+        # Keep first-seen change immutable. Current momentum is not "late discovery";
+        # the +25% trigger is measured from the canonical first-seen price instead.
         first_change_for_revalidation = t.get("first_seen_change_24h_pct")
-        if t.get("dynamic_spot_candidate"):
-            try:
-                current_discovery_momentum = float(t.get("discovery_momentum_change_pct") or 0)
-                first_change_numeric = float(first_change_for_revalidation or 0)
-                if current_discovery_momentum > first_change_numeric:
-                    first_change_for_revalidation = current_discovery_momentum
-            except (TypeError, ValueError):
-                pass
 
         quarter_wave = (
             quarter_wave_revalidation(
@@ -1066,9 +1068,15 @@ def main():
             "buys_h1": live["buys_h1"],
             "sells_h1": live["sells_h1"],
             "spread_pct": live["spread_pct"],
+            "price_source_count": int(live.get("price_source_count") or (1 if t.get("dynamic_cex_market_candidate") else 0)),
+            "price_sources": list(live.get("price_sources") or (["gate"] if t.get("dynamic_cex_market_candidate") else [])),
+            "single_source_degraded": bool(live.get("single_source_degraded")),
+            "single_source_error": live.get("single_source_error"),
             "observed_at": live["observed_at"],
             "cex_execution_verified": live.get("cex_execution_verified"),
             "cex_execution_scope": live.get("cex_execution_scope"),
+            "cex_price": live.get("cex_price"),
+            "cex_market_price_spread_pct": live.get("cex_market_price_spread_pct"),
             "cex_orderbook_spread_pct": live.get("cex_orderbook_spread_pct"),
             "cex_bid_depth_1pct_usd": live.get("cex_bid_depth_1pct_usd"),
             "cex_ask_depth_1pct_usd": live.get("cex_ask_depth_1pct_usd"),
@@ -1078,10 +1086,13 @@ def main():
             "dynamic_buy_candidate": bool(t.get("dynamic_buy_candidate")),
             "dynamic_alpha_candidate": bool(t.get("dynamic_alpha_candidate")),
             "dynamic_spot_candidate": bool(t.get("dynamic_spot_candidate")),
-            "first_seen_at": prev.get("first_seen_at") or t.get("first_seen_at"),
-            "first_seen_price": prev.get("first_seen_price") if prev.get("first_seen_price") is not None else t.get("first_seen_price"),
-            "first_seen_change_24h_pct": prev.get("first_seen_change_24h_pct") if prev.get("first_seen_change_24h_pct") is not None else t.get("first_seen_change_24h_pct"),
-            "first_seen_quote_volume_24h_usd": prev.get("first_seen_quote_volume_24h_usd") if prev.get("first_seen_quote_volume_24h_usd") is not None else t.get("first_seen_quote_volume_24h_usd"),
+            # Dynamic discovery carries the canonical immutable first observation and
+            # is allowed to repair bad legacy state. Fall back to prior state only
+            # when the current candidate has no canonical value.
+            "first_seen_at": t.get("first_seen_at") or prev.get("first_seen_at"),
+            "first_seen_price": t.get("first_seen_price") if t.get("first_seen_price") is not None else prev.get("first_seen_price"),
+            "first_seen_change_24h_pct": t.get("first_seen_change_24h_pct") if t.get("first_seen_change_24h_pct") is not None else prev.get("first_seen_change_24h_pct"),
+            "first_seen_quote_volume_24h_usd": t.get("first_seen_quote_volume_24h_usd") if t.get("first_seen_quote_volume_24h_usd") is not None else prev.get("first_seen_quote_volume_24h_usd"),
             "discovery_price": prev.get("discovery_price") if prev.get("discovery_price") is not None else t.get("discovery_price"),
             "change_24h_pct": t.get("change_24h_pct") if t.get("change_24h_pct") is not None else prev.get("change_24h_pct"),
             "discovery_momentum_change_pct": t.get("discovery_momentum_change_pct") if t.get("discovery_momentum_change_pct") is not None else prev.get("discovery_momentum_change_pct"),
@@ -1124,7 +1135,16 @@ def main():
                 "basis": current_state.get("quarter_wave_revalidation_basis"),
                 "late_discovery": current_state.get("quarter_wave_late_discovery"),
                 "anchor_price": current_state.get("quarter_wave_anchor_price"),
+                "anchor_repaired": current_state.get("quarter_wave_anchor_repaired"),
+                "trigger_price_is_threshold_estimate": current_state.get("quarter_wave_trigger_price_is_threshold_estimate"),
             } if t.get("dynamic_spot_candidate") else None,
+            "market_data_quality": {
+                "price_source_count": current_state.get("price_source_count"),
+                "price_sources": current_state.get("price_sources"),
+                "single_source_degraded": current_state.get("single_source_degraded"),
+                "cex_execution_verified": current_state.get("cex_execution_verified"),
+                "cex_market_price_spread_pct": current_state.get("cex_market_price_spread_pct"),
+            },
             "intelligence": fusion,
         })
 
