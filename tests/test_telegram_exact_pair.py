@@ -116,6 +116,16 @@ def test_telegram_production_thresholds_are_canonical():
     assert MIN_LIQUIDITY_USD == CANONICAL_MIN_EXECUTION_LIQUIDITY_USD == 50_000.0
 
 
+
+def test_arc_pair_dedupe_key_is_case_insensitive():
+    row = {
+        "chain": "arc",
+        "token_address": "0xAbCd",
+        "pair_address": "0xDeF0",
+    }
+    assert _pair_key(row) == "arc:0xabcd:0xdef0"
+
+
 def test_exact_pair_is_required_for_alert():
     row = _row()
     assert _tier(row) == "HIGH_CONVICTION"
