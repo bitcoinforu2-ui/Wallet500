@@ -394,6 +394,20 @@ def dynamic_candidates(persisted_tokens=None):
         return (armed_hint, rank, -max(gain, momentum), -turnover)
 
     spot = sorted(spot, key=_spot_priority)
+
+    # Only the strongest time-sensitive movers are allowed to occupy the
+    # unbounded critical lane. Previously every spot discovery was marked
+    # critical, so 60-100+ candidates could consume the whole GitHub job,
+    # cancel market_watch, and suppress FINAL BUY for candidates that had
+    # already been discovered. Keep the full spot set for research, but bound
+    # the critical subset; lower-priority rows continue under the time budget.
+    critical_spot_cap = max(
+        8, int(os.environ.get("WALLET500_CRITICAL_SPOT_CAP", "18"))
+    )
+    critical_spot_ids = {
+        x["_identity_key"] for x in spot[:critical_spot_cap]
+    }
+
     bootstrap = [x for x in rows if x["_candidate_type"] == "NEW_CHAIN_BOOTSTRAP"]
     bootstrap = sorted(
         bootstrap,
@@ -464,6 +478,10 @@ def dynamic_candidates(persisted_tokens=None):
                 "dynamic_bootstrap_candidate": ctype == "NEW_CHAIN_BOOTSTRAP",
                 "dynamic_spot_candidate": ctype in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"},
                 "dynamic_cex_market_candidate": ctype == "CEX_MARKET_DISCOVERY",
+                "critical_market_lane": bool(
+                    ctype == "BUY_ZONE"
+                    or (is_spot and c["_identity_key"] in critical_spot_ids)
+                ),
                 "candidate_type": ctype,
                 "priority": c.get("priority") or ("HIGHEST" if ctype == "BUY_ZONE" else ("HIGH" if hot_spot else None)),
                 "close_watch": c.get("close_watch") or ("HIGHEST" if ctype == "BUY_ZONE" else ("HIGHEST" if hot_spot else None)),
@@ -1048,7 +1066,9 @@ def main():
         # skipped by this budget. Once they are complete, do not let ordinary
         # static/research targets consume the time needed by FINAL BUY evaluation.
         is_critical_market_lane = bool(
-            t.get("dynamic_buy_candidate") or t.get("dynamic_spot_candidate")
+            t.get("dynamic_buy_candidate")
+            or t.get("critical_market_lane")
+            or t.get("user_watch_final_buy_lane")
         )
         elapsed = time.monotonic() - scan_started_monotonic
         if not is_critical_market_lane and elapsed >= noncritical_budget_seconds:
