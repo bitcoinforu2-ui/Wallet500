@@ -3,12 +3,15 @@ from __future__ import annotations
 import json
 import math
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 from wallet500 import telegram_alerts as alerts
 from wallet500.buy_close_watch_registry import upsert_buy_zone_registry
 from wallet500.decision_engine_v1 import run as run_decision_engine
 from wallet500.telegram_buy_policy import filter_buy_only_payload
+from wallet500.telegram_delivery_ledger import SharedTelegramDeliveryLedger
 
 EVM = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche"}
 ALIASES = {"eth": "ethereum", "bnb": "bsc"}
@@ -16,6 +19,54 @@ CURRENT_STATUS = "CURRENT"
 STALE_STATUS = "STALE_ONLY"
 SLOGAN = "Verified Intelligence. The Pure Truth."
 BUY_POLICY = "BUY_ONLY_V2"
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SHARED_LEDGER = ROOT / "data/telegram-delivery-ledger.json"
+
+
+def _persist_shared_ledger(path: Path, reason: str) -> None:
+    if path.resolve() != SHARED_LEDGER.resolve():
+        raise RuntimeError("SHARED_LEDGER_PATH_DRIFT")
+    env = os.environ.copy()
+    if not env.get("GITHUB_TOKEN") or not env.get("GITHUB_REPOSITORY"):
+        raise RuntimeError("SHARED_LEDGER_REQUIRES_GITHUB_CAS_ENV")
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/atomic_publish.py"),
+            "--github-api-cas",
+            "--allow-newer-overwrite",
+            "--message",
+            f"telegram-ledger: {reason}",
+            "data/telegram-delivery-ledger.json",
+        ],
+        cwd=str(ROOT),
+        env=env,
+        check=True,
+    )
+
+
+def _shared_delivery_func(out: Path):
+    ledger_path = out / "telegram-delivery-ledger.json"
+    if ledger_path.resolve() != SHARED_LEDGER.resolve():
+        raise RuntimeError("PRODUCTION_SHARED_LEDGER_MUST_USE_CANONICAL_DATA_PATH")
+    ledger = SharedTelegramDeliveryLedger(
+        ledger_path,
+        _persist_shared_ledger,
+    )
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+
+    def deliver(**kwargs):
+        return ledger.deliver(
+            **kwargs,
+            send_once=lambda text: alerts._send(
+                bot_token, chat_id, text, max_attempts=1
+            ),
+        )
+
+    return deliver
 
 
 def chain_name(value: object) -> str:
@@ -284,8 +335,9 @@ def main() -> int:
 
     alerts._message = guarded_message
     alerts._pre_wave_message = blocked_pre_wave_message
+    delivery_func = _shared_delivery_func(out) if configured else None
     try:
-        report = alerts.run()
+        report = alerts.run(delivery_func=delivery_func)
     finally:
         alerts._message = original_message
         alerts._pre_wave_message = original_pre_wave_message

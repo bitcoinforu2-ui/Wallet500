@@ -4,43 +4,13 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '7,22,37,52 * * * *'
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/unified_watch_engine.py'
-      - 'scripts/new_chain_bootstrap_radar.py'
-      - 'scripts/test_new_chain_bootstrap_contract.py'
-      - 'scripts/resilient_unified_watch_runner.py'
-      - 'scripts/deep_investigation_refresh.py'
-      - 'scripts/narrative_dependency_collector.py'
-      - 'scripts/resilient_http.py'
-      - 'scripts/spot_market_discovery_collector.py'
-      - 'scripts/unified_candidate_bridge.py'
-      - 'scripts/spot_cex_fast_handoff.py'
-      - 'scripts/native_asset_intelligence.py'
-      - 'scripts/cross_domain_intelligence_collector.py'
-      - 'scripts/free_intelligence_collector.py'
-      - 'scripts/derivatives_intelligence_collector.py'
-      - 'scripts/public_alpha_source_collector.py'
-      - 'scripts/alpha_caller_intake.py'
-      - 'scripts/alpha_caller_reputation.py'
-      - 'scripts/intelligence_fusion.py'
-      - 'scripts/test_intelligence_fusion_contract.py'
-      - 'scripts/user_watch_final_buy.py'
-      - 'scripts/test_user_watch_final_buy_contract.py'
-      - 'tests/test_unified_watch_cex_resilience.py'
-      - 'data/unified-watch-config.json'
-      - 'data/new-chain-bootstrap-state.json'
-      - 'data/new-chain-bootstrap-radar.json'
-      - 'data/buy-zone-close-watch-registry.json'
-      - 'data/alpha-caller-sources.json'
-      - 'data/close-watch-intelligence-policy.json'
-      - '.github/workflows/unified-watch-engine.yml'
-
 permissions:
   contents: write
+# Dedicated stateful runtime lane. Pushes are validated elsewhere and never
+# consume the single pending production slot, so a scheduled scan cannot be
+# replaced by push fan-out while another scan is running.
 concurrency:
-  group: wallet500-unified-verified-watch-v7
+  group: wallet500-unified-verified-watch-v8-scheduled-runtime
   cancel-in-progress: false
 
 jobs:
@@ -56,7 +26,7 @@ jobs:
       - name: Validate unified watcher, collectors and intelligence fusion
         id: validate
         run: |
-          python -m py_compile scripts/resilient_http.py scripts/new_chain_bootstrap_radar.py scripts/test_new_chain_bootstrap_contract.py scripts/resilient_unified_watch_runner.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/spot_cex_fast_handoff.py scripts/native_asset_intelligence.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py scripts/user_watch_final_buy.py scripts/test_user_watch_final_buy_contract.py
+          python -m py_compile scripts/resilient_http.py scripts/new_chain_bootstrap_radar.py scripts/test_new_chain_bootstrap_contract.py scripts/resilient_unified_watch_runner.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/spot_cex_fast_handoff.py scripts/native_asset_intelligence.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py scripts/user_watch_final_buy.py scripts/test_user_watch_final_buy_contract.py scripts/test_unified_candidate_bridge_contract.py scripts/test_critical_cex_queue_contract.py
           for f in data/unified-watch-config.json data/user-watch-final-buy-state.json data/user-watch-final-buy-report.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/buy-zone-close-watch-registry.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/narrative-dependency-state.json data/http-resilience-state.json data/new-chain-bootstrap-state.json data/new-chain-bootstrap-radar.json; do python -m json.tool "$f" >/dev/null; done
 
       - name: Test exact-identity intelligence fusion contract
@@ -66,6 +36,12 @@ jobs:
       - name: Test user-requested FINAL BUY contract
         id: user_buy_contract
         run: python scripts/test_user_watch_final_buy_contract.py
+
+      - name: Regression test zero-vs-None liquidity correctness
+        run: python scripts/test_unified_candidate_bridge_contract.py
+
+      - name: Regression test critical CEX queue hard bound and fair rotation
+        run: python scripts/test_critical_cex_queue_contract.py
 
       - name: Refresh persisted unified state before any sensor handoff
         run: |
@@ -127,13 +103,11 @@ jobs:
           TELEGRAM_CHAT_ID: ''
         run: python scripts/resilient_unified_watch_runner.py
 
-      - name: Evaluate and deliver user-requested FINAL BUY before slow enrichment
+      - name: Evaluate user-requested PRE-BUY and FINAL BUY into durable outbox
         id: user_watch_final_buy
         if: always()
         env:
           WALLET500_MARKET_WATCH_OUTCOME: ${{ steps.market_watch.outcome }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scripts/user_watch_final_buy.py
 
       - name: Persist critical market and FINAL BUY state before slow enrichment

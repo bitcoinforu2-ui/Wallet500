@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import unified_watch_engine as engine
@@ -187,9 +188,30 @@ def main() -> int:
     identity_pending_escalated = 0
     rows = []
 
-    for target in engine.dynamic_candidates(tokens):
-        if not target.get("dynamic_spot_candidate"):
-            continue
+    all_dynamic = engine.dynamic_candidates(tokens)
+    critical_candidates = [x for x in all_dynamic if x.get("dynamic_spot_candidate")]
+    queue_meta = state.setdefault("critical_cex_queue", {})
+    critical_limit = max(
+        4, int(os.environ.get("WALLET500_CRITICAL_CEX_MAX_PER_SCAN", "24"))
+    )
+    selected_critical, next_cursor, queue_stats = engine.bounded_fair_cex_queue(
+        critical_candidates,
+        queue_meta.get("cursor", 0),
+        critical_limit,
+    )
+    queue_meta.update({
+        **queue_stats,
+        "cursor": next_cursor,
+        "selected_identity_keys": [
+            engine.candidate_identity_key(x) for x in selected_critical
+            if engine.candidate_identity_key(x)
+        ],
+        "selection_source": "CEX_FAST_HANDOFF",
+        "selected_at": engine.now_iso(),
+        "limit": critical_limit,
+    })
+
+    for target in selected_critical:
         key = _spot_key(target)
         if not key:
             continue
@@ -430,6 +452,11 @@ def main() -> int:
         "generated_at": engine.now_iso(),
         "mode": "CEX_SENSOR_FAST_HANDOFF_WITH_ASSET_IDENTITY_EXECUTION_SEPARATION",
         "evaluated_spot_candidates": evaluated,
+        "critical_queue_input": len(critical_candidates),
+        "critical_queue_selected": len(selected_critical),
+        "critical_queue_deferred": max(0, len(critical_candidates) - len(selected_critical)),
+        "critical_queue_limit": critical_limit,
+        "critical_queue_next_cursor": next_cursor,
         "escalated_close_watch": escalated,
         "pending_exact_pair": pending_exact_pair,
         "identity_pending_evaluated": identity_pending_evaluated,

@@ -385,7 +385,7 @@ def main() -> None:
             "family_scores": {},
         },
     }
-    trio_q, trio_s1 = gate.evaluate(
+    trio_stale, _ = gate.evaluate(
         trio_target,
         trio_market,
         trio_obs,
@@ -393,12 +393,41 @@ def main() -> None:
         POLICY,
         now=t2,
     )
+    assert trio_stale["quarter_wave_revalidation"]["cex_market_only_fast_path"] is False
+    assert trio_stale["recommended_action"] == "WAIT"
+    assert "INTELLIGENCE_NOT_CURRENT" in trio_stale["blockers"]
+    assert "INTELLIGENCE_STALE_OR_UNTIMED" in trio_stale["blockers"]
+
+    trio_current_obs = {
+        **trio_obs,
+        "intelligence": {
+            "status": "CURRENT",
+            "score": 0,
+            "families": 0,
+            "current_evidence_count": 3,
+            "evidence_age_minutes": 0.5,
+            "hard_risks": [],
+            "family_scores": {},
+        },
+    }
+    trio_q, trio_s1 = gate.evaluate(
+        trio_target,
+        trio_market,
+        trio_current_obs,
+        {"last_price": 0.0110, "watch_low_price": 0.0100},
+        POLICY,
+        now=t2,
+    )
     assert trio_q["quarter_wave_revalidation"]["cex_market_only_fast_path"] is True
     assert trio_q["pre_buy"] is True
     assert "INTELLIGENCE_NOT_CURRENT" not in trio_q["blockers"]
+    assert "INTELLIGENCE_STALE_OR_UNTIMED" not in trio_q["blockers"]
+    assert "CURRENT_EVIDENCE_TOO_LOW" not in trio_q["blockers"]
 
     trio_market2 = dict(trio_market, price=0.0117, observed_at=t3.isoformat())
-    trio_buy, _ = gate.evaluate(trio_target, trio_market2, trio_obs, trio_s1, POLICY, now=t3)
+    trio_buy, _ = gate.evaluate(
+        trio_target, trio_market2, trio_current_obs, trio_s1, POLICY, now=t3
+    )
     assert trio_buy["recommended_action"] == "BUY"
     assert trio_buy["alert"] is True
 

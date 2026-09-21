@@ -64,6 +64,42 @@ def candidate_identity_key(row):
     return exact_identity_key(row)
 
 
+def bounded_fair_cex_queue(candidates, cursor=0, limit=24):
+    """Hard-bound the critical CEX lane while guaranteeing rotating coverage.
+
+    The highest-priority half of each scan is reserved for the current hottest
+    movers; the remaining slots rotate through the rest so a permanently hot
+    prefix cannot starve lower-ranked exact identities forever.
+    """
+    items = [x for x in candidates if isinstance(x, dict)]
+    limit = max(1, int(limit))
+    if len(items) <= limit:
+        return items, 0, {
+            "input": len(items),
+            "selected": len(items),
+            "deferred": 0,
+            "cursor": 0,
+            "priority_reserve": len(items),
+        }
+
+    reserve = min(len(items), max(1, limit // 2))
+    pinned = items[:reserve]
+    rest = items[reserve:]
+    slots = max(0, limit - len(pinned))
+    start = int(cursor or 0) % len(rest) if rest else 0
+    rotated = rest[start:] + rest[:start]
+    rotating = rotated[:slots]
+    next_cursor = (start + slots) % len(rest) if rest else 0
+    selected = pinned + rotating
+    return selected, next_cursor, {
+        "input": len(items),
+        "selected": len(selected),
+        "deferred": max(0, len(items) - len(selected)),
+        "cursor": next_cursor,
+        "priority_reserve": reserve,
+    }
+
+
 def load_intelligence():
     try:
         doc = json.loads(INTEL.read_text()) if INTEL.exists() else {}
@@ -978,10 +1014,44 @@ def main():
         tokens.append(target)
         used.add(identity)
 
-    # Time-sensitive CEX movers run before the ordinary configured/research set.
-    # This ordering is part of the correctness contract: a large static watchlist
-    # must never consume provider/runtime budget before MGT/R2/ASP/PTB-like movers.
-    for item in [x for x in dynamic_all if x.get("dynamic_spot_candidate")]:
+    # Time-sensitive CEX movers run before the ordinary configured/research set,
+    # but the critical lane itself is hard-bounded. spot_cex_fast_handoff writes
+    # the selected exact identities for this run; engine evaluation consumes the
+    # same set so handoff and FINAL-BUY cannot disagree about which queue slice ran.
+    dynamic_spot_all = [x for x in dynamic_all if x.get("dynamic_spot_candidate")]
+    queue_meta = state.setdefault("critical_cex_queue", {})
+    critical_cex_limit = max(
+        4, int(os.environ.get("WALLET500_CRITICAL_CEX_MAX_PER_SCAN", "24"))
+    )
+    selected_keys = [
+        str(x) for x in (queue_meta.get("selected_identity_keys") or []) if str(x)
+    ]
+    spot_index = {
+        candidate_identity_key(x): x
+        for x in dynamic_spot_all
+        if candidate_identity_key(x)
+    }
+    dynamic_spot_selected = [
+        spot_index[k] for k in selected_keys if k in spot_index
+    ][:critical_cex_limit]
+    if not dynamic_spot_selected:
+        dynamic_spot_selected, next_cursor, queue_stats = bounded_fair_cex_queue(
+            dynamic_spot_all,
+            queue_meta.get("cursor", 0),
+            critical_cex_limit,
+        )
+        queue_meta.update({
+            **queue_stats,
+            "cursor": next_cursor,
+            "selected_identity_keys": [
+                candidate_identity_key(x) for x in dynamic_spot_selected
+                if candidate_identity_key(x)
+            ],
+            "selection_source": "UNIFIED_ENGINE_FALLBACK",
+            "selected_at": now_iso(),
+        })
+
+    for item in dynamic_spot_selected:
         identity = candidate_identity_key(item)
         if identity and identity not in used:
             tokens.append(item)
@@ -1348,6 +1418,10 @@ def main():
         "dynamic_alpha_targets": sum(bool(x.get("dynamic_alpha_candidate")) for x in dynamic),
         "dynamic_bootstrap_targets": sum(bool(x.get("dynamic_bootstrap_candidate")) for x in dynamic),
         "dynamic_spot_targets": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
+        "critical_cex_queue_input": len(dynamic_spot_all),
+        "critical_cex_queue_selected": len(dynamic_spot_selected),
+        "critical_cex_queue_deferred": max(0, len(dynamic_spot_all) - len(dynamic_spot_selected)),
+        "critical_cex_queue_limit": critical_cex_limit,
         "scan_elapsed_seconds": round(time.monotonic() - scan_started_monotonic, 2),
         "noncritical_scan_budget_seconds": noncritical_budget_seconds,
         "noncritical_targets_truncated": noncritical_truncated,
