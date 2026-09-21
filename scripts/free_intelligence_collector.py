@@ -204,6 +204,7 @@ def honeypot(t, prev=None, with_snapshot=False, market_snapshot=None):
     st = num(sim.get("sellTax"))
     previous = prev if isinstance(prev, dict) else {}
     market = market_snapshot if isinstance(market_snapshot, dict) else {}
+    real_buys = int(num(market.get("buys_h1")) or 0)
     real_sells = int(num(market.get("sells_h1")) or 0)
     real_volume = num(market.get("volume_h1")) or 0.0
     real_liquidity = num(market.get("liquidity")) or 0.0
@@ -211,7 +212,8 @@ def honeypot(t, prev=None, with_snapshot=False, market_snapshot=None):
     contradictory_real_sell_flow = bool(
         hp is True
         and low_sell_tax
-        and real_sells >= 10
+        and real_buys >= 20
+        and real_sells >= 20
         and real_volume >= 5000
         and real_liquidity >= 50000
     )
@@ -249,6 +251,7 @@ def honeypot(t, prev=None, with_snapshot=False, market_snapshot=None):
                     else "FIRST_OBSERVATION_REQUIRES_RECHECK"
                 ),
                 "chain_id": chain_id,
+                "real_buys_h1": real_buys,
                 "real_sells_h1": real_sells,
                 "real_volume_h1_usd": real_volume,
                 "real_liquidity_usd": real_liquidity,
@@ -295,6 +298,7 @@ def honeypot(t, prev=None, with_snapshot=False, market_snapshot=None):
         "extreme_tax": bool(tax is not None and tax >= 30),
         "confirmed_hard_risk": bool(consecutive_honeypot or consecutive_extreme_tax),
         "provider_conflict_with_real_sell_flow": contradictory_real_sell_flow,
+        "real_buys_h1": real_buys,
         "real_sells_h1": real_sells,
         "real_volume_h1_usd": real_volume,
         "real_liquidity_usd": real_liquidity,
