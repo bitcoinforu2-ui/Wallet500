@@ -798,16 +798,24 @@ def spot_cex_sensor(t, prev):
 
     current_volume = fnum(t.get("quote_volume_24h_usd") or t.get("cex_turnover_usd"))
     previous_volume = fnum(prev.get("cex_quote_volume_24h_usd"))
-    baseline = fnum(prev.get("cex_quote_volume_baseline_usd"))
+    persisted_baseline = fnum(prev.get("cex_quote_volume_baseline_usd"))
     first_seen_volume = fnum(t.get("first_seen_quote_volume_24h_usd"))
-    if baseline <= 0:
-        baseline = (
-            previous_volume
-            if previous_volume > 0
-            else first_seen_volume
-            if first_seen_volume > 0
-            else current_volume
-        )
+
+    # Dynamic CEX discovery has an immutable first-observation turnover. Treat it
+    # as the canonical volume baseline, even if an older buggy state persisted a
+    # later/high-volume baseline after the move had already started (TRIO/ASP case).
+    if t.get("dynamic_spot_candidate") and first_seen_volume > 0:
+        baseline = first_seen_volume
+        baseline_source = "IMMUTABLE_FIRST_SEEN_VOLUME"
+    elif persisted_baseline > 0:
+        baseline = persisted_baseline
+        baseline_source = "PERSISTED_BASELINE"
+    elif previous_volume > 0:
+        baseline = previous_volume
+        baseline_source = "PREVIOUS_SCAN_VOLUME"
+    else:
+        baseline = current_volume
+        baseline_source = "CURRENT_VOLUME_FALLBACK"
 
     current_rank = irank(t.get("positive_gainer_rank"))
     previous_rank = irank(prev.get("positive_gainer_rank"))
@@ -831,6 +839,12 @@ def spot_cex_sensor(t, prev):
         "cex_led": bool(triggers),
         "current_volume_usd": current_volume,
         "baseline_volume_usd": baseline,
+        "baseline_source": baseline_source,
+        "baseline_repaired_from_first_seen": bool(
+            first_seen_volume > 0
+            and persisted_baseline > 0
+            and abs(first_seen_volume - persisted_baseline) / first_seen_volume > 0.01
+        ),
         "baseline_multiple": round(baseline_multiple, 4),
         "scan_multiple": round(scan_multiple, 4),
         "current_rank": None if current_rank >= 999 else current_rank,
