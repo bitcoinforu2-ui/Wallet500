@@ -1,62 +1,89 @@
 {
   "version": 1,
   "mode": "INDEPENDENT_OBSERVABILITY_NO_TRADING_POLICY_EFFECT",
-  "updated_at": "2026-09-21T00:43:21.997364+00:00",
-  "overall": "DEGRADED",
-  "incident_count": 1,
-  "critical_count": 0,
-  "high_count": 1,
-  "new_notifications": [],
-  "recovered_codes": [
-    "NEW_REAL_ALERT_TELEGRAM_GAP"
+  "updated_at": "2026-09-21T01:08:55.152708+00:00",
+  "overall": "CRITICAL",
+  "incident_count": 3,
+  "critical_count": 1,
+  "high_count": 2,
+  "new_notifications": [
+    {
+      "code": "NEW_REAL_ALERT_TELEGRAM_GAP",
+      "severity": "CRITICAL",
+      "detail": "1 newly-entered REAL ALERT pair(s) have no actionable Telegram state",
+      "keys": [
+        "arbitrum:0x912ce59144191c1204e64559fe8253a0e49e6548:0xc6f780497a95e246eb9449f5e4770916dcd6396a"
+      ]
+    },
+    {
+      "code": "TELEGRAM_REPORT_STALE",
+      "severity": "HIGH",
+      "detail": "telegram-alert-report.json age=4747.8s max=3600s"
+    }
   ],
-  "real_alert_transitions_entered": [],
+  "recovered_codes": [],
+  "real_alert_transitions_entered": [
+    "arbitrum:0x912ce59144191c1204e64559fe8253a0e49e6548:0xc6f780497a95e246eb9449f5e4770916dcd6396a"
+  ],
   "buy_only_policy_active": false,
   "final_buy_keys_expected": [],
   "pre_buy_delivery_gaps": [],
   "incidents": [
     {
+      "code": "NEW_REAL_ALERT_TELEGRAM_GAP",
+      "severity": "CRITICAL",
+      "detail": "1 newly-entered REAL ALERT pair(s) have no actionable Telegram state",
+      "keys": [
+        "arbitrum:0x912ce59144191c1204e64559fe8253a0e49e6548:0xc6f780497a95e246eb9449f5e4770916dcd6396a"
+      ]
+    },
+    {
       "code": "GITHUB_ACTIONS_CAPACITY_PRESSURE",
       "severity": "HIGH",
-      "detail": "queued=21, in_progress=9, runs_today=258",
+      "detail": "queued=21, in_progress=11, runs_today=453",
       "queued": 21,
-      "in_progress": 9,
-      "runs_today": 258,
+      "in_progress": 11,
+      "runs_today": 453,
       "thresholds": {
         "queued": 8,
         "in_progress": 12,
         "runs_today": 1500
       }
+    },
+    {
+      "code": "TELEGRAM_REPORT_STALE",
+      "severity": "HIGH",
+      "detail": "telegram-alert-report.json age=4747.8s max=3600s"
     }
   ],
   "checks": {
     "real-alerts.json": {
-      "timestamp": "2026-09-21T00:29:03.269187+00:00",
-      "age_seconds": 858.7,
+      "timestamp": "2026-09-21T01:04:15.893345+00:00",
+      "age_seconds": 279.3,
       "max_age_seconds": 2700,
       "ok": true
     },
     "system-health.json": {
-      "timestamp": "2026-09-21T00:29:03.722014+00:00",
-      "age_seconds": 858.3,
+      "timestamp": "2026-09-21T01:04:16.355732+00:00",
+      "age_seconds": 278.8,
       "max_age_seconds": 2700,
       "ok": true
     },
     "scheduler-health.json": {
-      "timestamp": "2026-09-21T00:29:03.771438+00:00",
-      "age_seconds": 858.2,
+      "timestamp": "2026-09-21T01:04:16.388756+00:00",
+      "age_seconds": 278.8,
       "max_age_seconds": 2700,
       "ok": true
     },
     "telegram-alert-report.json": {
       "timestamp": "2026-09-20T23:49:47.342773+00:00",
-      "age_seconds": 3214.7,
+      "age_seconds": 4747.8,
       "max_age_seconds": 3600,
-      "ok": true
+      "ok": false
     },
     "real-alert-10usd-summary.json": {
-      "timestamp": "2026-09-21T00:33:20.467041+00:00",
-      "age_seconds": 601.5,
+      "timestamp": "2026-09-21T00:55:16.916763+00:00",
+      "age_seconds": 818.2,
       "max_age_seconds": 3600,
       "ok": true
     },
@@ -64,11 +91,11 @@
       "latest_status": "in_progress",
       "latest_conclusion": null,
       "latest_event": "workflow_dispatch",
-      "latest_created_at": "2026-09-21T00:41:54Z",
-      "latest_updated_at": "2026-09-21T00:41:59Z",
-      "latest_run_id": 35548511491,
-      "last_success_at": "2026-09-21T00:35:43Z",
-      "last_success_run_id": 35547974318,
+      "latest_created_at": "2026-09-21T01:05:41Z",
+      "latest_updated_at": "2026-09-21T01:05:45Z",
+      "latest_run_id": 35549760379,
+      "last_success_at": "2026-09-21T01:04:28Z",
+      "last_success_run_id": 35549321167,
       "cancellations_since_success": 0,
       "latest_cancelled_run_id": null,
       "latest_hard_failure_conclusion": null,
@@ -79,25 +106,25 @@
     "public_surface": {
       "dashboard_ok": true,
       "real_feed_ok": true,
-      "real_feed_generated_at": "2026-09-21T00:29:03.269187+00:00"
+      "real_feed_generated_at": "2026-09-21T00:50:39.750882+00:00"
     },
     "github_actions_capacity": {
       "queued": 21,
-      "in_progress": 9,
-      "runs_today": 258,
-      "failures_today": 8,
+      "in_progress": 11,
+      "runs_today": 453,
+      "failures_today": 16,
       "ok": false
     },
     "revival_publish_freshness": {
-      "latest_run_id": 35547832093,
+      "latest_run_id": 35548994298,
       "latest_status": "completed",
       "latest_conclusion": "success",
-      "latest_updated_at": "2026-09-21T00:31:43Z",
+      "latest_updated_at": "2026-09-21T00:55:06Z",
       "published_generated_at": "2026-09-20T22:47:10.924158+00:00",
       "ok": true
     },
     "candidate_starvation": {
-      "zero_active_started_at": "2026-09-21T00:43:24.458882+00:00",
+      "zero_active_started_at": "2026-09-21T01:08:57.135607+00:00",
       "zero_active_age_seconds": 0.0,
       "active_qualified": 0,
       "market_scan": 384,
@@ -126,7 +153,7 @@
     "attempted": false,
     "sent": false,
     "reason": "WATCHDOG_USER_TELEGRAM_DISABLED_BY_NEAR_BUY_AND_BUY_ONLY_POLICY",
-    "suppressed_technical_notification_count": 0
+    "suppressed_technical_notification_count": 2
   },
-  "operational_guard_updated_at": "2026-09-21T00:43:24.458882+00:00"
+  "operational_guard_updated_at": "2026-09-21T01:08:57.135607+00:00"
 }
