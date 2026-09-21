@@ -226,8 +226,10 @@ def main() -> None:
         "price": 0.000125,
         "liquidity": 2000,
         "volume_h1": 100,
-        "buys_h1": 8,
-        "sells_h1": 4,
+        # Thin DEX tape is intentionally neutral; positive exact-CEX depth
+        # is the execution-flow proof for this lane.
+        "buys_h1": 2,
+        "sells_h1": 2,
         "spread_pct": 0.2,
         "observed_at": t2.isoformat(),
         "cex_quote_volume_24h_usd": 30000,
@@ -256,6 +258,7 @@ def main() -> None:
     assert "LIQUIDITY_BELOW_FINAL_BUY_FLOOR" not in mgt_q["blockers"]
     assert "VOLUME_H1_TOO_LOW" not in mgt_q["blockers"]
     assert "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET" not in mgt_q["blockers"]
+    assert "BUY_FLOW_NOT_CONFIRMED" not in mgt_q["blockers"]
     assert mgt_q["pre_buy"] is True
 
     # PTB-like case: DEX flow is weak, but exact Gate execution shows an extreme
