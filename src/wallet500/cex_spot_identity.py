@@ -356,6 +356,18 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
     watch_rows = [x for x in (spot.get("watchlist") or []) if isinstance(x, dict)]
     shadow_rows = [x for x in (spot.get("shadow_watchlist") or []) if isinstance(x, dict)]
     pending_rows = [x for x in (pending.get("candidates") or []) if isinstance(x, dict)]
+
+    # A pre-wave candidate must not lose protected resolver capacity merely because
+    # the revival classifier moved it from SHADOW_WATCH into MOMENTUM/DNA_WATCH.
+    # PHA exposed this starvation mode: immutable pending state already carried
+    # prewave_identity_priority, but the current WATCH row was not considered by
+    # the protected pre-wave slice. This changes identity-work ordering only.
+    pending_prewave_symbols = {
+        _base_symbol(x.get("symbol"))
+        for x in pending_rows
+        if x.get("prewave_identity_priority") is True and _base_symbol(x.get("symbol"))
+    }
+
     current_recovery_rows = [
         x for x in pending_rows
         if x.get("current_identity_reactivation_priority") is True
@@ -372,7 +384,19 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         and x["cross_lane_derivatives_precursor"].get("identity_priority") is True
         and x["cross_lane_derivatives_precursor"].get("status") == "QUALIFIED_CEX_DERIVATIVES_SPOT_PRECURSOR"
     ]
-    prewave_rows = [x for x in shadow_rows if _is_prewave_shadow_identity_candidate(x)]
+    prewave_rows = []
+    prewave_seen: set[str] = set()
+    for row in shadow_rows + watch_rows:
+        symbol = _base_symbol(row.get("symbol"))
+        if not symbol or symbol in prewave_seen:
+            continue
+        if (
+            _is_prewave_shadow_identity_candidate(row)
+            or symbol in pending_prewave_symbols
+        ):
+            prewave_rows.append(row)
+            prewave_seen.add(symbol)
+
     current_rows = []
     current_seen = set()
     for row in current_recovery_rows + cross_lane_rows + prewave_rows + watch_rows:
@@ -434,6 +458,13 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
                 "first_alert_observed_at",
                 "first_alert_reference_price",
                 "first_alert_reference_exchange",
+                "prewave_identity_priority",
+                "prewave_observed_at",
+                "prewave_change_24h_pct",
+                "prewave_volume_acceleration_pct",
+                "prewave_volume_window_multiple",
+                "prewave_slow_ignition_status",
+                "prewave_shadow_features",
             ):
                 if row.get(key) is not None:
                     combined[key] = row.get(key)
@@ -516,6 +547,8 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         "regular_watch_count": len(watch_rows),
         "cross_lane_identity_priority_count": len(cross_lane_rows),
         "prewave_shadow_identity_priority_count": len(prewave_rows),
+        "prewave_identity_priority_count": len(prewave_rows),
+        "prewave_pending_priority_symbol_count": len(pending_prewave_symbols),
         "prewave_shadow_selected_count": prewave_selected,
         "prewave_shadow_priority_slot_cap": PREWAVE_IDENTITY_PRIORITY_SLOTS,
         "persistent_pending_count": len(pending_rows),
@@ -541,6 +574,8 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         "current_reactivation_bypasses_backlog_cooldown_for_resolver_order_only": True,
         "current_reactivation_never_satisfies_identity_or_actionability": True,
         "prewave_shadow_capacity_protected": True,
+        "prewave_watch_or_shadow_capacity_protected": True,
+        "prewave_pending_priority_survives_watch_state_transition": True,
         "one_cycle_backlog_rotation": True,
         "ordering_only": True,
         "prewave_shadow_is_identity_priority_only": True,
