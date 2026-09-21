@@ -175,8 +175,13 @@ def trending(tokens):
     return out
 
 
-def honeypot(t, prev=None, with_snapshot=False):
-    """Require chain-specific, consecutive confirmation before a provider result becomes HARD_RISK."""
+def honeypot(t, prev=None, with_snapshot=False, market_snapshot=None):
+    """Require corroboration before a provider honeypot flag becomes HARD_RISK.
+
+    Consecutive provider flags are normally enough, but verified real sell flow on
+    the exact pair with low simulated sell tax is contradictory execution evidence.
+    In that case keep a negative warning and force recheck instead of hard-blocking.
+    """
     chain, contract, _, _ = identity(t)
     chain_id = HONEYPOT_CHAIN_IDS.get(chain)
     empty = {"is_honeypot": None, "buy_tax": None, "sell_tax": None, "confirmed_hard_risk": False}
@@ -198,10 +203,32 @@ def honeypot(t, prev=None, with_snapshot=False):
     bt = num(sim.get("buyTax"))
     st = num(sim.get("sellTax"))
     previous = prev if isinstance(prev, dict) else {}
-    consecutive_honeypot = bool(hp is True and previous.get("is_honeypot") is True)
+    market = market_snapshot if isinstance(market_snapshot, dict) else {}
+    real_sells = int(num(market.get("sells_h1"), 0) or 0)
+    real_volume = num(market.get("volume_h1"), 0.0) or 0.0
+    real_liquidity = num(market.get("liquidity"), 0.0) or 0.0
+    low_sell_tax = st is not None and st <= 5
+    contradictory_real_sell_flow = bool(
+        hp is True
+        and low_sell_tax
+        and real_sells >= 10
+        and real_volume >= 5000
+        and real_liquidity >= 50000
+    )
+    consecutive_honeypot = bool(
+        hp is True
+        and previous.get("is_honeypot") is True
+        and not contradictory_real_sell_flow
+    )
 
     if hp is True:
-        kind = "honeypot_or_transfer_block" if consecutive_honeypot else "honeypot_or_transfer_block_unconfirmed"
+        kind = (
+            "honeypot_provider_conflict_real_sells"
+            if contradictory_real_sell_flow
+            else "honeypot_or_transfer_block"
+            if consecutive_honeypot
+            else "honeypot_or_transfer_block_unconfirmed"
+        )
         out.append(event(
             t,
             "supply_tokenomics",
@@ -214,8 +241,17 @@ def honeypot(t, prev=None, with_snapshot=False):
                 "identity_verified": True,
                 "identity_scope": "EXACT_CONTRACT_CONFIGURED_PAIR_CONTEXT",
                 "hard_risk": consecutive_honeypot,
-                "security_confirmation": "CONSECUTIVE_PROVIDER_CONFIRMATION" if consecutive_honeypot else "FIRST_OBSERVATION_REQUIRES_RECHECK",
+                "security_confirmation": (
+                    "PROVIDER_CONFLICT_WITH_VERIFIED_REAL_SELL_FLOW"
+                    if contradictory_real_sell_flow
+                    else "CONSECUTIVE_PROVIDER_CONFIRMATION"
+                    if consecutive_honeypot
+                    else "FIRST_OBSERVATION_REQUIRES_RECHECK"
+                ),
                 "chain_id": chain_id,
+                "real_sells_h1": real_sells,
+                "real_volume_h1_usd": real_volume,
+                "real_liquidity_usd": real_liquidity,
             },
         ))
 
@@ -253,6 +289,10 @@ def honeypot(t, prev=None, with_snapshot=False):
         "sell_tax": st,
         "extreme_tax": bool(tax is not None and tax >= 30),
         "confirmed_hard_risk": bool(consecutive_honeypot or consecutive_extreme_tax),
+        "provider_conflict_with_real_sell_flow": contradictory_real_sell_flow,
+        "real_sells_h1": real_sells,
+        "real_volume_h1_usd": real_volume,
+        "real_liquidity_usd": real_liquidity,
     }
     return (out, snap) if with_snapshot else out
 
@@ -379,7 +419,12 @@ def main():
         p = state.get("tokens", {}).get(key, {})
         de, ds = ds_collect(t, p.get("dexscreener", {}))
         fresh += de
-        he, hs = honeypot(t, p.get("honeypot", {}), with_snapshot=True)
+        he, hs = honeypot(
+            t,
+            p.get("honeypot", {}),
+            with_snapshot=True,
+            market_snapshot=ds,
+        )
         fresh += he
         ge, gs = github_collect(t, p.get("github", {}))
         fresh += ge
