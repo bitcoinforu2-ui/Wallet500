@@ -482,10 +482,17 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         for row in prewave_rows
         if _base_symbol(row.get("symbol"))
     }
-    prewave_ordered = [
-        row for row in current_ordered
-        if _base_symbol(row.get("symbol")) in prewave_symbols
-    ]
+    prewave_ordered = sorted(
+        [
+            row for row in current_ordered
+            if _base_symbol(row.get("symbol")) in prewave_symbols
+        ],
+        key=lambda row: (
+            _base_symbol(row.get("symbol")) not in recent_attempts,
+            _identity_priority(row),
+        ),
+        reverse=True,
+    )
     current_reactivation_ordered = [
         row for row in current_ordered
         if row.get("current_identity_reactivation_priority") is True
@@ -529,6 +536,12 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         selected_symbols & recent_attempts & current_reactivation_symbols
     )
     prewave_selected = add_rows(prewave_ordered, PREWAVE_IDENTITY_PRIORITY_SLOTS)
+    prewave_selected_symbols = {
+        _base_symbol(x.get("symbol"))
+        for x in selected
+        if _base_symbol(x.get("symbol")) in prewave_symbols
+    }
+    prewave_selected_not_recent = len(prewave_selected_symbols - recent_attempts)
     backlog_selected = add_rows(
         pending_only_ordered,
         min(MAX_PERSISTENT_PRIORITY_SLOTS, PERSISTENT_BACKLOG_TARGET_SLOTS),
@@ -550,6 +563,7 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         "prewave_identity_priority_count": len(prewave_rows),
         "prewave_pending_priority_symbol_count": len(pending_prewave_symbols),
         "prewave_shadow_selected_count": prewave_selected,
+        "prewave_selected_not_attempted_previous_run": prewave_selected_not_recent,
         "prewave_shadow_priority_slot_cap": PREWAVE_IDENTITY_PRIORITY_SLOTS,
         "persistent_pending_count": len(pending_rows),
         "previous_unresolved_persistent_carried_count": len(previous_persistent_rows),
@@ -576,6 +590,7 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         "prewave_shadow_capacity_protected": True,
         "prewave_watch_or_shadow_capacity_protected": True,
         "prewave_pending_priority_survives_watch_state_transition": True,
+        "prewave_one_cycle_fair_rotation": True,
         "one_cycle_backlog_rotation": True,
         "ordering_only": True,
         "prewave_shadow_is_identity_priority_only": True,
