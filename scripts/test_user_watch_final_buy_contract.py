@@ -258,6 +258,82 @@ def main() -> None:
     assert "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET" not in mgt_q["blockers"]
     assert mgt_q["pre_buy"] is True
 
+    # PTB-like case: DEX flow is weak, but exact Gate execution shows an extreme
+    # volume/rank breakout with tight spread and sufficient executable depth.
+    ptb_target = dict(mgt_target)
+    ptb_target.update({
+        "symbol": "PTB",
+        "network": "ethereum",
+        "contract": "0x30a25cc9c9eade4d4d9e9349be6e68c3411367d3",
+        "pair": "0xd40929ad9749f30eb56fe5a388d8afb226278fb875baf2c561c4e3a1f816725a",
+        "quarter_wave_anchor_price_usd": 0.0010062,
+        "quarter_wave_gain_from_anchor_pct": 25.7,
+    })
+    ptb_key = gate.identity_key(ptb_target)
+    ptb_market = {
+        "identity_key": ptb_key,
+        "price": 0.00126495,
+        "liquidity": 16473,
+        "volume_h1": 125,
+        "buys_h1": 3,
+        "sells_h1": 2,
+        "spread_pct": 0.165,
+        "observed_at": t2.isoformat(),
+        "cex_quote_volume_24h_usd": 1348124,
+        "cex_relative_volume_multiple": 9.55,
+        "positive_gainer_rank": 1,
+        "cex_led_revival": True,
+        "cex_execution_verified": True,
+        "cex_execution_scope": "EXACT_CEX_MARKET",
+        "cex_orderbook_spread_pct": 0.186,
+        "cex_depth_1pct_usd": 3054,
+        "cex_bid_ask_depth_ratio": 0.67,
+    }
+    ptb_obs = {
+        "identity_key": ptb_key,
+        "market_verified": True,
+        "_report_age_seconds": 0,
+        "intelligence": {
+            "status": "CURRENT",
+            "score": 0,
+            "families": 0,
+            "current_evidence_count": 1,
+            "evidence_age_minutes": 0.3,
+            "hard_risks": [],
+            "family_scores": {
+                "market_microstructure": 0,
+                "wallet_flow": 0,
+                "holder_network": -5.32,
+            },
+        },
+    }
+    ptb_q, _ = gate.evaluate(
+        ptb_target,
+        ptb_market,
+        ptb_obs,
+        {"last_price": 0.001253, "watch_low_price": 0.000908},
+        POLICY,
+        now=t2,
+    )
+    assert ptb_q["quarter_wave_revalidation"]["cex_breakout_continuation"] is True
+    assert "LIQUIDITY_BELOW_FINAL_BUY_FLOOR" not in ptb_q["blockers"]
+    assert "MARKET_MICROSTRUCTURE_NOT_POSITIVE" not in ptb_q["blockers"]
+    assert "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET" not in ptb_q["blockers"]
+    assert ptb_q["pre_buy"] is True
+
+    ptb_risky_obs = dict(ptb_obs)
+    ptb_risky_obs["intelligence"] = dict(ptb_obs["intelligence"], hard_risks=["critical_holder_risk"])
+    ptb_risky, _ = gate.evaluate(
+        ptb_target,
+        ptb_market,
+        ptb_risky_obs,
+        {"last_price": 0.001253, "watch_low_price": 0.000908},
+        POLICY,
+        now=t2,
+    )
+    assert "HARD_RISK_PRESENT" in ptb_risky["blockers"]
+    assert ptb_risky["recommended_action"] == "WAIT"
+
     # Unsupported-chain/BRC-style assets are not discarded: an exact Gate market
     # identity can qualify on a stricter order-book path without inventing a DEX CA.
     trio_target = {
