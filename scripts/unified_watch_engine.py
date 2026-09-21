@@ -157,79 +157,146 @@ def live_cex_market(t):
 
 
 def live_exact_pair(t, max_spread):
+    """Verify the exact on-chain pair with provider redundancy and safe degradation.
+
+    GeckoTerminal and DexScreener are queried independently. A rate limit from one
+    provider must not erase a valid candidate when the other provider still proves
+    the exact chain/token/pair identity. Single-source mode is explicitly marked;
+    FINAL BUY may use it only when an exact CEX execution market provides the
+    independent execution/price check downstream.
+    """
     n = str(t["network"]).strip().lower()
     canonical_chain = chain_name(n)
     pair = norm_addr(canonical_chain, t["pair"])
     ca = norm_addr(canonical_chain, t["contract"])
 
-    gt = http_json(f"https://api.geckoterminal.com/api/v2/networks/{n}/pools/{t['pair']}")
-    o = gt.get("data") or {}
-    a = o.get("attributes") or {}
-    r = o.get("relationships") or {}
-    b = (((r.get("base_token") or {}).get("data") or {}).get("id") or "")
-    q = (((r.get("quote_token") or {}).get("data") or {}).get("id") or "")
-    b_addr = str(b).split("_")[-1]
-    q_addr = str(q).split("_")[-1]
-    if norm_addr(canonical_chain, b_addr) == ca:
-        gp = float(a.get("base_token_price_usd") or 0)
-    elif norm_addr(canonical_chain, q_addr) == ca:
-        gp = float(a.get("quote_token_price_usd") or 0)
-    else:
-        raise RuntimeError("EXACT_PAIR_IDENTITY_MISMATCH_GT")
-    if gp <= 0:
-        raise RuntimeError("GT_PRICE_MISSING")
+    gt_snapshot = None
+    ds_snapshot = None
+    gt_error = None
+    ds_error = None
 
-    vol = a.get("volume_usd") or {}
-    tx = a.get("transactions") or {}
-    h1 = tx.get("h1") or {}
-    ch = a.get("price_change_percentage") or {}
-    g = {
-        "price": gp,
-        "liquidity": float(a.get("reserve_in_usd") or 0),
-        "volume_h1": float(vol.get("h1") or 0),
-        "volume_h24": float(vol.get("h24") or 0),
-        "buys_h1": int(h1.get("buys") or 0),
-        "sells_h1": int(h1.get("sells") or 0),
-        "change_h1": float(ch.get("h1") or 0),
-        "change_h24": float(ch.get("h24") or 0),
-    }
-    if g["liquidity"] <= 0:
-        raise RuntimeError("GT_LIQUIDITY_MISSING")
+    try:
+        gt = http_json(f"https://api.geckoterminal.com/api/v2/networks/{n}/pools/{t['pair']}")
+        o = gt.get("data") or {}
+        a = o.get("attributes") or {}
+        r = o.get("relationships") or {}
+        b = (((r.get("base_token") or {}).get("data") or {}).get("id") or "")
+        q = (((r.get("quote_token") or {}).get("data") or {}).get("id") or "")
+        b_addr = str(b).split("_")[-1]
+        q_addr = str(q).split("_")[-1]
+        if norm_addr(canonical_chain, b_addr) == ca:
+            gp = float(a.get("base_token_price_usd") or 0)
+        elif norm_addr(canonical_chain, q_addr) == ca:
+            gp = float(a.get("quote_token_price_usd") or 0)
+        else:
+            raise RuntimeError("EXACT_PAIR_IDENTITY_MISMATCH_GT")
+        if gp <= 0:
+            raise RuntimeError("GT_PRICE_MISSING")
+        vol = a.get("volume_usd") or {}
+        tx = a.get("transactions") or {}
+        h1 = tx.get("h1") or {}
+        ch = a.get("price_change_percentage") or {}
+        gt_snapshot = {
+            "price": gp,
+            "liquidity": float(a.get("reserve_in_usd") or 0),
+            "volume_h1": float(vol.get("h1") or 0),
+            "volume_h24": float(vol.get("h24") or 0),
+            "buys_h1": int(h1.get("buys") or 0),
+            "sells_h1": int(h1.get("sells") or 0),
+            "change_h1": float(ch.get("h1") or 0),
+            "change_h24": float(ch.get("h24") or 0),
+        }
+        if gt_snapshot["liquidity"] <= 0:
+            raise RuntimeError("GT_LIQUIDITY_MISSING")
+    except Exception as exc:
+        gt_snapshot = None
+        gt_error = f"{type(exc).__name__}:{str(exc)[:180]}"
 
-    dsnet = "ethereum" if n == "eth" else n
-    ds = http_json(f"https://api.dexscreener.com/latest/dex/pairs/{dsnet}/{t['pair']}")
-    p = next(
-        (
-            x
-            for x in (ds.get("pairs") or [])
-            if chain_name(x.get("chainId")) == canonical_chain
-            and norm_addr(canonical_chain, x.get("pairAddress")) == pair
-        ),
-        None,
-    )
-    if not p:
-        raise RuntimeError("EXACT_PAIR_MISSING_DS")
-    base = norm_addr(canonical_chain, (p.get("baseToken") or {}).get("address"))
-    quote = norm_addr(canonical_chain, (p.get("quoteToken") or {}).get("address"))
-    if ca not in {base, quote}:
-        raise RuntimeError("DS_TOKEN_NOT_IN_EXACT_PAIR_FAIL_CLOSED")
-    dp = float(p.get("priceUsd") or 0)
-    if dp <= 0:
-        raise RuntimeError("DS_PRICE_MISSING")
+    try:
+        dsnet = "ethereum" if n == "eth" else n
+        ds = http_json(f"https://api.dexscreener.com/latest/dex/pairs/{dsnet}/{t['pair']}")
+        p = next(
+            (
+                x
+                for x in (ds.get("pairs") or [])
+                if chain_name(x.get("chainId")) == canonical_chain
+                and norm_addr(canonical_chain, x.get("pairAddress")) == pair
+            ),
+            None,
+        )
+        if not p:
+            raise RuntimeError("EXACT_PAIR_MISSING_DS")
+        base = norm_addr(canonical_chain, (p.get("baseToken") or {}).get("address"))
+        quote = norm_addr(canonical_chain, (p.get("quoteToken") or {}).get("address"))
+        if ca not in {base, quote}:
+            raise RuntimeError("DS_TOKEN_NOT_IN_EXACT_PAIR_FAIL_CLOSED")
+        dp = float(p.get("priceUsd") or 0)
+        if dp <= 0:
+            raise RuntimeError("DS_PRICE_MISSING")
+        dv = p.get("volume") or {}
+        dtx = p.get("txns") or {}
+        dh1 = dtx.get("h1") or {}
+        dpc = p.get("priceChange") or {}
+        ds_snapshot = {
+            "price": dp,
+            "liquidity": float(((p.get("liquidity") or {}).get("usd")) or 0),
+            "volume_h1": float(dv.get("h1") or 0),
+            "volume_h24": float(dv.get("h24") or 0),
+            "buys_h1": int(dh1.get("buys") or 0),
+            "sells_h1": int(dh1.get("sells") or 0),
+            "change_h1": float(dpc.get("h1") or 0),
+            "change_h24": float(dpc.get("h24") or 0),
+        }
+        if ds_snapshot["liquidity"] <= 0:
+            raise RuntimeError("DS_LIQUIDITY_MISSING")
+    except Exception as exc:
+        ds_snapshot = None
+        ds_error = f"{type(exc).__name__}:{str(exc)[:180]}"
 
-    med = statistics.median([gp, dp])
-    spread = ((max(gp, dp) - min(gp, dp)) / med) * 100 if med else 999
-    if spread > max_spread:
-        raise RuntimeError(f"SOURCE_DATA_MISMATCH:{spread:.3f}%")
+    if not gt_snapshot and not ds_snapshot:
+        raise RuntimeError(
+            "EXACT_PAIR_ALL_SOURCES_FAILED"
+            + f":GT={gt_error or 'NA'}"
+            + f":DS={ds_error or 'NA'}"
+        )
+
+    if gt_snapshot and ds_snapshot:
+        gp = gt_snapshot["price"]
+        dp = ds_snapshot["price"]
+        med = statistics.median([gp, dp])
+        spread = ((max(gp, dp) - min(gp, dp)) / med) * 100 if med else 999
+        if spread > max_spread:
+            raise RuntimeError(f"SOURCE_DATA_MISMATCH:{spread:.3f}%")
+        # Prefer GT transaction granularity while filling any zero fields from DS.
+        snap = dict(gt_snapshot)
+        for field in ("liquidity", "volume_h1", "volume_h24", "buys_h1", "sells_h1"):
+            if not snap.get(field) and ds_snapshot.get(field):
+                snap[field] = ds_snapshot[field]
+        return {
+            **snap,
+            "price": med,
+            "gt_price": gp,
+            "ds_price": dp,
+            "spread_pct": spread,
+            "price_source_count": 2,
+            "price_sources": ["geckoterminal", "dexscreener"],
+            "single_source_degraded": False,
+            "observed_at": now_iso(),
+        }
+
+    snap = dict(gt_snapshot or ds_snapshot)
+    source = "geckoterminal" if gt_snapshot else "dexscreener"
     return {
-        **g,
-        "price": med,
-        "gt_price": gp,
-        "ds_price": dp,
-        "spread_pct": spread,
+        **snap,
+        "gt_price": gt_snapshot["price"] if gt_snapshot else None,
+        "ds_price": ds_snapshot["price"] if ds_snapshot else None,
+        "spread_pct": 0.0,
+        "price_source_count": 1,
+        "price_sources": [source],
+        "single_source_degraded": True,
+        "single_source_error": ds_error if gt_snapshot else gt_error,
         "observed_at": now_iso(),
     }
-
 
 def money(v):
     v = float(v)
@@ -770,16 +837,20 @@ def quarter_wave_revalidation(
     supplied_anchor = fnum(anchor_price)
     persisted_anchor = fnum(prev.get("quarter_wave_anchor_price"))
     legacy_anchor = fnum(prev.get("first_verified_price") or prev.get("price"))
-    # Repository first-seen evidence is the canonical anchor and may repair
-    # a bad legacy anchor that was created after the move had already started.
+    # Repository first-seen evidence is canonical and repairs late legacy anchors.
     anchor = supplied_anchor or persisted_anchor or legacy_anchor
+    anchor_repaired = bool(
+        supplied_anchor > 0
+        and persisted_anchor > 0
+        and abs(supplied_anchor - persisted_anchor) / supplied_anchor > 0.001
+    )
     if anchor <= 0 and price > 0:
         anchor = price
 
     first_change = fnum(
-        prev.get("first_seen_change_24h_pct")
-        if prev.get("first_seen_change_24h_pct") is not None
-        else anchor_change_24h_pct
+        anchor_change_24h_pct
+        if anchor_change_24h_pct is not None
+        else prev.get("first_seen_change_24h_pct")
     )
     gain_pct = ((price / anchor) - 1.0) * 100.0 if price > 0 and anchor > 0 else 0.0
     late_discovery = first_change >= threshold
@@ -788,7 +859,9 @@ def quarter_wave_revalidation(
     armed = bool(already_armed or late_discovery or gain_trigger)
     stamp = str(observed_at or now_iso())
 
-    if already_armed:
+    if anchor_repaired:
+        basis = "ANCHOR_REPAIRED_FROM_IMMUTABLE_FIRST_SEEN"
+    elif already_armed:
         basis = str(prev.get("quarter_wave_revalidation_basis") or "PERSISTED")
     elif late_discovery:
         basis = "FIRST_DISCOVERY_ALREADY_GE_25PCT_24H"
@@ -799,9 +872,14 @@ def quarter_wave_revalidation(
 
     out = {
         "quarter_wave_anchor_price": anchor if anchor > 0 else None,
-        "quarter_wave_anchor_at": prev.get("quarter_wave_anchor_at") or anchor_at or observed_at,
+        "quarter_wave_anchor_at": (
+            anchor_at if anchor_repaired and anchor_at else prev.get("quarter_wave_anchor_at") or anchor_at or observed_at
+        ),
+        "quarter_wave_anchor_repaired": anchor_repaired,
         "first_verified_price": anchor if anchor > 0 else None,
-        "first_verified_at": prev.get("first_verified_at") or anchor_at or (stamp if anchor > 0 else None),
+        "first_verified_at": (
+            anchor_at if anchor_repaired and anchor_at else prev.get("first_verified_at") or anchor_at or (stamp if anchor > 0 else None)
+        ),
         "first_seen_change_24h_pct": first_change,
         "gain_from_first_verified_pct": round(gain_pct, 4),
         "quarter_wave_revalidation_threshold_pct": threshold,
@@ -811,7 +889,14 @@ def quarter_wave_revalidation(
     }
     if armed:
         out["quarter_wave_revalidation_armed_at"] = prev.get("quarter_wave_revalidation_armed_at") or stamp
-        out["quarter_wave_revalidation_trigger_price"] = prev.get("quarter_wave_revalidation_trigger_price") or price
+        if anchor_repaired:
+            out["quarter_wave_revalidation_trigger_price"] = round(anchor * (1.0 + threshold / 100.0), 18)
+            out["quarter_wave_trigger_price_is_threshold_estimate"] = True
+        else:
+            out["quarter_wave_revalidation_trigger_price"] = prev.get("quarter_wave_revalidation_trigger_price") or price
+            out["quarter_wave_trigger_price_is_threshold_estimate"] = bool(
+                prev.get("quarter_wave_trigger_price_is_threshold_estimate")
+            )
     return out
 
 def main():
