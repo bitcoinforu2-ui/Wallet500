@@ -300,8 +300,12 @@ def targets():
         dyn = json.loads(DYNAMIC.read_text()) if DYNAMIC.exists() else {"candidates": []}
     except Exception:
         dyn = {"candidates": []}
+    # Keep test/workspace overrides isolated: when DYNAMIC is redirected to a
+    # temporary directory, use the matching sibling spot snapshot rather than
+    # leaking candidates from the repository's production data directory.
+    spot_path = SPOT if SPOT.parent == DYNAMIC.parent else DYNAMIC.with_name("spot-market-discovery.json")
     try:
-        spot = json.loads(SPOT.read_text()) if SPOT.exists() else {"candidates": []}
+        spot = json.loads(spot_path.read_text()) if spot_path.exists() else {"candidates": []}
     except Exception:
         spot = {"candidates": []}
     try:
