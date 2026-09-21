@@ -7,25 +7,14 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '2,17,32,47 * * * *'
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/verified-publisher.yml'
-      - 'scripts/publish_verified_snapshot.py'
-      - 'src/wallet500/decision_generation.py'
-      - 'src/wallet500/decision_snapshot_guard.py'
-      - 'src/wallet500/truth_input_preflight.py'
-      - 'src/wallet500/truth_contract.py'
-      - 'src/wallet500/safe_json.py'
-      - 'scripts/pipeline_integrity_audit.py'
-
 permissions:
   actions: read
   contents: write
 
 # This is the sole production-authoritative main writer for a complete Live Scan
-# snapshot and its generation manifest. Other lanes may publish source/advisory
-# data, but must not publish canonical decision surfaces.
+# snapshot and its generation manifest. It runs from successful Live Scan handoffs
+# plus scheduled/manual recovery; ordinary code pushes must not displace a fresh
+# pending handoff with a stale recovery publication.
 concurrency:
   group: wallet500-verified-snapshot-publisher
   cancel-in-progress: false
