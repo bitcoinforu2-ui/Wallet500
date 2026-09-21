@@ -62,6 +62,7 @@ def test_honeypot_provider_conflict_with_real_sells_stays_soft(monkeypatch):
     assert first_events[0]["hard_risk"] is False
 
     market = {
+        "buys_h1": 74,
         "sells_h1": 96,
         "volume_h1": 12000,
         "liquidity": 175000,
