@@ -252,6 +252,11 @@ def honeypot(t, prev=None, with_snapshot=False, market_snapshot=None):
                 "real_sells_h1": real_sells,
                 "real_volume_h1_usd": real_volume,
                 "real_liquidity_usd": real_liquidity,
+                "supersedes_hard_risk_kinds": (
+                    ["honeypot_or_transfer_block"]
+                    if contradictory_real_sell_flow
+                    else []
+                ),
             },
         ))
 
