@@ -72,6 +72,35 @@ def main():
     assert row["score"] <= 29
     assert "honeypot_or_transfer_block" in row["hard_risks"]
 
+    # Newer exact-pair execution evidence may supersede an older provider hard-risk
+    # flag, but only when the event explicitly names the hard-risk kind it replaces.
+    conflict = event(
+        target,
+        family="supply_tokenomics",
+        kind="honeypot_provider_conflict_real_sells",
+        direction=-1,
+        strength=55,
+        confidence=80,
+        at=NOW + timedelta(minutes=1),
+        hard_risk=False,
+        supersedes_hard_risk_kinds=["honeypot_or_transfer_block"],
+    )
+    row = fusion.fuse(target, [hard, conflict], POLICY, now_dt=NOW + timedelta(minutes=1))
+    assert "honeypot_or_transfer_block" not in row["hard_risks"]
+
+    unrelated = event(
+        target,
+        family="supply_tokenomics",
+        kind="other_warning",
+        direction=-1,
+        strength=20,
+        confidence=80,
+        at=NOW + timedelta(minutes=1),
+        supersedes_hard_risk_kinds=["different_risk"],
+    )
+    row = fusion.fuse(target, [hard, unrelated], POLICY, now_dt=NOW + timedelta(minutes=1))
+    assert "honeypot_or_transfer_block" in row["hard_risks"]
+
     neutral = event(target, kind="verified_market_snapshot", direction=0, strength=0, confidence=100)
     row = fusion.fuse(target, [neutral], POLICY, now_dt=NOW)
     assert row["current_evidence_count"] == 1
