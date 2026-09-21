@@ -137,6 +137,7 @@ jobs:
         run: python scripts/user_watch_final_buy.py
 
       - name: Persist critical market and FINAL BUY state before slow enrichment
+        id: critical_persist
         if: always()
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -201,6 +202,8 @@ jobs:
           MARKET_WATCH_OUTCOME: ${{ steps.market_watch.outcome }}
           USER_BUY_CONTRACT_OUTCOME: ${{ steps.user_buy_contract.outcome }}
           USER_WATCH_FINAL_BUY_OUTCOME: ${{ steps.user_watch_final_buy.outcome }}
+          CRITICAL_PERSIST_OUTCOME: ${{ steps.critical_persist.outcome }}
+          ENRICHED_FUSION_OUTCOME: ${{ steps.enriched_fusion.outcome }}
           GH_RUN_ID: ${{ github.run_id }}
           GH_RUN_ATTEMPT: ${{ github.run_attempt }}
           GH_SHA: ${{ github.sha }}
@@ -255,6 +258,8 @@ jobs:
               'market_watch': os.getenv('MARKET_WATCH_OUTCOME'),
               'user_buy_contract': os.getenv('USER_BUY_CONTRACT_OUTCOME'),
               'user_watch_final_buy': os.getenv('USER_WATCH_FINAL_BUY_OUTCOME'),
+              'critical_persist': os.getenv('CRITICAL_PERSIST_OUTCOME'),
+              'enriched_fusion': os.getenv('ENRICHED_FUSION_OUTCOME'),
           }
           manifest = {
               'version': 7,
