@@ -248,6 +248,13 @@ def _policy(config: dict) -> dict:
         "min_rebound_from_watch_low_pct": 5.0,
         "min_scan_price_gain_pct": 1.0,
         "max_scan_price_gain_pct": 25.0,
+        # Cumulative anti-chase guard: a small positive scan after a large
+        # multi-scan rebound is not a fresh entry. Require a real reset/reclaim
+        # unless the exact CEX move is an exceptional top-rank breakout.
+        "late_entry_guard_enabled": True,
+        "late_entry_max_rebound_without_reset_pct": 30.0,
+        "late_entry_reset_pullback_pct": 8.0,
+        "late_entry_reclaim_min_scan_gain_pct": 1.0,
         "strong_min_fusion_score": 55.0,
         "strong_min_positive_families": 3,
         "relaxed_min_fusion_score": 30.0,
@@ -578,6 +585,43 @@ def evaluate(
     if scan_gain is not None and scan_gain > float(policy["max_scan_price_gain_pct"]):
         blockers.append("SHORT_TERM_CHASE_RISK")
 
+    # A candidate can look calm scan-to-scan while still being badly extended
+    # over the preceding hours (PHA: +38% from the watch low with only +1.69%
+    # on the latest scan). Track the episode high and require a meaningful
+    # pullback followed by a positive reclaim before treating that as a fresh
+    # entry. A reset is only armed after an extension episode has actually
+    # existed, so an unrelated old pullback cannot pre-authorize a future chase.
+    prior_high = num(prior.get("watch_high_price"), 0.0) or 0.0
+    pullback_from_watch_high = (
+        max(0.0, (1.0 - (price / prior_high)) * 100.0)
+        if price > 0 and prior_high > 0
+        else None
+    )
+    late_entry_extended = bool(
+        quarter_wave_lane
+        and rebound is not None
+        and rebound >= float(policy["late_entry_max_rebound_without_reset_pct"])
+    )
+    extension_seen_prior = bool(prior.get("late_entry_extension_seen"))
+    extension_seen = bool(extension_seen_prior or late_entry_extended)
+    reset_seen_prior = bool(prior.get("late_entry_reset_seen"))
+    reset_now = bool(
+        extension_seen
+        and pullback_from_watch_high is not None
+        and pullback_from_watch_high >= float(policy["late_entry_reset_pullback_pct"])
+    )
+    reset_seen = bool(reset_seen_prior or reset_now)
+    reset_depth_prior = num(prior.get("late_entry_reset_max_pullback_pct"), 0.0) or 0.0
+    reset_depth = max(
+        reset_depth_prior,
+        pullback_from_watch_high if reset_now and pullback_from_watch_high is not None else 0.0,
+    )
+    late_entry_reset_reclaim = bool(
+        reset_seen_prior
+        and scan_gain is not None
+        and scan_gain >= float(policy["late_entry_reclaim_min_scan_gain_pct"])
+    )
+
     # Strong CEX continuation can substitute for weak DEX microstructure, but only
     # when the exact CEX market is executable, the move is still advancing, current
     # intelligence exists, and no hard risk is present. This catches PTB/R2/ASP-like
@@ -598,6 +642,28 @@ def evaluate(
         and cex_depth_1pct >= float(policy["cex_breakout_extreme_min_depth_1pct_usd"])
         and cex_orderbook_spread <= float(policy["cex_breakout_extreme_max_orderbook_spread_pct"])
     )
+
+    # Preserve the deliberately strict PTB-like exception: a genuinely extreme
+    # exact-CEX breakout (top rank, very high relative volume, tight spread and
+    # executable depth) may continue without waiting for an 8% reset. Ordinary
+    # +25% revalidation/fast-path momentum does not get this exception.
+    late_entry_exceptional_continuation = bool(
+        cex_breakout_extreme
+        and cex_execution_verified
+        and cex_price_coherent
+        and not hard_risks
+        and scan_gain is not None
+        and scan_gain >= float(policy["cex_breakout_min_scan_gain_pct"])
+    )
+    late_entry_chase_risk = bool(
+        policy.get("late_entry_guard_enabled") is True
+        and late_entry_extended
+        and not late_entry_reset_reclaim
+        and not late_entry_exceptional_continuation
+    )
+    if late_entry_chase_risk:
+        blockers.append("EXTENDED_MOVE_WAIT_FOR_RESET")
+
     cex_breakout_continuation = bool(
         policy.get("cex_breakout_continuation_enabled") is True
         and quarter_wave_lane
@@ -738,10 +804,7 @@ def evaluate(
     # downgrade the same chain+CA+pair back to PRE-BUY. A future episode may
     # re-arm FINAL BUY after observable misses, but PRE-BUY remains suppressed
     # until an explicit episode reset contract is introduced.
-    final_buy_already_delivered = bool(
-        prior.get("last_delivery_status") == "DELIVERED"
-        and prior.get("last_alert_at")
-    )
+    final_buy_already_delivered = bool(prior.get("last_alert_at"))
     pre_buy_alert = bool(
         pre_buy
         and pre_buy_armed
@@ -757,6 +820,13 @@ def evaluate(
             "QUARTER_WAVE_REVALIDATION_ARMED"
             + (f"_{quarter_wave_gain:.2f}PCT" if quarter_wave_gain is not None else "")
         )
+    if late_entry_reset_reclaim:
+        proof.append(
+            f"ENTRY_RESET_RECLAIM_DEPTH_{reset_depth:.2f}PCT"
+            f"_SCAN_{scan_gain:.2f}PCT"
+        )
+    elif late_entry_exceptional_continuation:
+        proof.append("ENTRY_EXTREME_CEX_CONTINUATION_EXCEPTION")
     if ratio >= float(policy["min_buy_sell_ratio"]):
         proof.append(f"BUY_SELL_{ratio:.2f}X")
     if rebound is not None and rebound >= float(policy["min_rebound_from_watch_low_pct"]):
@@ -801,6 +871,21 @@ def evaluate(
         "required_streak": required_streak,
         "blockers": unique_blockers,
         "proof": list(dict.fromkeys(proof)),
+        "entry_timing": {
+            "late_entry_guard_enabled": bool(policy.get("late_entry_guard_enabled")),
+            "extended_move": late_entry_extended,
+            "max_rebound_without_reset_pct": float(policy["late_entry_max_rebound_without_reset_pct"]),
+            "pullback_from_watch_high_pct": (
+                round(pullback_from_watch_high, 4)
+                if pullback_from_watch_high is not None
+                else None
+            ),
+            "reset_pullback_required_pct": float(policy["late_entry_reset_pullback_pct"]),
+            "reset_seen": reset_seen,
+            "reset_reclaim_confirmed": late_entry_reset_reclaim,
+            "exceptional_cex_continuation": late_entry_exceptional_continuation,
+            "chase_risk_blocked": late_entry_chase_risk,
+        },
         "quarter_wave_revalidation": {
             "enabled_for_target": quarter_wave_lane,
             "cex_fast_path": cex_quarter_wave_fast_path,
@@ -868,6 +953,8 @@ def evaluate(
             "contextual_execution_gates_may_be_satisfied_by_verified_alternate_path": True,
             "cex_fast_path_bypasses_only_replaceable_dex_and_fusion_gates": True,
             "cex_fast_path_still_requires_current_intelligence_no_hard_risk_microstructure_and_two_scans": True,
+            "late_entry_chase_guard_blocks_extended_rebounds_without_reset_reclaim": True,
+            "late_entry_extreme_cex_exception_requires_existing_strict_extreme_breakout_gate": True,
             "cex_breakout_continuation_requires_current_intelligence": True,
             "cex_breakout_continuation_requires_exact_cex_execution": True,
             "cex_breakout_continuation_never_bypasses_hard_risk": True,
@@ -889,6 +976,9 @@ def evaluate(
         "last_volume_h1": volume_h1,
         "watch_low_price": low if low is not None else prior.get("watch_low_price"),
         "watch_high_price": max(num(prior.get("watch_high_price"), 0.0) or 0.0, price),
+        "late_entry_extension_seen": False if alert else extension_seen,
+        "late_entry_reset_seen": False if alert else reset_seen,
+        "late_entry_reset_max_pullback_pct": 0.0 if alert else reset_depth,
         "qualified_streak": streak,
         "observable_miss_streak": miss_streak,
         "armed": armed,
@@ -914,6 +1004,7 @@ def evaluate(
 def telegram_message(target: dict, decision: dict) -> str:
     m = decision["market"]
     intel = decision["intelligence"]
+    timing = decision.get("entry_timing") if isinstance(decision.get("entry_timing"), dict) else {}
     dex = str(target.get("dex_url") or "")
     if decision.get("pre_buy_alert") is True:
         return "\n".join([
@@ -925,6 +1016,15 @@ def telegram_message(target: dict, decision: dict) -> str:
             f"Buys/Sells 1H: {m['buys_h1']}/{m['sells_h1']} ({m['buy_sell_ratio']:.2f}x)",
             f"Rebound from watch low: {m['rebound_from_watch_low_pct']:.2f}%",
             f"Scan-to-scan price gain: {m['scan_price_gain_pct']:.2f}%",
+            (
+                "Entry timing: reset + reclaim confirmed ✅"
+                if timing.get("reset_reclaim_confirmed")
+                else (
+                    "Entry timing: exceptional exact-CEX continuation ✅"
+                    if timing.get("exceptional_cex_continuation")
+                    else "Entry timing: cumulative chase guard passed ✅"
+                )
+            ),
             (
                 f"Intelligence: alternate verified path {intel['execution_path']} | "
                 f"Fusion {intel['score']:.1f}/100 is informational, not the approving gate"
@@ -946,7 +1046,21 @@ def telegram_message(target: dict, decision: dict) -> str:
         f"Buys/Sells 1H: {m['buys_h1']}/{m['sells_h1']} ({m['buy_sell_ratio']:.2f}x)",
         f"Rebound from watch low: {m['rebound_from_watch_low_pct']:.2f}%",
         f"Scan-to-scan price gain: {m['scan_price_gain_pct']:.2f}%",
-        f"Intelligence Fusion: {intel['score']:.1f}/100 | {intel['positive_families']} positive families",
+        (
+            "Entry timing: reset + reclaim confirmed ✅"
+            if timing.get("reset_reclaim_confirmed")
+            else (
+                "Entry timing: exceptional exact-CEX continuation ✅"
+                if timing.get("exceptional_cex_continuation")
+                else "Entry timing: cumulative chase guard passed ✅"
+            )
+        ),
+        (
+            f"Intelligence: alternate verified path {intel['execution_path']} | "
+            f"Fusion {intel['score']:.1f}/100 is informational, not the approving gate"
+            if intel.get("fusion_gate_bypassed")
+            else f"Intelligence Fusion: {intel['score']:.1f}/100 | {intel['positive_families']} positive families"
+        ),
         "Proof: " + " | ".join(decision.get("proof") or []),
         (
             "New Chain Bootstrap Radar candidate."
