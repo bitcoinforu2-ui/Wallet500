@@ -240,3 +240,42 @@ def test_earlier_unified_anchor_repairs_newer_spot_collector_anchor():
         {"discovery_price": 0.03580},
         25.0,
     ) is True
+
+
+def test_bounded_identity_batch_keeps_priority_semantics_and_fails_closed(monkeypatch):
+    calls = []
+
+    def fake_resolve(symbol, native_registry=None, *, cex_price=None):
+        calls.append(symbol)
+        if symbol == "FAIL":
+            raise RuntimeError("provider down")
+        return {
+            "identity_status": "RESOLVED_EXACT",
+            "identity_reason": "TEST",
+            "network": "eth",
+            "contract": "0x1",
+            "pair": "0x2",
+        }
+
+    monkeypatch.setattr(mod, "resolve_identity", fake_resolve)
+    selected = [
+        {"symbol": "TOP", "currency_pair": "TOP_USDT", "discovery_price": 1.0},
+        {"symbol": "SKIP", "currency_pair": "SKIP_USDT", "discovery_price": 1.0},
+        {"symbol": "HOT", "currency_pair": "HOT_USDT", "discovery_price": 1.0, "forced_hot_watch": True},
+        {"symbol": "FAIL", "currency_pair": "FORCED_USDT", "discovery_price": 1.0},
+    ]
+
+    result = mod.resolve_identity_targets(
+        selected,
+        {},
+        {"FORCED_USDT"},
+        resolution_budget=1,
+        max_workers=3,
+    )
+
+    assert set(result) == {0, 2, 3}
+    assert set(calls) == {"TOP", "HOT", "FAIL"}
+    assert result[0]["identity_status"] == "RESOLVED_EXACT"
+    assert result[2]["identity_status"] == "RESOLVED_EXACT"
+    assert result[3]["identity_status"] == "UNRESOLVED"
+    assert result[3]["identity_reason"] == "RESOLUTION_EXCEPTION_FAIL_CLOSED"
