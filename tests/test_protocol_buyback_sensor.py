@@ -156,3 +156,94 @@ def test_buyback_sensor_fails_closed_when_sources_are_missing(monkeypatch):
 
     assert events == []
     assert snap["status"] == "SOURCE_UNAVAILABLE"
+
+
+def test_daily_value_series_supports_declared_nested_adapter_shape():
+    payload = {
+        "result": {
+            "history": [
+                {"day": _day(-1), "notional": 125_000.0},
+                {"day": _day(0), "notional": 350_000.0},
+            ]
+        }
+    }
+
+    series = fic.daily_value_series(
+        payload,
+        series_paths=["result.history"],
+        value_keys=["notional"],
+        date_keys=["day"],
+    )
+
+    assert series[-1] == (_day(0), 350_000.0)
+
+
+def test_generic_registry_does_not_treat_corroboration_only_as_execution(monkeypatch):
+    target = _target()
+    target["free_intel"]["buyback_sensor"] = {
+        "enabled": True,
+        "defillama_fees_slug": "demo",
+        "execution_sources": [
+            {
+                "adapter": "defillama_holders_revenue",
+                "name": "Holder Revenue",
+                "slug": "demo",
+                "execution_proof": False,
+                "corroboration_only": True,
+                "semantics": "VALUE_ACCRUAL_CORROBORATION",
+            }
+        ],
+        "min_execution_delta_usd": 25_000,
+    }
+
+    monkeypatch.setattr(
+        fic,
+        "get_json",
+        lambda *args, **kwargs: {
+            "totalDataChart": [[d, v] for d, v in _series(2_000_000.0).items()]
+        },
+    )
+    events, snap = fic.protocol_buyback_collect(
+        target,
+        {},
+        {"market_cap": 1_500_000_000.0, "liquidity": 20_000_000.0},
+    )
+
+    assert events == []
+    assert snap["status"] == "SOURCE_UNAVAILABLE"
+    assert snap["execution_proof_series_count"] == 0
+
+
+def test_revenue_lead_does_not_refresh_when_same_day_funding_is_unchanged(monkeypatch):
+    primary = {"dailyBuybacks": _series(2_000_000.0)}
+    revenue = {
+        "totalDataChart": [
+            [d, (4_000_000.0 if d == _day(0) else 1_200_000.0)]
+            for d in _series(1).keys()
+        ]
+    }
+
+    def fake_get_json(url, headers=None, timeout=12):
+        if "dailyHoldersRevenue" in url:
+            return {"totalDataChart": [[d, v] for d, v in _series(2_000_000.0).items()]}
+        if "dailyRevenue" in url:
+            return revenue
+        return primary
+
+    monkeypatch.setattr(fic, "get_json", fake_get_json)
+    events, snap = fic.protocol_buyback_collect(
+        _target(),
+        {
+            "latest_date": _day(0),
+            "latest_buyback_usd": 2_000_000.0,
+            "revenue": {
+                "latest_date": _day(0),
+                "latest_revenue_usd": 4_000_000.0,
+            },
+        },
+        {"market_cap": 1_500_000_000.0, "liquidity": 20_000_000.0},
+    )
+
+    kinds = {e["kind"] for e in events}
+    assert "revenue_change" not in kinds
+    assert snap["revenue"]["observed_funding_delta_usd"] == 0.0

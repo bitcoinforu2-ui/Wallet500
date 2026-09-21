@@ -10,6 +10,7 @@ CEX_SPOT_IDENTITY = ROOT / "data/cex-spot-identity-radar.json"
 ALPHA = ROOT / "data/alpha-caller-candidates.json"
 BUY_REGISTRY = ROOT / "data/buy-zone-close-watch-registry.json"
 BOOTSTRAP = ROOT / "data/new-chain-bootstrap-radar.json"
+BUYBACK_RADAR = ROOT / "data/protocol-buyback-radar.json"
 OUT = ROOT / "data/unified-dynamic-candidates.json"
 EVENTS = ROOT / "data/close-watch-events.json"
 
@@ -106,6 +107,7 @@ def main():
     alpha = load(ALPHA, {"candidates": []})
     buy_registry = load(BUY_REGISTRY, {"entries": {}})
     bootstrap = load(BOOTSTRAP, {"candidates": []})
+    buyback_radar = load(BUYBACK_RADAR, {"candidates": []})
     event_doc = load(EVENTS, {"version": 3, "events": []})
     out = []
     seen = set()
@@ -177,6 +179,50 @@ def main():
             "buy_zone_price_usd": row.get("buy_zone_price_usd"),
             "first_buy_at": row.get("first_buy_at"),
             "last_buy_at": row.get("last_buy_at"),
+        })
+
+    for row in buyback_radar.get("candidates") or []:
+        if not isinstance(row, dict) or row.get("candidate") is not True:
+            continue
+        if row.get("direct_buy_eligible") is not False:
+            continue
+        i = ident(row)
+        if not i or i[3] in seen:
+            continue
+        seen.add(i[3])
+        out.append({
+            "candidate_type": "PROTOCOL_BUYBACK_PRESSURE",
+            "symbol": str(row.get("symbol") or "BUYBACK").upper(),
+            "network": row.get("network") or row.get("chain"),
+            "contract": row.get("contract") or row.get("token_address"),
+            "pair": row.get("pair") or row.get("pair_address"),
+            "dex_url": row.get("dex_url") or "",
+            "source": "Protocol Buyback Pressure Radar",
+            "first_seen_at": row.get("first_seen_at") or buyback_radar.get("generated_at"),
+            "discovery_price": (row.get("market") or {}).get("price_usd"),
+            "dex_liquidity_usd": (row.get("market") or {}).get("liquidity_usd"),
+            "quote_volume_24h_usd": None,
+            "identity_key": i[3],
+            "buyback_stage": row.get("status"),
+            "buyback_radar_score": row.get("radar_score"),
+            "buyback_reasons": row.get("reasons") or [],
+            "buyback_execution": row.get("execution") or {},
+            "buyback_funding": row.get("funding") or {},
+            "market_confirmed": row.get("market_confirmed") is True,
+            "late_extension": row.get("late_extension") is True,
+            "priority": row.get("priority") or "HIGH",
+            "close_watch": "HIGHEST",
+            "collector_priority": 1,
+            "deep_investigation": True,
+            "full_intelligence": True,
+            "wallet_holder_intelligence": True,
+            "attention_social_intelligence": True,
+            "search_news_intelligence": True,
+            "market_microstructure_intelligence": True,
+            "research_only": True,
+            "direct_buy_eligible": False,
+            "telegram_eligible": False,
+            "telegram_policy": "FINAL_BUY_ONLY_VIA_CANONICAL_ENGINE",
         })
 
     for row in cex_identity.get("candidates") or []:
@@ -420,7 +466,7 @@ def main():
         })
 
     out.sort(key=lambda x: (
-        0 if x["candidate_type"] == "BUY_ZONE" else 1 if x["candidate_type"] == "NEW_CHAIN_BOOTSTRAP" else 2 if x["candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"} else 3,
+        0 if x["candidate_type"] == "BUY_ZONE" else 1 if x["candidate_type"] == "PROTOCOL_BUYBACK_PRESSURE" else 2 if x["candidate_type"] == "NEW_CHAIN_BOOTSTRAP" else 3 if x["candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"} else 4,
         (
             x.get("alpha_age_minutes", 999999)
             if x["candidate_type"] == "PUBLIC_ALPHA"
@@ -434,6 +480,7 @@ def main():
         "mode": "EXACT_IDENTITY_DYNAMIC_RESEARCH",
         "counts": {
             "buy_zone": sum(x["candidate_type"] == "BUY_ZONE" for x in out),
+            "protocol_buyback_pressure": sum(x["candidate_type"] == "PROTOCOL_BUYBACK_PRESSURE" for x in out),
             "cex_spot": sum(x["candidate_type"] == "CEX_SPOT_DISCOVERY" for x in out),
             "gate_spot": sum(x["candidate_type"] == "GATE_SPOT_DISCOVERY" for x in out),
             "cex_market": sum(x["candidate_type"] == "CEX_MARKET_DISCOVERY" for x in out),

@@ -20,6 +20,8 @@ on:
       - 'scripts/native_asset_intelligence.py'
       - 'scripts/cross_domain_intelligence_collector.py'
       - 'scripts/free_intelligence_collector.py'
+      - 'scripts/protocol_buyback_radar.py'
+      - 'scripts/protocol_value_accrual_discovery.py'
       - 'scripts/derivatives_intelligence_collector.py'
       - 'scripts/public_alpha_source_collector.py'
       - 'scripts/alpha_caller_intake.py'
@@ -31,12 +33,18 @@ on:
       - 'scripts/chain_context_shadow.py'
       - 'tests/test_chain_context_shadow.py'
       - 'tests/test_unified_watch_cex_resilience.py'
+      - 'tests/test_protocol_buyback_sensor.py'
+      - 'tests/test_protocol_buyback_radar.py'
+      - 'tests/test_protocol_value_accrual_discovery.py'
       - 'data/unified-watch-config.json'
       - 'data/new-chain-bootstrap-state.json'
       - 'data/new-chain-bootstrap-radar.json'
       - 'data/buy-zone-close-watch-registry.json'
       - 'data/alpha-caller-sources.json'
       - 'data/close-watch-intelligence-policy.json'
+      - 'data/protocol-buyback-registry.json'
+      - 'data/protocol-buyback-radar.json'
+      - 'data/protocol-value-accrual-discovery.json'
       - 'data/chain-context-shadow.json'
       - '.github/workflows/unified-watch-engine.yml'
 
@@ -59,15 +67,15 @@ jobs:
       - name: Validate unified watcher, collectors and intelligence fusion
         id: validate
         run: |
-          python -m py_compile scripts/resilient_http.py scripts/new_chain_bootstrap_radar.py scripts/test_new_chain_bootstrap_contract.py scripts/resilient_unified_watch_runner.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/spot_cex_fast_handoff.py scripts/native_asset_intelligence.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py scripts/user_watch_final_buy.py scripts/test_user_watch_final_buy_contract.py scripts/chain_context_shadow.py
-          for f in data/unified-watch-config.json data/user-watch-final-buy-state.json data/user-watch-final-buy-report.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/buy-zone-close-watch-registry.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/narrative-dependency-state.json data/http-resilience-state.json data/new-chain-bootstrap-state.json data/new-chain-bootstrap-radar.json data/chain-context-shadow.json; do python -m json.tool "$f" >/dev/null; done
+          python -m py_compile scripts/resilient_http.py scripts/new_chain_bootstrap_radar.py scripts/test_new_chain_bootstrap_contract.py scripts/resilient_unified_watch_runner.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/spot_cex_fast_handoff.py scripts/native_asset_intelligence.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/protocol_buyback_radar.py scripts/protocol_value_accrual_discovery.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py scripts/user_watch_final_buy.py scripts/test_user_watch_final_buy_contract.py scripts/chain_context_shadow.py
+          for f in data/unified-watch-config.json data/user-watch-final-buy-state.json data/user-watch-final-buy-report.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/buy-zone-close-watch-registry.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/narrative-dependency-state.json data/http-resilience-state.json data/new-chain-bootstrap-state.json data/new-chain-bootstrap-radar.json data/chain-context-shadow.json data/protocol-buyback-registry.json data/protocol-buyback-radar.json data/protocol-value-accrual-discovery.json; do python -m json.tool "$f" >/dev/null; done
 
       - name: Test exact-identity intelligence fusion contract
         id: contract
         run: |
           python scripts/test_intelligence_fusion_contract.py
           python -m pip install --disable-pip-version-check -q pytest
-          python -m pytest -q tests/test_unified_watch_cex_resilience.py tests/test_spot_market_discovery_native_identity.py tests/test_chain_context_shadow.py tests/test_protocol_buyback_sensor.py
+          python -m pytest -q tests/test_unified_watch_cex_resilience.py tests/test_spot_market_discovery_native_identity.py tests/test_chain_context_shadow.py tests/test_protocol_buyback_sensor.py tests/test_protocol_buyback_radar.py tests/test_protocol_value_accrual_discovery.py
 
       - name: Test user-requested FINAL BUY contract
         id: user_buy_contract
@@ -91,6 +99,10 @@ jobs:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: python scripts/spot_market_discovery_collector.py
 
+      - name: Discover global holder-value accrual acceleration
+        id: value_accrual_discovery
+        run: python scripts/protocol_value_accrual_discovery.py
+
       - name: Discover Arc and automatically bootstrap newly appearing chains
         id: new_chain_bootstrap
         run: python scripts/new_chain_bootstrap_radar.py
@@ -101,6 +113,10 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/free_intelligence_collector.py
 
+      - name: Score generic exact-identity protocol buyback pressure
+        id: buyback_radar
+        run: python scripts/protocol_buyback_radar.py
+
       - name: Stream free public alpha discoveries
         id: public_alpha
         run: python scripts/public_alpha_source_collector.py
@@ -109,7 +125,7 @@ jobs:
         id: alpha_intake
         run: python scripts/alpha_caller_intake.py
 
-      - name: Bridge final BUY, new-chain bootstrap, Gate and alpha into exact-identity dynamic candidates
+      - name: Bridge final BUY, buyback pressure, new-chain bootstrap, Gate and alpha into exact-identity dynamic candidates
         id: candidate_bridge
         run: python scripts/unified_candidate_bridge.py
 
@@ -167,6 +183,7 @@ jobs:
             data/http-resilience-state.json \
             data/close-watch-intelligence.json \
             data/close-watch-events.json \
+            data/protocol-buyback-radar.json \
             data/spot-market-discovery.json \
             data/spot-market-discovery-state.json \
             data/unified-dynamic-candidates.json
@@ -200,9 +217,11 @@ jobs:
           VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
           CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
           SPOT_DISCOVERY_OUTCOME: ${{ steps.spot_discovery.outcome }}
+          VALUE_ACCRUAL_DISCOVERY_OUTCOME: ${{ steps.value_accrual_discovery.outcome }}
           NEW_CHAIN_BOOTSTRAP_CONTRACT_OUTCOME: ${{ steps.new_chain_bootstrap_contract.outcome }}
           NEW_CHAIN_BOOTSTRAP_OUTCOME: ${{ steps.new_chain_bootstrap.outcome }}
           FREE_INTEL_OUTCOME: ${{ steps.free_intel.outcome }}
+          BUYBACK_RADAR_OUTCOME: ${{ steps.buyback_radar.outcome }}
           PUBLIC_ALPHA_OUTCOME: ${{ steps.public_alpha.outcome }}
           ALPHA_INTAKE_OUTCOME: ${{ steps.alpha_intake.outcome }}
           CANDIDATE_BRIDGE_OUTCOME: ${{ steps.candidate_bridge.outcome }}
@@ -254,13 +273,17 @@ jobs:
           native_asset = load('data/native-asset-close-watch.json')
           user_buy = load('data/user-watch-final-buy-report.json')
           chain_context = load('data/chain-context-shadow.json')
+          buyback_radar = load('data/protocol-buyback-radar.json')
+          value_accrual = load('data/protocol-value-accrual-discovery.json')
           outcomes = {
               'validate': os.getenv('VALIDATE_OUTCOME'),
               'contract': os.getenv('CONTRACT_OUTCOME'),
               'spot_discovery': os.getenv('SPOT_DISCOVERY_OUTCOME'),
+              'value_accrual_discovery': os.getenv('VALUE_ACCRUAL_DISCOVERY_OUTCOME'),
               'new_chain_bootstrap_contract': os.getenv('NEW_CHAIN_BOOTSTRAP_CONTRACT_OUTCOME'),
               'new_chain_bootstrap': os.getenv('NEW_CHAIN_BOOTSTRAP_OUTCOME'),
               'free_intel': os.getenv('FREE_INTEL_OUTCOME'),
+              'buyback_radar': os.getenv('BUYBACK_RADAR_OUTCOME'),
               'public_alpha': os.getenv('PUBLIC_ALPHA_OUTCOME'),
               'alpha_intake': os.getenv('ALPHA_INTAKE_OUTCOME'),
               'candidate_bridge': os.getenv('CANDIDATE_BRIDGE_OUTCOME'),
@@ -311,6 +334,14 @@ jobs:
                   'close_watch_event_count': len(events.get('events') or []) if isinstance(events, dict) else None,
                   'buyback_event_count': sum(1 for e in (events.get('events') or []) if isinstance(e, dict) and e.get('kind') in ('buyback_execution', 'buyback_acceleration')) if isinstance(events, dict) else None,
                   'buyback_lead_event_count': sum(1 for e in (events.get('events') or []) if isinstance(e, dict) and e.get('lead_signal') is True) if isinstance(events, dict) else None,
+                  'buyback_radar_generated_at': (buyback_radar or {}).get('generated_at') if isinstance(buyback_radar, dict) else None,
+                  'buyback_radar_registry_entries': (buyback_radar or {}).get('registry_entries') if isinstance(buyback_radar, dict) else None,
+                  'buyback_radar_candidate_count': (buyback_radar or {}).get('candidate_count') if isinstance(buyback_radar, dict) else None,
+                  'buyback_radar_execution_candidate_count': (buyback_radar or {}).get('execution_candidate_count') if isinstance(buyback_radar, dict) else None,
+                  'buyback_radar_pre_execution_candidate_count': (buyback_radar or {}).get('pre_execution_candidate_count') if isinstance(buyback_radar, dict) else None,
+                  'value_accrual_discovery_generated_at': (value_accrual or {}).get('generated_at') if isinstance(value_accrual, dict) else None,
+                  'value_accrual_discovery_count': (value_accrual or {}).get('discovery_count') if isinstance(value_accrual, dict) else None,
+                  'value_accrual_unmapped_research_count': (value_accrual or {}).get('unmapped_research_count') if isinstance(value_accrual, dict) else None,
                   'fusion_snapshot_exists': fusion is not None,
                   'fusion_token_count': len((fusion or {}).get('tokens') or []) if isinstance(fusion, dict) else None,
                   'fusion_generated_at': (fusion or {}).get('generated_at') if isinstance(fusion, dict) else None,
@@ -367,6 +398,8 @@ jobs:
             data/spot-market-discovery-state.json \
             data/new-chain-bootstrap-state.json \
             data/new-chain-bootstrap-radar.json \
+            data/protocol-buyback-radar.json \
+            data/protocol-value-accrual-discovery.json \
             data/unified-dynamic-candidates.json \
             data/cross-domain-intelligence-state.json \
             data/narrative-dependency-state.json

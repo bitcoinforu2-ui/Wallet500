@@ -20,6 +20,7 @@ DYNAMIC = ROOT / "data/unified-dynamic-candidates.json"
 SPOT = ROOT / "data/spot-market-discovery.json"
 BOOTSTRAP = ROOT / "data/new-chain-bootstrap-radar.json"
 BUY_REGISTRY = ROOT / "data/buy-zone-close-watch-registry.json"
+PROTOCOL_BUYBACK_REGISTRY = ROOT / "data/protocol-buyback-registry.json"
 EVENTS = ROOT / "data/close-watch-events.json"
 STATE = ROOT / "data/free-intelligence-collector-state.json"
 UA = "Wallet500-FreeIntel/2.1"
@@ -131,6 +132,9 @@ def ds_collect(t, prev):
     price = num(exact.get("priceUsd"))
     market_cap = num(exact.get("marketCap"))
     fdv = num(exact.get("fdv"))
+    price_change = exact.get("priceChange") or {}
+    price_change_h1 = num(price_change.get("h1"))
+    price_change_h24 = num(price_change.get("h24"))
     snap = {
         "price": price,
         "liquidity": liq,
@@ -139,9 +143,11 @@ def ds_collect(t, prev):
         "sells_h1": sells,
         "market_cap": market_cap,
         "fdv": fdv,
+        "price_change_h1": price_change_h1,
+        "price_change_h24": price_change_h24,
     }
 
-    out.append(event(t, "market_microstructure", "verified_market_snapshot", 0, 0, 100, "DexScreener", url=str(exact.get("url") or ""), cid=f"dexsnapshot:{identity_key}:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}", extra={"identity_verified": True, "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR", "price_usd": price, "liquidity_usd": liq, "volume_h1_usd": vol, "buys_h1": buys, "sells_h1": sells}))
+    out.append(event(t, "market_microstructure", "verified_market_snapshot", 0, 0, 100, "DexScreener", url=str(exact.get("url") or ""), cid=f"dexsnapshot:{identity_key}:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}", extra={"identity_verified": True, "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR", "price_usd": price, "liquidity_usd": liq, "volume_h1_usd": vol, "buys_h1": buys, "sells_h1": sells, "market_cap_usd": market_cap, "fdv_usd": fdv, "price_change_h1_pct": price_change_h1, "price_change_h24_pct": price_change_h24}))
 
     if buys is not None and sells is not None and buys + sells >= 20:
         ratio = (buys + 1) / (sells + 1)
@@ -394,49 +400,118 @@ def _series_date(value):
     return raw[:10] if len(raw) >= 10 else raw
 
 
-def daily_value_series(payload):
-    """Normalize public buyback/revenue APIs into [(YYYY-MM-DD, usd)].
+def _path_value(payload, path):
+    current = payload
+    parts = path if isinstance(path, (list, tuple)) else str(path or "").split(".")
+    for part in parts:
+        if not part:
+            continue
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current.get(part)
+    return current
 
-    Supported shapes intentionally include pump.fun's dailyBuybacks object and
-    DefiLlama's totalDataChart list. Unknown payloads fail closed to an empty
-    series rather than turning missing data into zero.
+
+def daily_value_series(payload, series_paths=None, value_keys=None, date_keys=None):
+    """Normalize arbitrary public daily-value APIs into [(YYYY-MM-DD, usd)].
+
+    Each protocol can declare data-only adapters in protocol-buyback-registry.json.
+    Unknown shapes fail closed; missing values are never converted to zero.
     """
     if not isinstance(payload, dict):
         return []
 
+    paths = list(series_paths or ())
+    if not paths:
+        paths = ["dailyBuybacks", "daily_buybacks", "totalDataChart", "daily", "data"]
+
     raw = None
-    for key in ("dailyBuybacks", "daily_buybacks", "totalDataChart", "daily", "data"):
-        candidate = payload.get(key)
+    for path in paths:
+        candidate = _path_value(payload, path)
         if isinstance(candidate, (dict, list)):
             raw = candidate
             break
     if raw is None:
         return []
 
+    value_keys = list(value_keys or (
+        "buybackUsd", "buyback_usd", "usd", "amountUsd", "amount_usd",
+        "value", "amount", "total",
+    ))
+    date_keys = list(date_keys or ("date", "timestamp", "time", "day"))
+
+    def parse_amount(value):
+        if isinstance(value, dict):
+            for key in value_keys:
+                if key in value:
+                    parsed = num(value.get(key))
+                    if parsed is not None:
+                        return parsed
+            return None
+        return num(value)
+
     points = {}
     if isinstance(raw, dict):
-        iterator = raw.items()
+        iterator = list(raw.items())
     else:
         iterator = []
         for row in raw:
             if isinstance(row, (list, tuple)) and len(row) >= 2:
                 iterator.append((row[0], row[1]))
             elif isinstance(row, dict):
-                date_value = (
-                    row.get("date")
-                    or row.get("timestamp")
-                    or row.get("time")
-                    or row.get("day")
-                )
+                date_value = next((row.get(k) for k in date_keys if row.get(k) is not None), None)
                 iterator.append((date_value, row))
 
     for date_value, value in iterator:
         day = _series_date(date_value)
-        amount = _series_number(value)
+        amount = parse_amount(value)
         if not day or amount is None or amount < 0:
             continue
         points[day] = float(amount)
     return sorted(points.items())
+
+
+def _buyback_source_series(source, fallback_slug=""):
+    if not isinstance(source, dict):
+        return None
+    adapter = str(source.get("adapter") or "json_daily_series").strip().lower()
+    payload = None
+    url = str(source.get("url") or "").strip()
+    slug = str(source.get("slug") or fallback_slug or "").strip()
+
+    if adapter == "json_daily_series":
+        if not url:
+            return None
+        payload = get_json(url)
+    elif adapter == "defillama_holders_revenue":
+        if not slug:
+            return None
+        url = "https://api.llama.fi/summary/fees/" + slug + "?dataType=dailyHoldersRevenue"
+        payload = get_json(url)
+    elif adapter == "defillama_revenue":
+        if not slug:
+            return None
+        url = "https://api.llama.fi/summary/fees/" + slug + "?dataType=dailyRevenue"
+        payload = get_json(url)
+    else:
+        return None
+
+    series = daily_value_series(
+        payload,
+        series_paths=source.get("series_paths"),
+        value_keys=source.get("value_keys"),
+        date_keys=source.get("date_keys"),
+    )
+    return {
+        "adapter": adapter,
+        "name": str(source.get("name") or adapter),
+        "url": url,
+        "semantics": str(source.get("semantics") or ""),
+        "execution_proof": source.get("execution_proof") is True,
+        "corroboration_only": source.get("corroboration_only") is True,
+        "payload_available": isinstance(payload, dict),
+        "series": series,
+    }
 
 
 def _trailing_average(series, latest_date, days):
@@ -466,39 +541,65 @@ def protocol_buyback_collect(t, prev, market_snapshot):
 
     endpoint = str(cfg.get("buyback_endpoint") or "").strip()
     slug = str(cfg.get("defillama_fees_slug") or "").strip()
-    if not endpoint and not slug:
-        return [], {"status": "CONFIG_MISSING_SOURCE", "observed_at": now()}
 
-    primary_payload = get_json(endpoint) if endpoint else None
-    primary_series = daily_value_series(primary_payload)
-
-    holders_payload = None
-    holders_series = []
-    if slug:
-        holders_payload = get_json(
-            "https://api.llama.fi/summary/fees/"
-            + slug
-            + "?dataType=dailyHoldersRevenue"
-        )
-        holders_series = daily_value_series(holders_payload)
-
-    if primary_series:
-        series = primary_series
-        source = str(cfg.get("buyback_source_name") or "Protocol Buyback API")
-        source_url = endpoint
-        source_mode = "PRIMARY_BUYBACK_ENDPOINT"
-    elif holders_series:
-        series = holders_series
-        source = "DefiLlama Holders Revenue"
-        source_url = "https://defillama.com/protocol/" + slug
-        source_mode = "DEFILLAMA_HOLDERS_REVENUE_FALLBACK"
+    declared_sources = cfg.get("execution_sources")
+    source_records = []
+    if isinstance(declared_sources, list) and declared_sources:
+        for declared in declared_sources:
+            record = _buyback_source_series(declared, fallback_slug=slug)
+            if record is not None:
+                source_records.append(record)
     else:
+        # Backward-compatible adapter for existing configured tokens.
+        if endpoint:
+            record = _buyback_source_series({
+                "adapter": "json_daily_series",
+                "name": cfg.get("buyback_source_name") or "Protocol Buyback API",
+                "url": endpoint,
+                "execution_proof": True,
+                "semantics": cfg.get("source_semantics") or "VERIFIED_PROTOCOL_TOKEN_BUYBACK",
+            })
+            if record is not None:
+                source_records.append(record)
+        if slug:
+            record = _buyback_source_series({
+                "adapter": "defillama_holders_revenue",
+                "name": "DefiLlama Holders Revenue",
+                "slug": slug,
+                # Legacy behavior treated this as a fallback execution series.
+                # New generic registry entries must explicitly choose semantics.
+                "execution_proof": True,
+                "semantics": "LEGACY_HOLDERS_REVENUE_BUYBACK_FALLBACK",
+            })
+            if record is not None:
+                source_records.append(record)
+
+    execution_records = [
+        r for r in source_records
+        if r.get("execution_proof") is True
+        and r.get("corroboration_only") is not True
+        and r.get("series")
+    ]
+    if not execution_records:
         return [], {
             "status": "SOURCE_UNAVAILABLE",
             "observed_at": now(),
-            "primary_available": bool(primary_payload),
-            "holders_revenue_available": bool(holders_payload),
+            "declared_source_count": len(source_records),
+            "available_series_count": sum(bool(r.get("series")) for r in source_records),
+            "execution_proof_series_count": 0,
         }
+
+    primary = execution_records[0]
+    series = primary["series"]
+    source = primary["name"]
+    source_url = primary["url"]
+    source_mode = "GENERIC_" + str(primary.get("adapter") or "SOURCE").upper()
+    primary_series = series
+
+    corroboration_records = [
+        r for r in source_records
+        if r is not primary and r.get("series")
+    ]
 
     latest_date, latest_usd = series[-1]
     avg7 = _trailing_average(series, latest_date, 7)
@@ -534,11 +635,21 @@ def protocol_buyback_collect(t, prev, market_snapshot):
 
     corroborated = False
     corroboration_ratio = None
-    if primary_series and holders_series:
+    corroboration_source = None
+    if primary_series:
         p_day, p_val = primary_series[-1]
-        h_day, h_val = holders_series[-1]
-        if p_day == h_day and max(p_val, h_val) > 0:
-            corroboration_ratio = min(p_val, h_val) / max(p_val, h_val)
+        ratios = []
+        for record in corroboration_records:
+            other_series = record.get("series") or []
+            if not other_series:
+                continue
+            h_day, h_val = other_series[-1]
+            if p_day != h_day or max(p_val, h_val) <= 0:
+                continue
+            ratio = min(p_val, h_val) / max(p_val, h_val)
+            ratios.append((ratio, record.get("name")))
+        if ratios:
+            corroboration_ratio, corroboration_source = max(ratios, key=lambda x: x[0])
             corroborated = corroboration_ratio >= float(
                 cfg.get("corroboration_min_ratio") or 0.70
             )
@@ -595,7 +706,8 @@ def protocol_buyback_collect(t, prev, market_snapshot):
                     "identity_scope": "EXPLICIT_PROTOCOL_TOKEN_TO_EXACT_PAIR_MAPPING",
                     "source_mode": source_mode,
                     "source_semantics": str(
-                        cfg.get("source_semantics")
+                        primary.get("semantics")
+                        or cfg.get("source_semantics")
                         or "VERIFIED_PROTOCOL_TOKEN_BUYBACK"
                     ),
                     "latest_buyback_date": latest_date,
@@ -626,6 +738,7 @@ def protocol_buyback_collect(t, prev, market_snapshot):
                         else None
                     ),
                     "cross_source_corroborated": corroborated,
+                    "corroboration_source": corroboration_source,
                     "corroboration_ratio": (
                         round(corroboration_ratio, 3)
                         if corroboration_ratio is not None
@@ -670,14 +783,24 @@ def protocol_buyback_collect(t, prev, market_snapshot):
         )
 
     revenue_snapshot = {}
-    share_pct = num(cfg.get("revenue_buyback_share_pct"))
-    if slug and share_pct is not None and share_pct > 0:
-        revenue_payload = get_json(
-            "https://api.llama.fi/summary/fees/"
-            + slug
-            + "?dataType=dailyRevenue"
-        )
-        revenue_series = daily_value_series(revenue_payload)
+    funding_cfg = cfg.get("funding_source") if isinstance(cfg.get("funding_source"), dict) else {}
+    funding_slug = str(funding_cfg.get("slug") or slug or "").strip()
+    share_pct = num(
+        funding_cfg.get("buyback_share_pct")
+        if funding_cfg
+        else cfg.get("revenue_buyback_share_pct")
+    )
+    if (funding_slug or str(funding_cfg.get("url") or "").strip()) and share_pct is not None and share_pct > 0:
+        funding_record = _buyback_source_series({
+            "adapter": funding_cfg.get("adapter") or "defillama_revenue",
+            "name": funding_cfg.get("name") or "DefiLlama Revenue",
+            "slug": funding_slug,
+            "url": funding_cfg.get("url"),
+            "series_paths": funding_cfg.get("series_paths"),
+            "value_keys": funding_cfg.get("value_keys"),
+            "date_keys": funding_cfg.get("date_keys"),
+        }, fallback_slug=funding_slug)
+        revenue_series = (funding_record or {}).get("series") or []
         if revenue_series:
             rev_date, rev_usd = revenue_series[-1]
             rev_avg7 = _trailing_average(revenue_series, rev_date, 7)
@@ -685,12 +808,40 @@ def protocol_buyback_collect(t, prev, market_snapshot):
                 rev_usd / rev_avg7 if rev_avg7 and rev_avg7 > 0 else None
             )
             expected_buyback = rev_usd * (share_pct / 100.0)
+            previous_revenue = prev.get("revenue") if isinstance(prev.get("revenue"), dict) else {}
+            prev_rev_date = str(previous_revenue.get("latest_date") or "")
+            prev_rev_usd = num(previous_revenue.get("latest_revenue_usd"))
+            revenue_delta_usd = 0.0
+            revenue_delta_mode = "BASELINE_ONLY"
+            if prev_rev_date and prev_rev_usd is not None:
+                if rev_date == prev_rev_date:
+                    revenue_delta_usd = max(0.0, rev_usd - prev_rev_usd)
+                    revenue_delta_mode = "SAME_DAY_INCREMENT"
+                elif rev_date > prev_rev_date:
+                    revenue_delta_usd = max(0.0, rev_usd)
+                    revenue_delta_mode = "NEW_DAY_REVENUE"
+            first_revenue_current_day = bool(
+                not prev_rev_date
+                and rev_date == _today_utc()
+                and expected_buyback >= min_delta
+            )
+            funding_delta_usd = (
+                expected_buyback
+                if first_revenue_current_day
+                else revenue_delta_usd * (share_pct / 100.0)
+            )
             revenue_snapshot = {
                 "latest_date": rev_date,
                 "latest_revenue_usd": rev_usd,
                 "avg7_revenue_usd": rev_avg7,
                 "multiple_vs_7d": rev_multiple7,
                 "expected_buyback_funding_usd": expected_buyback,
+                "observed_funding_delta_usd": funding_delta_usd,
+                "funding_delta_mode": (
+                    "CURRENT_DAY_FIRST_OBSERVATION"
+                    if first_revenue_current_day
+                    else revenue_delta_mode
+                ),
                 "buyback_share_pct": share_pct,
             }
             min_rev_multiple = float(
@@ -701,7 +852,7 @@ def protocol_buyback_collect(t, prev, market_snapshot):
                 and rev_date >= latest_date
                 and rev_multiple7 is not None
                 and rev_multiple7 >= min_rev_multiple
-                and expected_buyback >= min_delta
+                and funding_delta_usd >= min_delta
             ):
                 out.append(
                     event(
@@ -710,11 +861,14 @@ def protocol_buyback_collect(t, prev, market_snapshot):
                         "revenue_change",
                         1,
                         min(100.0, 40.0 + (rev_multiple7 - 1.0) * 35.0),
-                        88.0,
-                        "DefiLlama Revenue",
+                        82.0 if first_revenue_current_day else 90.0,
+                        str((funding_record or {}).get("name") or "Buyback Funding Source"),
                         subject="buyback funding pressure",
-                        url="https://defillama.com/protocol/" + slug,
-                        cid=f"buyback-revenue:{identity(t)[3]}:{rev_date}",
+                        url=((funding_record or {}).get("url") or ("https://defillama.com/protocol/" + funding_slug)),
+                        cid=(
+                            f"buyback-revenue:{identity(t)[3]}:{rev_date}:"
+                            f"{int(expected_buyback // max(1.0, min_delta))}"
+                        ),
                         extra={
                             "identity_verified": True,
                             "identity_scope": "EXPLICIT_CONFIG_PROTOCOL_MAPPING",
@@ -722,6 +876,12 @@ def protocol_buyback_collect(t, prev, market_snapshot):
                             "revenue_multiple_vs_7d": round(rev_multiple7, 3),
                             "configured_buyback_share_pct": share_pct,
                             "expected_buyback_funding_usd": round(expected_buyback, 2),
+                            "observed_funding_delta_usd": round(funding_delta_usd, 2),
+                            "funding_delta_mode": (
+                                "CURRENT_DAY_FIRST_OBSERVATION"
+                                if first_revenue_current_day
+                                else revenue_delta_mode
+                            ),
                             "lead_signal": True,
                             "does_not_prove_execution": True,
                         },
@@ -749,7 +909,9 @@ def protocol_buyback_collect(t, prev, market_snapshot):
         "buyback_pressure_bps_mcap": pressure_bps_mcap,
         "buyback_to_liquidity_pct": buyback_to_liquidity_pct,
         "cross_source_corroborated": corroborated,
+        "corroboration_source": corroboration_source,
         "corroboration_ratio": corroboration_ratio,
+        "source_semantics": primary.get("semantics"),
         "revenue": revenue_snapshot,
     }
     return out, snap
@@ -777,6 +939,22 @@ def targets():
         bootstrap = json.loads(BOOTSTRAP.read_text()) if BOOTSTRAP.exists() else {"candidates": []}
     except Exception:
         bootstrap = {"candidates": []}
+    # Keep test/workspace overrides isolated just like the spot snapshot.
+    # A temporary DYNAMIC path must never pull production registry targets into
+    # that isolated run.
+    protocol_registry_path = (
+        PROTOCOL_BUYBACK_REGISTRY
+        if PROTOCOL_BUYBACK_REGISTRY.parent == DYNAMIC.parent
+        else DYNAMIC.with_name("protocol-buyback-registry.json")
+    )
+    try:
+        protocol_registry = (
+            json.loads(protocol_registry_path.read_text())
+            if protocol_registry_path.exists()
+            else {"entries": []}
+        )
+    except Exception:
+        protocol_registry = {"entries": []}
 
     # Read the durable BUY registry directly so a newly persisted BUY gets full
     # intelligence in this same workflow even before the dynamic bridge refresh.
@@ -807,24 +985,50 @@ def targets():
         if momentum >= 25.0 or gain >= 25.0 or (rank <= 15 and turnover >= 20000.0):
             spot_hot_targets.append(t)
 
+    protocol_buyback_targets = []
+    for entry in protocol_registry.get("entries") or []:
+        if not isinstance(entry, dict) or entry.get("active") is not True:
+            continue
+        sensor = entry.get("buyback_sensor")
+        if not isinstance(sensor, dict) or sensor.get("enabled") is not True:
+            continue
+        row = dict(entry)
+        normalized_sensor = dict(sensor)
+        normalized_sensor.setdefault("protocol_name", row.get("protocol_name") or row.get("symbol"))
+        normalized_sensor.setdefault("defillama_fees_slug", row.get("defillama_slug"))
+        row["free_intel"] = {
+            **(row.get("free_intel") if isinstance(row.get("free_intel"), dict) else {}),
+            "defillama_slug": row.get("defillama_slug"),
+            "buyback_sensor": normalized_sensor,
+        }
+        protocol_buyback_targets.append(row)
+
     raw_targets = (
         registry_buy_targets
         + dynamic_buy_targets
         + spot_hot_targets
         + bootstrap_targets
         + [t for t in (cfg.get("tokens") or []) if isinstance(t, dict)]
+        + protocol_buyback_targets
     )
-    tokens = []
-    seen = set()
+    by_key = {}
+    order = []
     for t in raw_targets:
         if not isinstance(t, dict) or not all(identity(t)[:3]):
             continue
         key = identity(t)[3]
-        if key in seen:
+        if key not in by_key:
+            by_key[key] = dict(t)
+            order.append(key)
             continue
-        seen.add(key)
-        tokens.append(t)
-    return tokens
+        merged = dict(by_key[key])
+        incoming = dict(t)
+        old_free = merged.get("free_intel") if isinstance(merged.get("free_intel"), dict) else {}
+        new_free = incoming.get("free_intel") if isinstance(incoming.get("free_intel"), dict) else {}
+        merged.update(incoming)
+        merged["free_intel"] = {**old_free, **new_free}
+        by_key[key] = merged
+    return [by_key[key] for key in order]
 
 
 def main():

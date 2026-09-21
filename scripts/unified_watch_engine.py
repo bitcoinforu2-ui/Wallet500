@@ -342,7 +342,7 @@ def dynamic_candidates(persisted_tokens=None):
     seen = set()
     for c in d.get("candidates") or []:
         ctype = str(c.get("candidate_type") or "").upper()
-        if ctype not in {"BUY_ZONE", "PUBLIC_ALPHA", "GATE_SPOT_DISCOVERY", "CEX_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY", "NEW_CHAIN_BOOTSTRAP"}:
+        if ctype not in {"BUY_ZONE", "PUBLIC_ALPHA", "GATE_SPOT_DISCOVERY", "CEX_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY", "NEW_CHAIN_BOOTSTRAP", "PROTOCOL_BUYBACK_PRESSURE"}:
             continue
         ca = str(c.get("contract") or "")
         pair = str(c.get("pair") or "")
@@ -366,6 +366,12 @@ def dynamic_candidates(persisted_tokens=None):
     # Public-alpha gets the remaining balanced slice: freshest calls plus the
     # highest-liquidity calls. Final BUY targets are never displaced.
     buy_zone = [x for x in rows if x["_candidate_type"] == "BUY_ZONE"]
+    buyback = [x for x in rows if x["_candidate_type"] == "PROTOCOL_BUYBACK_PRESSURE"]
+    buyback = sorted(
+        buyback,
+        key=lambda x: (float(x.get("buyback_radar_score") or 0), float(x.get("dex_liquidity_usd") or 0)),
+        reverse=True,
+    )[:12]
     spot = [
         x for x in rows
         if x["_candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"}
@@ -402,7 +408,7 @@ def dynamic_candidates(persisted_tokens=None):
     )[:12]
     alpha = [x for x in rows if x["_candidate_type"] == "PUBLIC_ALPHA"]
     dynamic_cap = 48
-    alpha_budget = max(0, dynamic_cap - len(buy_zone) - len(bootstrap) - len(spot))
+    alpha_budget = max(0, dynamic_cap - len(buy_zone) - len(buyback) - len(bootstrap) - len(spot))
 
     def _liq(x):
         try:
@@ -425,7 +431,7 @@ def dynamic_candidates(persisted_tokens=None):
             chosen_ids.add(key)
             chosen.append(x)
 
-    selected = buy_zone + spot + bootstrap + chosen
+    selected = buy_zone + buyback + spot + bootstrap + chosen
     out = []
     for c in selected:
         ctype = c["_candidate_type"]
@@ -462,6 +468,7 @@ def dynamic_candidates(persisted_tokens=None):
                 "dynamic_buy_candidate": ctype == "BUY_ZONE",
                 "dynamic_alpha_candidate": ctype == "PUBLIC_ALPHA",
                 "dynamic_bootstrap_candidate": ctype == "NEW_CHAIN_BOOTSTRAP",
+                "dynamic_buyback_candidate": ctype == "PROTOCOL_BUYBACK_PRESSURE",
                 "dynamic_spot_candidate": ctype in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"},
                 "dynamic_cex_market_candidate": ctype == "CEX_MARKET_DISCOVERY",
                 "candidate_type": ctype,
@@ -474,15 +481,15 @@ def dynamic_candidates(persisted_tokens=None):
                 ),
                 "deep_investigation": bool(
                     c.get("deep_investigation")
-                    or ctype in {"BUY_ZONE", "NEW_CHAIN_BOOTSTRAP"}
+                    or ctype in {"BUY_ZONE", "NEW_CHAIN_BOOTSTRAP", "PROTOCOL_BUYBACK_PRESSURE"}
                     or hot_spot
                 ),
                 "full_intelligence": bool(
                     c.get("full_intelligence")
-                    or ctype in {"BUY_ZONE", "NEW_CHAIN_BOOTSTRAP"}
+                    or ctype in {"BUY_ZONE", "NEW_CHAIN_BOOTSTRAP", "PROTOCOL_BUYBACK_PRESSURE"}
                     or hot_spot
                 ),
-                "proactive_evidence_recovery": hot_spot,
+                "proactive_evidence_recovery": bool(hot_spot or ctype == "PROTOCOL_BUYBACK_PRESSURE"),
                 "derivatives_intelligence": bool(c.get("derivatives_intelligence")),
                 "derivatives_symbol": c.get("derivatives_symbol"),
                 "buy_zone_price_usd": c.get("buy_zone_price_usd"),
@@ -504,6 +511,17 @@ def dynamic_candidates(persisted_tokens=None):
                 "bootstrap_score": c.get("bootstrap_score"),
                 "bootstrap_reasons": c.get("bootstrap_reasons") or [],
                 "bootstrap_final_buy_lane": bool(c.get("bootstrap_final_buy_lane")),
+                "buyback_stage": c.get("buyback_stage"),
+                "buyback_radar_score": c.get("buyback_radar_score"),
+                "buyback_reasons": c.get("buyback_reasons") or [],
+                "buyback_execution": c.get("buyback_execution") or {},
+                "buyback_funding": c.get("buyback_funding") or {},
+                "buyback_market_confirmed": bool(c.get("market_confirmed")),
+                "buyback_late_extension": bool(c.get("late_extension")),
+                "research_only": bool(c.get("research_only")),
+                "direct_buy_eligible": c.get("direct_buy_eligible"),
+                "telegram_eligible": c.get("telegram_eligible"),
+                "telegram_policy": c.get("telegram_policy"),
             }
         )
 
@@ -1015,6 +1033,15 @@ def main():
             tokens.append(item)
             used.add(identity)
 
+    # Protocol buyback pressure is also a time-sensitive intelligence lane.
+    # It is internal-only until the canonical BUY gate, but must not be starved
+    # behind a large static research watchlist.
+    for item in [x for x in dynamic_all if x.get("dynamic_buyback_candidate")]:
+        identity = candidate_identity_key(item)
+        if identity and identity not in used:
+            tokens.append(item)
+            used.add(identity)
+
     for item in static_tokens:
         identity = exact_identity_key(item)
         if identity and identity not in used:
@@ -1023,7 +1050,7 @@ def main():
 
     for item in [
         x for x in dynamic_all
-        if not x.get("dynamic_buy_candidate") and not x.get("dynamic_spot_candidate")
+        if not x.get("dynamic_buy_candidate") and not x.get("dynamic_spot_candidate") and not x.get("dynamic_buyback_candidate")
     ]:
         identity = candidate_identity_key(item)
         if identity and identity not in used:
@@ -1035,6 +1062,7 @@ def main():
     intel_rows = []
     sent_alerts = 0
     internal_spot_escalations = 0
+    internal_buyback_escalations = 0
     suppressed_alerts = 0
     suppressed_low_confirmation_alerts = 0
     scan_started_monotonic = time.monotonic()
@@ -1048,7 +1076,7 @@ def main():
         # skipped by this budget. Once they are complete, do not let ordinary
         # static/research targets consume the time needed by FINAL BUY evaluation.
         is_critical_market_lane = bool(
-            t.get("dynamic_buy_candidate") or t.get("dynamic_spot_candidate")
+            t.get("dynamic_buy_candidate") or t.get("dynamic_spot_candidate") or t.get("dynamic_buyback_candidate")
         )
         elapsed = time.monotonic() - scan_started_monotonic
         if not is_critical_market_lane and elapsed >= noncritical_budget_seconds:
@@ -1071,6 +1099,8 @@ def main():
             key = f"ALPHA:{identity_key}"
         elif t.get("dynamic_spot_candidate"):
             key = f"SPOT:{identity_key}"
+        elif t.get("dynamic_buyback_candidate"):
+            key = f"BUYBACK:{identity_key}"
         else:
             key = sym
         prev = st.get(key) or {}
@@ -1336,6 +1366,30 @@ def main():
             f"Pair: {t['pair']}",
             str(t.get("dex_url") or ""),
         ])
+        if t.get("dynamic_buyback_candidate"):
+            snap = alert_snapshot(live, fusion, tr)
+            snap.update({
+                "buyback_stage": t.get("buyback_stage"),
+                "buyback_radar_score": t.get("buyback_radar_score"),
+                "buyback_reasons": t.get("buyback_reasons") or [],
+                "buyback_execution": t.get("buyback_execution") or {},
+                "buyback_funding": t.get("buyback_funding") or {},
+                "buyback_market_confirmed": bool(t.get("buyback_market_confirmed")),
+                "buyback_late_extension": bool(t.get("buyback_late_extension")),
+                "internal_only": True,
+                "telegram_suppressed_by_policy": "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE",
+            })
+            st[key]["last_internal_escalation"] = snap
+            st[key]["close_watch_mode"] = "PROTOCOL_BUYBACK_PRESSURE"
+            internal_buyback_escalations += 1
+            print(key, "INTERNAL_BUYBACK_ESCALATION", {
+                "stage": t.get("buyback_stage"),
+                "radar_score": t.get("buyback_radar_score"),
+                "label": label,
+                "triggers": tr,
+            })
+            continue
+
         if t.get("dynamic_spot_candidate"):
             snap = alert_snapshot(live, fusion, tr)
             snap.update({
@@ -1368,13 +1422,16 @@ def main():
         "fusion_snapshot_generated_at": intel_doc.get("generated_at") if isinstance(intel_doc, dict) else None,
         "sent_alerts": sent_alerts,
         "internal_spot_escalations": internal_spot_escalations,
+        "internal_buyback_escalations": internal_buyback_escalations,
         "spot_telegram_policy": "INTERNAL_ONLY_UNTIL_CANONICAL_BUY",
+        "buyback_telegram_policy": "INTERNAL_ONLY_UNTIL_CANONICAL_BUY",
         "suppressed_repeated_alerts": suppressed_alerts,
         "suppressed_low_confirmation_alerts": suppressed_low_confirmation_alerts,
         "configured_targets": len(static_tokens),
         "dynamic_buy_targets": sum(bool(x.get("dynamic_buy_candidate")) for x in dynamic),
         "dynamic_alpha_targets": sum(bool(x.get("dynamic_alpha_candidate")) for x in dynamic),
         "dynamic_bootstrap_targets": sum(bool(x.get("dynamic_bootstrap_candidate")) for x in dynamic),
+        "dynamic_buyback_targets": sum(bool(x.get("dynamic_buyback_candidate")) for x in dynamic),
         "dynamic_spot_targets": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
         "scan_elapsed_seconds": round(time.monotonic() - scan_started_monotonic, 2),
         "noncritical_scan_budget_seconds": noncritical_budget_seconds,
@@ -1389,12 +1446,14 @@ def main():
         "dynamic_buy": sum(bool(x.get("dynamic_buy_candidate")) for x in dynamic),
         "dynamic_alpha": sum(bool(x.get("dynamic_alpha_candidate")) for x in dynamic),
         "dynamic_bootstrap": sum(bool(x.get("dynamic_bootstrap_candidate")) for x in dynamic),
+        "dynamic_buyback": sum(bool(x.get("dynamic_buyback_candidate")) for x in dynamic),
         "dynamic_spot": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
         "scan_elapsed_seconds": round(time.monotonic() - scan_started_monotonic, 2),
         "noncritical_targets_truncated": noncritical_truncated,
         "intelligence_targets": len(intel_rows),
         "sent_alerts": sent_alerts,
         "internal_spot_escalations": internal_spot_escalations,
+        "internal_buyback_escalations": internal_buyback_escalations,
         "suppressed_repeated_alerts": suppressed_alerts,
         "suppressed_low_confirmation_alerts": suppressed_low_confirmation_alerts,
         "alert_mode": "MATERIAL_CHANGE_PLUS_ALPHA_CONFIRMATION_GATE",
