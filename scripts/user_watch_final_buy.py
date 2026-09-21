@@ -259,6 +259,21 @@ def _policy(config: dict) -> dict:
         "cex_market_only_min_depth_1pct_usd": 10000.0,
         "cex_market_only_max_orderbook_spread_pct": 1.0,
         "cex_market_only_min_bid_ask_depth_ratio": 1.10,
+        "cex_breakout_continuation_enabled": True,
+        "cex_breakout_min_turnover_usd": 150000.0,
+        "cex_breakout_min_relative_volume_multiple": 4.0,
+        "cex_breakout_max_gainer_rank": 8,
+        "cex_breakout_min_depth_1pct_usd": 5000.0,
+        "cex_breakout_max_orderbook_spread_pct": 0.75,
+        "cex_breakout_extreme_min_turnover_usd": 500000.0,
+        "cex_breakout_extreme_min_relative_volume_multiple": 6.0,
+        "cex_breakout_extreme_max_gainer_rank": 3,
+        "cex_breakout_extreme_min_depth_1pct_usd": 3000.0,
+        "cex_breakout_extreme_max_orderbook_spread_pct": 0.50,
+        "cex_breakout_min_scan_gain_pct": 0.50,
+        "cex_breakout_min_rebound_pct": 5.0,
+        "cex_breakout_min_holder_score": -7.0,
+        "cex_breakout_min_current_evidence": 1,
     }
     for k, v in defaults.items():
         p.setdefault(k, v)
@@ -481,6 +496,61 @@ def evaluate(
     if scan_gain is not None and scan_gain > float(policy["max_scan_price_gain_pct"]):
         blockers.append("SHORT_TERM_CHASE_RISK")
 
+    # Strong CEX continuation can substitute for weak DEX microstructure, but only
+    # when the exact CEX market is executable, the move is still advancing, current
+    # intelligence exists, and no hard risk is present. This catches PTB/R2/ASP-like
+    # moves without turning a headline percentage into a BUY.
+    cex_breakout_standard = bool(
+        cex_turnover >= float(policy["cex_breakout_min_turnover_usd"])
+        and cex_relative_multiple >= float(policy["cex_breakout_min_relative_volume_multiple"])
+        and cex_rank is not None
+        and cex_rank <= int(policy["cex_breakout_max_gainer_rank"])
+        and cex_depth_1pct >= float(policy["cex_breakout_min_depth_1pct_usd"])
+        and cex_orderbook_spread <= float(policy["cex_breakout_max_orderbook_spread_pct"])
+    )
+    cex_breakout_extreme = bool(
+        cex_turnover >= float(policy["cex_breakout_extreme_min_turnover_usd"])
+        and cex_relative_multiple >= float(policy["cex_breakout_extreme_min_relative_volume_multiple"])
+        and cex_rank is not None
+        and cex_rank <= int(policy["cex_breakout_extreme_max_gainer_rank"])
+        and cex_depth_1pct >= float(policy["cex_breakout_extreme_min_depth_1pct_usd"])
+        and cex_orderbook_spread <= float(policy["cex_breakout_extreme_max_orderbook_spread_pct"])
+    )
+    cex_breakout_continuation = bool(
+        policy.get("cex_breakout_continuation_enabled") is True
+        and quarter_wave_lane
+        and not cex_market_only
+        and report_verified
+        and cex_execution_verified
+        and status == "CURRENT"
+        and evidence >= int(policy["cex_breakout_min_current_evidence"])
+        and not hard_risks
+        and holder >= float(policy["cex_breakout_min_holder_score"])
+        and (cex_breakout_standard or cex_breakout_extreme)
+        and scan_gain is not None
+        and scan_gain >= float(policy["cex_breakout_min_scan_gain_pct"])
+        and rebound is not None
+        and rebound >= float(policy["cex_breakout_min_rebound_pct"])
+    )
+    if cex_breakout_continuation:
+        bypass = {
+            "LIQUIDITY_BELOW_FINAL_BUY_FLOOR",
+            "VOLUME_H1_TOO_LOW",
+            "ACTIVITY_H1_TOO_LOW",
+            "BUY_FLOW_NOT_CONFIRMED",
+            "CURRENT_EVIDENCE_TOO_LOW",
+            "MARKET_MICROSTRUCTURE_NOT_POSITIVE",
+            "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
+        }
+        if scan_gain >= float(policy["cex_breakout_min_scan_gain_pct"]):
+            bypass.add("SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED")
+        blockers = [b for b in blockers if b not in bypass]
+        proof.append(
+            f"CEX_BREAKOUT_CONTINUATION_VOL_{cex_turnover:.0f}"
+            f"_REL_{cex_relative_multiple:.2f}X_RANK_{cex_rank}"
+            f"_SCAN_{scan_gain:.2f}PCT"
+        )
+
     observable = bool(
         market is not None
         and observed is not None
@@ -568,6 +638,7 @@ def evaluate(
             "enabled_for_target": quarter_wave_lane,
             "cex_fast_path": cex_quarter_wave_fast_path,
             "cex_market_only_fast_path": cex_market_only_fast_path,
+            "cex_breakout_continuation": cex_breakout_continuation,
             "anchor_price_usd": quarter_wave_anchor if quarter_wave_anchor > 0 else None,
             "gain_from_anchor_pct": round(quarter_wave_gain, 4) if quarter_wave_gain is not None else None,
             "armed_at": target.get("quarter_wave_armed_at"),
@@ -621,6 +692,9 @@ def evaluate(
             "all_final_buy_gates_still_required": True,
             "cex_fast_path_only_bypasses_dex_execution_floor_and_high_fusion_score": True,
             "cex_fast_path_still_requires_current_intelligence_no_hard_risk_microstructure_and_two_scans": True,
+            "cex_breakout_continuation_requires_current_intelligence": True,
+            "cex_breakout_continuation_requires_exact_cex_execution": True,
+            "cex_breakout_continuation_never_bypasses_hard_risk": True,
             "does_not_modify_veteran_real_alert_policy": True,
         },
     }
