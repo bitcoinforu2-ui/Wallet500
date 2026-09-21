@@ -977,13 +977,25 @@ def main():
         tokens.append(target)
         used.add(identity)
 
+    # Time-sensitive CEX movers run before the ordinary configured/research set.
+    # This ordering is part of the correctness contract: a large static watchlist
+    # must never consume provider/runtime budget before MGT/R2/ASP/PTB-like movers.
+    for item in [x for x in dynamic_all if x.get("dynamic_spot_candidate")]:
+        identity = candidate_identity_key(item)
+        if identity and identity not in used:
+            tokens.append(item)
+            used.add(identity)
+
     for item in static_tokens:
         identity = exact_identity_key(item)
         if identity and identity not in used:
             tokens.append(item)
             used.add(identity)
 
-    for item in dynamic_all:
+    for item in [
+        x for x in dynamic_all
+        if not x.get("dynamic_buy_candidate") and not x.get("dynamic_spot_candidate")
+    ]:
         identity = candidate_identity_key(item)
         if identity and identity not in used:
             tokens.append(item)
