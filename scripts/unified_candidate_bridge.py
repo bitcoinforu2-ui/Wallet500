@@ -114,12 +114,33 @@ def main():
     invalid_time_alpha_excluded = 0
 
     gate_spot_by_identity = {}
+    gate_spot_by_market = {}
+    gate_spot_by_base = {}
     for gate_row in spot.get("candidates") or []:
-        if not isinstance(gate_row, dict) or gate_row.get("identity_status") != "RESOLVED_EXACT":
+        if not isinstance(gate_row, dict):
+            continue
+        market = str(gate_row.get("currency_pair") or "").upper().strip()
+        base = str(gate_row.get("symbol") or "").upper().strip()
+        if market:
+            gate_spot_by_market[market] = gate_row
+        if base:
+            gate_spot_by_base[base] = gate_row
+        if gate_row.get("identity_status") != "RESOLVED_EXACT":
             continue
         gate_ident = ident(gate_row)
         if gate_ident:
             gate_spot_by_identity[gate_ident[3]] = gate_row
+
+    cex_identity_by_base = {}
+    for cex_row in cex_identity.get("candidates") or []:
+        if not isinstance(cex_row, dict):
+            continue
+        base = str(
+            cex_row.get("base_symbol")
+            or str(cex_row.get("symbol") or "").upper().removesuffix("USDT")
+        ).upper().strip()
+        if base:
+            cex_identity_by_base[base] = cex_row
 
     buy_entries = buy_registry.get("entries") if isinstance(buy_registry, dict) and isinstance(buy_registry.get("entries"), dict) else {}
     for row in buy_entries.values():
@@ -128,6 +149,20 @@ def main():
         i = ident(row)
         if not i or i[3] in seen:
             continue
+
+        cex_hist = cex_identity_by_base.get(str(row.get("symbol") or "").upper()) or {}
+        milestone = cex_signal_milestone(cex_hist) if cex_hist else {}
+        gate_first_at = parse_ts(row.get("first_seen_at"))
+        cex_first_at = parse_ts(milestone.get("observed_at"))
+        use_cex_anchor = bool(
+            cex_first_at is not None
+            and (gate_first_at is None or cex_first_at < gate_first_at)
+            and milestone.get("reference_price") is not None
+        )
+        merged_first_seen_at = milestone.get("observed_at") if use_cex_anchor else row.get("first_seen_at")
+        merged_first_seen_price = milestone.get("reference_price") if use_cex_anchor else row.get("first_seen_price")
+        merged_first_seen_change = milestone.get("reference_change_24h_pct") if use_cex_anchor else row.get("first_seen_change_24h_pct")
+
         seen.add(i[3])
         out.append({
             "candidate_type": "BUY_ZONE",
@@ -159,6 +194,17 @@ def main():
 
     for row in cex_identity.get("candidates") or []:
         if not isinstance(row, dict):
+            continue
+        base = str(
+            row.get("base_symbol")
+            or str(row.get("symbol") or "").upper().removesuffix("USDT")
+        ).upper().strip()
+        gate_market = f"{base}_USDT" if base else ""
+        # One Gate market must have one canonical actionable candidate. When the
+        # live Gate discovery already knows this market, merge historical CEX
+        # evidence into that candidate below instead of emitting a second
+        # chain representation for the same ticker/venue market.
+        if gate_market and gate_market in gate_spot_by_market:
             continue
         if row.get("identity_status") != "DEX_VERIFIED" or row.get("identity_verified") is not True:
             continue
@@ -225,9 +271,9 @@ def main():
             "exchange": "gate",
             "currency_pair": row.get("currency_pair"),
             "execution_identity_scope": "EXACT_CHAIN_CONTRACT_PAIR_PLUS_CEX_MARKET",
-            "first_seen_at": row.get("first_seen_at"),
-            "first_seen_price": row.get("first_seen_price"),
-            "first_seen_change_24h_pct": row.get("first_seen_change_24h_pct"),
+            "first_seen_at": merged_first_seen_at,
+            "first_seen_price": merged_first_seen_price,
+            "first_seen_change_24h_pct": merged_first_seen_change,
             "first_seen_quote_volume_24h_usd": row.get("first_seen_quote_volume_24h_usd"),
             "discovery_price": row.get("discovery_price"),
             "change_24h_pct": row.get("change_24h_pct"),
@@ -239,6 +285,8 @@ def main():
             "identity_key": i[3],
             "identity_source": row.get("identity_source"),
             "identity_reason": row.get("identity_reason"),
+            "merged_cex_identity_history": bool(use_cex_anchor),
+            "merged_cex_history_symbol": cex_hist.get("symbol") if use_cex_anchor else None,
             "native_asset_proxy": bool(row.get("native_asset_proxy")),
             "native_asset_coingecko_id": row.get("native_asset_coingecko_id"),
             "research_only_identity": bool(row.get("research_only_identity")),
