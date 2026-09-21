@@ -249,6 +249,7 @@ def _policy(config: dict) -> dict:
         "cex_quarter_wave_max_gainer_rank": 15,
         "cex_quarter_wave_min_microstructure_score": 5.0,
         "cex_quarter_wave_min_current_evidence": 2,
+        "cex_max_market_price_spread_pct": 2.0,
         "cex_quarter_wave_absolute_turnover_fallback_usd": 100000.0,
         "cex_quarter_wave_min_depth_1pct_usd": 3000.0,
         "cex_quarter_wave_max_orderbook_spread_pct": 1.5,
@@ -341,6 +342,12 @@ def evaluate(
     cex_led = bool((market or {}).get("cex_led_revival"))
     cex_execution_verified = bool((market or {}).get("cex_execution_verified"))
     cex_execution_scope = str((market or {}).get("cex_execution_scope") or target.get("execution_identity_scope") or "").upper()
+    single_source_degraded = bool((market or {}).get("single_source_degraded"))
+    price_source_count = int(
+        num((market or {}).get("price_source_count"), 1 if single_source_degraded else 2)
+        or (1 if single_source_degraded else 2)
+    )
+    cex_market_price_spread = num((market or {}).get("cex_market_price_spread_pct"))
     cex_orderbook_spread = num((market or {}).get("cex_orderbook_spread_pct"), 999.0) or 999.0
     cex_depth_1pct = num((market or {}).get("cex_depth_1pct_usd"), 0.0) or 0.0
     cex_bid_ask_depth_ratio = num((market or {}).get("cex_bid_ask_depth_ratio"), 0.0) or 0.0
@@ -348,11 +355,33 @@ def evaluate(
         str(target.get("execution_identity_scope") or "").upper() == "EXACT_CEX_MARKET"
         or key.startswith("cex:")
     )
+    cex_price_coherent = bool(
+        cex_market_only
+        or (
+            cex_execution_verified
+            and (
+                (price_source_count >= 2 and cex_market_price_spread is None)
+                or (
+                    cex_market_price_spread is not None
+                    and cex_market_price_spread <= float(policy["cex_max_market_price_spread_pct"])
+                )
+            )
+        )
+    )
 
     if price <= 0:
         blockers.append("PRICE_MISSING")
     if spread > float(policy["max_source_spread_pct"]):
         blockers.append("PRICE_SOURCE_SPREAD_TOO_WIDE")
+    if not cex_market_only and price_source_count < 2 and not cex_price_coherent:
+        blockers.append("PRICE_SOURCE_REDUNDANCY_MISSING")
+    if (
+        not cex_market_only
+        and cex_execution_verified
+        and cex_market_price_spread is not None
+        and cex_market_price_spread > float(policy["cex_max_market_price_spread_pct"])
+    ):
+        blockers.append("CEX_DEX_PRICE_DIVERGENCE")
     if liquidity < float(policy["min_liquidity_usd"]):
         blockers.append("LIQUIDITY_BELOW_FINAL_BUY_FLOOR")
     if volume_h1 < float(policy["min_volume_h1_usd"]):
@@ -421,6 +450,7 @@ def evaluate(
         and micro >= float(policy["cex_quarter_wave_min_microstructure_score"])
         and spread <= float(policy["max_source_spread_pct"])
         and cex_execution_verified
+        and cex_price_coherent
         and cex_depth_1pct >= float(policy["cex_quarter_wave_min_depth_1pct_usd"])
         and cex_orderbook_spread <= float(policy["cex_quarter_wave_max_orderbook_spread_pct"])
         and cex_bid_ask_depth_ratio >= float(policy["cex_quarter_wave_min_bid_ask_depth_ratio"])
@@ -453,6 +483,7 @@ def evaluate(
             # This lane already requires positive executable CEX bid/ask depth,
             # so a thin DEX buy/sell count must not veto the CEX execution signal.
             "BUY_FLOW_NOT_CONFIRMED",
+            "PRICE_SOURCE_REDUNDANCY_MISSING",
             "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
         }
         blockers = [b for b in blockers if b not in bypass]
@@ -526,6 +557,7 @@ def evaluate(
         and not cex_market_only
         and report_verified
         and cex_execution_verified
+        and cex_price_coherent
         and cex_bid_ask_depth_ratio >= float(policy["cex_breakout_min_bid_ask_depth_ratio"])
         and status == "CURRENT"
         and evidence >= int(policy["cex_breakout_min_current_evidence"])
@@ -665,6 +697,10 @@ def evaluate(
             "cex_led_revival": cex_led,
             "cex_execution_verified": cex_execution_verified,
             "cex_execution_scope": cex_execution_scope,
+            "price_source_count": price_source_count,
+            "single_source_degraded": single_source_degraded,
+            "cex_market_price_spread_pct": cex_market_price_spread,
+            "cex_price_coherent": cex_price_coherent,
             "cex_orderbook_spread_pct": cex_orderbook_spread,
             "cex_depth_1pct_usd": cex_depth_1pct,
             "cex_bid_ask_depth_ratio": cex_bid_ask_depth_ratio,
