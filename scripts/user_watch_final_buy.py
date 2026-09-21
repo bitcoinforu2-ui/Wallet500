@@ -690,7 +690,20 @@ def evaluate(
         and not final_buy
         and streak == required_streak - 1
     )
-    pre_buy_alert = bool(pre_buy and pre_buy_armed)
+    # Delivery state is monotonic within an exact-identity episode.
+    # Once FINAL BUY was successfully delivered, later scan noise must never
+    # downgrade the same chain+CA+pair back to PRE-BUY. A future episode may
+    # re-arm FINAL BUY after observable misses, but PRE-BUY remains suppressed
+    # until an explicit episode reset contract is introduced.
+    final_buy_already_delivered = bool(
+        prior.get("last_delivery_status") == "DELIVERED"
+        and prior.get("last_alert_at")
+    )
+    pre_buy_alert = bool(
+        pre_buy
+        and pre_buy_armed
+        and not final_buy_already_delivered
+    )
     if pre_buy_alert:
         pre_buy_armed = False
 
@@ -781,7 +794,7 @@ def evaluate(
             "telegram_final_buy_only": False,
             "telegram_pre_buy_enabled": bool(policy.get("telegram_pre_buy_enabled")),
             "pre_buy_requires_all_current_gates_passed": True,
-            "pre_buy_is_one_confirmation_scan_before_final_buy": True,
+            "pre_buy_is_one_confirmation_scan_before_final_buy": True,\n            "pre_buy_never_after_delivered_final_buy_same_episode": True,
             "manual_decision_only": True,
             "automatic_trade": False,
             "quarter_wave_revalidation_lane": quarter_wave_lane,
