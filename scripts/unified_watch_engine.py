@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import statistics
+import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -1008,8 +1009,31 @@ def main():
     internal_spot_escalations = 0
     suppressed_alerts = 0
     suppressed_low_confirmation_alerts = 0
+    scan_started_monotonic = time.monotonic()
+    noncritical_budget_seconds = max(
+        60.0, float(os.environ.get("WALLET500_NONCRITICAL_SCAN_BUDGET_SECONDS", "420"))
+    )
+    noncritical_truncated = 0
 
-    for t in tokens:
+    for token_index, t in enumerate(tokens):
+        # All BUY and hot CEX spot candidates are ordered first and are never
+        # skipped by this budget. Once they are complete, do not let ordinary
+        # static/research targets consume the time needed by FINAL BUY evaluation.
+        is_critical_market_lane = bool(
+            t.get("dynamic_buy_candidate") or t.get("dynamic_spot_candidate")
+        )
+        elapsed = time.monotonic() - scan_started_monotonic
+        if not is_critical_market_lane and elapsed >= noncritical_budget_seconds:
+            noncritical_truncated = len(tokens) - token_index
+            print(
+                "NONCRITICAL_WATCH_BUDGET_TRUNCATED",
+                {
+                    "elapsed_seconds": round(elapsed, 2),
+                    "remaining_targets": noncritical_truncated,
+                    "critical_targets_already_completed": token_index,
+                },
+            )
+            break
         sym = t["symbol"].upper()
         identity_key = candidate_identity_key(t)
         chain_identity_key = exact_identity_key(t)
@@ -1324,6 +1348,10 @@ def main():
         "dynamic_alpha_targets": sum(bool(x.get("dynamic_alpha_candidate")) for x in dynamic),
         "dynamic_bootstrap_targets": sum(bool(x.get("dynamic_bootstrap_candidate")) for x in dynamic),
         "dynamic_spot_targets": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
+        "scan_elapsed_seconds": round(time.monotonic() - scan_started_monotonic, 2),
+        "noncritical_scan_budget_seconds": noncritical_budget_seconds,
+        "noncritical_targets_truncated": noncritical_truncated,
+        "critical_market_lane_completed_before_noncritical": True,
         "targets": intel_rows,
     }
     INTEL_REPORT.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
@@ -1334,6 +1362,8 @@ def main():
         "dynamic_alpha": sum(bool(x.get("dynamic_alpha_candidate")) for x in dynamic),
         "dynamic_bootstrap": sum(bool(x.get("dynamic_bootstrap_candidate")) for x in dynamic),
         "dynamic_spot": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
+        "scan_elapsed_seconds": round(time.monotonic() - scan_started_monotonic, 2),
+        "noncritical_targets_truncated": noncritical_truncated,
         "intelligence_targets": len(intel_rows),
         "sent_alerts": sent_alerts,
         "internal_spot_escalations": internal_spot_escalations,
