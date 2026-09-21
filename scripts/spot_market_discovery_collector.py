@@ -6,6 +6,7 @@ import re
 import time
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -24,6 +25,8 @@ GATE = "https://api.gateio.ws/api/v4"
 UA = "Wallet500-SpotDiscovery/1.1-EvidenceRecovery"
 COINGECKO = "https://api.coingecko.com/api/v3"
 IDENTITY_RECOVERY_MAX_PRICE_DIVERGENCE_PCT = 20.0
+IDENTITY_RESOLUTION_BUDGET = 30
+IDENTITY_RESOLUTION_WORKERS = 6
 COINGECKO_PLATFORM_MAP = {
     "ethereum": ("eth", "ethereum"),
     "binance-smart-chain": ("bsc", "bsc"),
@@ -440,6 +443,58 @@ def resolve_identity(
     return {"identity_status": "RESOLVED_EXACT", "identity_reason": reason, **best}
 
 
+def resolve_identity_targets(
+    selected: list[dict],
+    native_registry: dict[str, dict],
+    configured_watch: set[str],
+    *,
+    resolution_budget: int = IDENTITY_RESOLUTION_BUDGET,
+    max_workers: int = IDENTITY_RESOLUTION_WORKERS,
+) -> dict[int, dict]:
+    """Resolve the bounded identity slice concurrently without changing eligibility.
+
+    Host pacing remains serialized inside resilient_http, while independent network
+    waits can overlap. Failures stay fail-closed and never create actionable evidence.
+    """
+    target_indexes = [
+        idx
+        for idx, row in enumerate(selected)
+        if idx < int(resolution_budget)
+        or bool(row.get("forced_hot_watch"))
+        or str(row.get("currency_pair") or "") in configured_watch
+    ]
+    if not target_indexes:
+        return {}
+
+    def task(idx: int) -> tuple[int, dict]:
+        row = selected[idx]
+        try:
+            result = resolve_identity(
+                row.get("symbol") or "",
+                native_registry=native_registry,
+                cex_price=row.get("discovery_price"),
+            )
+            return idx, result if isinstance(result, dict) else {
+                "identity_status": "UNRESOLVED",
+                "identity_reason": "RESOLUTION_NON_DICT_FAIL_CLOSED",
+            }
+        except Exception as exc:
+            return idx, {
+                "identity_status": "UNRESOLVED",
+                "identity_reason": "RESOLUTION_EXCEPTION_FAIL_CLOSED",
+                "identity_error_type": type(exc).__name__,
+            }
+
+    workers = max(1, min(int(max_workers), len(target_indexes)))
+    resolved: dict[int, dict] = {}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(task, idx) for idx in target_indexes]
+        for future in as_completed(futures):
+            idx, result = future.result()
+            resolved[idx] = result
+    return resolved
+
+
 def configured_cex_watch_pairs() -> set[str]:
     try:
         doc = json.loads(CONFIG.read_text()) if CONFIG.exists() else {}
@@ -693,9 +748,17 @@ def run() -> dict:
         )
     )
 
-    # Resolve the strongest movers/new listings first. Unresolved rows are still
-    # retained as CEX discoveries so the engine can never silently miss them.
-    resolution_budget = 30
+    # Resolve the strongest movers/new listings first. The network-bound exact-identity
+    # slice runs concurrently behind resilient_http host pacing so this discovery stage
+    # cannot serialize dozens of provider waits before the live CEX radar gets its turn.
+    resolution_budget = IDENTITY_RESOLUTION_BUDGET
+    identity_results = resolve_identity_targets(
+        selected,
+        native_registry,
+        configured_watch,
+        resolution_budget=resolution_budget,
+        max_workers=IDENTITY_RESOLUTION_WORKERS,
+    )
     for idx, row in enumerate(selected):
         key = row["currency_pair"]
         old = earlier_anchor(
@@ -723,13 +786,9 @@ def run() -> dict:
             old.get("identity_status") == "RESOLVED_EXACT"
             and old.get("network") and old.get("contract") and old.get("pair")
         )
-        should_resolve = idx < resolution_budget or row.get("forced_hot_watch") or key in configured_watch
+        should_resolve = idx in identity_results
         if should_resolve:
-            ident = resolve_identity(
-                row["symbol"],
-                native_registry=native_registry,
-                cex_price=row["discovery_price"],
-            )
+            ident = identity_results[idx]
             if ident.get("identity_status") != "RESOLVED_EXACT" and old_exact:
                 ident = {
                     "identity_status": "RESOLVED_EXACT",
@@ -813,6 +872,8 @@ def run() -> dict:
             "persist_exact_identity_across_resolution_budget": True,
             "new_listing_window_days": 14,
             "identity_resolution_budget": resolution_budget,
+            "identity_resolution_workers": min(IDENTITY_RESOLUTION_WORKERS, max(1, len(identity_results))),
+            "identity_resolution_concurrent": True,
             "configured_cex_research_watch_pairs": sorted(configured_watch),
             "leveraged_products_excluded": True,
             "st_risk_pairs_excluded": True,
