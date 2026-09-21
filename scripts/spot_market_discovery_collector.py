@@ -8,7 +8,10 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import resilient_http
+try:
+    import resilient_http
+except ImportError:  # package import in pytest / module mode
+    from scripts import resilient_http
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data/spot-market-discovery.json"
