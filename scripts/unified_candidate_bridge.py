@@ -231,6 +231,8 @@ def main():
             "first_seen_quote_volume_24h_usd": row.get("first_seen_quote_volume_24h_usd"),
             "discovery_price": row.get("discovery_price"),
             "change_24h_pct": row.get("change_24h_pct"),
+            "discovery_momentum_change_pct": row.get("discovery_momentum_change_pct"),
+            "gain_from_first_seen_pct": row.get("gain_from_first_seen_pct"),
             "quote_volume_24h_usd": row.get("quote_volume_24h_usd"),
             "positive_gainer_rank": row.get("positive_gainer_rank"),
             "dex_liquidity_usd": row.get("dex_liquidity_usd"),
@@ -250,7 +252,7 @@ def main():
             continue
         if row.get("identity_status") == "RESOLVED_EXACT":
             continue
-        change = float(row.get("change_24h_pct") or 0)
+        change = float(row.get("discovery_momentum_change_pct") or row.get("change_24h_pct") or 0)
         rank = int(row.get("positive_gainer_rank") or 999999)
         first_change = float(row.get("first_seen_change_24h_pct") or change or 0)
         if max(change, first_change) < 25.0 and rank > 10:
@@ -276,6 +278,8 @@ def main():
             "first_seen_quote_volume_24h_usd": row.get("first_seen_quote_volume_24h_usd"),
             "discovery_price": row.get("discovery_price"),
             "change_24h_pct": row.get("change_24h_pct"),
+            "discovery_momentum_change_pct": row.get("discovery_momentum_change_pct"),
+            "gain_from_first_seen_pct": row.get("gain_from_first_seen_pct"),
             "quote_volume_24h_usd": row.get("quote_volume_24h_usd"),
             "positive_gainer_rank": row.get("positive_gainer_rank"),
             "identity_key": cex_key,
