@@ -113,6 +113,31 @@ def num(value, default=None):
         return default
 
 
+def cumulative_gain_from_first_seen(old: dict | None, row: dict | None) -> float | None:
+    """Return cumulative price gain from the immutable first-seen CEX anchor."""
+    old = old if isinstance(old, dict) else {}
+    row = row if isinstance(row, dict) else {}
+    anchor = num(old.get("first_seen_price"))
+    current = num(row.get("discovery_price"))
+    if anchor is None or current is None or anchor <= 0 or current <= 0:
+        return None
+    return ((current / anchor) - 1.0) * 100.0
+
+
+def should_force_cumulative_hot_watch(
+    old: dict | None,
+    row: dict | None,
+    threshold_pct: float = 25.0,
+) -> bool:
+    """Catch the first cumulative +threshold crossing even when 24h momentum is quiet.
+
+    This is discovery/revalidation only. It does not bypass exact identity, intelligence,
+    execution-quality, hard-risk, or two-scan FINAL BUY gates downstream.
+    """
+    gain = cumulative_gain_from_first_seen(old, row)
+    return gain is not None and gain >= float(threshold_pct)
+
+
 def is_leveraged(base: str, ticker: dict) -> bool:
     if LEVERAGED_SUFFIX.search(base or ""):
         return True
@@ -529,6 +554,26 @@ def run() -> dict:
         if row.get("buy_start") and int(row["buy_start"]) >= recent_cutoff:
             selected.append(row)
             seen.add(row["currency_pair"])
+
+    # A cumulative +25% move from the immutable first-seen anchor must be caught on
+    # the FIRST crossing scan, even if Gate's current 24h percentage is below the
+    # broad-discovery 3% floor or the pair is outside the top-100 positive movers.
+    # This only forces exact-identity/deep revalidation; it never creates a BUY.
+    for row in eligible:
+        pair_id = row["currency_pair"]
+        if pair_id in seen:
+            continue
+        old = old_pairs.get(pair_id) or {}
+        if should_force_cumulative_hot_watch(old, row, threshold_pct=25.0):
+            row = dict(row)
+            row["forced_hot_watch"] = True
+            row["cumulative_gain_hot_crossing"] = True
+            row["gain_from_first_seen_pct"] = round(
+                cumulative_gain_from_first_seen(old, row) or 0.0,
+                4,
+            )
+            selected.append(row)
+            seen.add(pair_id)
 
     # Keep recently hot markets in the candidate set across Gate percentage-window
     # boundaries. This is discovery/state only; FINAL BUY safety gates still apply.
