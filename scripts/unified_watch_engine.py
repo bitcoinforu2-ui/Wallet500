@@ -200,10 +200,10 @@ def live_exact_pair(t, max_spread):
         gt_snapshot = {
             "price": gp,
             "liquidity": float(a.get("reserve_in_usd") or 0),
-            "volume_h1": float(vol.get("h1") or 0),
-            "volume_h24": float(vol.get("h24") or 0),
-            "buys_h1": int(h1.get("buys") or 0),
-            "sells_h1": int(h1.get("sells") or 0),
+            "volume_h1": float(vol["h1"]) if vol.get("h1") is not None else None,
+            "volume_h24": float(vol["h24"]) if vol.get("h24") is not None else None,
+            "buys_h1": int(h1["buys"]) if h1.get("buys") is not None else None,
+            "sells_h1": int(h1["sells"]) if h1.get("sells") is not None else None,
             "change_h1": float(ch.get("h1") or 0),
             "change_h24": float(ch.get("h24") or 0),
         }
@@ -229,9 +229,16 @@ def live_exact_pair(t, max_spread):
             raise RuntimeError("EXACT_PAIR_MISSING_DS")
         base = norm_addr(canonical_chain, (p.get("baseToken") or {}).get("address"))
         quote = norm_addr(canonical_chain, (p.get("quoteToken") or {}).get("address"))
-        if ca not in {base, quote}:
+        if ca == base:
+            dp = float(p.get("priceUsd") or 0)
+        elif ca == quote:
+            # DexScreener priceUsd is the USD price of baseToken. Treating it as
+            # the tracked quote token's price would silently corrupt price identity.
+            # Fail this provider closed; GeckoTerminal may still prove the quote
+            # token independently via quote_token_price_usd.
+            raise RuntimeError("DS_TRACKED_TOKEN_IS_QUOTE_PRICEUSD_IS_BASE_FAIL_CLOSED")
+        else:
             raise RuntimeError("DS_TOKEN_NOT_IN_EXACT_PAIR_FAIL_CLOSED")
-        dp = float(p.get("priceUsd") or 0)
         if dp <= 0:
             raise RuntimeError("DS_PRICE_MISSING")
         dv = p.get("volume") or {}
@@ -241,10 +248,10 @@ def live_exact_pair(t, max_spread):
         ds_snapshot = {
             "price": dp,
             "liquidity": float(((p.get("liquidity") or {}).get("usd")) or 0),
-            "volume_h1": float(dv.get("h1") or 0),
-            "volume_h24": float(dv.get("h24") or 0),
-            "buys_h1": int(dh1.get("buys") or 0),
-            "sells_h1": int(dh1.get("sells") or 0),
+            "volume_h1": float(dv["h1"]) if dv.get("h1") is not None else None,
+            "volume_h24": float(dv["h24"]) if dv.get("h24") is not None else None,
+            "buys_h1": int(dh1["buys"]) if dh1.get("buys") is not None else None,
+            "sells_h1": int(dh1["sells"]) if dh1.get("sells") is not None else None,
             "change_h1": float(dpc.get("h1") or 0),
             "change_h24": float(dpc.get("h24") or 0),
         }
@@ -268,10 +275,12 @@ def live_exact_pair(t, max_spread):
         spread = ((max(gp, dp) - min(gp, dp)) / med) * 100 if med else 999
         if spread > max_spread:
             raise RuntimeError(f"SOURCE_DATA_MISMATCH:{spread:.3f}%")
-        # Prefer GT transaction granularity while filling any zero fields from DS.
+        # Prefer GT transaction granularity. Only fill values that are truly
+        # missing (None); a measured numeric zero is evidence and must never be
+        # overwritten by another provider.
         snap = dict(gt_snapshot)
         for field in ("liquidity", "volume_h1", "volume_h24", "buys_h1", "sells_h1"):
-            if not snap.get(field) and ds_snapshot.get(field):
+            if snap.get(field) is None and ds_snapshot.get(field) is not None:
                 snap[field] = ds_snapshot[field]
         return {
             **snap,
