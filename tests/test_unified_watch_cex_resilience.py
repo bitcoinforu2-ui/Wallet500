@@ -150,3 +150,27 @@ def test_single_dex_source_requires_coherent_exact_cex_execution():
         now=now,
     )
     assert "CEX_DEX_PRICE_DIVERGENCE" in bad["blockers"]
+
+
+def test_cex_sensor_repairs_late_volume_baseline():
+    target = {
+        "candidate_type": "CEX_MARKET_DISCOVERY",
+        "dynamic_spot_candidate": True,
+        "symbol": "TRIO",
+        "quote_volume_24h_usd": 44725.83,
+        "first_seen_quote_volume_24h_usd": 9468.26,
+        "positive_gainer_rank": 7,
+    }
+    previous = {
+        # Legacy bug: this was captured after the wave was already running.
+        "cex_quote_volume_baseline_usd": 44778.51,
+        "cex_quote_volume_24h_usd": 44000.0,
+        "positive_gainer_rank": 71,
+    }
+    sensor = engine.spot_cex_sensor(target, previous)
+    assert sensor["baseline_source"] == "IMMUTABLE_FIRST_SEEN_VOLUME"
+    assert sensor["baseline_repaired_from_first_seen"] is True
+    assert sensor["baseline_volume_usd"] == 9468.26
+    assert sensor["baseline_multiple"] > 4.7
+    assert sensor["cex_led"] is True
+    assert "CEX_RELATIVE_VOLUME_SHOCK" in sensor["triggers"]
