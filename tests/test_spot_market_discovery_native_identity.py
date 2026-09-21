@@ -195,3 +195,25 @@ def test_ambiguous_coingecko_recovery_fails_closed(monkeypatch):
     assert row["identity_status"] == "UNRESOLVED"
     assert row["identity_recovery_attempted"] is True
     assert row["identity_recovery_blocker"] == "COINGECKO_SYMBOL_AMBIGUOUS_FAIL_CLOSED"
+
+
+
+def test_cumulative_quarter_wave_crossing_is_caught_before_24h_momentum_filter():
+    old = {"first_seen_price": 0.02836}
+    just_below = {"discovery_price": 0.03544, "change_24h_pct": 0.5}
+    first_cross = {"discovery_price": 0.03580, "change_24h_pct": 0.5}
+
+    assert mod.cumulative_gain_from_first_seen(old, just_below) < 25.0
+    assert mod.should_force_cumulative_hot_watch(old, just_below, 25.0) is False
+    assert mod.cumulative_gain_from_first_seen(old, first_cross) > 25.0
+    assert mod.should_force_cumulative_hot_watch(old, first_cross, 25.0) is True
+
+
+def test_cumulative_quarter_wave_never_arms_without_valid_anchor():
+    assert mod.cumulative_gain_from_first_seen({}, {"discovery_price": 1.0}) is None
+    assert mod.should_force_cumulative_hot_watch({}, {"discovery_price": 1.0}, 25.0) is False
+    assert mod.should_force_cumulative_hot_watch(
+        {"first_seen_price": 0.0},
+        {"discovery_price": 1.0},
+        25.0,
+    ) is False
