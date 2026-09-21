@@ -273,6 +273,7 @@ def _policy(config: dict) -> dict:
         "cex_breakout_min_scan_gain_pct": 0.50,
         "cex_breakout_min_rebound_pct": 5.0,
         "cex_breakout_min_holder_score": -7.0,
+        "cex_breakout_min_bid_ask_depth_ratio": 0.50,
         "cex_breakout_min_current_evidence": 1,
     }
     for k, v in defaults.items():
@@ -449,6 +450,9 @@ def evaluate(
             "LIQUIDITY_BELOW_FINAL_BUY_FLOOR",
             "VOLUME_H1_TOO_LOW",
             "ACTIVITY_H1_TOO_LOW",
+            # This lane already requires positive executable CEX bid/ask depth,
+            # so a thin DEX buy/sell count must not veto the CEX execution signal.
+            "BUY_FLOW_NOT_CONFIRMED",
             "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
         }
         blockers = [b for b in blockers if b not in bypass]
@@ -522,6 +526,7 @@ def evaluate(
         and not cex_market_only
         and report_verified
         and cex_execution_verified
+        and cex_bid_ask_depth_ratio >= float(policy["cex_breakout_min_bid_ask_depth_ratio"])
         and status == "CURRENT"
         and evidence >= int(policy["cex_breakout_min_current_evidence"])
         and not hard_risks
