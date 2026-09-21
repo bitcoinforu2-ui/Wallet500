@@ -10,7 +10,7 @@ CORRELATION = DATA / "cross-source-correlation.json"
 WATCHLIST = DATA / "manual-watchlist.json"
 CATALYST_LEDGER = DATA / "catalyst-wire-ledger.json"
 CEX_REGISTRY = DATA / "cex-identity-registry.json"
-EVM_CHAINS = {"ethereum", "bsc", "arbitrum", "base"}
+EVM_CHAINS = {"ethereum", "eth", "bsc", "bnb", "arbitrum", "base", "optimism", "polygon", "avalanche", "arc"}
 EVM_ZERO = "0x0000000000000000000000000000000000000000"
 EXCHANGE_OWNERS = {
     "binance", "coinbase", "kraken", "bybit", "okx", "kucoin", "bitget",
