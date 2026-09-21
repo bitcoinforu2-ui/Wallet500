@@ -362,6 +362,10 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         and int(_num(x.get("current_identity_reactivation_rank") or x.get("leaderboard_best_rank") or 999)) <= 10
         and any(_num(m.get("price")) > 0 for m in (x.get("markets") or []) if isinstance(m, dict))
     ]
+    current_reactivation_symbols = {
+        _base_symbol(x.get("symbol")) for x in current_recovery_rows
+        if _base_symbol(x.get("symbol"))
+    }
     cross_lane_rows = [
         x for x in shadow_rows
         if isinstance(x.get("cross_lane_derivatives_precursor"), dict)
@@ -490,6 +494,9 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         current_reactivation_ordered,
         CURRENT_REACTIVATION_PRIORITY_SLOTS,
     )
+    current_reactivation_retried = len(
+        selected_symbols & recent_attempts & current_reactivation_symbols
+    )
     prewave_selected = add_rows(prewave_ordered, PREWAVE_IDENTITY_PRIORITY_SLOTS)
     backlog_selected = add_rows(
         pending_only_ordered,
@@ -504,6 +511,7 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         "current_reactivation_recovery_count": len(current_recovery_rows),
         "current_reactivation_recovery_symbols": [_base_symbol(x.get("symbol")) for x in current_recovery_rows[:30]],
         "current_reactivation_selected_count": current_reactivation_selected,
+        "current_reactivation_retried_despite_previous_attempt_count": current_reactivation_retried,
         "current_reactivation_priority_slot_cap": CURRENT_REACTIVATION_PRIORITY_SLOTS,
         "regular_watch_count": len(watch_rows),
         "cross_lane_identity_priority_count": len(cross_lane_rows),
@@ -530,6 +538,7 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         "persistent_backlog_cap_enforced": backlog_selected <= MAX_PERSISTENT_PRIORITY_SLOTS,
         "fresh_watch_capacity_protected": True,
         "current_reactivation_capacity_protected": True,
+        "current_reactivation_bypasses_backlog_cooldown_for_resolver_order_only": True,
         "current_reactivation_never_satisfies_identity_or_actionability": True,
         "prewave_shadow_capacity_protected": True,
         "one_cycle_backlog_rotation": True,
