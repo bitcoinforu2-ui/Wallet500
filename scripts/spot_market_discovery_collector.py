@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import urllib.parse
@@ -19,7 +20,19 @@ STATE = ROOT / "data/spot-market-discovery-state.json"
 CONFIG = ROOT / "data/unified-watch-config.json"
 NATIVE_IDENTITY = ROOT / "data/native-asset-identity-registry.json"
 GATE = "https://api.gateio.ws/api/v4"
-UA = "Wallet500-SpotDiscovery/1.0"
+UA = "Wallet500-SpotDiscovery/1.1-EvidenceRecovery"
+COINGECKO = "https://api.coingecko.com/api/v3"
+IDENTITY_RECOVERY_MAX_PRICE_DIVERGENCE_PCT = 20.0
+COINGECKO_PLATFORM_MAP = {
+    "ethereum": ("eth", "ethereum"),
+    "binance-smart-chain": ("bsc", "bsc"),
+    "base": ("base", "base"),
+    "arbitrum-one": ("arbitrum", "arbitrum"),
+    "optimistic-ethereum": ("optimism", "optimism"),
+    "polygon-pos": ("polygon", "polygon"),
+    "avalanche": ("avalanche", "avalanche"),
+    "solana": ("solana", "solana"),
+}
 
 # Gate leveraged ETF products use suffixes such as 3L/3S/5L/5S. We also
 # honor Gate's explicit etf_leverage field so a leveraged product can never
@@ -70,6 +83,26 @@ def get_json(url: str, timeout: int = 12):
         )
     except Exception as exc:
         print("SPOT_DISCOVERY_FETCH_ERROR", url.split("?")[0], type(exc).__name__)
+        return None
+
+
+def coingecko_get_json(url: str, timeout: int = 12):
+    headers = {}
+    key = os.environ.get("COINGECKO_DEMO_API_KEY", "").strip()
+    if key:
+        headers["x-cg-demo-api-key"] = key
+    try:
+        return resilient_http.request_json(
+            url,
+            headers=headers,
+            timeout=timeout,
+            attempts=3,
+            cache_ttl=90,
+            min_interval=1.25,
+            user_agent=UA,
+        )
+    except Exception as exc:
+        print("SPOT_IDENTITY_RECOVERY_FETCH_ERROR", url.split("?")[0], type(exc).__name__)
         return None
 
 
@@ -177,7 +210,149 @@ def _native_proxy_possibilities(symbol: str, registry: dict[str, dict]) -> list[
     return out
 
 
-def resolve_identity(symbol: str, native_registry: dict[str, dict] | None = None) -> dict:
+def _coingecko_identity_recovery(symbol: str, cex_price: float | None) -> dict:
+    """Recover exact identity when Gate omits contract metadata, fail-closed."""
+    base = str(symbol or "").upper().strip()
+    cex_price = num(cex_price, 0.0) or 0.0
+    if not base or cex_price <= 0:
+        return {
+            "identity_recovery_attempted": False,
+            "identity_recovery_blocker": "CEX_PRICE_OR_SYMBOL_MISSING",
+        }
+
+    q = urllib.parse.urlencode({
+        "vs_currency": "usd",
+        "symbols": base.lower(),
+        "include_tokens": "all",
+        "order": "market_cap_desc",
+        "per_page": 250,
+        "page": 1,
+        "sparkline": "false",
+    })
+    markets = coingecko_get_json(f"{COINGECKO}/coins/markets?{q}")
+    matches = [
+        x for x in (markets or [])
+        if isinstance(x, dict) and str(x.get("symbol") or "").upper() == base
+    ]
+    if not matches:
+        return {
+            "identity_recovery_attempted": True,
+            "identity_recovery_blocker": "COINGECKO_SYMBOL_NOT_FOUND",
+        }
+
+    chosen = None
+    method = None
+    if len(matches) == 1:
+        chosen = matches[0]
+        method = "UNIQUE_COINGECKO_SYMBOL"
+    else:
+        ranked = []
+        for row in matches:
+            px = num(row.get("current_price"), 0.0) or 0.0
+            if px <= 0:
+                continue
+            err = abs(px - cex_price) / max(px, cex_price) * 100.0
+            ranked.append((err, row))
+        ranked.sort(key=lambda x: x[0])
+        if ranked:
+            best_err = ranked[0][0]
+            second_err = ranked[1][0] if len(ranked) > 1 else 999.0
+            if best_err <= 12.0 and second_err >= max(20.0, best_err * 2.0):
+                chosen = ranked[0][1]
+                method = "COINGECKO_SYMBOL_PLUS_PRICE_COHERENCE"
+    if not chosen:
+        return {
+            "identity_recovery_attempted": True,
+            "identity_recovery_blocker": "COINGECKO_SYMBOL_AMBIGUOUS_FAIL_CLOSED",
+            "identity_recovery_candidate_count": len(matches),
+        }
+
+    coin_id = str(chosen.get("id") or "").strip()
+    if not coin_id:
+        return {
+            "identity_recovery_attempted": True,
+            "identity_recovery_blocker": "COINGECKO_ID_MISSING",
+        }
+    detail = coingecko_get_json(
+        f"{COINGECKO}/coins/{urllib.parse.quote(coin_id, safe='')}"
+        "?localization=false&tickers=false&market_data=false"
+        "&community_data=false&developer_data=false&sparkline=false"
+    )
+    platforms = (detail or {}).get("platforms") if isinstance(detail, dict) else {}
+    possibilities = []
+    for platform, contract_value in (platforms or {}).items():
+        mapped = COINGECKO_PLATFORM_MAP.get(str(platform or "").lower().strip())
+        contract = str(contract_value or "").strip()
+        if not mapped or not contract:
+            continue
+        engine_network, ds_chain = mapped
+        ds = get_json(
+            f"https://api.dexscreener.com/latest/dex/tokens/"
+            f"{urllib.parse.quote(contract, safe='')}"
+        )
+        for pair in (ds or {}).get("pairs") or []:
+            if str(pair.get("chainId") or "").lower() != ds_chain:
+                continue
+            base_addr = (pair.get("baseToken") or {}).get("address")
+            quote_addr = (pair.get("quoteToken") or {}).get("address")
+            if not (
+                same_addr(ds_chain, base_addr, contract)
+                or same_addr(ds_chain, quote_addr, contract)
+            ):
+                continue
+            pair_addr = str(pair.get("pairAddress") or "").strip()
+            dex_price = num(pair.get("priceUsd"), 0.0) or 0.0
+            if not pair_addr or dex_price <= 0:
+                continue
+            price_divergence = abs(dex_price - cex_price) / max(dex_price, cex_price) * 100.0
+            if price_divergence > IDENTITY_RECOVERY_MAX_PRICE_DIVERGENCE_PCT:
+                continue
+            liq = num((pair.get("liquidity") or {}).get("usd"), 0.0) or 0.0
+            possibilities.append({
+                "network": engine_network,
+                "contract": contract,
+                "pair": pair_addr,
+                "dex_url": str(pair.get("url") or ""),
+                "dex_liquidity_usd": round(liq, 2),
+                "dex_price_usd": dex_price,
+                "identity_source": (
+                    f"CoinGecko {method} + exact platform contract + "
+                    "DexScreener exact token pair + Gate price coherence"
+                ),
+                "identity_recovery_method": method,
+                "identity_recovery_attempted": True,
+                "identity_recovery_price_divergence_pct": round(price_divergence, 4),
+                "coingecko_id": coin_id,
+            })
+
+    if not possibilities:
+        return {
+            "identity_recovery_attempted": True,
+            "identity_recovery_method": method,
+            "identity_recovery_blocker": "NO_PRICE_COHERENT_EXACT_DEX_PAIR_FROM_COINGECKO_PLATFORM",
+            "coingecko_id": coin_id,
+        }
+
+    best = max(
+        possibilities,
+        key=lambda x: (
+            x.get("dex_liquidity_usd") or 0,
+            -(x.get("identity_recovery_price_divergence_pct") or 999),
+        ),
+    )
+    return {
+        "identity_status": "RESOLVED_EXACT",
+        "identity_reason": "EXACT_IDENTITY_RECOVERED_FROM_COINGECKO_PLATFORM",
+        **best,
+    }
+
+
+def resolve_identity(
+    symbol: str,
+    native_registry: dict[str, dict] | None = None,
+    *,
+    cex_price: float | None = None,
+) -> dict:
     q = urllib.parse.urlencode({"currency": symbol})
     chains = get_json(f"{GATE}/wallet/currency_chains?{q}")
     gate_currency_chains_available = isinstance(chains, list)
@@ -222,11 +397,18 @@ def resolve_identity(symbol: str, native_registry: dict[str, dict] | None = None
         possibilities.extend(_native_proxy_possibilities(symbol, native_registry))
 
     if not possibilities:
+        recovery = _coingecko_identity_recovery(symbol, cex_price)
+        if recovery.get("identity_status") == "RESOLVED_EXACT":
+            return recovery
         if not gate_currency_chains_available:
             reason = "GATE_CURRENCY_CHAINS_UNAVAILABLE_AND_NO_CURATED_NATIVE_PAIR"
         else:
             reason = "NO_SUPPORTED_CONTRACT_ADDRESS" if supported_contracts == 0 else "NO_EXACT_LIQUID_DEX_PAIR"
-        return {"identity_status": "UNRESOLVED", "identity_reason": reason}
+        return {
+            "identity_status": "UNRESOLVED",
+            "identity_reason": reason,
+            **recovery,
+        }
     best = max(possibilities, key=lambda x: x.get("dex_liquidity_usd") or 0)
     reason = "EXACT_CURATED_NATIVE_PROXY_PAIR_RESEARCH_ONLY" if best.get("native_asset_proxy") else "EXACT_CHAIN_CONTRACT_PAIR"
     return {"identity_status": "RESOLVED_EXACT", "identity_reason": reason, **best}
@@ -435,7 +617,11 @@ def run() -> dict:
         )
         should_resolve = idx < resolution_budget or row.get("forced_hot_watch") or key in configured_watch
         if should_resolve:
-            ident = resolve_identity(row["symbol"], native_registry=native_registry)
+            ident = resolve_identity(
+                row["symbol"],
+                native_registry=native_registry,
+                cex_price=row["discovery_price"],
+            )
             if ident.get("identity_status") != "RESOLVED_EXACT" and old_exact:
                 ident = {
                     "identity_status": "RESOLVED_EXACT",
@@ -525,12 +711,26 @@ def run() -> dict:
             "curated_native_discovery_bridge_enabled": True,
             "curated_native_discovery_symbols": sorted(native_registry),
             "native_proxy_research_only": True,
+            "missing_identity_self_recovery_enabled": True,
+            "missing_identity_recovery_sources": [
+                "Gate currency_chains",
+                "curated native registry",
+                "CoinGecko unique/price-coherent symbol resolution",
+                "CoinGecko exact platform contract",
+                "DexScreener exact token pair",
+            ],
+            "identity_recovery_max_cex_dex_price_divergence_pct": IDENTITY_RECOVERY_MAX_PRICE_DIVERGENCE_PCT,
         },
         "market_counts": {
             "eligible_non_leveraged_spot": len(eligible),
             "ignored_leveraged": len(ignored_leveraged),
             "discovered": len(selected),
             "identity_resolved": len(resolved),
+            "identity_recovery_attempted": sum(1 for r in selected if r.get("identity_recovery_attempted")),
+            "identity_recovered": sum(
+                1 for r in selected
+                if r.get("identity_reason") == "EXACT_IDENTITY_RECOVERED_FROM_COINGECKO_PLATFORM"
+            ),
             "configured_cex_watch_present": sum(1 for r in selected if r.get("forced_cex_watch")),
         },
         "ignored_leveraged_examples": ignored_leveraged[:25],

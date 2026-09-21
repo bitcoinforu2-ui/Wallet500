@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import unified_watch_engine as engine
 import user_watch_final_buy as gate
+import resilient_unified_watch_runner as runner
 
 
 def test_exact_pair_survives_single_provider_429(monkeypatch):
@@ -174,3 +175,95 @@ def test_cex_sensor_repairs_late_volume_baseline():
     assert sensor["baseline_multiple"] > 4.7
     assert sensor["cex_led"] is True
     assert "CEX_RELATIVE_VOLUME_SHOCK" in sensor["triggers"]
+
+
+def test_hot_exact_cex_candidate_is_marked_for_proactive_evidence_recovery(monkeypatch, tmp_path):
+    import json
+    dynamic = tmp_path / "dynamic.json"
+    dynamic.write_text(json.dumps({
+        "candidates": [{
+            "candidate_type": "GATE_SPOT_DISCOVERY",
+            "symbol": "R2",
+            "network": "bsc",
+            "contract": "0x223a20e1b83aa3832e78d4b7b132df022e739222",
+            "pair": "0xfdbeffa804bc58e9edd720165f41a62b2ee251b6",
+            "gain_from_first_seen_pct": 31.0,
+            "discovery_momentum_change_pct": 40.0,
+            "quote_volume_24h_usd": 50000,
+            "positive_gainer_rank": 4,
+        }]
+    }))
+    monkeypatch.setattr(engine, "DYNAMIC", dynamic)
+    rows = engine.dynamic_candidates({})
+    assert len(rows) == 1
+    assert rows[0]["deep_investigation"] is True
+    assert rows[0]["full_intelligence"] is True
+    assert rows[0]["proactive_evidence_recovery"] is True
+    assert rows[0]["collector_priority"] == 1
+
+
+def test_missing_hot_cex_intelligence_triggers_bounded_deep_refresh(monkeypatch):
+    key = "bsc:0x223a20e1b83aa3832e78d4b7b132df022e739222:0xfdbeffa804bc58e9edd720165f41a62b2ee251b6"
+    target = {
+        "candidate_type": "GATE_SPOT_DISCOVERY",
+        "dynamic_spot_candidate": True,
+        "deep_investigation": True,
+        "symbol": "R2",
+        "network": "bsc",
+        "contract": "0x223a20e1b83aa3832e78d4b7b132df022e739222",
+        "pair": "0xfdbeffa804bc58e9edd720165f41a62b2ee251b6",
+    }
+    runner._TARGETS_BY_IDENTITY = {key: target}
+    runner._PREVIOUS_STATE = {"tokens": {}}
+    runner._DEEP_DONE.clear()
+    runner._DEEP_REPORTS.clear()
+    runner._DEEP_FAILURES.clear()
+    captured = {}
+
+    def fake_run_one(engine_module, policy, t, live, previous_scan, triggers, base_reasons):
+        captured["called"] = True
+        return (
+            {"identity_key": key, "qualification": ["TEST"]},
+            {"identity_key": key},
+        )
+
+    monkeypatch.setattr(runner.deep_investigation_refresh, "run_one", fake_run_one)
+    monkeypatch.setattr(
+        runner,
+        "identity_aware_fusion_summary",
+        lambda row, notable_min_raw=0.30: {
+            "_identity_key": key,
+            "status": "CURRENT",
+            "score": 12,
+            "families": 1,
+            "current_evidence_count": 5,
+            "hard_risks": [],
+            "family_scores": {"market_microstructure": 8},
+        },
+    )
+
+    fusion = {
+        "_identity_key": key,
+        "status": "NOT_AVAILABLE",
+        "score": None,
+        "families": 0,
+        "current_evidence_count": 0,
+        "hard_risks": [],
+        "family_scores": {},
+    }
+    refreshed = runner._refresh_deep_intelligence(
+        {},
+        {"buys_h1": 0, "sells_h1": 0},
+        fusion,
+        [],
+        [],
+        {
+            "deep_investigation_max_targets_per_cycle": 8,
+            "real_alert_min_current_evidence": 2,
+            "real_alert_relaxed_min_positive_families_with_wallet_or_new_intel": 2,
+        },
+    )
+    assert refreshed is True
+    assert captured["called"] is True
+    assert fusion["status"] == "CURRENT"
+    assert fusion["current_evidence_count"] == 5

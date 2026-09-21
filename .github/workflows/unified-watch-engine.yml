@@ -61,7 +61,9 @@ jobs:
 
       - name: Test exact-identity intelligence fusion contract
         id: contract
-        run: python scripts/test_intelligence_fusion_contract.py
+        run: |
+          python scripts/test_intelligence_fusion_contract.py
+          python -m pytest -q tests/test_unified_watch_cex_resilience.py tests/test_spot_market_discovery_native_identity.py
 
       - name: Test user-requested FINAL BUY contract
         id: user_buy_contract
@@ -79,8 +81,10 @@ jobs:
         id: new_chain_bootstrap_contract
         run: python scripts/test_new_chain_bootstrap_contract.py
 
-      - name: Discover broad non-leveraged Gate spot movers
+      - name: Discover broad non-leveraged Gate spot movers and self-recover missing identities
         id: spot_discovery
+        env:
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: python scripts/spot_market_discovery_collector.py
 
       - name: Discover Arc and automatically bootstrap newly appearing chains

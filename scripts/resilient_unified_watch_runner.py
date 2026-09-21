@@ -236,6 +236,24 @@ def _refresh_deep_intelligence(last_alert, live, fusion, triggers, base_reasons,
         t.get("dynamic_buy_candidate")
         or str(t.get("candidate_type") or "").upper() == "BUY_ZONE"
     ) and bool(t.get("deep_investigation", True))
+
+    status = str(fusion.get("status") or "").upper()
+    current_evidence = int(fusion.get("current_evidence_count") or 0)
+    families = int(fusion.get("families") or 0)
+    family_scores = fusion.get("family_scores") if isinstance(fusion.get("family_scores"), dict) else {}
+    micro = float(family_scores.get("market_microstructure") or 0)
+    required_evidence = max(1, int(policy.get("real_alert_min_current_evidence", 2)))
+    proactive_hot_recovery = bool(
+        t.get("dynamic_spot_candidate")
+        and t.get("deep_investigation")
+        and (
+            status != "CURRENT"
+            or current_evidence < required_evidence
+            or families < int(policy.get("real_alert_relaxed_min_positive_families_with_wallet_or_new_intel", 2))
+            or micro <= 0
+        )
+    )
+
     qualification = (
         ["FINAL_BUY_ZONE_FULL_INTELLIGENCE"]
         if force_buy_watch
@@ -243,6 +261,20 @@ def _refresh_deep_intelligence(last_alert, live, fusion, triggers, base_reasons,
             live, triggers, base_reasons, policy
         )
     )
+    if proactive_hot_recovery:
+        missing = []
+        if status != "CURRENT":
+            missing.append(f"STATUS_{status or 'MISSING'}")
+        if current_evidence < required_evidence:
+            missing.append(f"EVIDENCE_{current_evidence}_LT_{required_evidence}")
+        if families < int(policy.get("real_alert_relaxed_min_positive_families_with_wallet_or_new_intel", 2)):
+            missing.append(f"FAMILIES_{families}")
+        if micro <= 0:
+            missing.append("MICROSTRUCTURE_NONPOSITIVE_OR_MISSING")
+        qualification = list(dict.fromkeys([
+            *qualification,
+            "PROACTIVE_MISSING_EVIDENCE_RECOVERY:" + ",".join(missing),
+        ]))
     if not qualification:
         return False
 
@@ -498,7 +530,7 @@ def main():
                 "version": 4,
                 "updated_at": engine.now_iso(),
                 "component": "unified_watch",
-                "strategy": "STRICT_EXACT_PAIR_PLUS_ON_DEMAND_DEEP_INTELLIGENCE_BEFORE_REAL_ALERT_GATE",
+                "strategy": "STRICT_EXACT_PAIR_PLUS_PROACTIVE_MISSING_EVIDENCE_RECOVERY_BEFORE_FINAL_DECISION",
                 "metrics": resilient_http.metrics(),
                 "telegram_mode": "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE",
                 "deep_investigation_count": len(_DEEP_REPORTS),

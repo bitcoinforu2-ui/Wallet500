@@ -126,3 +126,72 @@ def test_native_one_proxy_still_resolves_when_gate_chain_metadata_is_unavailable
     assert row["identity_status"] == "RESOLVED_EXACT"
     assert row["native_asset_proxy"] is True
     assert row["pair"] == "0xpair2"
+
+
+def test_missing_gate_contract_self_recovers_via_coingecko_exact_platform(monkeypatch):
+    token = "0x1111111111111111111111111111111111111111"
+    pair = "0x2222222222222222222222222222222222222222"
+
+    def fake_get(url, timeout=12):
+        if "currency_chains" in url:
+            return [{"chain": "ETH", "contract_address": ""}]
+        if "dexscreener.com/latest/dex/tokens/" in url:
+            return {
+                "pairs": [{
+                    "chainId": "ethereum",
+                    "pairAddress": pair,
+                    "baseToken": {"address": token},
+                    "quoteToken": {"address": "0xquote"},
+                    "priceUsd": "0.101",
+                    "url": "https://dexscreener.com/ethereum/" + pair,
+                    "liquidity": {"usd": 125000},
+                }]
+            }
+        raise AssertionError(url)
+
+    def fake_cg(url, timeout=12):
+        if "/coins/markets?" in url:
+            return [{
+                "id": "example-token",
+                "symbol": "abc",
+                "current_price": 0.10,
+                "market_cap": 1000000,
+            }]
+        if "/coins/example-token?" in url:
+            return {"platforms": {"ethereum": token}}
+        raise AssertionError(url)
+
+    monkeypatch.setattr(mod, "get_json", fake_get)
+    monkeypatch.setattr(mod, "coingecko_get_json", fake_cg)
+    row = mod.resolve_identity("ABC", native_registry={}, cex_price=0.10)
+
+    assert row["identity_status"] == "RESOLVED_EXACT"
+    assert row["identity_reason"] == "EXACT_IDENTITY_RECOVERED_FROM_COINGECKO_PLATFORM"
+    assert row["network"] == "eth"
+    assert row["contract"] == token
+    assert row["pair"] == pair
+    assert row["identity_recovery_attempted"] is True
+    assert row["identity_recovery_method"] == "UNIQUE_COINGECKO_SYMBOL"
+
+
+def test_ambiguous_coingecko_recovery_fails_closed(monkeypatch):
+    def fake_get(url, timeout=12):
+        if "currency_chains" in url:
+            return [{"chain": "ETH", "contract_address": ""}]
+        raise AssertionError(url)
+
+    def fake_cg(url, timeout=12):
+        if "/coins/markets?" in url:
+            return [
+                {"id": "abc-one", "symbol": "abc", "current_price": 0.100},
+                {"id": "abc-two", "symbol": "abc", "current_price": 0.105},
+            ]
+        raise AssertionError(url)
+
+    monkeypatch.setattr(mod, "get_json", fake_get)
+    monkeypatch.setattr(mod, "coingecko_get_json", fake_cg)
+    row = mod.resolve_identity("ABC", native_registry={}, cex_price=0.102)
+
+    assert row["identity_status"] == "UNRESOLVED"
+    assert row["identity_recovery_attempted"] is True
+    assert row["identity_recovery_blocker"] == "COINGECKO_SYMBOL_AMBIGUOUS_FAIL_CLOSED"

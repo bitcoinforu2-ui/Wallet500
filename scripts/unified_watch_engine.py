@@ -429,6 +429,21 @@ def dynamic_candidates(persisted_tokens=None):
     out = []
     for c in selected:
         ctype = c["_candidate_type"]
+        is_spot = ctype in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"}
+        try:
+            _gain = float(c.get("gain_from_first_seen_pct") or 0)
+            _momentum = float(c.get("discovery_momentum_change_pct") or c.get("change_24h_pct") or 0)
+            _turnover = float(c.get("quote_volume_24h_usd") or 0)
+            _rank = int(c.get("positive_gainer_rank") or 999999)
+        except (TypeError, ValueError):
+            _gain, _momentum, _turnover, _rank = 0.0, 0.0, 0.0, 999999
+        hot_spot = bool(
+            is_spot
+            and (
+                max(_gain, _momentum) >= QUARTER_WAVE_REVALIDATION_GAIN_PCT
+                or (_rank <= 15 and _turnover >= 20000.0)
+            )
+        )
         out.append(
             {
                 "symbol": str(c.get("symbol") or "DYNAMIC").upper(),
@@ -450,11 +465,24 @@ def dynamic_candidates(persisted_tokens=None):
                 "dynamic_spot_candidate": ctype in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"},
                 "dynamic_cex_market_candidate": ctype == "CEX_MARKET_DISCOVERY",
                 "candidate_type": ctype,
-                "priority": c.get("priority") or ("HIGHEST" if ctype == "BUY_ZONE" else None),
-                "close_watch": c.get("close_watch") or ("HIGHEST" if ctype == "BUY_ZONE" else None),
-                "collector_priority": c.get("collector_priority", 0 if ctype == "BUY_ZONE" else None),
-                "deep_investigation": bool(c.get("deep_investigation") or ctype in {"BUY_ZONE", "NEW_CHAIN_BOOTSTRAP"}),
-                "full_intelligence": bool(c.get("full_intelligence") or ctype in {"BUY_ZONE", "NEW_CHAIN_BOOTSTRAP"}),
+                "priority": c.get("priority") or ("HIGHEST" if ctype == "BUY_ZONE" else ("HIGH" if hot_spot else None)),
+                "close_watch": c.get("close_watch") or ("HIGHEST" if ctype == "BUY_ZONE" else ("HIGHEST" if hot_spot else None)),
+                "collector_priority": (
+                    c.get("collector_priority")
+                    if c.get("collector_priority") is not None
+                    else (0 if ctype == "BUY_ZONE" else (1 if hot_spot else None))
+                ),
+                "deep_investigation": bool(
+                    c.get("deep_investigation")
+                    or ctype in {"BUY_ZONE", "NEW_CHAIN_BOOTSTRAP"}
+                    or hot_spot
+                ),
+                "full_intelligence": bool(
+                    c.get("full_intelligence")
+                    or ctype in {"BUY_ZONE", "NEW_CHAIN_BOOTSTRAP"}
+                    or hot_spot
+                ),
+                "proactive_evidence_recovery": hot_spot,
                 "derivatives_intelligence": bool(c.get("derivatives_intelligence")),
                 "derivatives_symbol": c.get("derivatives_symbol"),
                 "buy_zone_price_usd": c.get("buy_zone_price_usd"),
