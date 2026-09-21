@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
-import urllib.parse
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -24,6 +23,11 @@ POLICY_MODE = "USER_REQUESTED_UNIFIED_WATCH_FINAL_BUY_V1"
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def outbox_event_id(event_type: str, identity: str, episode: int) -> str:
+    material = f"{str(event_type).upper()}|{identity}|{int(episode)}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
 
 
 def now_iso() -> str:
@@ -883,27 +887,6 @@ def telegram_message(target: dict, decision: dict) -> str:
     ])
 
 
-def send_telegram(text: str) -> None:
-    bot = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-    chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
-    if not bot or not chat:
-        raise RuntimeError("TELEGRAM_SECRETS_NOT_CONFIGURED")
-    data = urllib.parse.urlencode({
-        "chat_id": chat,
-        "text": text[:4000],
-        "disable_web_page_preview": "true",
-    }).encode()
-    req = urllib.request.Request(
-        f"https://api.telegram.org/bot{bot}/sendMessage",
-        data=data,
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=20) as response:
-        body = json.loads(response.read().decode("utf-8"))
-    if not body.get("ok"):
-        raise RuntimeError("TELEGRAM_SEND_FAILED")
-
-
 def main() -> int:
     config = load(CONFIG, {})
     policy = _policy(config)
@@ -949,12 +932,16 @@ def main() -> int:
         return 0
     target_state = persistent.get("targets") if isinstance(persistent.get("targets"), dict) else {}
     target_state = dict(target_state)
+    delivery_outbox = [
+        dict(x) for x in (persistent.get("delivery_outbox") or [])
+        if isinstance(x, dict) and x.get("event_id")
+    ]
+    existing_outbox_ids = {str(x.get("event_id")) for x in delivery_outbox}
 
     now = now_utc()
     top_report_age = age_seconds(watch_report.get("updated_at"), now)
     decisions: list[dict] = []
-    delivered: list[str] = []
-    pre_buy_delivered: list[str] = []
+    queued_delivery_events: list[str] = []
     errors: list[dict] = []
 
     for target in eligible_targets(config, dynamic, watch_state):
@@ -969,43 +956,67 @@ def main() -> int:
         )
 
         if decision.get("pre_buy_alert") is True:
-            try:
-                send_telegram(telegram_message(target, decision))
-                pre_buy_delivered.append(key)
-                next_state["last_pre_buy_delivery_status"] = "DELIVERED"
-            except Exception as exc:
-                next_state["pre_buy_armed"] = True
-                next_state.pop("last_pre_buy_alert_at", None)
-                next_state.pop("last_pre_buy_alert_price", None)
-                next_state["pre_buy_episode_count"] = int((target_state.get(key) or {}).get("pre_buy_episode_count") or 0)
-                next_state["last_pre_buy_delivery_status"] = f"ERROR:{type(exc).__name__}"
-                decision["pre_buy_alert"] = False
-                decision["pre_buy_delivery_error"] = f"{type(exc).__name__}:{str(exc)[:180]}"
-                errors.append({"identity_key": key, "event": "PRE_BUY", "error": decision["pre_buy_delivery_error"]})
+            episode = int(next_state.get("pre_buy_episode_count") or 0)
+            event_id = outbox_event_id("UNIFIED_PRE_BUY", key, episode)
+            if event_id not in existing_outbox_ids:
+                delivery_outbox.append({
+                    "event_id": event_id,
+                    "alert_type": "UNIFIED_PRE_BUY",
+                    "stream_key": f"UNIFIED_PRE_BUY:{key}",
+                    "source_token": event_id,
+                    "identity_key": key,
+                    "symbol": decision.get("symbol"),
+                    "created_at": now.isoformat(),
+                    "episode": episode,
+                    "message": telegram_message(target, decision),
+                    "decision_state": decision.get("state"),
+                    "manual_decision_only": True,
+                    "automatic_trade": False,
+                })
+                existing_outbox_ids.add(event_id)
+                queued_delivery_events.append(event_id)
+            next_state["last_pre_buy_delivery_status"] = "PENDING_SHARED_LEDGER"
+            next_state["last_pre_buy_delivery_event_id"] = event_id
 
         if decision.get("alert") is True:
-            try:
-                send_telegram(telegram_message(target, decision))
-                delivered.append(key)
-                next_state["last_delivery_status"] = "DELIVERED"
-            except Exception as exc:
-                next_state["armed"] = True
-                next_state.pop("last_alert_at", None)
-                next_state.pop("last_alert_price", None)
-                next_state["buy_episode_count"] = int((target_state.get(key) or {}).get("buy_episode_count") or 0)
-                next_state["last_delivery_status"] = f"ERROR:{type(exc).__name__}"
-                decision["alert"] = False
-                decision["delivery_error"] = f"{type(exc).__name__}:{str(exc)[:180]}"
-                errors.append({"identity_key": key, "event": "FINAL_BUY", "error": decision["delivery_error"]})
+            episode = int(next_state.get("buy_episode_count") or 0)
+            event_id = outbox_event_id("UNIFIED_FINAL_BUY", key, episode)
+            if event_id not in existing_outbox_ids:
+                delivery_outbox.append({
+                    "event_id": event_id,
+                    "alert_type": "UNIFIED_FINAL_BUY",
+                    "stream_key": f"UNIFIED_FINAL_BUY:{key}",
+                    "source_token": event_id,
+                    "identity_key": key,
+                    "symbol": decision.get("symbol"),
+                    "created_at": now.isoformat(),
+                    "episode": episode,
+                    "message": telegram_message(target, decision),
+                    "decision_state": decision.get("state"),
+                    "manual_decision_only": True,
+                    "automatic_trade": False,
+                })
+                existing_outbox_ids.add(event_id)
+                queued_delivery_events.append(event_id)
+            next_state["last_delivery_status"] = "PENDING_SHARED_LEDGER"
+            next_state["last_delivery_event_id"] = event_id
+            next_state["delivery_state_source"] = "telegram-delivery-ledger"
 
         target_state[key] = next_state
         decisions.append(decision)
 
+    delivery_outbox = delivery_outbox[-2000:]
     persistent = {
-        "version": 1,
+        "version": 2,
         "updated_at": now.isoformat(),
         "mode": POLICY_MODE,
         "targets": target_state,
+        "delivery_outbox": delivery_outbox,
+        "delivery_contract": {
+            "sender": "PRODUCTION_TELEGRAM_SHARED_LEDGER_ONLY",
+            "direct_telegram_from_scanner": False,
+            "outbox_is_durable_until_ledger_dedupe": True,
+        },
     }
     write(STATE, persistent)
 
@@ -1017,10 +1028,13 @@ def main() -> int:
         "configured_targets": len(eligible_targets(config, dynamic, watch_state)),
         "buy_zone_count": sum(1 for x in decisions if x.get("state") == "BUY_ZONE"),
         "pre_buy_count": sum(1 for x in decisions if x.get("pre_buy") is True),
-        "pre_buy_delivered_count": len(pre_buy_delivered),
-        "pre_buy_delivered": pre_buy_delivered,
-        "delivered_count": len(delivered),
-        "delivered": delivered,
+        "pre_buy_delivered_count": 0,
+        "pre_buy_delivered": [],
+        "delivered_count": 0,
+        "delivered": [],
+        "queued_delivery_count": len(queued_delivery_events),
+        "queued_delivery_event_ids": queued_delivery_events,
+        "delivery_outbox_size": len(delivery_outbox),
         "error_count": len(errors),
         "errors": errors,
         "decisions": decisions,
@@ -1038,6 +1052,8 @@ def main() -> int:
             "near_buy_notifications": True,
             "generic_near_buy_notifications": False,
             "automatic_trade": False,
+            "direct_telegram_from_scanner": False,
+            "delivery_via_shared_fail_closed_ledger": True,
             "veteran_production_real_alert_policy_unchanged": True,
         },
     }
@@ -1048,8 +1064,8 @@ def main() -> int:
         "configured_targets": report["configured_targets"],
         "buy_zone_count": report["buy_zone_count"],
         "pre_buy_count": report["pre_buy_count"],
-        "pre_buy_delivered_count": report["pre_buy_delivered_count"],
-        "delivered_count": report["delivered_count"],
+        "queued_delivery_count": report["queued_delivery_count"],
+        "delivery_outbox_size": report["delivery_outbox_size"],
         "error_count": report["error_count"],
     }, ensure_ascii=False))
     return 1 if errors else 0
