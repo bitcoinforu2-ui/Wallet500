@@ -30,6 +30,15 @@ SEED_NETWORKS = {
         "activation_reason": "SEEDED_NEW_MAINNET_ARC",
         "bootstrap_days": 30,
         "catalyst": "Circle Arc public mainnet launch",
+    },
+    "robinhood": {
+        "network": "robinhood",
+        "dex_chain": "robinhood",
+        "evm": True,
+        "launch_date": None,
+        "activation_reason": "SEEDED_EMERGING_MAINNET_ROBINHOOD",
+        "bootstrap_days": 30,
+        "catalyst": "Robinhood Chain mainnet; explicit bootstrap coverage prevents provider-baseline blindness",
     }
 }
 IGNORE_NETWORK_PARTS = (
@@ -408,7 +417,7 @@ def update_network_state(state: dict, supported: list[str], now: datetime) -> tu
 
     for network, cfg in SEED_NETWORKS.items():
         rec = dict(known.get(network) or {})
-        rec.setdefault("first_seen_at", cfg["launch_date"])
+        rec.setdefault("first_seen_at", cfg.get("launch_date") or now.isoformat())
         rec["last_seen_at"] = now.isoformat()
         rec["classification"] = "SEEDED_BOOTSTRAP_NETWORK"
         known[network] = rec
