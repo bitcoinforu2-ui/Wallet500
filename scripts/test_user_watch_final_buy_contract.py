@@ -489,3 +489,34 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def test_pre_buy_never_reappears_after_delivered_final_buy_same_exact_identity():
+    policy = mod._policy({})
+    target = _target()
+    market = _market()
+    observed = _observed()
+    now = datetime(2026, 9, 21, 15, 19, tzinfo=timezone.utc)
+    market["observed_at"] = now.isoformat()
+    observed["observed_at"] = now.isoformat()
+
+    prior = {
+        "qualified_streak": 0,
+        "armed": True,
+        "pre_buy_armed": True,
+        "last_delivery_status": "DELIVERED",
+        "last_alert_at": "2026-09-21T13:49:00+00:00",
+        "last_alert_price": 0.0609111665,
+        "last_price": 0.0598987856,
+        "watch_low_price": 0.043,
+        "observable_miss_streak": 0,
+    }
+
+    decision, next_state = mod.evaluate(
+        target, market, observed, prior, policy, now=now
+    )
+
+    assert decision["pre_buy"] is True
+    assert decision["pre_buy_alert"] is False
+    assert next_state.get("last_pre_buy_alert_at") is None
+    assert decision["truth_contract"]["pre_buy_never_after_delivered_final_buy_same_episode"] is True
