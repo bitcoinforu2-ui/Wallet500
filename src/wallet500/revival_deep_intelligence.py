@@ -15,7 +15,7 @@ REGISTRY = "revival-wallet-registry.json"
 FUSION = "close-watch-intelligence.json"
 PASS_SCORE = 70.0
 CRITICAL_SOURCES = {"holder_cluster", "exact_pair_market", "contract_security"}
-EVM = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche"}
+EVM = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc"}
 
 
 def _load(path: Path, default: Any) -> Any:

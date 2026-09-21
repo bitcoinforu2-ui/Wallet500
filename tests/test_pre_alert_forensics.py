@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from wallet500.pre_alert_forensics import (
     MODE_ENFORCE,
     MODE_SHADOW,
+    _market_from_row,
     build_delivery_payload,
     evaluate_candidate,
     gate_allows_send,
@@ -78,6 +79,32 @@ def _smart():
         "qualified_recent_signers": [{"wallet": "smart1", "tier": "STRONG"}],
         "side_inference": "NOT_CLAIMED_FROM_SIGNER_TOUCH_ALONE",
     }
+
+
+
+def test_canonical_snapshot_preserves_explicit_zero_liquidity_and_volume():
+    row = _row()
+    row.update({
+        "execution_pool_liquidity_usd": 0,
+        "liquidity_usd": 100000,
+        "dex_volume_h1": 0,
+        "volume_h1": 25000,
+        "price_change_h1_pct": 0,
+        "price_change_h1": 8,
+    })
+    market = _market_from_row(row, checked_at=NOW.isoformat())
+    assert market["liquidity_usd"] == 0.0
+    assert market["volume_h1_usd"] == 0.0
+    assert market["price_change_h1_pct"] == 0.0
+
+
+def test_arc_pair_key_uses_evm_case_insensitive_identity():
+    row = {
+        "chain": "arc",
+        "token_address": "0xAbCd",
+        "pair_address": "0xDeF0",
+    }
+    assert pair_key(row) == "arc:0xabcd:0xdef0"
 
 
 def test_complete_strong_evidence_is_actionable_in_enforce():

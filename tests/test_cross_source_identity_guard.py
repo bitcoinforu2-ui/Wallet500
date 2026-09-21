@@ -1,4 +1,9 @@
-from wallet500.cross_source_identity_guard import EVM_ZERO, sanitize
+from wallet500.cross_source_identity_guard import EVM_ZERO, _invalid_exact_identity, sanitize
+
+
+
+def test_arc_zero_address_is_fail_closed():
+    assert _invalid_exact_identity("arc", EVM_ZERO) is True
 
 
 def test_zero_evm_sentinel_never_survives_as_exact_contract():

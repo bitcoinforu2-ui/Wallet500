@@ -80,6 +80,15 @@ def _install_good_evidence(monkeypatch, now):
     )
 
 
+
+def test_arc_deep_intelligence_key_is_case_insensitive():
+    assert deep._key({
+        "chain": "arc",
+        "token_address": "0xAbCd",
+        "pair_address": "0xDeF0",
+    }) == "arc:0xabcd:0xdef0"
+
+
 def test_deep_check_passes_only_after_critical_evidence(tmp_path, monkeypatch):
     now = datetime(2026, 9, 18, 6, 0, tzinfo=timezone.utc)
     _install_good_evidence(monkeypatch, now)

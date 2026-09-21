@@ -25,7 +25,7 @@ PRE_WAVE_MIN_CEX_CONFIRMATIONS = 3
 PRE_WAVE_MIN_CEX_EXCHANGES = 3
 CANONICAL_REAL_READINESS_TOTAL = 7
 ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
-EVM_CHAINS = {"ethereum", "bsc", "bnb", "eth", "base", "arbitrum", "optimism", "polygon", "avalanche"}
+EVM_CHAINS = {"ethereum", "bsc", "bnb", "eth", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc"}
 
 
 def _load(path: Path, default):

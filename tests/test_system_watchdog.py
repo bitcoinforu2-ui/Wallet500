@@ -38,6 +38,15 @@ def codes(report):
     return {x["code"] for x in report["incidents"]}
 
 
+
+def test_watchdog_arc_identity_is_case_insensitive():
+    assert watchdog._key({
+        "chain": "arc",
+        "token_address": "0xAbCd",
+        "pair_address": "0xDeF0",
+    }) == "arc:0xabcd:0xdef0"
+
+
 def test_first_run_baselines_existing_real_alerts_without_fake_gap(tmp_path):
     now = datetime(2026, 9, 5, 16, 0, tzinfo=timezone.utc)
     seed(tmp_path, now)

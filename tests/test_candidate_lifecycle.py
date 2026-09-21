@@ -1,6 +1,6 @@
 import json
 
-from wallet500.candidate_lifecycle import MODE, build
+from wallet500.candidate_lifecycle import MODE, _key, build
 
 
 def write(path, value):
@@ -22,6 +22,11 @@ def sample_record():
         "latest_return_pct": 25.0,
         "latest_friction_adjusted_return_pct": 23.0,
     }
+
+
+
+def test_avalanche_lifecycle_identity_is_case_insensitive():
+    assert _key("avalanche", "0xAbCd", "0xDeF0") == "avalanche|0xabcd|0xdef0"
 
 
 def test_candidate_moves_to_shadow_instead_of_disappearing(tmp_path):

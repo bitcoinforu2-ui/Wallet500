@@ -14,7 +14,7 @@ VALID_MODES = {MODE_SHADOW, MODE_ENFORCE}
 DEFAULT_MAX_EVIDENCE_AGE_SECONDS = 40 * 60
 DEFAULT_MAX_HISTORY = 96
 
-EVM_CHAINS = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche"}
+EVM_CHAINS = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc"}
 
 
 def _load(path: Path, default: Any) -> Any:
@@ -51,6 +51,14 @@ def _f(value: object) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _first_present(row: dict[str, Any], *keys: str):
+    """Return first non-None value; numeric zero is evidence, not missing data."""
+    for key in keys:
+        if key in row and row.get(key) is not None:
+            return row.get(key)
+    return None
 
 
 def _norm(chain: object, value: object) -> str:
@@ -90,14 +98,14 @@ def _market_from_row(row: dict[str, Any], checked_at: object = None) -> dict[str
         "complete": bool(
             row.get("exact_pair_verified") is True
             and _f(row.get("price_usd")) is not None
-            and _f(row.get("execution_pool_liquidity_usd") or row.get("liquidity_usd")) is not None
+            and _f(_first_present(row, "execution_pool_liquidity_usd", "liquidity_usd")) is not None
         ),
         "price_usd": _f(row.get("price_usd")),
-        "liquidity_usd": _f(row.get("execution_pool_liquidity_usd") or row.get("liquidity_usd")),
-        "volume_h1_usd": _f(row.get("dex_volume_h1") or row.get("volume_h1")),
-        "price_change_h1_pct": _f(row.get("price_change_h1_pct") or row.get("price_change_h1")),
-        "price_change_h6_pct": _f(row.get("price_change_h6_pct") or row.get("price_change_h6")),
-        "price_change_h24_pct": _f(row.get("price_change_h24_pct") or row.get("price_change_h24")),
+        "liquidity_usd": _f(_first_present(row, "execution_pool_liquidity_usd", "liquidity_usd")),
+        "volume_h1_usd": _f(_first_present(row, "dex_volume_h1", "volume_h1")),
+        "price_change_h1_pct": _f(_first_present(row, "price_change_h1_pct", "price_change_h1")),
+        "price_change_h6_pct": _f(_first_present(row, "price_change_h6_pct", "price_change_h6")),
+        "price_change_h24_pct": _f(_first_present(row, "price_change_h24_pct", "price_change_h24")),
         "buys_h1": int(row.get("buys_h1") or 0),
         "sells_h1": int(row.get("sells_h1") or 0),
     }
