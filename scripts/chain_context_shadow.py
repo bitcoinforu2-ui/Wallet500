@@ -252,6 +252,8 @@ def event_network_context(
     if event_ts is None:
         return None
     event_price = price_at_or_before(candles_1h, event_ts, max_age_seconds=2 * 60 * 60)
+    if event_price is None:
+        return None
     pre_1h = price_at_or_before(candles_1h, event_ts - 60 * 60, max_age_seconds=2 * 60 * 60)
     pre_4h = price_at_or_before(candles_1h, event_ts - 4 * 60 * 60, max_age_seconds=2 * 60 * 60)
     pre_24h = price_at_or_before(candles_1h, event_ts - 24 * 60 * 60, max_age_seconds=2 * 60 * 60)
@@ -451,8 +453,8 @@ def run() -> dict:
     targets_out = {}
     for identity_key, network, benchmark, state in target_rows:
         current_token_price = num(state.get("last_price"))
-        first_seen_at = state.get("first_seen_at")
         report_row = report_index.get(identity_key) or {}
+        first_seen_at = report_row.get("first_seen_at") or state.get("first_seen_at")
         discovery_token_price = num(
             report_row.get("discovery_price"),
             num(state.get("watch_low_price"), current_token_price),
@@ -466,6 +468,9 @@ def run() -> dict:
             current_token_price,
             discovery_net,
         )
+        old = prev_targets.get(identity_key) if isinstance(prev_targets, dict) else {}
+        if discovery is None:
+            discovery = (old or {}).get("discovery_context")
         pre_buy = token_event_relative(
             state.get("last_pre_buy_alert_price"),
             current_token_price,
@@ -486,6 +491,10 @@ def run() -> dict:
                 now_ts,
             ),
         )
+        if pre_buy is None:
+            pre_buy = (old or {}).get("pre_buy_context")
+        if final_buy is None:
+            final_buy = (old or {}).get("final_buy_context")
 
         token_since_discovery = (discovery or {}).get("token_since_event_pct")
         network_since_discovery = (discovery or {}).get("network_since_event_pct")
@@ -498,7 +507,6 @@ def run() -> dict:
             network_since_final_buy,
         )
 
-        old = prev_targets.get(identity_key) if isinstance(prev_targets, dict) else {}
         history = append_history(
             (old or {}).get("history") or [],
             {
