@@ -11,7 +11,7 @@ REPORT = DATA / "research-sample-report.json"
 REAL = DATA / "real-alerts.json"
 OUT = DATA / "candidate-lifecycle.json"
 MODE = "RESEARCH_ONLY_CANDIDATE_LIFECYCLE_V1"
-EVM_CHAINS = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc"}
+EVM_CHAINS = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc", "robinhood"}
 
 
 def _load(path: Path, default: Any) -> Any:
