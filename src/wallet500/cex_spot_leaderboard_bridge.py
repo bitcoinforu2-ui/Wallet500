@@ -13,6 +13,8 @@ LEADERBOARD_BONUS = 8
 WATCH_SCORE = 25
 ALERT_SCORE = 35
 NON_USD_REGIONAL_EXCHANGES = {"upbit"}
+LEVERAGED_SUFFIXES = ("2L", "2S", "3L", "3S", "4L", "4S", "5L", "5S", "BULL", "BEAR", "UP", "DOWN")
+RADAR_BASE_WATCH_CAP = 100
 
 
 def _load(path: Path, default):
@@ -52,6 +54,16 @@ def _f(value) -> float:
         return float(value or 0)
     except Exception:
         return 0.0
+
+
+def _base_symbol(symbol: object) -> str:
+    value = str(symbol or "").upper().strip().replace("-", "").replace("_", "").replace("/", "")
+    return value[:-4] if value.endswith("USDT") else value
+
+
+def _is_leveraged_product(symbol: object) -> bool:
+    base = _base_symbol(symbol)
+    return any(base.endswith(suffix) and len(base) > len(suffix) for suffix in LEVERAGED_SUFFIXES)
 
 
 def _base_score(change: float, volume: float, volume_comparable: bool = True) -> int:
@@ -115,6 +127,8 @@ def _latest_market_rows(state: dict) -> list[dict]:
 def _rank(rows: list[dict]) -> dict[str, list[dict]]:
     by_exchange: dict[str, list[dict]] = {}
     for row in rows:
+        if _is_leveraged_product(row.get("symbol")):
+            continue
         if _f(row.get("change_24h_pct")) < MIN_CHANGE_PCT:
             continue
         if row.get("volume_comparable_usd_like", True) and _f(row.get("volume_24h")) < MIN_QUOTE_VOLUME_USD:
@@ -239,6 +253,7 @@ def run(data_dir: Path = DATA, now: str | None = None) -> dict:
             row["leaderboard_usd_like_exchanges"] = usd_like_exchanges
             row["leaderboard_regional_exchanges"] = regional_exchanges
             row["leaderboard_bonus"] = LEADERBOARD_BONUS
+            row["persistent_until_exact_identity_resolution"] = True
             row["leaderboard_change_24h_max_pct"] = round(best_change, 4)
             row["leaderboard_volume_24h_max"] = round(best_volume, 4)
             reasons = list(row.get("reasons") or [])
@@ -263,6 +278,7 @@ def run(data_dir: Path = DATA, now: str | None = None) -> dict:
                 "research_only": True,
                 "actionable": False,
                 "identity_required_before_actionable": True,
+                "persistent_until_exact_identity_resolution": True,
                 "reasons": [reason, "leaderboard bridge is discovery-only; exact veteran identity required downstream"],
                 "confirmations": len(exchanges),
                 "coherent_confirmations": len(usd_like_exchanges),
@@ -326,10 +342,27 @@ def run(data_dir: Path = DATA, now: str | None = None) -> dict:
         "leaderboard_symbols": len(ranked),
         "rule": "CURRENT_TOP_GAINER_RANK_IS_DISCOVERY_EVIDENCE_ONLY; NATIVE_QUOTE_VOLUME_NEVER_TREATED_AS_USD; EXACT_CHAIN_CONTRACT_180D_AND_PAIR_GATES_REMAIN_FAIL_CLOSED",
     }
+    current_leaderboard_symbols = set(ranked)
+    protected = [x for x in watchlist if str(x.get("symbol") or "") in current_leaderboard_symbols]
+    protected_symbols = {str(x.get("symbol") or "") for x in protected}
+    base_rows = [x for x in watchlist if str(x.get("symbol") or "") not in protected_symbols][:RADAR_BASE_WATCH_CAP]
+    stored_watchlist = protected + base_rows
+    stored_watchlist.sort(
+        key=lambda x: (
+            int(x.get("spot_revival_score") or 0),
+            -int(x.get("leaderboard_best_rank") or 9999),
+            int(x.get("coherent_confirmations") or 0),
+            int(x.get("confirmations") or 0),
+        ),
+        reverse=True,
+    )
+    bridge_meta["protected_current_leaderboard_count"] = len(protected)
+    bridge_meta["stored_watchlist_count"] = len(stored_watchlist)
+    bridge_meta["leveraged_products_excluded_from_bridge"] = True
     radar["leaderboard_bridge"] = bridge_meta
     radar["watch_count"] = len(watchlist)
     radar["alerts_count"] = len(alerts)
-    radar["watchlist"] = watchlist[:100]
+    radar["watchlist"] = stored_watchlist
     radar["alerts"] = alerts[:100]
     radar_path.write_text(json.dumps(radar, ensure_ascii=False, indent=2), encoding="utf-8")
 
