@@ -939,13 +939,23 @@ def main():
             ):
                 tr.append("ALPHA_CALL_PLUS_BUY_IMBALANCE")
 
+        first_change_for_revalidation = t.get("first_seen_change_24h_pct")
+        if t.get("dynamic_spot_candidate"):
+            try:
+                current_discovery_momentum = float(t.get("discovery_momentum_change_pct") or 0)
+                first_change_numeric = float(first_change_for_revalidation or 0)
+                if current_discovery_momentum > first_change_numeric:
+                    first_change_for_revalidation = current_discovery_momentum
+            except (TypeError, ValueError):
+                pass
+
         quarter_wave = (
             quarter_wave_revalidation(
                 prev,
                 live["price"],
                 live["observed_at"],
                 anchor_price=t.get("first_seen_price") or t.get("discovery_price"),
-                anchor_change_24h_pct=t.get("first_seen_change_24h_pct"),
+                anchor_change_24h_pct=first_change_for_revalidation,
                 anchor_at=t.get("first_seen_at"),
             )
             if t.get("dynamic_spot_candidate")
