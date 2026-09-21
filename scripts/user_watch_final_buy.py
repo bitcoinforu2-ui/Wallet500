@@ -276,6 +276,18 @@ def _policy(config: dict) -> dict:
         "cex_breakout_min_holder_score": -7.0,
         "cex_breakout_min_bid_ask_depth_ratio": 0.50,
         "cex_breakout_min_current_evidence": 1,
+        "hybrid_breakout_enabled": True,
+        "hybrid_breakout_min_cex_turnover_usd": 100000.0,
+        "hybrid_breakout_min_relative_volume_multiple": 4.0,
+        "hybrid_breakout_max_gainer_rank": 5,
+        "hybrid_breakout_min_dex_liquidity_usd": 150000.0,
+        "hybrid_breakout_min_dex_volume_h1_usd": 100000.0,
+        "hybrid_breakout_min_activity_h1": 500,
+        "hybrid_breakout_min_buy_sell_ratio": 0.85,
+        "hybrid_breakout_min_microstructure_score": 10.0,
+        "hybrid_breakout_min_scan_gain_pct": 1.0,
+        "hybrid_breakout_min_current_evidence": 2,
+        "hybrid_breakout_min_holder_score": -7.0,
     }
     for k, v in defaults.items():
         p.setdefault(k, v)
@@ -588,6 +600,49 @@ def evaluate(
             f"_SCAN_{scan_gain:.2f}PCT"
         )
 
+    # Hybrid continuation is for cases like R2: both the exact DEX pool and the
+    # exact CEX market are strong, but a single DEX buy/sell ratio or rebound
+    # heuristic would otherwise veto a real continuation. It never bypasses
+    # hard risk, stale intelligence, price disagreement, weak execution, or the
+    # two-scan confirmation requirement.
+    hybrid_breakout_continuation = bool(
+        policy.get("hybrid_breakout_enabled") is True
+        and quarter_wave_lane
+        and not cex_market_only
+        and report_verified
+        and cex_execution_verified
+        and cex_price_coherent
+        and spread <= float(policy["max_source_spread_pct"])
+        and status == "CURRENT"
+        and evidence >= int(policy["hybrid_breakout_min_current_evidence"])
+        and not hard_risks
+        and holder >= float(policy["hybrid_breakout_min_holder_score"])
+        and micro >= float(policy["hybrid_breakout_min_microstructure_score"])
+        and liquidity >= float(policy["hybrid_breakout_min_dex_liquidity_usd"])
+        and volume_h1 >= float(policy["hybrid_breakout_min_dex_volume_h1_usd"])
+        and activity >= int(policy["hybrid_breakout_min_activity_h1"])
+        and ratio >= float(policy["hybrid_breakout_min_buy_sell_ratio"])
+        and cex_turnover >= float(policy["hybrid_breakout_min_cex_turnover_usd"])
+        and cex_relative_multiple >= float(policy["hybrid_breakout_min_relative_volume_multiple"])
+        and cex_rank is not None
+        and cex_rank <= int(policy["hybrid_breakout_max_gainer_rank"])
+        and scan_gain is not None
+        and scan_gain >= float(policy["hybrid_breakout_min_scan_gain_pct"])
+    )
+    if hybrid_breakout_continuation:
+        bypass = {
+            "BUY_FLOW_NOT_CONFIRMED",
+            "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
+            "REBOUND_FROM_WATCH_LOW_NOT_CONFIRMED",
+        }
+        blockers = [b for b in blockers if b not in bypass]
+        proof.append(
+            f"HYBRID_CEX_DEX_BREAKOUT_LIQ_{liquidity:.0f}"
+            f"_VOL1H_{volume_h1:.0f}_ACT_{activity}"
+            f"_REL_{cex_relative_multiple:.2f}X_RANK_{cex_rank}"
+            f"_SCAN_{scan_gain:.2f}PCT"
+        )
+
     observable = bool(
         market is not None
         and observed is not None
@@ -676,6 +731,7 @@ def evaluate(
             "cex_fast_path": cex_quarter_wave_fast_path,
             "cex_market_only_fast_path": cex_market_only_fast_path,
             "cex_breakout_continuation": cex_breakout_continuation,
+            "hybrid_breakout_continuation": hybrid_breakout_continuation,
             "anchor_price_usd": quarter_wave_anchor if quarter_wave_anchor > 0 else None,
             "gain_from_anchor_pct": round(quarter_wave_gain, 4) if quarter_wave_gain is not None else None,
             "armed_at": target.get("quarter_wave_armed_at"),
@@ -736,6 +792,9 @@ def evaluate(
             "cex_breakout_continuation_requires_current_intelligence": True,
             "cex_breakout_continuation_requires_exact_cex_execution": True,
             "cex_breakout_continuation_never_bypasses_hard_risk": True,
+            "hybrid_breakout_requires_exact_cex_and_dex_execution": True,
+            "hybrid_breakout_never_bypasses_hard_risk_or_price_coherence": True,
+            "hybrid_breakout_keeps_two_scan_confirmation": True,
             "does_not_modify_veteran_real_alert_policy": True,
         },
     }
