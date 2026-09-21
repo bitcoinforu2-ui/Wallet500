@@ -121,7 +121,8 @@ def fuse(target: dict, events: list[dict], policy: dict, now_dt: datetime | None
     family_points: dict[str, float] = {}
     evidence: list[dict] = []
     contradictions = 0.0
-    hard_risks: list[str] = []
+    hard_risk_records: list[tuple[str, datetime | None]] = []
+    hard_risk_superseded_after: dict[str, datetime] = {}
     stale_count = 0
     invalid_time_count = 0
     current_count = 0
@@ -164,8 +165,19 @@ def fuse(target: dict, events: list[dict], policy: dict, now_dt: datetime | None
             family_points[fam] = family_points.get(fam, 0.0) + direction * raw
         if direction < 0 and e.get("contradicts_bullish"):
             contradictions += raw * 100.0
+
+        supersedes = e.get("supersedes_hard_risk_kinds")
+        if isinstance(supersedes, (list, tuple)) and event_dt is not None:
+            for risk_kind in supersedes:
+                risk_kind = str(risk_kind or "").strip()
+                if not risk_kind:
+                    continue
+                prev_dt = hard_risk_superseded_after.get(risk_kind)
+                if prev_dt is None or event_dt > prev_dt:
+                    hard_risk_superseded_after[risk_kind] = event_dt
+
         if e.get("hard_risk"):
-            hard_risks.append(str(e.get("kind") or "hard_risk"))
+            hard_risk_records.append((str(e.get("kind") or "hard_risk"), event_dt))
         evidence.append({
             "family": fam,
             "kind": e.get("kind"),
@@ -177,6 +189,13 @@ def fuse(target: dict, events: list[dict], policy: dict, now_dt: datetime | None
             "age_minutes": round(age, 2),
             "current": True,
         })
+
+    hard_risks: list[str] = []
+    for risk_kind, risk_dt in hard_risk_records:
+        superseded_at = hard_risk_superseded_after.get(risk_kind)
+        if superseded_at is not None and risk_dt is not None and risk_dt <= superseded_at:
+            continue
+        hard_risks.append(risk_kind)
 
     weighted: dict[str, float] = {}
     positive_families = 0
