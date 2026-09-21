@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "mode": "EXACT_IDENTITY_PROTOCOL_BUYBACK_REGISTRY",
+  "principles": {
+    "exact_chain_contract_pair_required": true,
+    "ticker_only_mapping_forbidden": true,
+    "source_semantics_must_be_explicit": true,
+    "holder_revenue_is_not_buyback_proof_by_default": true,
+    "revenue_is_lead_signal_not_execution_proof": true,
+    "buyback_signal_is_not_buy": true,
+    "no_direct_telegram": true,
+    "fail_closed_on_missing_identity_or_source": true
+  },
+  "defaults": {
+    "fusion_window_minutes": 180,
+    "min_liquidity_usd": 50000,
+    "min_volume_h1_usd": 15000,
+    "min_activity_h1": 50,
+    "min_buy_sell_ratio": 1.2,
+    "min_execution_delta_usd": 25000,
+    "bootstrap_current_day_min_usd": 1000000,
+    "spike_multiple_7d": 1.5,
+    "revenue_acceleration_multiple_7d": 1.35,
+    "pressure_bps_mcap_trigger": 2,
+    "corroboration_min_ratio": 0.7,
+    "radar_pre_execution_score": 38,
+    "radar_execution_score": 50,
+    "max_h1_extension_pct": 25,
+    "max_h24_extension_pct": 150
+  },
+  "entries": [
+    {
+      "id": "pump-fun-pump",
+      "active": true,
+      "protocol_name": "pump.fun",
+      "symbol": "PUMP",
+      "network": "solana",
+      "contract": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+      "pair": "2uF4Xh61rDwxnG9woyxsVQP7zuA6kLFpb3NvnRQeoiSd",
+      "dex_url": "https://dexscreener.com/solana/2uF4Xh61rDwxnG9woyxsVQP7zuA6kLFpb3NvnRQeoiSd",
+      "defillama_slug": "pump.fun",
+      "buyback_sensor": {
+        "enabled": true,
+        "execution_sources": [
+          {
+            "adapter": "json_daily_series",
+            "name": "Pump.fun Buyback API",
+            "url": "https://fees.pump.fun/api/buybacks",
+            "series_paths": [
+              "dailyBuybacks",
+              "daily_buybacks"
+            ],
+            "execution_proof": true,
+            "corroboration_only": false,
+            "semantics": "ONCHAIN_BURN_AGGREGATED_PROTOCOL_BUYBACK"
+          },
+          {
+            "adapter": "defillama_holders_revenue",
+            "name": "DefiLlama Holders Revenue",
+            "slug": "pump.fun",
+            "execution_proof": false,
+            "corroboration_only": true,
+            "semantics": "VALUE_ACCRUAL_CORROBORATION"
+          }
+        ],
+        "funding_source": {
+          "adapter": "defillama_revenue",
+          "slug": "pump.fun",
+          "buyback_share_pct": 50
+        },
+        "min_execution_delta_usd": 25000,
+        "bootstrap_current_day_min_usd": 1000000,
+        "spike_multiple_7d": 1.5,
+        "revenue_acceleration_multiple_7d": 1.35,
+        "pressure_bps_mcap_trigger": 2,
+        "corroboration_min_ratio": 0.7
+      }
+    }
+  ]
+}

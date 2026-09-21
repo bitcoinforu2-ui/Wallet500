@@ -413,3 +413,42 @@ def test_stale_prior_market_snapshot_is_not_treated_as_scan_to_scan_chase():
     assert "NEED_SECOND_VERIFIED_SCAN" in decision["blockers"]
     assert "SHORT_TERM_CHASE_RISK" not in decision["blockers"]
     assert state["last_market_observed_at"] == now.isoformat()
+
+
+def test_buyback_pressure_candidate_is_high_priority_internal_research(monkeypatch, tmp_path):
+    import json
+
+    dynamic = tmp_path / "dynamic-buyback.json"
+    dynamic.write_text(json.dumps({
+        "candidates": [{
+            "candidate_type": "PROTOCOL_BUYBACK_PRESSURE",
+            "symbol": "DEMO",
+            "network": "solana",
+            "contract": "Demo111111111111111111111111111111111111111",
+            "pair": "Pair111111111111111111111111111111111111111",
+            "dex_liquidity_usd": 250000,
+            "buyback_radar_score": 78,
+            "buyback_stage": "EXECUTION_CONFIRMED",
+            "buyback_reasons": ["BUYBACK_EXECUTION_2000000"],
+            "research_only": True,
+            "direct_buy_eligible": False,
+            "telegram_eligible": False,
+            "telegram_policy": "FINAL_BUY_ONLY_VIA_CANONICAL_ENGINE",
+            "priority": "HIGHEST",
+            "close_watch": "HIGHEST",
+            "collector_priority": 1,
+        }]
+    }))
+    monkeypatch.setattr(engine, "DYNAMIC", dynamic)
+
+    rows = engine.dynamic_candidates({})
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["dynamic_buyback_candidate"] is True
+    assert row["deep_investigation"] is True
+    assert row["full_intelligence"] is True
+    assert row["proactive_evidence_recovery"] is True
+    assert row["direct_buy_eligible"] is False
+    assert row["telegram_eligible"] is False
+    assert row["telegram_policy"] == "FINAL_BUY_ONLY_VIA_CANONICAL_ENGINE"
