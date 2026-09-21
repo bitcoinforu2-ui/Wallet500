@@ -385,7 +385,7 @@ def main() -> None:
             "family_scores": {},
         },
     }
-    trio_q, trio_s1 = gate.evaluate(
+    trio_blocked, _ = gate.evaluate(
         trio_target,
         trio_market,
         trio_obs,
@@ -393,12 +393,49 @@ def main() -> None:
         POLICY,
         now=t2,
     )
+    assert trio_blocked["quarter_wave_revalidation"]["cex_market_only_fast_path"] is False
+    assert trio_blocked["pre_buy"] is False
+    assert "INTELLIGENCE_NOT_CURRENT" in trio_blocked["blockers"]
+    assert "INTELLIGENCE_STALE_OR_UNTIMED" in trio_blocked["blockers"]
+    assert "CURRENT_EVIDENCE_TOO_LOW" in trio_blocked["blockers"]
+    assert "MARKET_MICROSTRUCTURE_NOT_POSITIVE" in trio_blocked["blockers"]
+
+    # Once exact-CEX execution is paired with current, sufficiently rich
+    # intelligence, the stricter market-only lane may qualify without inventing
+    # DEX evidence. This preserves the fast path while keeping it fail closed.
+    trio_current_obs = {
+        **trio_obs,
+        "intelligence": {
+            "status": "CURRENT",
+            "score": 0,
+            "families": 1,
+            "current_evidence_count": 3,
+            "evidence_age_minutes": 0.2,
+            "hard_risks": [],
+            "family_scores": {
+                "market_microstructure": 8,
+                "holder_network": 0,
+                "wallet_flow": 0,
+            },
+        },
+    }
+    trio_q, trio_s1 = gate.evaluate(
+        trio_target,
+        trio_market,
+        trio_current_obs,
+        {"last_price": 0.0110, "watch_low_price": 0.0100},
+        POLICY,
+        now=t2,
+    )
     assert trio_q["quarter_wave_revalidation"]["cex_market_only_fast_path"] is True
     assert trio_q["pre_buy"] is True
     assert "INTELLIGENCE_NOT_CURRENT" not in trio_q["blockers"]
+    assert "INTELLIGENCE_STALE_OR_UNTIMED" not in trio_q["blockers"]
+    assert "CURRENT_EVIDENCE_TOO_LOW" not in trio_q["blockers"]
+    assert "MARKET_MICROSTRUCTURE_NOT_POSITIVE" not in trio_q["blockers"]
 
     trio_market2 = dict(trio_market, price=0.0117, observed_at=t3.isoformat())
-    trio_buy, _ = gate.evaluate(trio_target, trio_market2, trio_obs, trio_s1, POLICY, now=t3)
+    trio_buy, _ = gate.evaluate(trio_target, trio_market2, trio_current_obs, trio_s1, POLICY, now=t3)
     assert trio_buy["recommended_action"] == "BUY"
     assert trio_buy["alert"] is True
 
