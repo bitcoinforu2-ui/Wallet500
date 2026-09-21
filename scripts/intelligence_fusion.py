@@ -126,6 +126,7 @@ def fuse(target: dict, events: list[dict], policy: dict, now_dt: datetime | None
     stale_count = 0
     invalid_time_count = 0
     current_count = 0
+    current_kinds: set[str] = set()
     freshest_at: datetime | None = None
 
     for e in events:
@@ -151,6 +152,8 @@ def fuse(target: dict, events: list[dict], policy: dict, now_dt: datetime | None
             continue
 
         current_count += 1
+        if e.get("kind"):
+            current_kinds.add(str(e.get("kind")))
         fp = _fingerprint(e, identity_key)
         duplicate = fp in seen
         seen[fp] = seen.get(fp, 0) + 1
@@ -230,6 +233,7 @@ def fuse(target: dict, events: list[dict], policy: dict, now_dt: datetime | None
         "hard_risks": sorted(set(hard_risks)),
         "contradiction_penalty": round(min(float(fusion["contradiction_penalty_max"]), contradictions), 2),
         "current_evidence_count": current_count,
+        "current_evidence_kinds": sorted(current_kinds),
         "stale_evidence_count": stale_count,
         "invalid_timestamp_evidence_count": invalid_time_count,
         "evidence_count": len(evidence),

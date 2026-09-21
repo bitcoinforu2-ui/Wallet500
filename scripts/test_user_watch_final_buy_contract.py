@@ -245,6 +245,7 @@ def main() -> None:
     mgt_obs = observed(score=15, families=1)
     mgt_obs["identity_key"] = cex_key
     mgt_obs["intelligence"]["current_evidence_count"] = 4
+    mgt_obs["intelligence"]["current_evidence_kinds"] = ["evm_contract_authority_buy_eligible"]
     mgt_obs["intelligence"]["family_scores"]["market_microstructure"] = 15
     mgt_q, _ = gate.evaluate(
         mgt_target,
@@ -260,6 +261,20 @@ def main() -> None:
     assert "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET" not in mgt_q["blockers"]
     assert "BUY_FLOW_NOT_CONFIRMED" not in mgt_q["blockers"]
     assert mgt_q["pre_buy"] is True
+
+    mgt_unverified_authority = dict(mgt_obs)
+    mgt_unverified_authority["intelligence"] = dict(mgt_obs["intelligence"])
+    mgt_unverified_authority["intelligence"]["current_evidence_kinds"] = []
+    mgt_blocked, _ = gate.evaluate(
+        mgt_target,
+        mgt_market,
+        mgt_unverified_authority,
+        {"last_price": 0.00012, "watch_low_price": 0.00010},
+        POLICY,
+        now=t2,
+    )
+    assert "EVM_AUTHORITY_SECURITY_NOT_BUY_ELIGIBLE" in mgt_blocked["blockers"]
+    assert mgt_blocked["recommended_action"] == "WAIT"
 
     # PTB-like case: DEX flow is weak, but exact Gate execution shows an extreme
     # volume/rank breakout with tight spread and sufficient executable depth.
@@ -303,6 +318,7 @@ def main() -> None:
             "current_evidence_count": 1,
             "evidence_age_minutes": 0.3,
             "hard_risks": [],
+            "current_evidence_kinds": ["evm_contract_authority_buy_eligible"],
             "family_scores": {
                 "market_microstructure": 0,
                 "wallet_flow": 0,
@@ -446,6 +462,7 @@ def main() -> None:
             "current_evidence_count": 15,
             "evidence_age_minutes": 0.2,
             "hard_risks": [],
+            "current_evidence_kinds": ["evm_contract_authority_buy_eligible"],
             "family_scores": {
                 "market_microstructure": 15,
                 "wallet_flow": 0,

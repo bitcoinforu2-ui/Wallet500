@@ -3,10 +3,13 @@ from __future__ import annotations
 import json
 import os
 import time
+import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+from wallet500.evm_contract_authority_guard import evaluate_security
 
 try:
     import resilient_http
@@ -32,6 +35,16 @@ HONEYPOT_CHAIN_IDS = {
     "optimism": 10,
     "polygon": 137,
 }
+GOPLUS_CHAIN_IDS = {
+    "ethereum": 1,
+    "bsc": 56,
+    "base": 8453,
+    "arbitrum": 42161,
+    "optimism": 10,
+    "polygon": 137,
+    "avalanche": 43114,
+}
+GOPLUS_BATCH_SIZE = 30
 
 
 def now() -> str:
@@ -128,7 +141,21 @@ def ds_collect(t, prev):
     buys = num(tx.get("buys"))
     sells = num(tx.get("sells"))
     price = num(exact.get("priceUsd"))
-    snap = {"price": price, "liquidity": liq, "volume_h1": vol, "buys_h1": buys, "sells_h1": sells}
+    pair_created_at = num(exact.get("pairCreatedAt"))
+    age_minutes = (
+        max(0.0, (time.time() * 1000.0 - pair_created_at) / 60000.0)
+        if pair_created_at and pair_created_at > 0
+        else None
+    )
+    snap = {
+        "price": price,
+        "liquidity": liq,
+        "volume_h1": vol,
+        "buys_h1": buys,
+        "sells_h1": sells,
+        "pair_created_at": pair_created_at,
+        "age_minutes": round(age_minutes, 2) if age_minutes is not None else None,
+    }
 
     out.append(event(t, "market_microstructure", "verified_market_snapshot", 0, 0, 100, "DexScreener", url=str(exact.get("url") or ""), cid=f"dexsnapshot:{identity_key}:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}", extra={"identity_verified": True, "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR", "price_usd": price, "liquidity_usd": liq, "volume_h1_usd": vol, "buys_h1": buys, "sells_h1": sells}))
 
@@ -306,6 +333,165 @@ def honeypot(t, prev=None, with_snapshot=False, market_snapshot=None):
     return (out, snap) if with_snapshot else out
 
 
+
+def goplus_batch(tokens):
+    """Fetch EVM authority/security data in bounded per-chain batches."""
+    grouped = {}
+    for t in tokens:
+        chain, contract, _, _ = identity(t)
+        chain_id = GOPLUS_CHAIN_IDS.get(chain)
+        if not chain_id or not contract:
+            continue
+        grouped.setdefault((chain, chain_id), [])
+        if contract not in grouped[(chain, chain_id)]:
+            grouped[(chain, chain_id)].append(contract)
+
+    access_token = os.getenv("GOPLUS_ACCESS_TOKEN", "").strip()
+    headers = {"Authorization": "Bearer " + access_token} if access_token else {}
+    out = {}
+    for (chain, chain_id), contracts in grouped.items():
+        for i in range(0, len(contracts), GOPLUS_BATCH_SIZE):
+            chunk = contracts[i:i + GOPLUS_BATCH_SIZE]
+            query = urllib.parse.quote(",".join(chunk), safe=",")
+            data = get_json(
+                f"https://api.gopluslabs.io/api/v1/token_security/{chain_id}?contract_addresses={query}",
+                headers=headers,
+                timeout=15,
+            )
+            result = (data or {}).get("result") if isinstance(data, dict) else None
+            if not isinstance(result, dict):
+                continue
+            by_lower = {str(k).lower(): v for k, v in result.items() if isinstance(v, dict)}
+            for contract in chunk:
+                row = by_lower.get(contract.lower())
+                if row is not None:
+                    out[(chain, contract)] = row
+    return out
+
+
+def goplus_authority(t, raw, prev=None, market_snapshot=None):
+    chain, contract, _, identity_key = identity(t)
+    if chain not in GOPLUS_CHAIN_IDS or not contract:
+        return [], {}
+
+    market = market_snapshot if isinstance(market_snapshot, dict) else {}
+    age_minutes = num(market.get("age_minutes"))
+    if age_minutes is None:
+        age_minutes = num(t.get("age_minutes") or t.get("pair_age_minutes") or t.get("token_age_minutes"))
+
+    if not isinstance(raw, dict) or not raw:
+        snap = {
+            "observed_at": now(),
+            "status": "UNAVAILABLE",
+            "security_verified": False,
+            "buy_eligible": False,
+            "age_minutes": age_minutes,
+        }
+        return [
+            event(
+                t,
+                "supply_tokenomics",
+                "evm_contract_authority_unavailable",
+                -1,
+                35,
+                80,
+                "GoPlus Token Security",
+                cid=f"goplus-authority:{identity_key}:unavailable",
+                extra={
+                    "identity_verified": True,
+                    "identity_scope": "EXACT_CHAIN_CONTRACT",
+                    "security_verified": False,
+                    "hard_risk": False,
+                    "contradicts_bullish": True,
+                    "buy_eligible": False,
+                    "age_minutes": age_minutes,
+                },
+            )
+        ], snap
+
+    assessment = evaluate_security(
+        raw,
+        age_minutes=age_minutes,
+        previous=prev if isinstance(prev, dict) else {},
+    )
+    assessment = dict(assessment)
+    assessment["observed_at"] = now()
+    assessment["status"] = "CURRENT"
+
+    common = {
+        "identity_verified": True,
+        "identity_scope": "EXACT_CHAIN_CONTRACT",
+        "security_verified": True,
+        "risk_score": assessment["risk_score"],
+        "risk_tier": assessment["risk_tier"],
+        "risk_reasons": assessment["risk_reasons"],
+        "dangerous_combinations": assessment["dangerous_combinations"],
+        "direct_critical_capabilities": assessment["direct_critical_capabilities"],
+        "buy_eligible": assessment["buy_eligible"],
+        "age_minutes": assessment["age_minutes"],
+        "age_bucket": assessment["age_bucket"],
+        "owner_active": assessment["owner_active"],
+        "owner_address": assessment["owner_address"],
+        "creator_address": assessment["creator_address"],
+        "authority_flags": assessment["flags"],
+    }
+
+    out = [
+        event(
+            t,
+            "supply_tokenomics",
+            "evm_contract_authority_verified",
+            0,
+            0,
+            96,
+            "GoPlus Token Security",
+            cid=f"goplus-authority:{identity_key}:verified",
+            extra={**common, "hard_risk": False},
+        )
+    ]
+    if assessment["buy_eligible"]:
+        out.append(
+            event(
+                t,
+                "supply_tokenomics",
+                "evm_contract_authority_buy_eligible",
+                0,
+                0,
+                96,
+                "GoPlus Token Security",
+                cid=f"goplus-authority:{identity_key}:buy-eligible",
+                extra={**common, "hard_risk": False},
+            )
+        )
+
+    if assessment["risk_score"] >= 15 or not assessment["buy_eligible"]:
+        out.append(
+            event(
+                t,
+                "supply_tokenomics",
+                "evm_contract_authority_risk",
+                -1,
+                max(20, assessment["risk_score"]),
+                94,
+                "GoPlus Token Security",
+                cid=f"goplus-authority:{identity_key}:risk",
+                extra={
+                    **common,
+                    "hard_risk": assessment["hard_risk"],
+                    "hard_risk_reason": assessment["hard_risk_reason"],
+                    "contradicts_bullish": True,
+                    "security_confirmation": (
+                        "DIRECT_CRITICAL_CAPABILITY"
+                        if assessment["direct_critical_capabilities"]
+                        else "CONSECUTIVE_YOUNG_TOKEN_CONFIRMATION"
+                        if assessment["consecutive_composite_confirmation"]
+                        else "FIRST_OR_NONCRITICAL_AUTHORITY_OBSERVATION"
+                    ),
+                },
+            )
+        )
+    return out, assessment
+
 def github_collect(t, prev):
     repo = (t.get("free_intel") or {}).get("github_repo")
     if not repo:
@@ -420,8 +606,9 @@ def main():
     state = json.loads(STATE.read_text()) if STATE.exists() else {"tokens": {}}
     old_events = (json.loads(EVENTS.read_text()).get("events") or []) if EVENTS.exists() else []
     fresh = []
-    newstate = {"version": 2, "updated_at": now(), "tokens": {}}
+    newstate = {"version": 3, "updated_at": now(), "tokens": {}}
     fresh += trending(tokens)
+    authority_rows = goplus_batch(tokens)
 
     for t in tokens:
         _, _, _, key = identity(t)
@@ -435,11 +622,26 @@ def main():
             market_snapshot=ds,
         )
         fresh += he
+        chain, contract, _, _ = identity(t)
+        ae, authority_state = goplus_authority(
+            t,
+            authority_rows.get((chain, contract)),
+            p.get("goplus_authority", {}),
+            market_snapshot=ds,
+        )
+        fresh += ae
         ge, gs = github_collect(t, p.get("github", {}))
         fresh += ge
         le, ls = defillama(t, p.get("defillama", {}))
         fresh += le
-        newstate["tokens"][key] = {"dexscreener": ds, "honeypot": hs, "github": gs, "defillama": ls, "observed_at": now()}
+        newstate["tokens"][key] = {
+            "dexscreener": ds,
+            "honeypot": hs,
+            "goplus_authority": authority_state,
+            "github": gs,
+            "defillama": ls,
+            "observed_at": now(),
+        }
         time.sleep(0.15)
 
     cutoff = time.time() - 24 * 3600

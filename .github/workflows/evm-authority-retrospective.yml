@@ -1,0 +1,64 @@
+name: EVM Authority Guard + Retrospective
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/wallet500/evm_contract_authority_guard.py"
+      - "scripts/free_intelligence_collector.py"
+      - "scripts/intelligence_fusion.py"
+      - "scripts/unified_watch_engine.py"
+      - "scripts/user_watch_final_buy.py"
+      - "scripts/evm_authority_retrospective.py"
+      - "tests/test_evm_contract_authority_guard.py"
+      - "tests/test_free_intelligence_security_quorum.py"
+      - "scripts/test_user_watch_final_buy_contract.py"
+      - ".github/workflows/evm-authority-retrospective.yml"
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: evm-authority-retrospective
+  cancel-in-progress: false
+
+jobs:
+  guard-and-retrospective:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      PYTHONPATH: "src:."
+      EVM_AUTHORITY_RETROSPECTIVE_MAX: "60"
+      GOPLUS_ACCESS_TOKEN: ${{ secrets.GOPLUS_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test runner
+        run: python -m pip install --quiet pytest
+
+      - name: Run focused authority/security contracts
+        run: |
+          pytest -q tests/test_evm_contract_authority_guard.py tests/test_free_intelligence_security_quorum.py
+          python scripts/test_user_watch_final_buy_contract.py
+
+      - name: Run young-EVM retrospective
+        run: python scripts/evm_authority_retrospective.py
+
+      - name: Persist retrospective report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/evm-authority-retrospective.json
+          if git diff --cached --quiet; then
+            echo "No retrospective changes"
+          else
+            git commit -m "data: refresh EVM authority retrospective"
+            git push
+          fi

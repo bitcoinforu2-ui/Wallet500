@@ -408,6 +408,7 @@ def evaluate(
     score = num(intel.get("score"), 0.0) or 0.0
     families = int(num(intel.get("families") or intel.get("independent_positive_families"), 0.0) or 0)
     evidence = int(num(intel.get("current_evidence_count"), 0.0) or 0)
+    evidence_kinds = {str(x) for x in (intel.get("current_evidence_kinds") or []) if str(x).strip()}
     intel_age = num(intel.get("evidence_age_minutes"))
     hard_risks = [str(x) for x in (intel.get("hard_risks") or []) if str(x).strip()]
     family_scores = intel.get("family_scores") if isinstance(intel.get("family_scores"), dict) else {}
@@ -423,6 +424,10 @@ def evaluate(
         blockers.append("CURRENT_EVIDENCE_TOO_LOW")
     if hard_risks:
         blockers.append("HARD_RISK_PRESENT")
+    target_chain = chain_name(target.get("chain") or target.get("network"))
+    if target_chain in EVM and not cex_market_only:
+        if "evm_contract_authority_buy_eligible" not in evidence_kinds:
+            blockers.append("EVM_AUTHORITY_SECURITY_NOT_BUY_ELIGIBLE")
     if micro <= 0:
         blockers.append("MARKET_MICROSTRUCTURE_NOT_POSITIVE")
 
