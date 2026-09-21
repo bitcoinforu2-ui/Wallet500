@@ -4,25 +4,12 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '7,22,37,52 * * * *'
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'experiments/**'
-      - 'scripts/**'
-      - 'pyproject.toml'
-      - '.github/workflows/live-scan.yml'
-      - 'data/manual-watchlist.json'
-      - 'data/cex-identity-registry.json'
-
 permissions:
   contents: write
 
-# Collection and validation are serialized only against other Live Scan runs.
-# Do not share this concurrency group with advisory/research writers: GitHub keeps
-# at most one pending run per group and replaces an older pending run even when
-# cancel-in-progress is false. The verified publisher has its own serialization.
+# Production collection and validation run only on schedule/manual dispatch.
+# Code pushes are validated by Wallet500 Tests/Full Guard and must never replace
+# a pending scheduled production scan inside this concurrency group.
 concurrency:
   group: wallet500-live-scan
   cancel-in-progress: false
