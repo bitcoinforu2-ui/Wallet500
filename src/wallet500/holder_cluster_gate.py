@@ -24,10 +24,12 @@ ZERO = "0x0000000000000000000000000000000000000000"
 DEAD = "0x000000000000000000000000000000000000dead"
 ROLE_REGISTRY_FILE = DATA / "holder-infrastructure-registry.json"
 EXCLUDABLE_ROLES = {"DEX_LP_POOL", "CEX_CUSTODY", "BURN_LOCK", "LOCKED_VAULT", "BRIDGE_CUSTODY"}
+EVM_CHAINS = {"ETH", "ETHEREUM", "BSC", "BNB", "BASE", "ARBITRUM", "OPTIMISM", "POLYGON", "AVALANCHE", "ARC", "ROBINHOOD"}
 DEFAULT_RPC = {
     "SOLANA": ["https://api.mainnet-beta.solana.com"],
     "ETHEREUM": ["https://ethereum-rpc.publicnode.com", "https://eth.llamarpc.com"],
     "BSC": ["https://bsc-rpc.publicnode.com", "https://bsc-dataseed.binance.org"],
+    "ROBINHOOD": ["https://rpc.mainnet.chain.robinhood.com"],
 }
 
 
@@ -45,6 +47,7 @@ RPC = {
     "SOLANA": _urls(os.getenv("SOLANA_RPC_URL"), *DEFAULT_RPC["SOLANA"]),
     "ETHEREUM": _urls(os.getenv("ETHEREUM_RPC_URL"), os.getenv("ETH_RPC_URL"), os.getenv("ETH_RPC_FALLBACK_URLS"), *DEFAULT_RPC["ETHEREUM"]),
     "BSC": _urls(os.getenv("BSC_RPC_URL"), os.getenv("BNB_RPC_URL"), os.getenv("BSC_RPC_FALLBACK_URLS"), *DEFAULT_RPC["BSC"]),
+    "ROBINHOOD": _urls(os.getenv("ROBINHOOD_RPC_URL"), os.getenv("ROBINHOOD_RPC_FALLBACK_URLS"), *DEFAULT_RPC["ROBINHOOD"]),
 }
 RPC["SOL"] = RPC["SOLANA"]
 RPC["ETH"] = RPC["ETHEREUM"]
@@ -166,7 +169,7 @@ def _role_aware_distribution(chain, holders, pair_address=None, registry=None):
     def role_pct(role):
         return sum(float(x.get("pct") or 0) for x in classified if x.get("holder_role") == role)
 
-    return {"holders": classified, "real_holders": real_holders, "gross_top1_pct": sum(gross[:1]), "gross_top5_pct": sum(gross[:5]), "gross_top10_pct": sum(gross[:10]), "adjusted_top1_pct": sum(real_pcts[:1]), "adjusted_top5_pct": sum(real_pcts[:5]), "adjusted_top10_pct": sum(real_pcts[:10]), "adjusted_top10_complete": len(real_holders) >= 10, "known_infrastructure_pct": sum(float(x.get("pct") or 0) for x in excluded), "dex_lp_pct": role_pct("DEX_LP_POOL"), "cex_custody_pct": role_pct("CEX_CUSTODY"), "burn_lock_pct": role_pct("BURN_LOCK"), "excluded_holder_count": len(excluded), "unknown_holder_pct_observed": sum(float(x.get("pct") or 0) for x in classified if x.get("holder_role") == "UNKNOWN")}
+    return {"holders": classified, "real_holders": real_holders, "gross_top1_pct": sum(gross[:1]), "gross_top5_pct": sum(gross[:5]), "gross_top10_pct": sum(gross[:10]), "adjusted_top1_pct": sum(real_pcts[:1]), "adjusted_top5_pct": sum(real_pcts[:5]), "adjusted_top10_pct": sum(real_pcts[:10]), "adjusted_top10_complete": len(real_holders) >= 10, "known_infrastructure_pct": sum(float(x.get("pct") or 0) for x in excluded), "dex_lp_pct": role_pct("DEX_LP_POOL"), "cex_custody_pct": role_pct("CEX_CUSTODY"), "burn_lock_pct": role_pct("BURN_LOCK"), "locked_vault_pct": role_pct("LOCKED_VAULT"), "excluded_holder_count": len(excluded), "unknown_holder_pct_observed": sum(float(x.get("pct") or 0) for x in classified if x.get("holder_role") == "UNKNOWN")}
 
 
 def _evm_logs_resilient(urls, token, a, b):
@@ -301,7 +304,7 @@ def analyze(row):
     if c in ("SOL", "SOLANA"):
         holders, token_accounts, meta = _sol_holders(token)
         if meta.get("reason") not in (None, "SOLANA_OWNER_RESOLUTION_COMPLETE"): reasons.append(meta["reason"])
-    elif c in ("ETH", "ETHEREUM", "BSC", "BNB"):
+    elif c in EVM_CHAINS:
         holders, graph, clusters, meta = _evm_holders(c, str(token).lower(), row); urls = RPC.get(c, []); deployer_evidence = {"verified": False, "reason": "RPC_FALLBACK_SET_USED"}
         for url in urls:
             deployer_evidence = verify_evm_deployer(lambda method, params, u=url: _rpc_url(u, method, params), str(token).lower(), row)
@@ -313,11 +316,11 @@ def analyze(row):
 
     distribution = _role_aware_distribution(c, holders, pair, _role_registry()); holders = distribution["holders"]
     role_exclusions = {str(x.get("owner") or "").lower() for x in holders if x.get("excluded_from_whale_concentration")}
-    if c in ("ETH", "ETHEREUM", "BSC", "BNB"):
+    if c in EVM_CHAINS:
         clusters = _components(holders, graph, role_exclusions | INFRA_EXCLUSIONS | {ZERO, str(token or "").lower(), str(pair or "").lower()}); clusters = corroborate_clusters(clusters, graph, deployer_evidence, funding)
     top1 = distribution["adjusted_top1_pct"]; top5 = distribution["adjusted_top5_pct"]; top10 = distribution["adjusted_top10_pct"]
     if not holders: reasons.append("HOLDER_DATA_UNAVAILABLE")
-    sol_complete = c in ("SOL", "SOLANA") and bool(meta.get("owner_resolution_complete")); evm_complete = c in ("ETH", "ETHEREUM", "BSC", "BNB") and bool(meta.get("complete")); verification_complete = bool((sol_complete or evm_complete) and holders)
+    sol_complete = c in ("SOL", "SOLANA") and bool(meta.get("owner_resolution_complete")); evm_complete = c in EVM_CHAINS and bool(meta.get("complete")); verification_complete = bool((sol_complete or evm_complete) and holders)
     if c in ("SOL", "SOLANA") and not sol_complete: reasons.append("SOME_TOKEN_ACCOUNT_OWNERS_UNRESOLVED")
     if verification_complete and not distribution["adjusted_top10_complete"]: reasons.append("ADJUSTED_TOP10_REPLACEMENT_INCOMPLETE_REVIEW_ONLY")
     if top1 > MAX_TOP1: reasons.append("TOP1_OWNER_CONCENTRATION_HIGH" if verification_complete else "TOP1_CONCENTRATION_HIGH_REVIEW_ONLY")
@@ -330,7 +333,7 @@ def analyze(row):
     hard_block = (verification_complete and any(x in reasons for x in ("TOP1_OWNER_CONCENTRATION_HIGH", "TOP5_OWNER_CONCENTRATION_HIGH", "TOP10_OWNER_CONCENTRATION_HIGH"))) or bool(blockable)
     needs_review = bool(linked) or not verification_complete or any(x.endswith("REVIEW_ONLY") for x in reasons); status = "BLOCK" if hard_block else ("REVIEW" if needs_review else "PASS")
     level = "ONCHAIN_OWNER_CONCENTRATION_RESOLVED" if sol_complete and holders else ("FULL_EVM_TRANSFER_LEDGER" if evm_complete and holders else ("BOUNDED_ONCHAIN_TRANSFER_LEDGER" if holders else "INSUFFICIENT_EVIDENCE"))
-    return {"chain": chain, "token": token, "pair_address": pair, "checked_at": datetime.now(timezone.utc).isoformat(), "status": status, "verification_complete": verification_complete, "top_holders_count": len(holders), "top1_pct": round(top1, 4), "top5_pct": round(top5, 4), "top10_pct": round(top10, 4), "gross_top1_pct": round(distribution["gross_top1_pct"], 4), "gross_top5_pct": round(distribution["gross_top5_pct"], 4), "gross_top10_pct": round(distribution["gross_top10_pct"], 4), "adjusted_real_top1_pct": round(top1, 4), "adjusted_real_top5_pct": round(top5, 4), "adjusted_real_top10_pct": round(top10, 4), "adjusted_top10_complete": distribution["adjusted_top10_complete"], "known_infrastructure_pct": round(distribution["known_infrastructure_pct"], 4), "dex_lp_pct": round(distribution["dex_lp_pct"], 4), "cex_custody_pct": round(distribution["cex_custody_pct"], 4), "burn_lock_pct": round(distribution["burn_lock_pct"], 4), "unknown_holder_pct_observed": round(distribution["unknown_holder_pct_observed"], 4), "holder_role_policy": "ONLY_EXACT_HIGH_CONFIDENCE_INFRASTRUCTURE_ROLES_ARE_EXCLUDED;UNKNOWN_FAILS_CLOSED;CEX_CUSTODY_MONITORED_SEPARATELY", "cluster_verified": bool(corroborated), "linked_cluster_candidates": linked, "corroborated_cluster_risks": corroborated, "blockable_cluster_risks": blockable, "deployer_evidence": deployer_evidence, "verified_native_funding_edges": funding, "reasons": list(dict.fromkeys(reasons)), "evidence_level": level, "metadata": meta, "holders": holders, "token_accounts": token_accounts, "transfer_graph": graph}
+    return {"chain": chain, "token": token, "pair_address": pair, "checked_at": datetime.now(timezone.utc).isoformat(), "status": status, "verification_complete": verification_complete, "top_holders_count": len(holders), "top1_pct": round(top1, 4), "top5_pct": round(top5, 4), "top10_pct": round(top10, 4), "gross_top1_pct": round(distribution["gross_top1_pct"], 4), "gross_top5_pct": round(distribution["gross_top5_pct"], 4), "gross_top10_pct": round(distribution["gross_top10_pct"], 4), "adjusted_real_top1_pct": round(top1, 4), "adjusted_real_top5_pct": round(top5, 4), "adjusted_real_top10_pct": round(top10, 4), "adjusted_top10_complete": distribution["adjusted_top10_complete"], "known_infrastructure_pct": round(distribution["known_infrastructure_pct"], 4), "dex_lp_pct": round(distribution["dex_lp_pct"], 4), "cex_custody_pct": round(distribution["cex_custody_pct"], 4), "burn_lock_pct": round(distribution["burn_lock_pct"], 4), "locked_vault_pct": round(distribution["locked_vault_pct"], 4), "unknown_holder_pct_observed": round(distribution["unknown_holder_pct_observed"], 4), "holder_role_policy": "ONLY_EXACT_HIGH_CONFIDENCE_INFRASTRUCTURE_ROLES_ARE_EXCLUDED;UNKNOWN_FAILS_CLOSED;CEX_CUSTODY_MONITORED_SEPARATELY", "cluster_verified": bool(corroborated), "linked_cluster_candidates": linked, "corroborated_cluster_risks": corroborated, "blockable_cluster_risks": blockable, "deployer_evidence": deployer_evidence, "verified_native_funding_edges": funding, "reasons": list(dict.fromkeys(reasons)), "evidence_level": level, "metadata": meta, "holders": holders, "token_accounts": token_accounts, "transfer_graph": graph}
 
 
 def _rows_from_source(src):
@@ -348,7 +351,7 @@ def run():
         if not chain or not token or key in seen: continue
         seen.add(key); out.append(analyze(r))
     now = datetime.now(timezone.utc).isoformat()
-    payload = {"updated_at": now, "method": "WALLET500_HOLDER_CLUSTER_PRETRADE_GATE_V2_ROLE_AWARE", "input_file": INPUT_FILE, "truth_note": "Gross concentration is diagnostic only. Hard concentration gates use adjusted non-infrastructure holders after exact high-confidence role classification. Unknown addresses remain counted. CEX custody is excluded from whale concentration but monitored as a separate flow/concentration risk.", "role_exclusion_min_confidence": ROLE_EXCLUSION_MIN_CONFIDENCE, "rows": out}
+    payload = {"updated_at": now, "method": "WALLET500_HOLDER_CLUSTER_PRETRADE_GATE_V3_ROLE_AWARE_MULTI_EVM", "input_file": INPUT_FILE, "truth_note": "Gross concentration is diagnostic only. Hard concentration gates use adjusted non-infrastructure holders after exact high-confidence role classification. Unknown addresses remain counted. CEX custody is excluded from whale concentration but monitored as a separate flow/concentration risk.", "role_exclusion_min_confidence": ROLE_EXCLUSION_MIN_CONFIDENCE, "rows": out}
     _write(DATA / "holder-cluster-gate.json", payload)
     _write(DATA / "holder-cluster-gate-summary.json", {"updated_at": now, "input_file": INPUT_FILE, "checked": len(out), "block": sum(x["status"] == "BLOCK" for x in out), "review": sum(x["status"] == "REVIEW" for x in out), "pass": sum(x["status"] == "PASS" for x in out), "verification_complete": sum(x["verification_complete"] for x in out), "method": payload["method"]})
     print(json.dumps({"checked": len(out), "pass": sum(x["status"] == "PASS" for x in out), "review": sum(x["status"] == "REVIEW" for x in out), "block": sum(x["status"] == "BLOCK" for x in out)}, indent=2)); return payload
