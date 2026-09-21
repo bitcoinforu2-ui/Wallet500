@@ -14,6 +14,9 @@ MAX_PERSISTENT_PRIORITY_SLOTS = 30
 PERSISTENT_BACKLOG_TARGET_SLOTS = 30
 PREWAVE_IDENTITY_PRIORITY_SLOTS = 12
 CURRENT_REACTIVATION_PRIORITY_SLOTS = 12
+LIVE_LEADERBOARD_PRIORITY_SLOTS = 24
+LIVE_LEADERBOARD_MAX_RANK = 10
+LIVE_LEADERBOARD_MAX_PRE_RESOLVE_CHANGE_PCT = 45.0
 PREWAVE_MIN_VOLUME_ACCEL_PCT = 50.0
 PREWAVE_MIN_VOLUME_WINDOW_MULTIPLE = 3.0
 PREWAVE_MIN_CURRENT_CHANGE_PCT = -10.0
@@ -172,10 +175,61 @@ def _is_prewave_shadow_identity_candidate(row: dict) -> bool:
     return bool(absorption or persistent_pressure)
 
 
+def _is_live_leaderboard_identity_candidate(row: dict) -> bool:
+    """Reserve exact-identity capacity for current CEX leaders before backlog work.
+
+    This is deliberately identity-only. It never marks a symbol actionable, never waives
+    chain/contract/pair proof, and never relaxes downstream BUY gates. The purpose is to
+    resolve identity while a move is still early enough for the canonical action engine
+    to make a decision instead of discovering the asset only after it is extended.
+    """
+    if row.get("leveraged_product") is True:
+        return False
+    rank = int(_num(row.get("leaderboard_best_rank") or 999))
+    if rank < 1 or rank > LIVE_LEADERBOARD_MAX_RANK:
+        return False
+    change = max(
+        _num(row.get("leaderboard_change_24h_max_pct")),
+        _num(row.get("change_24h_max_pct")),
+        _num(row.get("current_change_24h_max_pct")),
+    )
+    if change > LIVE_LEADERBOARD_MAX_PRE_RESOLVE_CHANGE_PCT:
+        return False
+    return any(
+        _num(m.get("price")) > 0
+        for m in (row.get("markets") or [])
+        if isinstance(m, dict)
+        and m.get("volume_comparable_usd_like", True)
+        and not m.get("regional_market", False)
+    )
+
+
+def _live_leaderboard_priority(row: dict) -> tuple:
+    rank = int(_num(row.get("leaderboard_best_rank") or 999))
+    change = max(
+        _num(row.get("leaderboard_change_24h_max_pct")),
+        _num(row.get("change_24h_max_pct")),
+        _num(row.get("current_change_24h_max_pct")),
+    )
+    turnover = max(
+        (_num(m.get("volume_24h")) for m in (row.get("markets") or []) if isinstance(m, dict)),
+        default=0.0,
+    )
+    return (
+        -rank,
+        change,
+        _num(row.get("spot_revival_score")),
+        _num(row.get("coherent_confirmations")),
+        turnover,
+    )
+
+
 def _identity_priority(row: dict) -> tuple:
     persistent = bool(row.get("persistent_until_exact_identity_resolution"))
     current_reactivation = bool(row.get("current_identity_reactivation_priority"))
     current_rank = int(_num(row.get("current_identity_reactivation_rank") or row.get("leaderboard_best_rank") or 999))
+    live_leaderboard = _is_live_leaderboard_identity_candidate(row)
+    live_rank = int(_num(row.get("leaderboard_best_rank") or 999))
     precursor = row.get("cross_lane_derivatives_precursor") if isinstance(row.get("cross_lane_derivatives_precursor"), dict) else {}
     cross_lane = bool(
         precursor.get("identity_priority") is True
@@ -208,6 +262,8 @@ def _identity_priority(row: dict) -> tuple:
     return (
         current_reactivation,
         -current_rank if current_reactivation else -999,
+        live_leaderboard,
+        -live_rank if live_leaderboard else -999,
         cross_lane,
         prewave,
         early,
@@ -497,6 +553,19 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         row for row in current_ordered
         if row.get("current_identity_reactivation_priority") is True
     ]
+    live_leaderboard_ordered = sorted(
+        [
+            row for row in current_ordered
+            if _is_live_leaderboard_identity_candidate(row)
+        ],
+        key=_live_leaderboard_priority,
+        reverse=True,
+    )
+    live_leaderboard_symbols = {
+        _base_symbol(row.get("symbol"))
+        for row in live_leaderboard_ordered
+        if _base_symbol(row.get("symbol"))
+    }
     pending_only_symbols = pending_symbols - current_symbols
     pending_only_ordered = sorted(
         [
@@ -535,6 +604,13 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
     current_reactivation_retried = len(
         selected_symbols & recent_attempts & current_reactivation_symbols
     )
+    live_leaderboard_selected = add_rows(
+        live_leaderboard_ordered,
+        LIVE_LEADERBOARD_PRIORITY_SLOTS,
+    )
+    live_leaderboard_retried = len(
+        selected_symbols & recent_attempts & live_leaderboard_symbols
+    )
     prewave_selected = add_rows(prewave_ordered, PREWAVE_IDENTITY_PRIORITY_SLOTS)
     prewave_selected_symbols = {
         _base_symbol(x.get("symbol"))
@@ -557,6 +633,12 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         "current_reactivation_selected_count": current_reactivation_selected,
         "current_reactivation_retried_despite_previous_attempt_count": current_reactivation_retried,
         "current_reactivation_priority_slot_cap": CURRENT_REACTIVATION_PRIORITY_SLOTS,
+        "live_leaderboard_priority_count": len(live_leaderboard_ordered),
+        "live_leaderboard_selected_count": live_leaderboard_selected,
+        "live_leaderboard_retried_despite_previous_attempt_count": live_leaderboard_retried,
+        "live_leaderboard_priority_slot_cap": LIVE_LEADERBOARD_PRIORITY_SLOTS,
+        "live_leaderboard_max_rank": LIVE_LEADERBOARD_MAX_RANK,
+        "live_leaderboard_max_pre_resolve_change_pct": LIVE_LEADERBOARD_MAX_PRE_RESOLVE_CHANGE_PCT,
         "regular_watch_count": len(watch_rows),
         "cross_lane_identity_priority_count": len(cross_lane_rows),
         "prewave_shadow_identity_priority_count": len(prewave_rows),
@@ -587,6 +669,9 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         "current_reactivation_capacity_protected": True,
         "current_reactivation_bypasses_backlog_cooldown_for_resolver_order_only": True,
         "current_reactivation_never_satisfies_identity_or_actionability": True,
+        "live_leaderboard_capacity_protected": True,
+        "live_leaderboard_bypasses_backlog_cooldown_for_resolver_order_only": True,
+        "live_leaderboard_never_satisfies_identity_or_actionability": True,
         "prewave_shadow_capacity_protected": True,
         "prewave_watch_or_shadow_capacity_protected": True,
         "prewave_pending_priority_survives_watch_state_transition": True,
@@ -840,6 +925,10 @@ def run(data_dir: Path = DATA) -> dict:
             "immutable_learning_recovery_never_satisfies_identity_or_actionability": True,
             "current_learning_reactivation_promoted_to_current_identity_queue": True,
             "current_learning_reactivation_never_satisfies_identity_or_actionability": True,
+            "live_leaderboard_identity_capacity_protected": True,
+            "live_leaderboard_identity_priority_is_ordering_only": True,
+            "live_leaderboard_identity_never_satisfies_identity_or_actionability": True,
+            "live_leaderboard_identity_stops_before_late_move_cutoff": True,
             "no_hindsight": True,
         },
         "source_watch_count": len(watch),
