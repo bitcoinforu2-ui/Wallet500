@@ -190,3 +190,46 @@ def test_regional_exchange_never_inflates_leaderboard_action_coherence(tmp_path:
     assert row["coherent_confirmations"] == 1
     assert row["leaderboard_usd_like_exchanges"] == ["gate"]
     assert row["leaderboard_regional_exchanges"] == ["upbit"]
+
+
+def test_leveraged_products_never_reenter_research_watch_via_leaderboard_bridge(tmp_path: Path):
+    _write(tmp_path / "cex-spot-state.json", _state(("gate", "PEPE5LUSDT", 120.0, 1_000_000, 0.02)))
+    _write(tmp_path / "cex-spot-revival-radar.json", {"version": 4, "watchlist": [], "alerts": []})
+
+    report = bridge.run(tmp_path, "2026-09-22T00:01:00+00:00")
+    radar = json.loads((tmp_path / "cex-spot-revival-radar.json").read_text())
+
+    assert report["leaderboard_symbols"] == 0
+    assert report["injected_count"] == 0
+    assert report["leveraged_products_excluded_from_bridge"] is True
+    assert radar["watchlist"] == []
+
+
+def test_current_leaderboard_candidate_is_protected_from_top100_watchlist_starvation(tmp_path: Path):
+    _write(tmp_path / "cex-spot-state.json", _state(("gate", "TRIOUSDT", 30.0, 25_500, 0.01)))
+    crowded = [
+        {
+            "symbol": f"OLD{i}USDT",
+            "spot_revival_score": 90,
+            "status": "DNA_WATCH_RESEARCH",
+            "research_only": True,
+            "actionable": False,
+            "confirmations": 2,
+            "coherent_confirmations": 2,
+        }
+        for i in range(100)
+    ]
+    _write(tmp_path / "cex-spot-revival-radar.json", {"version": 4, "watchlist": crowded, "alerts": []})
+
+    report = bridge.run(tmp_path, "2026-09-22T00:02:00+00:00")
+    radar = json.loads((tmp_path / "cex-spot-revival-radar.json").read_text())
+    symbols = {row["symbol"] for row in radar["watchlist"]}
+
+    assert "TRIOUSDT" in symbols
+    assert len(radar["watchlist"]) == 101
+    assert report["protected_current_leaderboard_count"] == 1
+    assert report["stored_watchlist_count"] == 101
+    trio = next(row for row in radar["watchlist"] if row["symbol"] == "TRIOUSDT")
+    assert trio["persistent_until_exact_identity_resolution"] is True
+    assert trio["research_only"] is True
+    assert trio["actionable"] is False
