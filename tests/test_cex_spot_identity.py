@@ -736,3 +736,89 @@ def test_current_watch_cross_venue_prewave_gets_reserved_capacity_without_shadow
     assert report["prewave_shadow_selected_count"] == 1
     assert report["prewave_watch_or_shadow_capacity_protected"] is True
     assert report["production_effect"] is False
+
+
+
+def test_live_leaderboard_priority_cannot_be_starved_by_persistent_backlog():
+    emergency = {
+        "symbol": "FASTUSDT",
+        "spot_revival_score": 23,
+        "coherent_confirmations": 1,
+        "leaderboard_watch": True,
+        "leaderboard_best_rank": 2,
+        "leaderboard_change_24h_max_pct": 18.0,
+        "change_24h_max_pct": 18.0,
+        "markets": [{
+            "exchange": "gate",
+            "market_type": "spot",
+            "symbol": "FASTUSDT",
+            "quote_symbol": "USDT",
+            "price": 0.011,
+            "volume_24h": 180_000,
+            "volume_comparable_usd_like": True,
+            "regional_market": False,
+        }],
+    }
+    ordinary = [
+        {
+            "symbol": f"CUR{i}USDT",
+            "spot_revival_score": 80,
+            "coherent_confirmations": 4,
+        }
+        for i in range(80)
+    ]
+    backlog = {
+        "candidates": [
+            {
+                "symbol": f"OLD{i}USDT",
+                "persistent_until_exact_identity_resolution": True,
+                "first_alert_score": 99,
+                "first_alert_coherent_confirmations": 9,
+            }
+            for i in range(500)
+        ]
+    }
+
+    selected, report = mod._build_identity_queue(
+        {"watchlist": [emergency, *ordinary], "shadow_watchlist": []},
+        backlog,
+        {},
+    )
+    symbols = [x["symbol"] for x in selected]
+
+    assert "FASTUSDT" in symbols
+    assert symbols.index("FASTUSDT") < mod.LIVE_LEADERBOARD_PRIORITY_SLOTS
+    assert report["live_leaderboard_priority_count"] == 1
+    assert report["live_leaderboard_selected_count"] == 1
+    assert report["live_leaderboard_capacity_protected"] is True
+    assert report["live_leaderboard_never_satisfies_identity_or_actionability"] is True
+    assert report["selected_persistent_backlog_only_count"] <= mod.MAX_PERSISTENT_PRIORITY_SLOTS
+    assert report["production_effect"] is False
+
+
+def test_extended_live_leaderboard_move_does_not_consume_emergency_identity_capacity():
+    row = {
+        "symbol": "LATEUSDT",
+        "spot_revival_score": 40,
+        "leaderboard_watch": True,
+        "leaderboard_best_rank": 1,
+        "leaderboard_change_24h_max_pct": 70.0,
+        "change_24h_max_pct": 70.0,
+        "markets": [{
+            "exchange": "gate",
+            "price": 0.02,
+            "volume_24h": 1_000_000,
+            "volume_comparable_usd_like": True,
+            "regional_market": False,
+        }],
+    }
+
+    selected, report = mod._build_identity_queue(
+        {"watchlist": [row], "shadow_watchlist": []},
+        {"candidates": []},
+        {},
+    )
+
+    assert [x["symbol"] for x in selected] == ["LATEUSDT"]
+    assert report["live_leaderboard_priority_count"] == 0
+    assert report["live_leaderboard_selected_count"] == 0
