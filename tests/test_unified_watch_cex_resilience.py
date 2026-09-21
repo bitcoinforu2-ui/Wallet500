@@ -445,3 +445,182 @@ def test_critical_spot_lane_is_hard_bounded_and_keeps_top_movers(monkeypatch, tm
     assert [x["symbol"] for x in critical[:5]] == ["T00", "T01", "T02", "T03", "T04"]
     assert selected[17]["critical_market_lane"] is True
     assert selected[18]["critical_market_lane"] is False
+
+def _pha_late_entry_case(now):
+    target = {
+        "candidate_type": "GATE_SPOT_DISCOVERY",
+        "symbol": "PHA",
+        "network": "ethereum",
+        "contract": "0x6c5ba91642f10282b576d91922ae6448c9d52f4e",
+        "pair": "0x8867f20c1c63baccec7617626254a060eeb0e61e",
+        "quarter_wave_revalidation_lane": True,
+        "quarter_wave_anchor_price_usd": 0.02836,
+        "quarter_wave_gain_from_anchor_pct": 114.78,
+    }
+    key = gate.identity_key(target)
+    market = {
+        "identity_key": key,
+        "price": 0.0609111665,
+        "liquidity": 269831,
+        "volume_h1": 90581,
+        "buys_h1": 93,
+        "sells_h1": 73,
+        "spread_pct": 0.20,
+        "observed_at": now.isoformat(),
+        "price_source_count": 2,
+        "cex_quote_volume_24h_usd": 771409,
+        "cex_relative_volume_multiple": 3.24,
+        "positive_gainer_rank": 6,
+        "cex_execution_verified": True,
+        "cex_execution_scope": "EXACT_CEX_MARKET",
+        "cex_market_price_spread_pct": 0.40,
+        "cex_orderbook_spread_pct": 0.35,
+        "cex_depth_1pct_usd": 12000,
+        "cex_bid_ask_depth_ratio": 1.30,
+    }
+    observed = {
+        "identity_key": key,
+        "market_verified": True,
+        "_report_age_seconds": 0,
+        "intelligence": {
+            "status": "CURRENT",
+            "score": 60,
+            "families": 3,
+            "current_evidence_count": 8,
+            "evidence_age_minutes": 1,
+            "hard_risks": [],
+            "family_scores": {
+                "market_microstructure": 10,
+                "wallet_flow": 5,
+                "holder_network": 3,
+            },
+        },
+    }
+    prior = {
+        "last_price": 0.0598988,
+        "watch_low_price": 0.04411,
+        "watch_high_price": 0.06050,
+        "qualified_streak": 0,
+        "armed": True,
+        "pre_buy_armed": True,
+    }
+    return target, market, observed, prior
+
+
+def test_pha_late_entry_is_blocked_until_reset_even_when_fast_path_passes():
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 9, 21, 10, 49, tzinfo=timezone.utc)
+    target, market, observed, prior = _pha_late_entry_case(now)
+    policy = gate._policy({})
+
+    decision, state = gate.evaluate(
+        target, market, observed, prior, policy, now=now
+    )
+
+    assert decision["quarter_wave_revalidation"]["cex_fast_path"] is True
+    assert decision["entry_timing"]["extended_move"] is True
+    assert decision["entry_timing"]["chase_risk_blocked"] is True
+    assert "EXTENDED_MOVE_WAIT_FOR_RESET" in decision["blockers"]
+    assert decision["recommended_action"] == "WAIT"
+    assert decision["pre_buy"] is False
+    assert decision["alert"] is False
+    assert state["late_entry_extension_seen"] is True
+    assert state["late_entry_reset_seen"] is False
+
+
+def test_pha_reset_then_reclaim_reopens_confirmation_lane():
+    from datetime import datetime, timedelta, timezone
+
+    t0 = datetime(2026, 9, 21, 10, 49, tzinfo=timezone.utc)
+    target, market, observed, prior = _pha_late_entry_case(t0)
+    policy = gate._policy({})
+    _, s0 = gate.evaluate(target, market, observed, prior, policy, now=t0)
+
+    # A real reset: >8% below the episode high. This scan is still falling,
+    # so it cannot qualify, but it arms a future reclaim.
+    t1 = t0 + timedelta(minutes=10)
+    pullback_market = dict(market, price=0.05480, observed_at=t1.isoformat())
+    pullback, s1 = gate.evaluate(
+        target, pullback_market, observed, s0, policy, now=t1
+    )
+    assert pullback["entry_timing"]["reset_seen"] is True
+    assert s1["late_entry_reset_seen"] is True
+    assert "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED" in pullback["blockers"]
+
+    # Price reclaims after the reset. Even though it is again >30% above the
+    # watch low, the engine now has a reset/reclaim sequence rather than a chase.
+    t2 = t1 + timedelta(minutes=10)
+    reclaim_market = dict(market, price=0.05770, observed_at=t2.isoformat())
+    reclaim, _ = gate.evaluate(
+        target, reclaim_market, observed, s1, policy, now=t2
+    )
+    assert reclaim["entry_timing"]["extended_move"] is True
+    assert reclaim["entry_timing"]["reset_reclaim_confirmed"] is True
+    assert reclaim["entry_timing"]["chase_risk_blocked"] is False
+    assert "EXTENDED_MOVE_WAIT_FOR_RESET" not in reclaim["blockers"]
+    assert reclaim["qualified_this_scan"] is True
+    assert reclaim["pre_buy"] is True
+
+
+def test_pre_buy_never_redelivers_after_recorded_final_buy_even_without_status_flag():
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 9, 21, 15, 19, tzinfo=timezone.utc)
+    target = {
+        "symbol": "TEST",
+        "network": "ethereum",
+        "contract": "0xabc",
+        "pair": "0xdef",
+    }
+    key = gate.identity_key(target)
+    market = {
+        "identity_key": key,
+        "price": 1.06,
+        "liquidity": 100000,
+        "volume_h1": 50000,
+        "buys_h1": 100,
+        "sells_h1": 70,
+        "spread_pct": 0.10,
+        "observed_at": now.isoformat(),
+    }
+    observed = {
+        "identity_key": key,
+        "market_verified": True,
+        "_report_age_seconds": 0,
+        "intelligence": {
+            "status": "CURRENT",
+            "score": 70,
+            "families": 3,
+            "current_evidence_count": 8,
+            "evidence_age_minutes": 1,
+            "hard_risks": [],
+            "family_scores": {
+                "market_microstructure": 10,
+                "wallet_flow": 5,
+                "holder_network": 3,
+            },
+        },
+    }
+    prior = {
+        "last_price": 1.04,
+        "watch_low_price": 1.00,
+        "watch_high_price": 1.07,
+        "qualified_streak": 0,
+        "armed": True,
+        "pre_buy_armed": True,
+        # A successful FINAL BUY is already recorded. Even if a concurrent
+        # writer lost the auxiliary delivery-status flag, PRE-BUY must stay silent.
+        "last_alert_at": "2026-09-21T10:49:14+00:00",
+        "last_alert_price": 1.05,
+    }
+
+    decision, state = gate.evaluate(
+        target, market, observed, prior, gate._policy({}), now=now
+    )
+
+    assert decision["qualified_this_scan"] is True
+    assert decision["pre_buy"] is True
+    assert decision["pre_buy_alert"] is False
+    assert state.get("last_pre_buy_alert_at") is None
+
