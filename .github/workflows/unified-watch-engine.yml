@@ -4,46 +4,14 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '7,22,37,52 * * * *'
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/unified_watch_engine.py'
-      - 'scripts/new_chain_bootstrap_radar.py'
-      - 'scripts/test_new_chain_bootstrap_contract.py'
-      - 'scripts/resilient_unified_watch_runner.py'
-      - 'scripts/deep_investigation_refresh.py'
-      - 'scripts/narrative_dependency_collector.py'
-      - 'scripts/resilient_http.py'
-      - 'scripts/spot_market_discovery_collector.py'
-      - 'scripts/unified_candidate_bridge.py'
-      - 'scripts/spot_cex_fast_handoff.py'
-      - 'scripts/native_asset_intelligence.py'
-      - 'scripts/cross_domain_intelligence_collector.py'
-      - 'scripts/free_intelligence_collector.py'
-      - 'scripts/derivatives_intelligence_collector.py'
-      - 'scripts/public_alpha_source_collector.py'
-      - 'scripts/alpha_caller_intake.py'
-      - 'scripts/alpha_caller_reputation.py'
-      - 'scripts/intelligence_fusion.py'
-      - 'scripts/test_intelligence_fusion_contract.py'
-      - 'scripts/user_watch_final_buy.py'
-      - 'scripts/test_user_watch_final_buy_contract.py'
-      - 'scripts/chain_context_shadow.py'
-      - 'tests/test_chain_context_shadow.py'
-      - 'tests/test_unified_watch_cex_resilience.py'
-      - 'data/unified-watch-config.json'
-      - 'data/new-chain-bootstrap-state.json'
-      - 'data/new-chain-bootstrap-radar.json'
-      - 'data/buy-zone-close-watch-registry.json'
-      - 'data/alpha-caller-sources.json'
-      - 'data/close-watch-intelligence-policy.json'
-      - 'data/chain-context-shadow.json'
-      - '.github/workflows/unified-watch-engine.yml'
-
 permissions:
   contents: write
+
+# Production watch runs only on schedule/manual dispatch. Push validation belongs
+# to the CI workflows so a code commit cannot replace a pending production scan
+# or race its state/Telegram publication.
 concurrency:
-  group: wallet500-unified-verified-watch-v7
+  group: wallet500-unified-verified-watch-v8-production
   cancel-in-progress: false
 
 jobs:
