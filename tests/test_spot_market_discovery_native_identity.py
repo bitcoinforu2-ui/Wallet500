@@ -199,13 +199,15 @@ def test_ambiguous_coingecko_recovery_fails_closed(monkeypatch):
 
 
 def test_cumulative_quarter_wave_crossing_is_caught_before_24h_momentum_filter():
+    # PHA replay edge: immutable anchor 0.02836. Historical scans were
+    # 0.03544 just below +25% and 0.03548 on the first verified crossing.
     old = {"first_seen_price": 0.02836}
     just_below = {"discovery_price": 0.03544, "change_24h_pct": 0.5}
-    first_cross = {"discovery_price": 0.03580, "change_24h_pct": 0.5}
+    first_cross = {"discovery_price": 0.03548, "change_24h_pct": 0.5}
 
     assert mod.cumulative_gain_from_first_seen(old, just_below) < 25.0
     assert mod.should_force_cumulative_hot_watch(old, just_below, 25.0) is False
-    assert mod.cumulative_gain_from_first_seen(old, first_cross) > 25.0
+    assert mod.cumulative_gain_from_first_seen(old, first_cross) >= 25.0
     assert mod.should_force_cumulative_hot_watch(old, first_cross, 25.0) is True
 
 
