@@ -35,6 +35,7 @@ def main():
     baseline, new1 = radar.update_network_state(initial, ["eth", "bsc", "futurex"], now)
     assert_true(new1 == [], "first provider catalog must be baseline, not false new-chain alerts")
     assert_true("arc" in radar.active_networks(baseline), "seeded Arc must always be active")
+    assert_true("robinhood" in radar.active_networks(baseline), "seeded Robinhood must stay active even when it was already present in the provider baseline")
 
     later = dict(baseline)
     later["baseline_initialized"] = True
