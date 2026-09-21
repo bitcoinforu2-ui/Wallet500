@@ -217,3 +217,24 @@ def test_cumulative_quarter_wave_never_arms_without_valid_anchor():
         {"discovery_price": 1.0},
         25.0,
     ) is False
+
+
+
+def test_earlier_unified_anchor_repairs_newer_spot_collector_anchor():
+    old = {
+        "first_seen_at": "2026-09-21T03:46:41+00:00",
+        "first_seen_price": 0.03884,
+    }
+    canonical = {
+        "first_seen_at": "2026-09-15T12:38:51+00:00",
+        "first_seen_price": 0.02836,
+    }
+    fixed = mod.earlier_anchor(old, {"symbol": "PHA"}, canonical)
+    assert fixed["first_seen_at"] == canonical["first_seen_at"]
+    assert fixed["first_seen_price"] == 0.02836
+    assert fixed["canonical_anchor_recovered"] is True
+    assert mod.should_force_cumulative_hot_watch(
+        fixed,
+        {"discovery_price": 0.03580},
+        25.0,
+    ) is True
