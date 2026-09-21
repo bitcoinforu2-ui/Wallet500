@@ -646,3 +646,93 @@ def test_current_learning_reactivation_cannot_be_starved_by_large_persistent_bac
     assert report["current_reactivation_recovery_count"] == 1
     assert report["selected_current_count"] >= 1
     assert report["selected_persistent_backlog_only_count"] <= mod.MAX_PERSISTENT_PRIORITY_SLOTS
+
+
+def test_prewave_priority_survives_shadow_to_watch_transition_and_backlog():
+    current_watch = {
+        "symbol": "PHAUSDT",
+        "spot_revival_score": 29,
+        "coherent_confirmations": 5,
+        "change_24h_max_pct": 10.2,
+        "shadow_features": ["PERSISTENT_SPOT_PRESSURE_SHADOW"],
+        "slow_ignition": {
+            "status": "BUILDING",
+            "confirmations": 1,
+            "exchanges": ["okx"],
+        },
+        "markets": [
+            {"exchange": "gate", "price": 0.03577},
+            {"exchange": "okx", "price": 0.03592},
+        ],
+    }
+    ordinary = [
+        {
+            "symbol": f"CUR{i}USDT",
+            "spot_revival_score": 90,
+            "coherent_confirmations": 9,
+            "change_24h_max_pct": 15.0,
+        }
+        for i in range(80)
+    ]
+    pending = {
+        "candidates": [{
+            "symbol": "PHAUSDT",
+            "persistent_until_exact_identity_resolution": True,
+            "prewave_identity_priority": True,
+            "prewave_observed_at": "2026-09-15T12:38:51+00:00",
+            "prewave_change_24h_pct": 3.8871,
+            "prewave_slow_ignition_status": "CROSS_VENUE_PERSISTENT",
+            "prewave_shadow_features": ["PERSISTENT_SPOT_PRESSURE_SHADOW"],
+            "timing_quality": "EARLY_BREAKOUT_EVIDENCE",
+            "first_watch_score": 28,
+            "first_watch_coherent_confirmations": 2,
+        }]
+    }
+
+    selected, report = mod._build_identity_queue(
+        {"watchlist": [current_watch, *ordinary], "shadow_watchlist": []},
+        pending,
+        {},
+    )
+
+    symbols = [x["symbol"] for x in selected]
+    assert "PHAUSDT" in symbols
+    assert symbols.index("PHAUSDT") < mod.PREWAVE_IDENTITY_PRIORITY_SLOTS
+    selected_pha = next(x for x in selected if x["symbol"] == "PHAUSDT")
+    assert selected_pha["prewave_identity_priority"] is True
+    assert selected_pha["prewave_observed_at"] == "2026-09-15T12:38:51+00:00"
+    assert selected_pha["prewave_slow_ignition_status"] == "CROSS_VENUE_PERSISTENT"
+    assert report["prewave_pending_priority_symbol_count"] == 1
+    assert report["prewave_watch_or_shadow_capacity_protected"] is True
+    assert report["prewave_pending_priority_survives_watch_state_transition"] is True
+    assert report["production_effect"] is False
+
+
+def test_current_watch_cross_venue_prewave_gets_reserved_capacity_without_shadow_bucket():
+    current_watch = {
+        "symbol": "PHAUSDT",
+        "spot_revival_score": 29,
+        "coherent_confirmations": 5,
+        "change_24h_max_pct": 9.79,
+        "shadow_features": ["PERSISTENT_SPOT_PRESSURE_SHADOW"],
+        "slow_ignition": {
+            "status": "CROSS_VENUE_PERSISTENT",
+            "confirmations": 2,
+            "exchanges": ["kucoin", "okx"],
+        },
+        "markets": [
+            {"exchange": "gate", "price": 0.03577},
+            {"exchange": "okx", "price": 0.03592},
+        ],
+    }
+    selected, report = mod._build_identity_queue(
+        {"watchlist": [current_watch], "shadow_watchlist": []},
+        {"candidates": []},
+        {},
+    )
+
+    assert [x["symbol"] for x in selected] == ["PHAUSDT"]
+    assert report["prewave_identity_priority_count"] == 1
+    assert report["prewave_shadow_selected_count"] == 1
+    assert report["prewave_watch_or_shadow_capacity_protected"] is True
+    assert report["production_effect"] is False
