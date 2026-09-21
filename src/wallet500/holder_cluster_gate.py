@@ -24,7 +24,7 @@ ZERO = "0x0000000000000000000000000000000000000000"
 DEAD = "0x000000000000000000000000000000000000dead"
 ROLE_REGISTRY_FILE = DATA / "holder-infrastructure-registry.json"
 EXCLUDABLE_ROLES = {"DEX_LP_POOL", "CEX_CUSTODY", "BURN_LOCK", "LOCKED_VAULT", "BRIDGE_CUSTODY"}
-EVM_CHAINS = {"ETH", "ETHEREUM", "BSC", "BNB", "BASE", "ARBITRUM", "OPTIMISM", "POLYGON", "AVALANCHE", "ARC", "ROBINHOOD"}
+EVM_CHAINS = {"ETH", "ETHEREUM", "BSC", "BNB", "ROBINHOOD"}
 DEFAULT_RPC = {
     "SOLANA": ["https://api.mainnet-beta.solana.com"],
     "ETHEREUM": ["https://ethereum-rpc.publicnode.com", "https://eth.llamarpc.com"],
