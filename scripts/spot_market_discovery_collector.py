@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data/spot-market-discovery.json"
 STATE = ROOT / "data/spot-market-discovery-state.json"
 CONFIG = ROOT / "data/unified-watch-config.json"
+UNIFIED_REPORT = ROOT / "data/unified-watch-intelligence-report.json"
 NATIVE_IDENTITY = ROOT / "data/native-asset-identity-registry.json"
 GATE = "https://api.gateio.ws/api/v4"
 UA = "Wallet500-SpotDiscovery/1.1-EvidenceRecovery"
@@ -466,6 +467,59 @@ def load_state() -> dict:
         return {"version": 1, "pairs": {}}
 
 
+def load_canonical_unified_anchors(path: Path = UNIFIED_REPORT) -> dict[str, dict]:
+    """Recover older exact-chain discovery anchors from the prior Unified Watch run.
+
+    This prevents a newer CEX collector state from silently resetting first-seen
+    price/time and delaying cumulative-wave revalidation. Ambiguous symbols fail closed.
+    """
+    try:
+        doc = json.loads(path.read_text()) if path.exists() and path.stat().st_size else {}
+    except Exception:
+        return {}
+    grouped: dict[str, list[dict]] = {}
+    for row in (doc.get("targets") or []) if isinstance(doc, dict) else []:
+        if not isinstance(row, dict):
+            continue
+        symbol = str(row.get("symbol") or "").upper().strip()
+        key = str(row.get("identity_key") or "")
+        ctype = str(row.get("candidate_type") or "").upper()
+        price = num(row.get("discovery_price"))
+        seen_at = str(row.get("first_seen_at") or "").strip()
+        if (
+            not symbol
+            or key.startswith("cex:")
+            or ctype not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"}
+            or price is None
+            or price <= 0
+            or not seen_at
+        ):
+            continue
+        grouped.setdefault(symbol, []).append({
+            "first_seen_at": seen_at,
+            "first_seen_price": price,
+        })
+    out = {}
+    for symbol, rows in grouped.items():
+        unique = {(x["first_seen_at"], x["first_seen_price"]) for x in rows}
+        if len(unique) == 1:
+            out[symbol] = rows[0]
+    return out
+
+
+def earlier_anchor(old: dict, row: dict, canonical: dict | None) -> dict:
+    old = dict(old or {})
+    canonical = canonical if isinstance(canonical, dict) else {}
+    c_at = str(canonical.get("first_seen_at") or "")
+    c_price = num(canonical.get("first_seen_price"))
+    o_at = str(old.get("first_seen_at") or "")
+    if c_at and c_price and c_price > 0 and (not o_at or c_at < o_at):
+        old["first_seen_at"] = c_at
+        old["first_seen_price"] = c_price
+        old["canonical_anchor_recovered"] = True
+    return old
+
+
 def run() -> dict:
     # Request all Gate change windows. A single timezone-selected percentage can
     # collapse around a reference-window boundary while the app still shows a
@@ -530,6 +584,7 @@ def run() -> dict:
     eligible_by_pair = {r["currency_pair"]: r for r in eligible}
     state = load_state()
     old_pairs = state.get("pairs") or {}
+    canonical_anchors = load_canonical_unified_anchors()
     positive = sorted(
         (r for r in eligible if float(r.get("discovery_momentum_change_pct") or 0) > 0),
         key=lambda r: (float(r.get("discovery_momentum_change_pct") or 0), r["quote_volume_24h_usd"]),
@@ -563,7 +618,11 @@ def run() -> dict:
         pair_id = row["currency_pair"]
         if pair_id in seen:
             continue
-        old = old_pairs.get(pair_id) or {}
+        old = earlier_anchor(
+            old_pairs.get(pair_id) or {},
+            row,
+            canonical_anchors.get(str(row.get("symbol") or "").upper()),
+        )
         if should_force_cumulative_hot_watch(old, row, threshold_pct=25.0):
             row = dict(row)
             row["forced_hot_watch"] = True
@@ -639,7 +698,11 @@ def run() -> dict:
     resolution_budget = 30
     for idx, row in enumerate(selected):
         key = row["currency_pair"]
-        old = old_pairs.get(key) or {}
+        old = earlier_anchor(
+            old_pairs.get(key) or {},
+            row,
+            canonical_anchors.get(str(row.get("symbol") or "").upper()),
+        )
         first_seen = str(old.get("first_seen_at") or ts.isoformat())
         first_seen_price = num(old.get("first_seen_price"), row["discovery_price"])
         first_seen_change = num(old.get("first_seen_change_24h_pct"), row["change_24h_pct"])
