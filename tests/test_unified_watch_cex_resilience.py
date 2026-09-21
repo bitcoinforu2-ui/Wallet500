@@ -267,3 +267,149 @@ def test_missing_hot_cex_intelligence_triggers_bounded_deep_refresh(monkeypatch)
     assert captured["called"] is True
     assert fusion["status"] == "CURRENT"
     assert fusion["current_evidence_count"] == 5
+
+
+def test_market_row_prefers_freshest_duplicate_exact_identity():
+    key = "bsc:0xabc:0xpair"
+    stale = {
+        "identity_key": key,
+        "candidate_type": "PUBLIC_ALPHA",
+        "observed_at": "2026-09-18T13:52:51+00:00",
+        "price": 0.0301,
+    }
+    fresh = {
+        "identity_key": key,
+        "candidate_type": "GATE_SPOT_DISCOVERY",
+        "dynamic_spot_candidate": True,
+        "observed_at": "2026-09-21T14:16:36+00:00",
+        "price": 0.0407,
+        "cex_execution_verified": True,
+    }
+    state = {"tokens": {"ALPHA:" + key: stale, "SPOT:" + key: fresh}}
+    selected = gate.market_row(state, key)
+    assert selected is fresh
+    assert selected["price"] == 0.0407
+
+
+def test_hybrid_continuation_accepts_strong_absolute_turnover_fallback():
+    from datetime import datetime, timezone
+
+    policy = gate._policy({})
+    target = {
+        "candidate_type": "GATE_SPOT_DISCOVERY",
+        "symbol": "RHEA",
+        "network": "bsc",
+        "contract": "0x4c067de26475e1cefee8b8d1f6e2266b33a2372e",
+        "pair": "0x05f4a518fe9271cb45d4a1d708ece2ac04bc6a6c",
+        "quarter_wave_revalidation_lane": True,
+        "quarter_wave_anchor_price_usd": 0.014385,
+        "quarter_wave_gain_from_anchor_pct": 180.0,
+    }
+    key = gate.identity_key(target)
+    now = datetime(2026, 9, 21, 14, 20, tzinfo=timezone.utc)
+    market = {
+        "identity_key": key,
+        "price": 0.0408,
+        "liquidity": 515000,
+        "volume_h1": 206000,
+        "buys_h1": 636,
+        "sells_h1": 328,
+        "spread_pct": 0.35,
+        "observed_at": now.isoformat(),
+        "price_source_count": 2,
+        "cex_quote_volume_24h_usd": 321000,
+        "cex_relative_volume_multiple": 1.25,
+        "positive_gainer_rank": 7,
+        "cex_execution_verified": True,
+        "cex_execution_scope": "EXACT_CEX_MARKET",
+        "cex_market_price_spread_pct": 0.25,
+        "cex_orderbook_spread_pct": 1.0,
+        "cex_depth_1pct_usd": 900,
+        "cex_bid_ask_depth_ratio": 4.0,
+    }
+    observed = {
+        "identity_key": key,
+        "market_verified": True,
+        "_report_age_seconds": 0,
+        "intelligence": {
+            "status": "CURRENT",
+            "score": 7,
+            "families": 1,
+            "current_evidence_count": 20,
+            "evidence_age_minutes": 1,
+            "hard_risks": [],
+            "family_scores": {
+                "market_microstructure": 15,
+                "wallet_flow": 0,
+                "holder_network": 0,
+            },
+        },
+    }
+    decision, _ = gate.evaluate(
+        target,
+        market,
+        observed,
+        {"last_price": 0.0400, "watch_low_price": 0.0350},
+        policy,
+        now=now,
+    )
+    assert decision["quarter_wave_revalidation"]["hybrid_breakout_continuation"] is True
+    assert "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET" not in decision["blockers"]
+    assert decision["pre_buy"] is True
+
+
+def test_stale_prior_market_snapshot_is_not_treated_as_scan_to_scan_chase():
+    from datetime import datetime, timedelta, timezone
+
+    policy = gate._policy({})
+    target = {
+        "symbol": "TEST",
+        "network": "bsc",
+        "contract": "0xabc",
+        "pair": "0xpair",
+    }
+    key = gate.identity_key(target)
+    now = datetime(2026, 9, 21, 14, 20, tzinfo=timezone.utc)
+    market = {
+        "identity_key": key,
+        "price": 0.0100,
+        "liquidity": 70000,
+        "volume_h1": 50000,
+        "buys_h1": 300,
+        "sells_h1": 200,
+        "spread_pct": 0.1,
+        "observed_at": now.isoformat(),
+    }
+    observed = {
+        "identity_key": key,
+        "market_verified": True,
+        "_report_age_seconds": 0,
+        "intelligence": {
+            "status": "CURRENT",
+            "score": 60,
+            "families": 3,
+            "current_evidence_count": 10,
+            "evidence_age_minutes": 1,
+            "hard_risks": [],
+            "family_scores": {
+                "market_microstructure": 10,
+                "wallet_flow": 5,
+                "holder_network": 0,
+            },
+        },
+    }
+    decision, state = gate.evaluate(
+        target,
+        market,
+        observed,
+        {
+            "last_price": 0.0070,
+            "watch_low_price": 0.0070,
+            "last_market_observed_at": (now - timedelta(hours=3)).isoformat(),
+        },
+        policy,
+        now=now,
+    )
+    assert "NEED_SECOND_VERIFIED_SCAN" in decision["blockers"]
+    assert "SHORT_TERM_CHASE_RISK" not in decision["blockers"]
+    assert state["last_market_observed_at"] == now.isoformat()
