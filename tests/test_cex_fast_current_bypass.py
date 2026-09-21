@@ -210,3 +210,55 @@ def test_mismatched_cached_identity_is_not_reused(monkeypatch):
     assert calls == ["TESTUSDT"]
     assert failures == []
     assert resolved[0]["token_address"] == "0xRIGHT"
+
+
+
+def test_low_score_live_top_gainer_pre_resolves_identity_before_buy_threshold():
+    row = _row(
+        symbol="EARLYUSDT",
+        spot_revival_score=20,
+        milestones={},
+        coherent_confirmations=1,
+        leaderboard_best_rank=2,
+        leaderboard_watch=True,
+        change_24h_max_pct=12.0,
+        markets=[
+            {
+                "exchange": "gate",
+                "price": 0.0105,
+                "volume_24h": 85_000,
+                "volume_comparable_usd_like": True,
+                "regional_market": False,
+            }
+        ],
+    )
+
+    chosen = _priority_candidates({"watchlist": [row]})
+
+    assert len(chosen) == 1
+    assert chosen[0]["symbol"] == "EARLYUSDT"
+    assert chosen[0]["_fast_priority_reason"] == "LIVE_LEADERBOARD_PREBUY_IDENTITY"
+    assert chosen[0]["_live_leaderboard_priority"] is True
+    assert chosen[0]["_fast_priority_score"] < bypass.MIN_PRIORITY_SCORE
+
+
+def test_live_top_gainer_priority_still_refuses_already_extended_move():
+    row = _row(
+        symbol="LATEUSDT",
+        spot_revival_score=20,
+        milestones={},
+        leaderboard_best_rank=1,
+        leaderboard_watch=True,
+        change_24h_max_pct=68.0,
+        markets=[
+            {
+                "exchange": "gate",
+                "price": 0.0200,
+                "volume_24h": 900_000,
+                "volume_comparable_usd_like": True,
+                "regional_market": False,
+            }
+        ],
+    )
+
+    assert _priority_candidates({"watchlist": [row]}) == []
