@@ -5,6 +5,7 @@ from wallet500.telegram_alerts import (
     MIN_MARKET_AGE_DAYS,
     _fmt_israel_time,
     _is_actionable_real_alert,
+    _canonical_real_tier,
     _is_pre_wave_alert,
     _merge_display_context,
     _message,
@@ -142,6 +143,62 @@ def test_verified_50k_execution_liquidity_boundary_is_required():
     assert _tier(row) is None
     row["live_liquidity_usd"] = 50_000
     assert _tier(row) == "HIGH_CONVICTION"
+
+
+
+def test_explicit_zero_execution_liquidity_never_falls_back_to_general_liquidity():
+    row = _row()
+    row["execution_pool_liquidity_usd"] = 0
+    row["live_liquidity_usd"] = 80_000
+    row["liquidity_usd"] = 90_000
+    assert _tier(row) is None
+
+
+def test_canonical_real_alert_zero_execution_liquidity_is_fail_closed():
+    row = _real_alert()
+    row.update({
+        "automatic_buy": False,
+        "exact_identity_verified": True,
+        "exact_pair_verified": True,
+        "market_age_verified": True,
+        "market_age_days": 420,
+        "market_age_min_days": 420,
+        "execution_pool_liquidity_usd": 0,
+        "liquidity_usd": 81_000,
+        "readiness_passed": 7,
+        "readiness_total": 7,
+        "readiness_gates": {f"g{i}": True for i in range(7)},
+        "missing_gates": [],
+        "blockers": [],
+        "risk_reasons": [],
+        "radar_tier": "REAL_ALERT",
+        "pump_dump_risk_level": "LOW",
+        "dex_volume_h1": 50_000,
+    })
+    assert _canonical_real_tier(row) is None
+
+
+def test_canonical_real_alert_zero_market_age_never_falls_back_to_legacy_age():
+    row = _real_alert()
+    row.update({
+        "automatic_buy": False,
+        "exact_identity_verified": True,
+        "exact_pair_verified": True,
+        "market_age_verified": True,
+        "market_age_days": 0,
+        "market_age_min_days": 420,
+        "execution_pool_liquidity_usd": 81_000,
+        "readiness_passed": 7,
+        "readiness_total": 7,
+        "readiness_gates": {f"g{i}": True for i in range(7)},
+        "missing_gates": [],
+        "blockers": [],
+        "risk_reasons": [],
+        "radar_tier": "REAL_ALERT",
+        "pump_dump_risk_level": "LOW",
+        "dex_volume_h1": 50_000,
+    })
+    assert _canonical_real_tier(row) is None
 
 
 def test_real_alert_must_be_explicitly_actionable():

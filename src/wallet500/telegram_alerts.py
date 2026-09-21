@@ -45,6 +45,14 @@ def _norm_addr(value: object) -> str:
     return str(value or "").strip().lower()
 
 
+def _first_present(row: dict, *keys: str, default=None):
+    """Return the first non-None field without treating numeric zero as missing."""
+    for key in keys:
+        if key in row and row.get(key) is not None:
+            return row.get(key)
+    return default
+
+
 def _pair_key(row: dict) -> str:
     chain = str(row.get("chain") or "unknown").lower()
     token = str(row.get("token") or row.get("mint") or row.get("token_address") or "")
@@ -124,9 +132,15 @@ def _tier(row: dict) -> str | None:
         return None
 
     try:
-        score = float(row.get("anomaly_score") or 0)
-        liquidity = float(row.get("execution_pool_liquidity_usd") or row.get("live_liquidity_usd") or row.get("liquidity_usd") or 0)
-        volume = float(row.get("live_volume_h1") or row.get("volume_h1") or 0)
+        score = float(_first_present(row, "anomaly_score", default=0))
+        liquidity = float(_first_present(
+            row,
+            "execution_pool_liquidity_usd",
+            "live_liquidity_usd",
+            "liquidity_usd",
+            default=0,
+        ))
+        volume = float(_first_present(row, "live_volume_h1", "volume_h1", default=0))
         activity = int(row.get("live_activity_h1") or 0)
     except (TypeError, ValueError):
         return None
@@ -167,12 +181,12 @@ def _canonical_real_tier(row: object) -> str | None:
         return None
 
     try:
-        age = int(float(row.get("market_age_days") or row.get("market_age_min_days") or 0))
-        liquidity = float(row.get("execution_pool_liquidity_usd") or row.get("liquidity_usd") or 0)
+        age = int(float(_first_present(row, "market_age_days", "market_age_min_days", default=0)))
+        liquidity = float(_first_present(row, "execution_pool_liquidity_usd", "liquidity_usd", default=0))
         readiness_passed = int(row.get("readiness_passed") or 0)
         readiness_total = int(row.get("readiness_total") or 0)
-        score = float(row.get("score") or row.get("signal_score") or 0)
-        volume = float(row.get("dex_volume_h1") or row.get("volume_h1") or 0)
+        score = float(_first_present(row, "score", "signal_score", default=0))
+        volume = float(_first_present(row, "dex_volume_h1", "volume_h1", default=0))
     except (TypeError, ValueError):
         return None
 
@@ -220,8 +234,8 @@ def _is_pre_wave_alert(row: object) -> bool:
     try:
         if int(row.get("market_age_days") or 0) < MIN_MARKET_AGE_DAYS:
             return False
-        liq = float(row.get("execution_pool_liquidity_usd") or row.get("liquidity_usd") or 0)
-        volume = float(row.get("dex_volume_h1") or row.get("volume_h1") or 0)
+        liq = float(_first_present(row, "execution_pool_liquidity_usd", "liquidity_usd", default=0))
+        volume = float(_first_present(row, "dex_volume_h1", "volume_h1", default=0))
         spot_conf = int(row.get("cex_spot_confirmations") or 0)
         spot_exchanges = len(set(row.get("cex_spot_exchanges") or []))
     except (TypeError, ValueError):
@@ -265,8 +279,8 @@ def _message(row: dict, tier: str, sent_at: str | None = None, alert_event_id: s
     dex = str(row.get("dex") or "unknown")
     score = float(row.get("score") or row.get("anomaly_score") or row.get("signal_score") or 0)
     risk = str(row.get("pump_dump_risk_level") or row.get("risk_level") or "n/a").upper()
-    liquidity = row.get("execution_pool_liquidity_usd") or row.get("live_liquidity_usd") or row.get("liquidity_usd")
-    volume = row.get("live_volume_h1") or row.get("dex_volume_h1") or row.get("volume_h1")
+    liquidity = _first_present(row, "execution_pool_liquidity_usd", "live_liquidity_usd", "liquidity_usd")
+    volume = _first_present(row, "live_volume_h1", "dex_volume_h1", "volume_h1")
     buys, sells = int(row.get("buys_h1") or 0), int(row.get("sells_h1") or 0)
     price = row.get("price_usd")
     pair_age = row.get("pair_age_minutes")
@@ -329,8 +343,8 @@ def _pre_wave_message(row: dict, sent_at: str | None = None, alert_event_id: str
     gates = row.get("pre_wave_gates") if isinstance(row.get("pre_wave_gates"), dict) else {}
     missing = list(row.get("full_real_alert_pending_gates") or [])
     exchanges = list(row.get("cex_spot_exchanges") or [])
-    liquidity = row.get("execution_pool_liquidity_usd") or row.get("liquidity_usd")
-    volume = row.get("dex_volume_h1") or row.get("volume_h1")
+    liquidity = _first_present(row, "execution_pool_liquidity_usd", "liquidity_usd")
+    volume = _first_present(row, "dex_volume_h1", "volume_h1")
     price = row.get("price_usd")
     dex_url = row.get("dex_url") or row.get("url") or ""
     lines = [

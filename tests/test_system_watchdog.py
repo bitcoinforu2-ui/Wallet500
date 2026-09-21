@@ -20,8 +20,8 @@ def seed(root: Path, now: datetime):
         "configured": True,
         "error_count": 0,
         "delivered": [],
-        "policy": {"user_facing_mode": "NEAR_BUY_AND_BUY_ONLY_V1"},
-        "buy_only_policy": {"mode": "NEAR_BUY_AND_BUY_ONLY_V1", "matched_keys": []},
+        "policy": {"user_facing_mode": "BUY_ONLY_V2"},
+        "buy_only_policy": {"mode": "BUY_ONLY_V2", "matched_keys": []},
     })
     write(root, "stage-transition-telegram-report.json", {
         "updated_at": ts,
@@ -69,8 +69,8 @@ def test_final_buy_without_confirmed_telegram_delivery_is_critical(tmp_path):
         "configured": True,
         "error_count": 0,
         "delivered": [],
-        "policy": {"user_facing_mode": "NEAR_BUY_AND_BUY_ONLY_V1"},
-        "buy_only_policy": {"mode": "NEAR_BUY_AND_BUY_ONLY_V1", "matched_keys": [key]},
+        "policy": {"user_facing_mode": "BUY_ONLY_V2"},
+        "buy_only_policy": {"mode": "BUY_ONLY_V2", "matched_keys": [key]},
     })
     report, _ = build_report(tmp_path, now=now, state={})
     assert "BUY_SIGNAL_TELEGRAM_GAP" in codes(report)
@@ -87,8 +87,8 @@ def test_final_buy_with_buy_signal_delivery_state_has_no_gap(tmp_path):
         "configured": True,
         "error_count": 0,
         "delivered": [{"key": key, "sent_at": now.isoformat()}],
-        "policy": {"user_facing_mode": "NEAR_BUY_AND_BUY_ONLY_V1"},
-        "buy_only_policy": {"mode": "NEAR_BUY_AND_BUY_ONLY_V1", "matched_keys": [key]},
+        "policy": {"user_facing_mode": "BUY_ONLY_V2"},
+        "buy_only_policy": {"mode": "BUY_ONLY_V2", "matched_keys": [key]},
     })
     write(tmp_path, "telegram-alert-state.json", {
         "updated_at": now.isoformat(),

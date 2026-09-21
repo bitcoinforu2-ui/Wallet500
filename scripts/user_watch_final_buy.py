@@ -283,6 +283,8 @@ def _policy(config: dict) -> dict:
         "cex_market_only_min_depth_1pct_usd": 10000.0,
         "cex_market_only_max_orderbook_spread_pct": 1.0,
         "cex_market_only_min_bid_ask_depth_ratio": 1.10,
+        "cex_market_only_min_current_evidence": 2,
+        "cex_market_only_min_microstructure_score": 5.0,
         "cex_breakout_continuation_enabled": True,
         "cex_breakout_min_turnover_usd": 150000.0,
         "cex_breakout_min_relative_volume_multiple": 4.0,
@@ -502,6 +504,14 @@ def evaluate(
         and cex_market_only
         and report_verified
         and cex_execution_verified
+        # Exact-CEX execution can replace DEX execution evidence, but it must
+        # never replace current intelligence. Missing/stale intelligence is a
+        # fail-closed condition even for the fastest market-only lane.
+        and status == "CURRENT"
+        and intel_age is not None
+        and 0 <= intel_age * 60 <= max_age
+        and evidence >= int(policy["cex_market_only_min_current_evidence"])
+        and micro >= float(policy["cex_market_only_min_microstructure_score"])
         and not hard_risks
         and cex_turnover >= float(policy["cex_market_only_min_turnover_usd"])
         and cex_relative_multiple >= float(policy["cex_market_only_min_relative_volume_multiple"])
@@ -535,10 +545,9 @@ def evaluate(
             "VOLUME_H1_TOO_LOW",
             "ACTIVITY_H1_TOO_LOW",
             "BUY_FLOW_NOT_CONFIRMED",
-            "INTELLIGENCE_NOT_CURRENT",
-            "INTELLIGENCE_STALE_OR_UNTIMED",
-            "CURRENT_EVIDENCE_TOO_LOW",
-            "MARKET_MICROSTRUCTURE_NOT_POSITIVE",
+            # Fusion score/confluence may be replaced by verified exact-CEX
+            # execution, but freshness/evidence/microstructure blockers above
+            # are deliberately non-bypassable.
             "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
         }
         blockers = [b for b in blockers if b not in bypass]

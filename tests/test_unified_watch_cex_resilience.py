@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sys
+
+import pytest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -43,6 +45,155 @@ def test_exact_pair_survives_single_provider_429(monkeypatch):
     assert snap["price_sources"] == ["dexscreener"]
     assert snap["price"] == 0.00023545
     assert snap["liquidity"] == 1900
+
+
+
+def test_dexscreener_quote_token_never_uses_base_price_usd(monkeypatch):
+    token = "0x1111111111111111111111111111111111111111"
+    pair = "0x2222222222222222222222222222222222222222"
+    base = "0x3333333333333333333333333333333333333333"
+
+    def fake_http(url):
+        if "geckoterminal" in url:
+            raise RuntimeError("provider unavailable")
+        if "dexscreener" in url:
+            return {
+                "pairs": [{
+                    "chainId": "bsc",
+                    "pairAddress": pair,
+                    "baseToken": {"address": base},
+                    "quoteToken": {"address": token},
+                    # This is BASE token USD price and must never be assigned
+                    # to the tracked quote token.
+                    "priceUsd": "123.45",
+                    "liquidity": {"usd": 100000},
+                    "volume": {"h1": 50000, "h24": 1000000},
+                    "txns": {"h1": {"buys": 100, "sells": 80}},
+                    "priceChange": {"h1": 2.0, "h24": 10.0},
+                }]
+            }
+        raise AssertionError(url)
+
+    monkeypatch.setattr(engine, "http_json", fake_http)
+    with pytest.raises(RuntimeError, match="DS_TRACKED_TOKEN_IS_QUOTE_PRICEUSD_IS_BASE_FAIL_CLOSED"):
+        engine.live_exact_pair(
+            {"network": "bsc", "contract": token, "pair": pair},
+            2.0,
+        )
+
+
+def test_explicit_zero_provider_metric_is_not_overwritten(monkeypatch):
+    token = "0x1111111111111111111111111111111111111111"
+    pair = "0x2222222222222222222222222222222222222222"
+    quote = "0x55d398326f99059ff775485246999027b3197955"
+
+    def fake_http(url):
+        if "geckoterminal" in url:
+            return {
+                "data": {
+                    "attributes": {
+                        "base_token_price_usd": "1.0",
+                        "quote_token_price_usd": "1.0",
+                        "reserve_in_usd": "100000",
+                        "volume_usd": {"h1": "0", "h24": "1000"},
+                        "transactions": {"h1": {"buys": 0, "sells": 5}},
+                        "price_change_percentage": {"h1": "0", "h24": "0"},
+                    },
+                    "relationships": {
+                        "base_token": {"data": {"id": f"bsc_{token}"}},
+                        "quote_token": {"data": {"id": f"bsc_{quote}"}},
+                    },
+                }
+            }
+        if "dexscreener" in url:
+            return {
+                "pairs": [{
+                    "chainId": "bsc",
+                    "pairAddress": pair,
+                    "baseToken": {"address": token},
+                    "quoteToken": {"address": quote},
+                    "priceUsd": "1.0",
+                    "liquidity": {"usd": 100000},
+                    "volume": {"h1": 50000, "h24": 1000000},
+                    "txns": {"h1": {"buys": 9, "sells": 5}},
+                    "priceChange": {"h1": 2.0, "h24": 10.0},
+                }]
+            }
+        raise AssertionError(url)
+
+    monkeypatch.setattr(engine, "http_json", fake_http)
+    snap = engine.live_exact_pair(
+        {"network": "bsc", "contract": token, "pair": pair},
+        2.0,
+    )
+    assert snap["price_source_count"] == 2
+    assert snap["volume_h1"] == 0.0
+    assert snap["buys_h1"] == 0
+    assert snap["sells_h1"] == 5
+
+
+def test_exact_cex_market_fast_path_never_bypasses_missing_intelligence():
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 9, 21, 16, 0, tzinfo=timezone.utc)
+    policy = gate._policy({})
+    target = {
+        "candidate_type": "CEX_MARKET_DISCOVERY",
+        "symbol": "FAST",
+        "exchange": "gate",
+        "currency_pair": "FAST_USDT",
+        "execution_identity_scope": "EXACT_CEX_MARKET",
+        "quarter_wave_revalidation_lane": True,
+    }
+    key = gate.identity_key(target)
+    market = {
+        "identity_key": key,
+        "price": 1.01,
+        "liquidity": 100000,
+        "volume_h1": 0,
+        "buys_h1": 0,
+        "sells_h1": 0,
+        "spread_pct": 0.10,
+        "observed_at": now.isoformat(),
+        "cex_quote_volume_24h_usd": 1_000_000,
+        "cex_relative_volume_multiple": 10.0,
+        "positive_gainer_rank": 1,
+        "cex_execution_verified": True,
+        "cex_execution_scope": "EXACT_CEX_MARKET",
+        "cex_orderbook_spread_pct": 0.10,
+        "cex_depth_1pct_usd": 100000,
+        "cex_bid_ask_depth_ratio": 1.5,
+    }
+    observed = {
+        "identity_key": key,
+        "market_verified": True,
+        "observed_at": now.isoformat(),
+        "_report_age_seconds": 0,
+        "intelligence": {
+            "status": "NOT_AVAILABLE",
+            "score": 0,
+            "families": 0,
+            "current_evidence_count": 0,
+            "evidence_age_minutes": None,
+            "hard_risks": [],
+            "family_scores": {"market_microstructure": 0, "holder_network": 0, "wallet_flow": 0},
+        },
+    }
+    prior = {
+        "last_price": 0.99,
+        "last_market_observed_at": now.isoformat(),
+        "watch_low_price": 0.95,
+        "qualified_streak": 1,
+    }
+
+    decision, _ = gate.evaluate(target, market, observed, prior, policy, now=now)
+    assert decision["quarter_wave_revalidation"]["cex_market_only_fast_path"] is False
+    assert "INTELLIGENCE_NOT_CURRENT" in decision["blockers"]
+    assert "INTELLIGENCE_STALE_OR_UNTIMED" in decision["blockers"]
+    assert "CURRENT_EVIDENCE_TOO_LOW" in decision["blockers"]
+    assert "MARKET_MICROSTRUCTURE_NOT_POSITIVE" in decision["blockers"]
+    assert decision["alert"] is False
+    assert decision["state"] == "WATCH"
 
 
 def test_immutable_anchor_repairs_late_legacy_state():
