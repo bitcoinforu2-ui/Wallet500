@@ -413,3 +413,35 @@ def test_stale_prior_market_snapshot_is_not_treated_as_scan_to_scan_chase():
     assert "NEED_SECOND_VERIFIED_SCAN" in decision["blockers"]
     assert "SHORT_TERM_CHASE_RISK" not in decision["blockers"]
     assert state["last_market_observed_at"] == now.isoformat()
+
+
+def test_critical_spot_lane_is_hard_bounded_and_keeps_top_movers(monkeypatch, tmp_path):
+    import json
+
+    rows = []
+    for i in range(30):
+        rows.append({
+            "candidate_type": "CEX_MARKET_DISCOVERY",
+            "symbol": f"T{i:02d}",
+            "exchange": "gate",
+            "currency_pair": f"T{i:02d}_USDT",
+            "execution_identity_scope": "EXACT_CEX_MARKET",
+            "gain_from_first_seen_pct": 60.0 - i,
+            "discovery_momentum_change_pct": 50.0 - i,
+            "quote_volume_24h_usd": 100000.0 + i,
+            "positive_gainer_rank": i + 1,
+        })
+
+    dynamic = tmp_path / "dynamic.json"
+    dynamic.write_text(json.dumps({"candidates": rows}))
+    monkeypatch.setattr(engine, "DYNAMIC", dynamic)
+    monkeypatch.delenv("WALLET500_CRITICAL_SPOT_CAP", raising=False)
+
+    selected = engine.dynamic_candidates({})
+    assert len(selected) == 30
+
+    critical = [x for x in selected if x.get("critical_market_lane") is True]
+    assert len(critical) == 18
+    assert [x["symbol"] for x in critical[:5]] == ["T00", "T01", "T02", "T03", "T04"]
+    assert selected[17]["critical_market_lane"] is True
+    assert selected[18]["critical_market_lane"] is False
