@@ -666,6 +666,10 @@ def main():
         if "BUNDLE_DOMINATED_LAUNCH" in risks:
             continue
         kept = dict(prior)
+        # Re-normalize the canonical identity instead of trusting a previously
+        # serialized helper field. Retained candidates must satisfy the exact
+        # same event/watch identity contract as fresh Genesis candidates.
+        kept["identity_key"] = i[3]
         kept["genesis_retained"] = True
         kept["genesis_retained_age_minutes"] = round(retained_age, 2)
         kept["source"] = "Genesis Prebreakout Edge (retained)"
