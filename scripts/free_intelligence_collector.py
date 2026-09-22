@@ -793,6 +793,21 @@ def targets():
         t for t in (bootstrap.get("candidates") or [])
         if isinstance(t, dict) and t.get("bootstrap_actionable_watch") is True
     ]
+    genesis_targets = [
+        t for t in (dyn.get("candidates") or [])
+        if isinstance(t, dict)
+        and str(t.get("candidate_type") or "").upper() == "GENESIS_PREBREAKOUT"
+        and t.get("genesis_final_buy_lane") is True
+        and all(identity(t)[:3])
+    ]
+    genesis_targets.sort(
+        key=lambda x: (
+            float(num(x.get("prebreakout_score")) or 0.0),
+            float(num(x.get("dex_liquidity_usd")) or 0.0),
+        ),
+        reverse=True,
+    )
+    genesis_targets = genesis_targets[:10]
     # Same-run CEX movers must receive fresh microstructure/security intelligence.
     # Reading Spot Discovery directly avoids the one-workflow lag caused by the
     # dynamic bridge running later in the pipeline.
@@ -844,6 +859,7 @@ def targets():
         registry_buy_targets
         + dynamic_buy_targets
         + dynamic_hot_targets
+        + genesis_targets
         + spot_hot_targets
         + bootstrap_targets
         + [t for t in (cfg.get("tokens") or []) if isinstance(t, dict)]
