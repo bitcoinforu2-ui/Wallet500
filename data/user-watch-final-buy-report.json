@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated_at": "2026-09-22T14:29:57.136731+00:00",
+  "generated_at": "2026-09-22T14:34:48.883322+00:00",
   "mode": "USER_REQUESTED_UNIFIED_WATCH_FINAL_BUY_V1",
   "policy": {
     "enabled": true,
@@ -90,9 +90,11 @@
   "evaluated_target_count": 174,
   "decision_coverage_pct": 100.0,
   "buy_zone_count": 0,
-  "pre_buy_count": 0,
-  "pre_buy_delivered_count": 0,
-  "pre_buy_delivered": [],
+  "pre_buy_count": 1,
+  "pre_buy_delivered_count": 1,
+  "pre_buy_delivered": [
+    "ethereum:0x6c5ba91642f10282b576d91922ae6448c9d52f4e:0x7bc5c9de2dfe90cfe1e01967096915ba8ea1bc53"
+  ],
   "delivered_count": 0,
   "delivered": [],
   "error_count": 0,
@@ -3387,15 +3389,17 @@
         "counted_this_scan": false
       },
       "blockers": [
-        "BUY_FLOW_NOT_CONFIRMED",
-        "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET"
+        "CEX_DEX_PRICE_DIVERGENCE",
+        "EXTENDED_MOVE_WAIT_FOR_RESET",
+        "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
+        "PRICE_SOURCE_REDUNDANCY_MISSING"
       ],
       "proof": [
         "QUARTER_WAVE_REVALIDATION_ARMED_597.45PCT",
-        "ENTRY_EXTREME_CEX_CONTINUATION_EXCEPTION",
-        "REBOUND_79.63PCT",
-        "SCAN_GAIN_2.21PCT",
-        "LIQUIDITY_593424",
+        "BUY_SELL_1.24X",
+        "REBOUND_94.97PCT",
+        "SCAN_GAIN_8.54PCT",
+        "LIQUIDITY_616452",
         "EXACT_PAIR_VERIFIED"
       ],
       "entry_timing": {
@@ -3406,8 +3410,8 @@
         "reset_pullback_required_pct": 8.0,
         "reset_seen": false,
         "reset_reclaim_confirmed": false,
-        "exceptional_cex_continuation": true,
-        "chase_risk_blocked": false
+        "exceptional_cex_continuation": false,
+        "chase_risk_blocked": true
       },
       "quarter_wave_revalidation": {
         "enabled_for_target": true,
@@ -3422,13 +3426,13 @@
         "trigger_is_buy_signal": false
       },
       "market": {
-        "price_usd": 0.1065,
-        "liquidity_usd": 593423.66,
-        "volume_h1_usd": 279764.59,
-        "buys_h1": 253,
-        "sells_h1": 222,
-        "buy_sell_ratio": 1.139,
-        "activity_h1": 475,
+        "price_usd": 0.1156,
+        "liquidity_usd": 616452.39,
+        "volume_h1_usd": 231939.18,
+        "buys_h1": 226,
+        "sells_h1": 182,
+        "buy_sell_ratio": 1.2404,
+        "activity_h1": 408,
         "spread_pct": 0.0,
         "cex_turnover_24h_usd": 2935272.13,
         "cex_relative_volume_multiple": 24.9942,
@@ -3438,20 +3442,20 @@
         "cex_execution_scope": "EXACT_CEX_MARKET",
         "price_source_count": 1,
         "single_source_degraded": true,
-        "cex_market_price_spread_pct": 1.7236480727341625,
-        "cex_price_coherent": true,
-        "cex_orderbook_spread_pct": 0.2480442663613779,
-        "cex_depth_1pct_usd": 3475.9184659000002,
-        "cex_bid_ask_depth_ratio": 0.8977045556759092,
-        "scan_price_gain_pct": 2.2073,
-        "rebound_from_watch_low_pct": 79.6256
+        "cex_market_price_spread_pct": 3.306366514245515,
+        "cex_price_coherent": false,
+        "cex_orderbook_spread_pct": 0.41148582162983105,
+        "cex_depth_1pct_usd": 4526.5806063,
+        "cex_bid_ask_depth_ratio": 0.5521281698087757,
+        "scan_price_gain_pct": 8.5446,
+        "rebound_from_watch_low_pct": 94.9739
       },
       "intelligence": {
         "status": "CURRENT",
         "score": 0.0,
         "positive_families": 2,
         "current_evidence_count": 55,
-        "evidence_age_minutes": 0.0,
+        "evidence_age_minutes": 4.692582,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": -10.0,
@@ -3488,6 +3492,12 @@
         "hybrid_breakout_never_bypasses_hard_risk_or_price_coherence": true,
         "hybrid_breakout_keeps_two_scan_confirmation": true,
         "does_not_modify_veteran_real_alert_policy": true
+      },
+      "hot_recheck": {
+        "performed": true,
+        "reason": "QUARTER_WAVE_CLOSE_WATCH",
+        "planned_at": "2026-09-22T14:31:38.341071+00:00",
+        "rechecked_at": "2026-09-22T14:34:38.555138+00:00"
       }
     },
     {
@@ -4641,29 +4651,29 @@
     {
       "identity_key": "ethereum:0x6c5ba91642f10282b576d91922ae6448c9d52f4e:0x7bc5c9de2dfe90cfe1e01967096915ba8ea1bc53",
       "symbol": "PHAUSDT",
-      "state": "WATCH",
+      "state": "QUALIFYING",
       "recommended_action": "WAIT",
       "alert": false,
-      "pre_buy": false,
-      "pre_buy_alert": false,
+      "pre_buy": true,
+      "pre_buy_alert": true,
       "observable": true,
-      "qualified_this_scan": false,
-      "qualified_streak": 0,
+      "qualified_this_scan": true,
+      "qualified_streak": 1,
       "required_streak": 2,
       "confirmation_spacing": {
         "min_seconds": 180.0,
         "elapsed_since_last_qualified_seconds": null,
         "satisfied": true,
-        "counted_this_scan": false
+        "counted_this_scan": true
       },
-      "blockers": [
-        "NEED_SECOND_VERIFIED_SCAN",
-        "REBOUND_FROM_WATCH_LOW_NOT_CONFIRMED",
-        "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED"
-      ],
+      "blockers": [],
       "proof": [
         "CEX_QUARTER_WAVE_FAST_PATH_VOL_26576610_REL_9.28X_RANK_3",
+        "CEX_BREAKOUT_CONTINUATION_VOL_26576610_REL_9.28X_RANK_3_SCAN_1.97PCT",
         "QUARTER_WAVE_REVALIDATION_ARMED_63.01PCT",
+        "ENTRY_EXTREME_CEX_CONTINUATION_EXCEPTION",
+        "REBOUND_6.24PCT",
+        "SCAN_GAIN_1.97PCT",
         "EXACT_PAIR_VERIFIED"
       ],
       "entry_timing": {
@@ -4674,14 +4684,14 @@
         "reset_pullback_required_pct": 8.0,
         "reset_seen": false,
         "reset_reclaim_confirmed": false,
-        "exceptional_cex_continuation": false,
+        "exceptional_cex_continuation": true,
         "chase_risk_blocked": false
       },
       "quarter_wave_revalidation": {
         "enabled_for_target": true,
         "cex_fast_path": true,
         "cex_market_only_fast_path": false,
-        "cex_breakout_continuation": false,
+        "cex_breakout_continuation": true,
         "hybrid_breakout_continuation": false,
         "anchor_price_usd": 0.02836,
         "gain_from_anchor_pct": 63.0113,
@@ -4690,13 +4700,13 @@
         "trigger_is_buy_signal": false
       },
       "market": {
-        "price_usd": 0.04623,
-        "liquidity_usd": 24517.24,
-        "volume_h1_usd": 16120.16,
-        "buys_h1": 11,
+        "price_usd": 0.04714,
+        "liquidity_usd": 24730.44,
+        "volume_h1_usd": 16220.16,
+        "buys_h1": 12,
         "sells_h1": 10,
-        "buy_sell_ratio": 1.0909,
-        "activity_h1": 21,
+        "buy_sell_ratio": 1.1818,
+        "activity_h1": 22,
         "spread_pct": 0.0,
         "cex_turnover_24h_usd": 26576609.8278,
         "cex_relative_volume_multiple": 9.2764,
@@ -4706,25 +4716,25 @@
         "cex_execution_scope": "EXACT_CEX_MARKET",
         "price_source_count": 1,
         "single_source_degraded": true,
-        "cex_market_price_spread_pct": 1.417525773195878,
+        "cex_market_price_spread_pct": 0.6597850377780243,
         "cex_price_coherent": true,
-        "cex_orderbook_spread_pct": 0.19216397992953943,
-        "cex_depth_1pct_usd": 18193.626612599997,
-        "cex_bid_ask_depth_ratio": 1.6046555019773197,
-        "scan_price_gain_pct": null,
-        "rebound_from_watch_low_pct": 4.192
+        "cex_orderbook_spread_pct": 0.1497166078494292,
+        "cex_depth_1pct_usd": 14317.475198299999,
+        "cex_bid_ask_depth_ratio": 1.0512973643685333,
+        "scan_price_gain_pct": 1.9684,
+        "rebound_from_watch_low_pct": 6.243
       },
       "intelligence": {
         "status": "CURRENT",
         "score": 15.0,
         "positive_families": 1,
         "current_evidence_count": 8,
-        "evidence_age_minutes": 0.0,
+        "evidence_age_minutes": 4.753616,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
         "market_microstructure_score": 15.0,
-        "execution_path": "CEX_QUARTER_WAVE_FAST_PATH",
+        "execution_path": "CEX_BREAKOUT_CONTINUATION",
         "fusion_gate_bypassed": true
       },
       "truth_contract": {
@@ -4756,6 +4766,12 @@
         "hybrid_breakout_never_bypasses_hard_risk_or_price_coherence": true,
         "hybrid_breakout_keeps_two_scan_confirmation": true,
         "does_not_modify_veteran_real_alert_policy": true
+      },
+      "hot_recheck": {
+        "performed": true,
+        "reason": "QUARTER_WAVE_CLOSE_WATCH",
+        "planned_at": "2026-09-22T14:31:38.341071+00:00",
+        "rechecked_at": "2026-09-22T14:34:42.217214+00:00"
       }
     },
     {
@@ -10838,21 +10854,20 @@
       },
       "blockers": [
         "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
-        "NEED_SECOND_VERIFIED_SCAN",
         "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED"
       ],
       "proof": [
         "QUARTER_WAVE_REVALIDATION_ARMED_35.46PCT",
-        "BUY_SELL_2.04X",
-        "REBOUND_6.22PCT",
-        "LIQUIDITY_18675494",
+        "BUY_SELL_2.07X",
+        "REBOUND_5.75PCT",
+        "LIQUIDITY_18600525",
         "EXACT_PAIR_VERIFIED"
       ],
       "entry_timing": {
         "late_entry_guard_enabled": true,
         "extended_move": false,
         "max_rebound_without_reset_pct": 30.0,
-        "pullback_from_watch_high_pct": 9.3008,
+        "pullback_from_watch_high_pct": 9.6997,
         "reset_pullback_required_pct": 8.0,
         "reset_seen": false,
         "reset_reclaim_confirmed": false,
@@ -10872,14 +10887,14 @@
         "trigger_is_buy_signal": false
       },
       "market": {
-        "price_usd": 31.191341912693048,
-        "liquidity_usd": 18675494.104,
-        "volume_h1_usd": 124699.884160221,
-        "buys_h1": 281,
+        "price_usd": 31.0541624330544,
+        "liquidity_usd": 18600525.0502,
+        "volume_h1_usd": 132509.847541369,
+        "buys_h1": 285,
         "sells_h1": 137,
-        "buy_sell_ratio": 2.0435,
-        "activity_h1": 418,
-        "spread_pct": 0.39332653827303277,
+        "buy_sell_ratio": 2.0725,
+        "activity_h1": 422,
+        "spread_pct": 0.41322919716621054,
         "cex_turnover_24h_usd": 9106226.85,
         "cex_relative_volume_multiple": 1.2106,
         "cex_gainer_rank": 985,
@@ -10888,20 +10903,20 @@
         "cex_execution_scope": "EXACT_CEX_MARKET",
         "price_source_count": 2,
         "single_source_degraded": false,
-        "cex_market_price_spread_pct": 0.14226208568444657,
+        "cex_market_price_spread_pct": 0.2229637872014595,
         "cex_price_coherent": true,
-        "cex_orderbook_spread_pct": 0.08671773377656058,
-        "cex_depth_1pct_usd": 50538.028699999995,
-        "cex_bid_ask_depth_ratio": 1.5415555524798314,
-        "scan_price_gain_pct": null,
-        "rebound_from_watch_low_pct": 6.2193
+        "cex_orderbook_spread_pct": 0.08066727973799954,
+        "cex_depth_1pct_usd": 43242.219450000004,
+        "cex_bid_ask_depth_ratio": 1.250529629775568,
+        "scan_price_gain_pct": -0.4398,
+        "rebound_from_watch_low_pct": 5.7521
       },
       "intelligence": {
         "status": "CURRENT",
         "score": 23.0,
         "positive_families": 2,
         "current_evidence_count": 19,
-        "evidence_age_minutes": 0.0,
+        "evidence_age_minutes": 4.827936,
         "hard_risks": [],
         "wallet_flow_score": 0.0,
         "holder_network_score": 0.0,
@@ -10938,6 +10953,12 @@
         "hybrid_breakout_never_bypasses_hard_risk_or_price_coherence": true,
         "hybrid_breakout_keeps_two_scan_confirmation": true,
         "does_not_modify_veteran_real_alert_policy": true
+      },
+      "hot_recheck": {
+        "performed": true,
+        "reason": "QUARTER_WAVE_CLOSE_WATCH",
+        "planned_at": "2026-09-22T14:31:38.341071+00:00",
+        "rechecked_at": "2026-09-22T14:34:46.676417+00:00"
       }
     },
     {
@@ -22654,5 +22675,35 @@
     "zero_current_coverage_never_counts_as_healthy": true,
     "automatic_trade": false,
     "veteran_production_real_alert_policy_unchanged": true
+  },
+  "last_hot_recheck": {
+    "mode": "HOT_CANDIDATE_FAST_RECHECK_V1",
+    "started_at": "2026-09-22T14:34:38.555002+00:00",
+    "completed_at": "2026-09-22T14:34:48.883358+00:00",
+    "planned_count": 3,
+    "evaluated_count": 3,
+    "delivered_count": 0,
+    "pre_buy_delivered_count": 1,
+    "error_count": 0,
+    "errors": [],
+    "delay_seconds": 180,
+    "min_confirmation_spacing_seconds": 180,
+    "targets": [
+      {
+        "identity_key": "ethereum:0xaaaaaa20d9e0e2461697782ef11675f668207961:0x629d22e6eeac46a11dbc96be93b90aee9309be4c",
+        "symbol": "AURORAUSDT",
+        "reason": "QUARTER_WAVE_CLOSE_WATCH"
+      },
+      {
+        "identity_key": "ethereum:0x6c5ba91642f10282b576d91922ae6448c9d52f4e:0x7bc5c9de2dfe90cfe1e01967096915ba8ea1bc53",
+        "symbol": "PHAUSDT",
+        "reason": "QUARTER_WAVE_CLOSE_WATCH"
+      },
+      {
+        "identity_key": "base:0xacfe6019ed1a7dc6f7b508c02d1b04ec88cc21bf:0x01784ef301d79e4b2df3a21ad9a536d4cf09a5ce",
+        "symbol": "VVV",
+        "reason": "QUARTER_WAVE_CLOSE_WATCH"
+      }
+    ]
   }
 }
