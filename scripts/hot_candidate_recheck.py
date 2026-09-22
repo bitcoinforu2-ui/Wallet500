@@ -125,6 +125,10 @@ def build_plan(
         )
 
         if decision.get("pre_buy") is True:
+            if not _current_intelligence_safe(decision, policy):
+                continue
+            if blockers & NON_RECHECKABLE_BLOCKERS:
+                continue
             candidates.append({
                 "identity_key": key,
                 "symbol": str(target.get("symbol") or decision.get("symbol") or "").upper(),
