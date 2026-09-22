@@ -262,6 +262,13 @@ def _policy(config: dict) -> dict:
         "relaxed_min_wallet_or_holder_score": 3.0,
         "min_current_evidence": 2,
         "required_consecutive_qualified_scans": 2,
+        # A fast hot-candidate recheck may happen inside the same production
+        # workflow. It is allowed to shorten the 15-minute scheduler delay, but
+        # a second qualified observation must still be separated in real time so
+        # an immediate duplicate read cannot manufacture confirmation.
+        "min_qualified_scan_spacing_seconds": 180,
+        "hot_recheck_delay_seconds": 180,
+        "hot_recheck_max_targets": 8,
         "rearm_after_observable_misses": 2,
         "telegram_final_buy_only": False,
         "telegram_pre_buy_enabled": True,
@@ -775,9 +782,26 @@ def evaluate(
     unique_blockers = sorted(set(blockers))
     qualified = not unique_blockers
     prior_streak = int(prior.get("qualified_streak") or 0)
-    streak = prior_streak + 1 if qualified else 0
     required_streak = max(1, int(policy["required_consecutive_qualified_scans"]))
-    final_buy = qualified and streak >= required_streak
+    min_scan_spacing = max(0.0, float(policy.get("min_qualified_scan_spacing_seconds", 180)))
+    last_qualified_at = parse_dt(prior.get("last_qualified_scan_at"))
+    qualified_spacing_seconds = (
+        (now - last_qualified_at).total_seconds()
+        if last_qualified_at is not None
+        else None
+    )
+    spacing_satisfied = bool(
+        prior_streak <= 0
+        or last_qualified_at is None
+        or qualified_spacing_seconds is None
+        or qualified_spacing_seconds >= min_scan_spacing
+    )
+    counted_qualified_scan = bool(qualified and (prior_streak <= 0 or spacing_satisfied))
+    if qualified:
+        streak = prior_streak + 1 if counted_qualified_scan else prior_streak
+    else:
+        streak = 0
+    final_buy = qualified and spacing_satisfied and streak >= required_streak
 
     armed = bool(prior.get("armed", True))
     miss_streak = int(prior.get("observable_miss_streak") or 0)
@@ -878,6 +902,16 @@ def evaluate(
         "qualified_this_scan": qualified,
         "qualified_streak": streak,
         "required_streak": required_streak,
+        "confirmation_spacing": {
+            "min_seconds": min_scan_spacing,
+            "elapsed_since_last_qualified_seconds": (
+                round(qualified_spacing_seconds, 3)
+                if qualified_spacing_seconds is not None
+                else None
+            ),
+            "satisfied": spacing_satisfied,
+            "counted_this_scan": counted_qualified_scan,
+        },
         "blockers": unique_blockers,
         "proof": list(dict.fromkeys(proof)),
         "entry_timing": {
@@ -949,10 +983,13 @@ def evaluate(
             "exact_chain_contract_pair_required": not cex_market_only,
             "exact_cex_market_identity_required": cex_market_only,
             "two_scan_confirmation_required": required_streak >= 2,
+            "minimum_confirmation_spacing_seconds": min_scan_spacing,
+            "fast_recheck_never_bypasses_confirmation_spacing": True,
             "telegram_final_buy_only": False,
             "telegram_pre_buy_enabled": bool(policy.get("telegram_pre_buy_enabled")),
             "pre_buy_requires_all_current_gates_passed": True,
             "pre_buy_is_one_confirmation_scan_before_final_buy": True,
+            "pre_buy_fast_recheck_requires_real_time_spacing": True,
             "pre_buy_never_after_delivered_final_buy_same_episode": True,
             "manual_decision_only": True,
             "automatic_trade": False,
@@ -989,6 +1026,11 @@ def evaluate(
         "late_entry_reset_seen": False if alert else reset_seen,
         "late_entry_reset_max_pullback_pct": 0.0 if alert else reset_depth,
         "qualified_streak": streak,
+        "last_qualified_scan_at": (
+            now.isoformat()
+            if counted_qualified_scan
+            else prior.get("last_qualified_scan_at")
+        ),
         "observable_miss_streak": miss_streak,
         "armed": armed,
         "pre_buy_armed": pre_buy_armed,
