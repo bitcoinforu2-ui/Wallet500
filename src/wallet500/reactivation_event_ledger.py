@@ -16,6 +16,7 @@ from typing import Any
 
 LEDGER_VERSION = 1
 HORIZONS_HOURS = (1, 6, 24, 72)
+CHECKPOINT_TOLERANCE_HOURS = {1: 0.5, 6: 1.0, 24: 3.0, 72: 6.0}
 
 
 def _parse_ts(value: object) -> datetime | None:
@@ -47,6 +48,7 @@ def empty_ledger() -> dict:
             "event_identity": "canonical_asset+triggered_at+exact_pair",
             "outcomes_are_sampled_not_tick_complete": True,
             "outcome_horizons_hours": list(HORIZONS_HOURS),
+            "outcome_checkpoint_tolerance_hours": dict(CHECKPOINT_TOLERANCE_HOURS),
             "outcome_reference_price": "hold_confirmation_exact_pair_price",
         },
     }
@@ -91,6 +93,7 @@ def build_confirmed_event(
         f"{hours}h": {
             "target_hours": hours,
             "closed": False,
+            "checkpoint_status": "PENDING",
             "sampled_mfe_pct": 0.0,
             "sampled_mae_pct": 0.0,
             "checkpoint_observed_at": None,
@@ -183,6 +186,7 @@ def observe_event(event: dict, *, observed_at: datetime, price_usd: float) -> di
         h = horizons.setdefault(key, {
             "target_hours": hours,
             "closed": False,
+            "checkpoint_status": "PENDING",
             "sampled_mfe_pct": 0.0,
             "sampled_mae_pct": 0.0,
             "checkpoint_observed_at": None,
@@ -195,13 +199,27 @@ def observe_event(event: dict, *, observed_at: datetime, price_usd: float) -> di
         h["sampled_mfe_pct"] = round(max(float(h.get("sampled_mfe_pct") or 0.0), ret), 4)
         h["sampled_mae_pct"] = round(min(float(h.get("sampled_mae_pct") or 0.0), ret), 4)
         if age_hours >= hours:
-            h.update({
-                "closed": True,
-                "checkpoint_observed_at": now.isoformat(),
-                "checkpoint_age_hours": round(age_hours, 4),
-                "checkpoint_price_usd": price,
-                "checkpoint_return_pct": round(ret, 4),
-            })
+            tolerance = float(CHECKPOINT_TOLERANCE_HOURS[hours])
+            if age_hours <= hours + tolerance:
+                h.update({
+                    "closed": True,
+                    "checkpoint_status": "CAPTURED",
+                    "checkpoint_observed_at": now.isoformat(),
+                    "checkpoint_age_hours": round(age_hours, 4),
+                    "checkpoint_price_usd": price,
+                    "checkpoint_return_pct": round(ret, 4),
+                })
+            else:
+                h.update({
+                    "closed": True,
+                    "checkpoint_status": "MISSED_NO_TIMELY_SAMPLE",
+                    "checkpoint_observed_at": None,
+                    "checkpoint_age_hours": None,
+                    "checkpoint_price_usd": None,
+                    "checkpoint_return_pct": None,
+                    "missed_detected_at": now.isoformat(),
+                    "first_late_sample_age_hours": round(age_hours, 4),
+                })
     return event
 
 
