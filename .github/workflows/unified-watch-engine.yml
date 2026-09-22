@@ -248,6 +248,7 @@ jobs:
           CHAIN_CONTEXT_SHADOW_OUTCOME: ${{ steps.chain_context_shadow.outcome }}
           CRITICAL_PERSIST_OUTCOME: ${{ steps.critical_persist.outcome }}
           HOT_RECHECK_PLAN_OUTCOME: ${{ steps.hot_recheck_plan.outcome }}
+          HOT_RECHECK_COUNT: ${{ steps.hot_recheck_plan.outputs.count }}
           HOT_RECHECK_OUTCOME: ${{ steps.hot_recheck.outcome }}
           HOT_RECHECK_PERSIST_OUTCOME: ${{ steps.hot_recheck_persist.outcome }}
           ENRICHED_FUSION_OUTCOME: ${{ steps.enriched_fusion.outcome }}
@@ -313,6 +314,11 @@ jobs:
               'hot_recheck_persist': os.getenv('HOT_RECHECK_PERSIST_OUTCOME'),
               'enriched_fusion': os.getenv('ENRICHED_FUSION_OUTCOME'),
           }
+          # Hot recheck is conditional by design. No eligible hot target is a
+          # healthy no-op, not a skipped-stage failure.
+          if str(os.getenv('HOT_RECHECK_COUNT') or '').strip() in {'', '0'} and outcomes.get('hot_recheck_plan') == 'success':
+              outcomes['hot_recheck'] = 'not_needed'
+              outcomes['hot_recheck_persist'] = 'not_needed'
           manifest = {
               'version': 7,
               'generated_at': datetime.now(timezone.utc).isoformat(),
@@ -320,7 +326,7 @@ jobs:
               'github_run_attempt': os.getenv('GH_RUN_ATTEMPT'),
               'github_sha': os.getenv('GH_SHA'),
               'stage_outcomes': outcomes,
-              'first_failed_or_skipped_stage': next((k for k,v in outcomes.items() if v not in ('success',)), None),
+              'first_failed_or_skipped_stage': next((k for k,v in outcomes.items() if v not in ('success', 'not_needed')), None),
               'evidence': {
                   'spot_discovery_exists': spot is not None,
                   'spot_discovery_generated_at': (spot or {}).get('generated_at') if isinstance(spot, dict) else None,
