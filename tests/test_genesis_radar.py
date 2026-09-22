@@ -1,4 +1,4 @@
-from wallet500.genesis_radar import PAPER_ENTRY_USD, age_band, extension_band, genesis_score, safety_gate
+from wallet500.genesis_radar import PAPER_ENTRY_USD, age_band, extension_band, genesis_score, prebreakout_signals, safety_gate
 
 
 def base_candidate():
@@ -90,3 +90,34 @@ def test_healthy_accelerating_candidate_reaches_actionable_band():
     assert result["acceleration"]["passed"] is True
     assert result["genesis_score"] >= 75
     assert result["status"] in {"PAPER_BUY_CANDIDATE", "STRONG_GENESIS", "EXCEPTIONAL_GENESIS"}
+
+
+def test_prebreakout_detects_pressure_before_price_extension():
+    c = base_candidate()
+    c["gain_from_baseline_pct"] = 42
+    c["price_change_h1"] = 11
+    result = prebreakout_signals(c)
+    assert "PRESSURE_BEFORE_PRICE_EXTENSION" in result["signals"]
+    assert "LIQUIDITY_COMMITMENT" in result["signals"]
+    assert "BREADTH_WITHOUT_CONCENTRATION" in result["signals"]
+    assert result["priority_ready"] is True
+
+
+def test_prebreakout_launchpad_lifecycle_is_optional_positive_evidence():
+    c = base_candidate()
+    c["gain_from_baseline_pct"] = 35
+    c["price_change_h1"] = 8
+    c["launchpad_curve_progress_pct"] = 88
+    result = prebreakout_signals(c)
+    assert "BONDING_CURVE_NEAR_GRADUATION" in result["signals"]
+    assert result["coverage_pct"] > 50
+
+
+def test_prebreakout_bundle_dominance_never_gets_priority():
+    c = base_candidate()
+    c["gain_from_baseline_pct"] = 25
+    c["price_change_h1"] = 5
+    c["sniper_bundle_share_pct"] = 82
+    result = prebreakout_signals(c)
+    assert "BUNDLE_DOMINATED_LAUNCH" in result["risks"]
+    assert result["priority_ready"] is False
