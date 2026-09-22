@@ -269,6 +269,7 @@ def main():
         # retain the verified multi-venue DEX identity so weak-but-valid candidates
         # are not lost merely because Gate also lists the ticker.
         gate_row = gate_spot_by_market.get(gate_market) if gate_market else None
+        gate_can_own_market = False
         if isinstance(gate_row, dict):
             gate_change = float(
                 gate_row.get("discovery_momentum_change_pct")
