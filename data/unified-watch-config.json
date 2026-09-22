@@ -401,6 +401,10 @@
     "late_entry_max_rebound_without_reset_pct": 30,
     "late_entry_reset_pullback_pct": 8,
     "late_entry_reclaim_min_scan_gain_pct": 1,
+    "late_entry_reset_valid_seconds": 3600,
+    "pre_buy_episode_ttl_seconds": 3600,
+    "pre_buy_max_price_drift_pct": 8,
+    "pre_buy_rearm_requires_fresh_reset": true,
     "strong_min_fusion_score": 55,
     "strong_min_positive_families": 3,
     "relaxed_min_fusion_score": 30,
@@ -414,7 +418,7 @@
     "rearm_after_observable_misses": 2,
     "telegram_final_buy_only": false,
     "automatic_trade": false,
-    "notes": "User-requested Unified Watch sends only strict PRE-BUY (all current gates passed, exactly one confirmation scan remains) and FINAL BUY. Generic near-buy/research/watch notifications remain silent. Does not weaken veteran REAL_ALERT policy.",
+    "notes": "User-requested Unified Watch sends strict PRE-BUY and FINAL BUY only. PRE-BUY is one warning per opportunity episode; a second PRE-BUY or a late/high FINAL BUY requires a fresh post-alert reset + reclaim. Reset credentials expire after 1h and price drift above 8% from PRE-BUY is treated as chase risk. Generic near-buy/research/watch notifications remain silent. Does not weaken veteran REAL_ALERT policy.",
     "telegram_pre_buy_enabled": true
   }
 }
