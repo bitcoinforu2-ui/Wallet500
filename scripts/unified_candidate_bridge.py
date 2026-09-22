@@ -355,6 +355,8 @@ def main():
             else ""
         )
         verified_gate_market = proven_gate_market(row, gate_market)
+        if not verified_gate_market and same_gate_asset and isinstance(gate_row, dict):
+            verified_gate_market = str(gate_row.get("currency_pair") or "").upper().strip()
         if verified_gate_market and isinstance(gate_row, dict) and not gate_has_exact_asset:
             cex_market_exact_identity_recovered += 1
         pools = verified_asset_pools(row)
