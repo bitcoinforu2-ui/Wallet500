@@ -168,9 +168,25 @@ def targets():
 
     hot_rows = [x for x in dynamic_rows if hot_cex(x)]
     hot_ids = {id(x) for x in hot_rows}
+    genesis_rows = [
+        x for x in dynamic_rows
+        if str(x.get("candidate_type") or "").upper() == "GENESIS_PREBREAKOUT"
+        and x.get("genesis_final_buy_lane") is True
+    ]
+    genesis_ids = {id(x) for x in genesis_rows}
+    genesis_rows.sort(
+        key=lambda x: (
+            float(x.get("prebreakout_score") or 0),
+            float(x.get("dex_liquidity_usd") or 0),
+        ),
+        reverse=True,
+    )
+    genesis_rows = genesis_rows[:10]
     other_dynamic = [
         x for x in dynamic_rows
-        if str(x.get("candidate_type") or "").upper() != "BUY_ZONE" and id(x) not in hot_ids
+        if str(x.get("candidate_type") or "").upper() != "BUY_ZONE"
+        and id(x) not in hot_ids
+        and id(x) not in genesis_ids
     ]
     hot_rows.sort(
         key=lambda x: (
@@ -179,10 +195,11 @@ def targets():
         )
     )
 
-    # BUY and hot CEX identities are never displaced by the ordinary research cap.
+    # BUY, hot CEX and strong Genesis identities are never displaced by the
+    # ordinary research cap.
     rows = []
     seen = set()
-    ordered = buy_rows + hot_rows + list(cfg.get("tokens") or []) + other_dynamic
+    ordered = buy_rows + hot_rows + genesis_rows + list(cfg.get("tokens") or []) + other_dynamic
     for x in ordered:
         if not isinstance(x, dict):
             continue
@@ -193,7 +210,11 @@ def targets():
         rows.append(x)
     buy_count = len([x for x in rows if str(x.get("candidate_type") or "").upper() == "BUY_ZONE"])
     hot_count = sum(1 for x in rows if hot_cex(x))
-    return rows[:max(60, buy_count + hot_count)]
+    genesis_count = sum(
+        1 for x in rows
+        if str(x.get("candidate_type") or "").upper() == "GENESIS_PREBREAKOUT"
+    )
+    return rows[:max(60, buy_count + hot_count + genesis_count)]
 
 
 def global_attention_maps(rows=None):
@@ -373,9 +394,10 @@ def main():
         rows,
         key=lambda x: (
             0 if str(x.get("candidate_type") or "").upper() == "BUY_ZONE"
-            else 1 if str(x.get("candidate_type") or "").upper() == "NEW_CHAIN_BOOTSTRAP"
-            else 2 if x.get("candidate_type") == "GATE_SPOT_DISCOVERY"
-            else 3,
+            else 1 if str(x.get("candidate_type") or "").upper() == "GENESIS_PREBREAKOUT"
+            else 2 if str(x.get("candidate_type") or "").upper() == "NEW_CHAIN_BOOTSTRAP"
+            else 3 if x.get("candidate_type") == "GATE_SPOT_DISCOVERY"
+            else 4,
             x.get("positive_gainer_rank") or 999999,
         ),
     )[:12]
