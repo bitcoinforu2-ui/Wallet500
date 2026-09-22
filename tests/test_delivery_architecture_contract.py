@@ -4,6 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_SCAN = ROOT / ".github" / "workflows" / "live-scan.yml"
 PRODUCTION_TELEGRAM = ROOT / ".github" / "workflows" / "telegram-production-alerts.yml"
+UNIFIED_WATCH = ROOT / ".github" / "workflows" / "unified-watch-engine.yml"
+USER_WATCH_FINAL_BUY = ROOT / "scripts" / "user_watch_final_buy.py"
 
 
 def _text(path: Path) -> str:
@@ -28,3 +30,14 @@ def test_production_telegram_waits_for_verified_publisher_and_uses_guarded_wrapp
     assert "run: python scripts/run_telegram_with_intelligence_shadow.py" in production
     assert "Persist Telegram dedupe, pre-alert evidence and delivery report atomically" in production
     assert "scripts/atomic_publish.py" in production
+
+def test_user_watch_delivery_checkpoints_dedupe_before_later_work_can_fail():
+    source = _text(USER_WATCH_FINAL_BUY)
+    workflow = _text(UNIFIED_WATCH)
+    assert source.count("checkpoint_delivery_state(target_state, now)") >= 2
+    assert 'next_state["last_delivery_status"] = "DELIVERED"' in source
+    assert 'next_state["last_pre_buy_delivery_status"] = "DELIVERED"' in source
+    assert "id: critical_persist" in workflow
+    assert "if: always()" in workflow
+    assert "data/user-watch-final-buy-state.json" in workflow
+
