@@ -134,6 +134,25 @@ def _diagnose(name, check, now):
                 },
                 recommended_action="INSPECT_QUARANTINE_REASONS_AND_MISSING_HOLDER_CLUSTER_EVIDENCE",
             )
+    elif name == "decision_path":
+        diag.update(
+            failure_code="DECISION_PATH_NO_CURRENT_COVERAGE",
+            severity="HIGH",
+            blocks_production=False,
+            expected={
+                "market_watch_outcome": "success",
+                "when_targets_exist": "current FINAL BUY evaluation coverage",
+            },
+            actual={
+                "runtime_age_seconds": check.get("runtime_age_seconds"),
+                "market_watch_outcome": check.get("market_watch_outcome"),
+                "configured_targets": check.get("configured_targets"),
+                "partial_upstream_evaluated": check.get("partial_upstream_evaluated"),
+                "partial_upstream_skipped": check.get("partial_upstream_skipped"),
+                "final_buy_status": check.get("final_buy_status"),
+            },
+            recommended_action="RESTORE_UNIFIED_MARKET_WATCH_CURRENT_SNAPSHOT_COVERAGE",
+        )
     elif name == "wallet_forensics":
         diag.update(
             failure_code="WALLET_FORENSICS_STALE_OR_COVERAGE_GAP",
@@ -193,10 +212,16 @@ def build_health(output_dir="data", now=None):
     holder = _load(out / "holder-cluster-production-report.json", {})
     wallet = _load(out / "wallet-forensics-summary.json", {})
     publish = _load(out / "publish-evidence.json", {})
+    unified_runtime = _load(out / "unified-watch-runtime-evidence.json", {})
+    final_buy = _load(out / "user-watch-final-buy-report.json", {})
 
     primary_age = _age_seconds(summary.get("updated_at") if isinstance(summary, dict) else None, now)
     wallet_age = _age_seconds(wallet.get("updated_at") if isinstance(wallet, dict) else None, now)
     publish_age = _age_seconds(publish.get("created_at") if isinstance(publish, dict) else None, now)
+    unified_runtime_age = _age_seconds(
+        unified_runtime.get("generated_at") if isinstance(unified_runtime, dict) else None,
+        now,
+    )
     lane = (summary.get("lane_health") or {}) if isinstance(summary, dict) else {}
     prod = (summary.get("production_risk_gate") or {}) if isinstance(summary, dict) else {}
     policy = (summary.get("intelligence_policy") or {}) if isinstance(summary, dict) else {}
@@ -217,6 +242,23 @@ def build_health(output_dir="data", now=None):
     new_lane_expected_disabled = new_target == 0
     new_lane_ok = (new_lane_expected_disabled and raw_new_lane in {"DISABLED_POLICY", "DISABLED_BY_POLICY", "DISABLED"}) or (
         not new_lane_expected_disabled and raw_new_lane == "HEALTHY"
+    )
+
+    runtime_outcomes = unified_runtime.get("stage_outcomes") if isinstance(unified_runtime, dict) else {}
+    runtime_outcomes = runtime_outcomes if isinstance(runtime_outcomes, dict) else {}
+    market_watch_outcome = str(runtime_outcomes.get("market_watch") or "").lower()
+    configured_buy_targets = int(final_buy.get("configured_targets", 0) or 0) if isinstance(final_buy, dict) else 0
+    partial_evaluated = int(final_buy.get("partial_upstream_evaluated", 0) or 0) if isinstance(final_buy, dict) else 0
+    partial_skipped = int(final_buy.get("partial_upstream_skipped", 0) or 0) if isinstance(final_buy, dict) else 0
+    final_buy_status = str(final_buy.get("status") or "") if isinstance(final_buy, dict) else ""
+    runtime_current = unified_runtime_age is not None and 0 <= unified_runtime_age <= 3600
+    decision_path_ok = bool(
+        runtime_current
+        and market_watch_outcome == "success"
+        and (
+            configured_buy_targets == 0
+            or final_buy_status not in {"PARTIAL_UPSTREAM_FRESH_TARGETS_ONLY", ""}
+        )
     )
 
     checks = {
@@ -248,6 +290,17 @@ def build_health(output_dir="data", now=None):
         "holder_cluster_fail_closed": {
             "status": "HEALTHY" if holder.get("mode") == "PRODUCTION_FAIL_CLOSED" else "FAILED",
             "mode": holder.get("mode"),
+        },
+        "decision_path": {
+            "status": "HEALTHY" if decision_path_ok else "DEGRADED",
+            "runtime_age_seconds": round(unified_runtime_age, 1) if unified_runtime_age is not None else None,
+            "max_runtime_age_seconds": 3600,
+            "market_watch_outcome": market_watch_outcome or None,
+            "configured_targets": configured_buy_targets,
+            "partial_upstream_evaluated": partial_evaluated,
+            "partial_upstream_skipped": partial_skipped,
+            "final_buy_status": final_buy_status or None,
+            "interpretation": "Discovery health is not decision health; current market-watch coverage is required.",
         },
     }
 
@@ -326,6 +379,7 @@ def build_health(output_dir="data", now=None):
         "old_coin_revival",
         "new_token_lab",
         "holder_cluster_fail_closed",
+        "decision_path",
         "liquidity_policy",
         "holder_cluster_evidence_coverage",
         "wallet_forensics",
