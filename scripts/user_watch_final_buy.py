@@ -270,8 +270,10 @@ def _policy(config: dict) -> dict:
         "hot_recheck_delay_seconds": 180,
         "hot_recheck_max_targets": 8,
         "rearm_after_observable_misses": 2,
-        "telegram_final_buy_only": False,
-        "telegram_pre_buy_enabled": True,
+        # Telegram is BUY-only. Confirmation-pending candidates stay internal
+        # so the bounded hot-recheck lane remains fast without sending noise.
+        "telegram_final_buy_only": True,
+        "telegram_pre_buy_enabled": False,
         "automatic_trade": False,
         "cex_quarter_wave_fast_path_enabled": True,
         "cex_quarter_wave_min_turnover_usd": 20000.0,
@@ -613,10 +615,37 @@ def evaluate(
         if price > 0 and prior_high > 0
         else None
     )
+    # Measure cumulative extension from every episode anchor we actually know.
+    # NIL exposed the blind spot here: the latest scan was only +1.27% and the
+    # watch-low rebound was +27.27%, but the armed quarter-wave anchor was
+    # already +34.97%. Using only watch_low therefore mislabeled a late chase
+    # as a clean entry. The strongest valid anchor now controls the chase gate.
+    if (
+        quarter_wave_lane
+        and quarter_wave_gain is None
+        and quarter_wave_anchor > 0
+        and price > 0
+    ):
+        quarter_wave_gain = ((price / quarter_wave_anchor) - 1.0) * 100.0
+
+    cumulative_extension_candidates: list[tuple[str, float]] = []
+    if rebound is not None:
+        cumulative_extension_candidates.append(("watch_low", rebound))
+    if quarter_wave_lane and quarter_wave_gain is not None:
+        cumulative_extension_candidates.append(("quarter_wave_anchor", quarter_wave_gain))
+
+    if cumulative_extension_candidates:
+        cumulative_extension_basis, cumulative_extension_pct = max(
+            cumulative_extension_candidates, key=lambda item: item[1]
+        )
+    else:
+        cumulative_extension_basis, cumulative_extension_pct = None, None
+
     late_entry_extended = bool(
         quarter_wave_lane
-        and rebound is not None
-        and rebound >= float(policy["late_entry_max_rebound_without_reset_pct"])
+        and cumulative_extension_pct is not None
+        and cumulative_extension_pct
+        >= float(policy["late_entry_max_rebound_without_reset_pct"])
     )
     extension_seen_prior = bool(prior.get("late_entry_extension_seen"))
     extension_seen = bool(extension_seen_prior or late_entry_extended)
@@ -816,8 +845,8 @@ def evaluate(
     if alert:
         armed = False
 
-    # Strict PRE-BUY: every current market/intelligence/safety gate passed,
-    # with exactly one configured confirmation scan remaining before FINAL BUY.
+    # Keep confirmation-pending state internal for fast rechecks. Telegram
+    # delivery is controlled separately and is BUY-only by production policy.
     pre_buy_armed = bool(prior.get("pre_buy_armed", True))
     if (
         observable
@@ -826,8 +855,7 @@ def evaluate(
     ):
         pre_buy_armed = True
     pre_buy = bool(
-        policy.get("telegram_pre_buy_enabled") is True
-        and required_streak > 1
+        required_streak > 1
         and qualified
         and not final_buy
         and streak == required_streak - 1
@@ -840,6 +868,8 @@ def evaluate(
     final_buy_already_delivered = bool(prior.get("last_alert_at"))
     pre_buy_alert = bool(
         pre_buy
+        and policy.get("telegram_pre_buy_enabled") is True
+        and policy.get("telegram_final_buy_only") is not True
         and pre_buy_armed
         and not final_buy_already_delivered
     )
@@ -917,6 +947,20 @@ def evaluate(
         "entry_timing": {
             "late_entry_guard_enabled": bool(policy.get("late_entry_guard_enabled")),
             "extended_move": late_entry_extended,
+            "cumulative_extension_pct": (
+                round(cumulative_extension_pct, 4)
+                if cumulative_extension_pct is not None
+                else None
+            ),
+            "cumulative_extension_basis": cumulative_extension_basis,
+            "watch_low_rebound_pct": (
+                round(rebound, 4) if rebound is not None else None
+            ),
+            "quarter_wave_anchor_gain_pct": (
+                round(quarter_wave_gain, 4)
+                if quarter_wave_gain is not None
+                else None
+            ),
             "max_rebound_without_reset_pct": float(policy["late_entry_max_rebound_without_reset_pct"]),
             "pullback_from_watch_high_pct": (
                 round(pullback_from_watch_high, 4)
@@ -985,7 +1029,7 @@ def evaluate(
             "two_scan_confirmation_required": required_streak >= 2,
             "minimum_confirmation_spacing_seconds": min_scan_spacing,
             "fast_recheck_never_bypasses_confirmation_spacing": True,
-            "telegram_final_buy_only": False,
+            "telegram_final_buy_only": bool(policy.get("telegram_final_buy_only")),
             "telegram_pre_buy_enabled": bool(policy.get("telegram_pre_buy_enabled")),
             "pre_buy_requires_all_current_gates_passed": True,
             "pre_buy_is_one_confirmation_scan_before_final_buy": True,
@@ -1053,6 +1097,8 @@ def evaluate(
 
 
 def telegram_message(target: dict, decision: dict) -> str:
+    if decision.get("alert") is not True and decision.get("pre_buy_alert") is not True:
+        raise ValueError("TELEGRAM_MESSAGE_REQUIRES_DELIVERABLE_DECISION")
     m = decision["market"]
     intel = decision["intelligence"]
     timing = decision.get("entry_timing") if isinstance(decision.get("entry_timing"), dict) else {}
@@ -1308,15 +1354,15 @@ def main() -> int:
             "quarter_wave_cex_uses_same_strict_final_buy_gate": True,
             "quarter_wave_trigger_gain_pct": 25.0,
             "quarter_wave_trigger_is_not_buy": True,
-            "telegram_final_buy_only": False,
+            "telegram_final_buy_only": bool(policy.get("telegram_final_buy_only")),
             "telegram_pre_buy_enabled": bool(policy.get("telegram_pre_buy_enabled")),
-            "pre_buy_definition": "ALL_CURRENT_GATES_PASSED_AND_EXACTLY_ONE_CONFIRMATION_SCAN_REMAINS",
+            "pre_buy_definition": "INTERNAL_CONFIRMATION_PENDING_ALL_CURRENT_GATES_PASSED_ONE_SCAN_REMAINS",
             "minimum_confirmation_spacing_seconds": float(policy.get("min_qualified_scan_spacing_seconds", 180)),
             "hot_recheck_delay_seconds": int(policy.get("hot_recheck_delay_seconds", 180)),
             "hot_recheck_max_targets": int(policy.get("hot_recheck_max_targets", 8)),
             "hot_recheck_never_weakens_final_buy_gates": True,
             "research_watch_notifications": False,
-            "near_buy_notifications": True,
+            "near_buy_notifications": bool(policy.get("telegram_pre_buy_enabled")),
             "generic_near_buy_notifications": False,
             "fail_closed_per_target_on_partial_upstream": True,
             "partial_upstream_max_snapshot_age_seconds": partial_upstream_max_age_seconds,
