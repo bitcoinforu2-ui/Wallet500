@@ -598,6 +598,21 @@ def test_critical_spot_lane_is_hard_bounded_and_keeps_top_movers(monkeypatch, tm
     assert selected[18]["critical_market_lane"] is False
 
 
+def test_runtime_env_bounds_are_fail_safe(monkeypatch):
+    monkeypatch.setenv("WALLET500_CRITICAL_SPOT_CAP", "9999")
+    assert engine.bounded_env_int("WALLET500_CRITICAL_SPOT_CAP", 18, 8, 32) == 32
+    monkeypatch.setenv("WALLET500_CRITICAL_SPOT_CAP", "not-an-int")
+    assert engine.bounded_env_int("WALLET500_CRITICAL_SPOT_CAP", 18, 8, 32) == 18
+    monkeypatch.setenv("WALLET500_NONCRITICAL_SCAN_BUDGET_SECONDS", "99999")
+    assert engine.bounded_env_float(
+        "WALLET500_NONCRITICAL_SCAN_BUDGET_SECONDS", 420.0, 60.0, 600.0
+    ) == 600.0
+    monkeypatch.setenv("WALLET500_NONCRITICAL_SCAN_BUDGET_SECONDS", "broken")
+    assert engine.bounded_env_float(
+        "WALLET500_NONCRITICAL_SCAN_BUDGET_SECONDS", 420.0, 60.0, 600.0
+    ) == 420.0
+
+
 def test_critical_spot_lane_dedupes_same_market_pools_and_fair_rotates(monkeypatch, tmp_path):
     import json
 

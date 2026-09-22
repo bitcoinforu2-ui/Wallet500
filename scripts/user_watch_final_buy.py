@@ -1154,6 +1154,20 @@ def send_telegram(text: str) -> None:
         raise RuntimeError("TELEGRAM_SEND_FAILED")
 
 
+def checkpoint_delivery_state(target_state: dict, now: datetime) -> None:
+    """Stage dedupe state immediately after a successful Telegram delivery.
+
+    The workflow publishes this file from an always() step, so a later exception
+    cannot reopen the same exact-identity episode and duplicate a user alert.
+    """
+    write(STATE, {
+        "version": 1,
+        "updated_at": now.isoformat(),
+        "mode": POLICY_MODE,
+        "targets": target_state,
+    })
+
+
 def main() -> int:
     config = load(CONFIG, {})
     policy = _policy(config)
@@ -1240,6 +1254,8 @@ def main() -> int:
                 send_telegram(telegram_message(target, decision))
                 pre_buy_delivered.append(key)
                 next_state["last_pre_buy_delivery_status"] = "DELIVERED"
+                target_state[key] = next_state
+                checkpoint_delivery_state(target_state, now)
             except Exception as exc:
                 next_state["pre_buy_armed"] = True
                 next_state.pop("last_pre_buy_alert_at", None)
@@ -1255,6 +1271,8 @@ def main() -> int:
                 send_telegram(telegram_message(target, decision))
                 delivered.append(key)
                 next_state["last_delivery_status"] = "DELIVERED"
+                target_state[key] = next_state
+                checkpoint_delivery_state(target_state, now)
             except Exception as exc:
                 next_state["armed"] = True
                 next_state.pop("last_alert_at", None)

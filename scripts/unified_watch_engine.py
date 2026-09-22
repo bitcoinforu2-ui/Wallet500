@@ -39,6 +39,24 @@ def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
+def bounded_env_int(name, default, minimum, maximum):
+    raw = os.environ.get(name)
+    try:
+        value = int(raw) if raw is not None and str(raw).strip() else int(default)
+    except (TypeError, ValueError):
+        value = int(default)
+    return min(int(maximum), max(int(minimum), value))
+
+
+def bounded_env_float(name, default, minimum, maximum):
+    raw = os.environ.get(name)
+    try:
+        value = float(raw) if raw is not None and str(raw).strip() else float(default)
+    except (TypeError, ValueError):
+        value = float(default)
+    return min(float(maximum), max(float(minimum), value))
+
+
 def chain_name(value):
     raw = str(value or "").strip().lower()
     return CHAIN_ALIASES.get(raw, raw)
@@ -426,8 +444,8 @@ def dynamic_candidates(persisted_tokens=None):
     # Only if there are fewer distinct events than the cap can sibling pools take
     # additional critical slots. Exact on-chain candidates win ties over CEX-only
     # venue rows, while all rows remain available to the bounded noncritical scan.
-    critical_spot_cap = max(
-        8, int(os.environ.get("WALLET500_CRITICAL_SPOT_CAP", "18"))
+    critical_spot_cap = bounded_env_int(
+        "WALLET500_CRITICAL_SPOT_CAP", 18, 8, 32
     )
     critical_rows = []
     critical_ids = set()
@@ -1141,8 +1159,8 @@ def main():
     suppressed_alerts = 0
     suppressed_low_confirmation_alerts = 0
     scan_started_monotonic = time.monotonic()
-    noncritical_budget_seconds = max(
-        60.0, float(os.environ.get("WALLET500_NONCRITICAL_SCAN_BUDGET_SECONDS", "420"))
+    noncritical_budget_seconds = bounded_env_float(
+        "WALLET500_NONCRITICAL_SCAN_BUDGET_SECONDS", 420.0, 60.0, 600.0
     )
     noncritical_truncated = 0
 
