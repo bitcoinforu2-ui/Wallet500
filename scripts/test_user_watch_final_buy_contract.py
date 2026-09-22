@@ -90,10 +90,16 @@ def main() -> None:
     assert qualifying["state"] == "QUALIFYING"
     assert qualifying["qualified_streak"] == 1
     assert qualifying["pre_buy"] is True
-    assert qualifying["pre_buy_alert"] is True
+    assert qualifying["pre_buy_alert"] is False
     assert qualifying["alert"] is False
-    assert "רגע לפני קנייה / PRE-BUY" in gate.telegram_message(TARGET, qualifying)
-    assert s2["pre_buy_armed"] is False
+    assert qualifying["truth_contract"]["telegram_final_buy_only"] is True
+    assert qualifying["truth_contract"]["telegram_pre_buy_enabled"] is False
+    assert s2["pre_buy_armed"] is True
+    try:
+        gate.telegram_message(TARGET, qualifying)
+        raise AssertionError("non-deliverable confirmation-pending state formatted for Telegram")
+    except ValueError as exc:
+        assert str(exc) == "TELEGRAM_MESSAGE_REQUIRES_DELIVERABLE_DECISION"
 
     t3 = t2 + timedelta(minutes=15)
     buy, s3 = gate.evaluate(
@@ -109,6 +115,7 @@ def main() -> None:
     assert buy["pre_buy"] is False
     assert buy["pre_buy_alert"] is False
     assert buy["alert"] is True
+    assert "קנייה / BUY" in gate.telegram_message(TARGET, buy)
     assert s3["armed"] is False
 
     t4 = t3 + timedelta(minutes=15)
@@ -260,6 +267,49 @@ def main() -> None:
     assert "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET" not in mgt_q["blockers"]
     assert "BUY_FLOW_NOT_CONFIRMED" not in mgt_q["blockers"]
     assert mgt_q["pre_buy"] is True
+
+    # NIL regression: a calm +1.27% latest scan and +27.27% rebound from the
+    # rolling watch low must not hide that the armed quarter-wave anchor is
+    # already +34.97%. This is WAIT_FOR_REENTRY until a real reset + reclaim.
+    nil_target = {
+        **TARGET,
+        "symbol": "NIL",
+        "network": "ethereum",
+        "contract": "0x7cf9a80db3b29ee8efe3710aadb7b95270572d47",
+        "pair": "0xc63eb6794f7b98afa83a350eceb9052401c6da65e2e27d8b3479e12bbc720b91",
+        "quarter_wave_revalidation_lane": True,
+        "quarter_wave_anchor_price_usd": 0.0805464688 / 1.3497,
+        "quarter_wave_gain_from_anchor_pct": 34.97,
+    }
+    nil_key = gate.identity_key(nil_target)
+    nil_market = {
+        "identity_key": nil_key,
+        "price": 0.0805464688,
+        "liquidity": 467159,
+        "volume_h1": 30872,
+        "buys_h1": 61,
+        "sells_h1": 29,
+        "spread_pct": 0.25,
+        "observed_at": t2.isoformat(),
+    }
+    nil_obs = observed(score=30.6, families=2)
+    nil_obs["identity_key"] = nil_key
+    nil_obs["intelligence"]["family_scores"]["holder_network"] = 4
+    nil_prior = {
+        "last_price": 0.0805464688 / 1.0127,
+        "watch_low_price": 0.0805464688 / 1.2727,
+        "watch_high_price": 0.0805464688,
+    }
+    nil_decision, _ = gate.evaluate(
+        nil_target, nil_market, nil_obs, nil_prior, POLICY, now=t2
+    )
+    assert nil_decision["recommended_action"] == "WAIT"
+    assert nil_decision["pre_buy"] is False
+    assert nil_decision["pre_buy_alert"] is False
+    assert "EXTENDED_MOVE_WAIT_FOR_RESET" in nil_decision["blockers"]
+    assert nil_decision["entry_timing"]["chase_risk_blocked"] is True
+    assert nil_decision["entry_timing"]["cumulative_extension_basis"] == "quarter_wave_anchor"
+    assert abs(nil_decision["entry_timing"]["cumulative_extension_pct"] - 34.97) < 0.01
 
     # PTB-like case: DEX flow is weak, but exact Gate execution shows an extreme
     # volume/rank breakout with tight spread and sufficient executable depth.
