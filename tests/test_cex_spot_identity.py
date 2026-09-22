@@ -796,7 +796,7 @@ def test_live_leaderboard_priority_cannot_be_starved_by_persistent_backlog():
     assert report["production_effect"] is False
 
 
-def test_extended_live_leaderboard_move_does_not_consume_emergency_identity_capacity():
+def test_extended_live_leaderboard_move_still_gets_identity_capacity_but_not_actionability():
     row = {
         "symbol": "LATEUSDT",
         "spot_revival_score": 40,
@@ -820,5 +820,8 @@ def test_extended_live_leaderboard_move_does_not_consume_emergency_identity_capa
     )
 
     assert [x["symbol"] for x in selected] == ["LATEUSDT"]
-    assert report["live_leaderboard_priority_count"] == 0
-    assert report["live_leaderboard_selected_count"] == 0
+    assert report["live_leaderboard_priority_count"] == 1
+    assert report["live_leaderboard_selected_count"] == 1
+    assert report["live_leaderboard_price_extension_blocks_identity_resolution"] is False
+    assert report["live_leaderboard_never_satisfies_identity_or_actionability"] is True
+    assert report["production_effect"] is False
