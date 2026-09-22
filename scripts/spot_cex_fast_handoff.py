@@ -7,6 +7,7 @@ import unified_watch_engine as engine
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "data/cex-sensor-handoff.json"
+EVENTS = ROOT / "data/close-watch-events.json"
 IDENTITY_RADAR = ROOT / "data/cex-spot-identity-radar.json"
 NATIVE_REGISTRY = ROOT / "data/native-asset-identity-registry.json"
 
@@ -31,6 +32,95 @@ def _i(value, default=999) -> int:
         return out if out > 0 else default
     except (TypeError, ValueError):
         return default
+
+
+def _optf(value):
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _cex_execution_events(target: dict, current: dict, sensor: dict) -> list[dict]:
+    """Emit fresh exact-identity CEX execution evidence for same-run fusion.
+
+    These events never create a BUY on their own. They only prevent a hot,
+    already-executable exact CEX+DEX identity from appearing STALE_ONLY because
+    the intelligence collector ran before CEX orderbook verification.
+    """
+    identity = str(current.get("identity_key") or "")
+    if not identity or identity.startswith("cex:"):
+        return []
+    if current.get("cex_execution_verified") is not True:
+        return []
+    network = str(current.get("network") or "").strip()
+    contract = str(current.get("contract") or "").strip()
+    pair = str(current.get("pair") or "").strip()
+    if not network or not contract or not pair:
+        return []
+
+    market_spread = _optf(current.get("cex_market_price_spread_pct"))
+    if market_spread is None or market_spread > 2.0:
+        return []
+
+    observed_at = str(current.get("observed_at") or engine.now_iso())
+    rel = _f(sensor.get("baseline_multiple"))
+    rank = _i(sensor.get("current_rank"))
+    depth = _f(current.get("cex_depth_1pct_usd"))
+    order_spread = _optf(current.get("cex_orderbook_spread_pct"))
+    bid_ask = _f(current.get("cex_bid_ask_depth_ratio"))
+    source = str(target.get("exchange") or current.get("exchange") or "cex").upper() + " Spot"
+
+    common = {
+        "symbol": str(current.get("symbol") or target.get("symbol") or "").upper(),
+        "network": network,
+        "contract": contract,
+        "pair": pair,
+        "identity_key": identity,
+        "family": "market_microstructure",
+        "event_time": observed_at,
+        "observed_at": observed_at,
+        "source": source,
+        "identity_verified": True,
+        "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR_PLUS_CEX_MARKET",
+        "free_source": True,
+    }
+    events = []
+
+    if rel >= 4.0 and rank <= 15:
+        events.append({
+            **common,
+            "kind": "cex_relative_volume_execution",
+            "direction": 1,
+            "strength": round(min(100.0, 35.0 + max(0.0, rel - 1.0) * 7.0), 1),
+            "confidence": 92.0,
+            "canonical_event_id": f"cex-volume:{identity}:{observed_at}",
+            "relative_volume_multiple": round(rel, 4),
+            "positive_gainer_rank": rank,
+            "quote_volume_24h_usd": _f(sensor.get("current_volume_usd")),
+            "cex_market_price_spread_pct": market_spread,
+        })
+
+    if (
+        depth >= 3000.0
+        and order_spread is not None
+        and order_spread <= 1.5
+        and bid_ask >= 1.15
+    ):
+        events.append({
+            **common,
+            "kind": "cex_orderbook_bid_depth_imbalance",
+            "direction": 1,
+            "strength": round(min(100.0, 30.0 + (bid_ask - 1.0) * 18.0), 1),
+            "confidence": 90.0,
+            "canonical_event_id": f"cex-orderbook:{identity}:{observed_at}",
+            "cex_depth_1pct_usd": round(depth, 4),
+            "cex_orderbook_spread_pct": order_spread,
+            "cex_bid_ask_depth_ratio": round(bid_ask, 4),
+            "cex_market_price_spread_pct": market_spread,
+        })
+
+    return events
 
 
 def _native_asset_identity(symbol: str, coingecko_id: str, registry: dict | None = None) -> dict | None:
@@ -186,6 +276,7 @@ def main() -> int:
     identity_pending_evaluated = 0
     identity_pending_escalated = 0
     rows = []
+    critical_events = []
 
     for target in engine.dynamic_candidates(tokens):
         if not target.get("dynamic_spot_candidate"):
@@ -318,6 +409,7 @@ def main() -> int:
                     "cex_orderbook_spread_pct": current.get("cex_orderbook_spread_pct"),
                     "cex_bid_ask_depth_ratio": current.get("cex_bid_ask_depth_ratio"),
                 })
+                critical_events.extend(_cex_execution_events(target, current, sensor))
                 escalated += 1
             except Exception as exc:
                 current["close_watch_mode"] = "CEX_LED_REVIVAL_PENDING_EXACT_PAIR"
@@ -423,6 +515,24 @@ def main() -> int:
         tokens[key] = current
         rows.append(result)
 
+    if critical_events:
+        event_doc = _load(EVENTS, {"version": 3, "events": []})
+        existing = [
+            e for e in (event_doc.get("events") or [])
+            if isinstance(e, dict)
+        ]
+        deduped = {}
+        for e in existing + critical_events:
+            deduped[(
+                str(e.get("identity_key") or ""),
+                str(e.get("canonical_event_id") or ""),
+                str(e.get("kind") or ""),
+            )] = e
+        event_doc["version"] = max(3, int(event_doc.get("version") or 0))
+        event_doc["generated_at"] = engine.now_iso()
+        event_doc["events"] = list(deduped.values())[-5000:]
+        EVENTS.write_text(json.dumps(event_doc, indent=2, ensure_ascii=False) + "\n")
+
     state["updated_at"] = engine.now_iso()
     engine.STATE.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n")
     report = {
@@ -431,6 +541,7 @@ def main() -> int:
         "mode": "CEX_SENSOR_FAST_HANDOFF_WITH_ASSET_IDENTITY_EXECUTION_SEPARATION",
         "evaluated_spot_candidates": evaluated,
         "escalated_close_watch": escalated,
+        "fresh_cex_execution_events": len(critical_events),
         "pending_exact_pair": pending_exact_pair,
         "identity_pending_evaluated": identity_pending_evaluated,
         "identity_pending_escalated": identity_pending_escalated,
