@@ -66,7 +66,7 @@ def market(
 
 def test_delivered_final_buy_is_imported_as_exact_pair():
     user_state = {
-        "tokens": {
+        "targets": {
             KEY: {
                 "identity_key": KEY,
                 "symbol": "AURORAUSDT",
@@ -132,7 +132,7 @@ def test_data_failure_never_becomes_sell_signal():
 
 def test_telegram_is_transition_only_not_spam():
     user_state = {
-        "tokens": {
+        "targets": {
             KEY: {
                 "identity_key": KEY,
                 "symbol": "AURORAUSDT",
@@ -172,7 +172,7 @@ def test_telegram_is_transition_only_not_spam():
 
 def test_recovery_emits_once():
     user_state = {
-        "tokens": {
+        "targets": {
             KEY: {
                 "identity_key": KEY,
                 "symbol": "AURORAUSDT",
