@@ -176,6 +176,32 @@ def max_cex_turnover(row):
     return max(values, default=0.0)
 
 
+def proven_gate_market(row, expected_market):
+    """Return exact Gate market id only when it is present in the verified CEX row."""
+    expected = str(expected_market or "").upper().replace("-", "_").replace("/", "_").strip()
+    if not expected:
+        return ""
+    for market in row.get("markets") or []:
+        if not isinstance(market, dict):
+            continue
+        if str(market.get("exchange") or "").lower().strip() != "gate":
+            continue
+        if market.get("volume_comparable_usd_like", True) is False:
+            continue
+        try:
+            price = float(market.get("price") or 0)
+        except (TypeError, ValueError):
+            price = 0.0
+        if price <= 0:
+            continue
+        market_id = str(market.get("market_id") or "").upper().replace("-", "_").replace("/", "_").strip()
+        symbol = str(market.get("symbol") or "").upper().replace("-", "").replace("_", "").replace("/", "").strip()
+        expected_symbol = expected.replace("_", "")
+        if market_id == expected or symbol == expected_symbol:
+            return expected
+    return ""
+
+
 def main():
     spot = load(SPOT, {"candidates": []})
     cex_identity = load(CEX_SPOT_IDENTITY, {"candidates": []})
@@ -189,6 +215,7 @@ def main():
     stale_alpha_excluded = 0
     invalid_time_alpha_excluded = 0
     canonical_gate_market_suppressed = 0
+    cex_market_exact_identity_recovered = 0
 
     gate_spot_by_identity = {}
     gate_spot_by_market = {}
@@ -284,17 +311,23 @@ def main():
                 or gate_rank <= 10
             )
             if gate_can_own_market:
-                canonical_gate_market_suppressed += 1
-                # Preserve the existing one-canonical-market rule for unrelated
-                # chain representations. Multi-pool expansion is allowed only when
-                # the Gate candidate and identity row prove the same chain+contract.
+                gate_has_exact_asset = bool(
+                    gate_row.get("identity_status") == "RESOLVED_EXACT"
+                    and asset_ident(gate_row)
+                )
                 same_gate_asset = bool(
-                    asset_ident(gate_row)
+                    gate_has_exact_asset
                     and asset_ident(row)
                     and asset_ident(gate_row) == asset_ident(row)
                 )
-                if not same_gate_asset:
+                # A Gate ticker/market can suppress another exact identity only when
+                # Gate itself has already proven a chain+contract. If Gate is still
+                # CEX-only, the independently verified exact identity must survive.
+                if gate_has_exact_asset and not same_gate_asset:
+                    canonical_gate_market_suppressed += 1
                     continue
+                if same_gate_asset:
+                    canonical_gate_market_suppressed += 1
         if row.get("identity_status") != "DEX_VERIFIED" or row.get("identity_verified") is not True:
             continue
         if row.get("execution_pair_price_coherent") is not True:
@@ -306,11 +339,24 @@ def main():
             chain_name(row.get("chain")),
             row.get("pair_address"),
         )
+        gate_has_exact_asset = bool(
+            isinstance(gate_row, dict)
+            and gate_row.get("identity_status") == "RESOLVED_EXACT"
+            and asset_ident(gate_row)
+        )
+        same_gate_asset = bool(
+            gate_has_exact_asset
+            and asset_ident(row)
+            and asset_ident(gate_row) == asset_ident(row)
+        )
         gate_pair = (
             norm_addr(chain_name(gate_row.get("network") or gate_row.get("chain")), gate_row.get("pair"))
-            if gate_can_own_market and isinstance(gate_row, dict)
+            if same_gate_asset
             else ""
         )
+        verified_gate_market = proven_gate_market(row, gate_market)
+        if verified_gate_market and isinstance(gate_row, dict) and not gate_has_exact_asset:
+            cex_market_exact_identity_recovered += 1
         pools = verified_asset_pools(row)
         for pool_rank, pool in enumerate(pools, start=1):
             i = ident(pool)
@@ -322,11 +368,12 @@ def main():
             if gate_can_own_market and gate_pair and i[2] == gate_pair:
                 continue
 
-            gate_exec = (
-                gate_row
-                if gate_can_own_market and isinstance(gate_row, dict)
-                else (gate_spot_by_identity.get(i[3]) or {})
-            )
+            exact_gate_exec = gate_spot_by_identity.get(i[3]) or {}
+            currency_pair = ""
+            if exact_gate_exec.get("currency_pair"):
+                currency_pair = str(exact_gate_exec.get("currency_pair") or "").upper().strip()
+            elif verified_gate_market:
+                currency_pair = verified_gate_market
             seen.add(i[3])
             out.append({
                 "candidate_type": "CEX_SPOT_DISCOVERY",
@@ -340,12 +387,17 @@ def main():
                     if i[2] == primary_pair
                     else "CEX Spot Asset Multi-Pool Exact Identity"
                 ),
-                "exchange": "gate" if gate_exec.get("currency_pair") else None,
-                "currency_pair": gate_exec.get("currency_pair"),
+                "exchange": "gate" if currency_pair else None,
+                "currency_pair": currency_pair or None,
                 "execution_identity_scope": (
                     "EXACT_CHAIN_CONTRACT_PAIR_PLUS_CEX_MARKET"
-                    if gate_exec.get("currency_pair")
+                    if currency_pair
                     else "EXACT_CHAIN_CONTRACT_PAIR"
+                ),
+                "cex_market_identity_recovered": bool(
+                    currency_pair
+                    and isinstance(gate_row, dict)
+                    and gate_row.get("identity_status") != "RESOLVED_EXACT"
                 ),
                 "first_seen_at": milestone.get("observed_at") or row.get("identity_attempted_at"),
                 "first_seen_price": milestone.get("reference_price") or pool.get("price_usd"),
@@ -566,6 +618,7 @@ def main():
             "public_alpha_stale_excluded": stale_alpha_excluded,
             "public_alpha_invalid_time_excluded": invalid_time_alpha_excluded,
             "canonical_gate_market_suppressed": canonical_gate_market_suppressed,
+            "cex_market_exact_identity_recovered": cex_market_exact_identity_recovered,
             "multi_pool_watch_candidates": sum(bool(x.get("multi_pool_watch")) for x in out),
             "multi_pool_sibling_candidates": sum(x.get("asset_pool_role") == "SIBLING" for x in out),
             "public_alpha_live_window_minutes": PUBLIC_ALPHA_LIVE_WINDOW_MINUTES,
