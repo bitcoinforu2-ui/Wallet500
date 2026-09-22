@@ -246,3 +246,55 @@ def test_fast_recheck_cannot_double_count_confirmation_without_real_time_spacing
     assert third["recommended_action"] == "BUY"
     assert third["alert"] is True
     assert state3["last_qualified_scan_at"] == eligible.isoformat()
+
+
+def test_genesis_prebreakout_gets_bounded_market_recheck_only_after_intelligence_is_current(monkeypatch):
+    key = "solana:GenesisMint111111111111111111111111111111:GenesisPair111111111111111111111111111111"
+    target = {
+        "candidate_type": "GENESIS_PREBREAKOUT",
+        "symbol": "GEN",
+        "network": "solana",
+        "contract": "GenesisMint111111111111111111111111111111",
+        "pair": "GenesisPair111111111111111111111111111111",
+        "genesis_final_buy_lane": True,
+        "prebreakout_score": 79,
+    }
+    monkeypatch.setattr(hot, "_target_map", lambda *_: {key: target})
+    report = {
+        "decisions": [{
+            "identity_key": key,
+            "symbol": "GEN",
+            "pre_buy": False,
+            "blockers": ["NEED_SECOND_VERIFIED_SCAN", "SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED"],
+            "intelligence": _intel(),
+        }]
+    }
+    plan = hot.build_plan({}, {}, {}, report)
+    assert plan["count"] == 1
+    assert plan["targets"][0]["reason"] == "GENESIS_PREBREAKOUT_CLOSE_WATCH"
+    assert plan["targets"][0]["priority"] == 2
+
+
+def test_genesis_prebreakout_does_not_use_market_recheck_to_fake_missing_confluence(monkeypatch):
+    key = "solana:GenesisMint222222222222222222222222222222:GenesisPair222222222222222222222222222222"
+    target = {
+        "candidate_type": "GENESIS_PREBREAKOUT",
+        "symbol": "GEN2",
+        "network": "solana",
+        "contract": "GenesisMint222222222222222222222222222222",
+        "pair": "GenesisPair222222222222222222222222222222",
+        "genesis_final_buy_lane": True,
+        "prebreakout_score": 91,
+    }
+    monkeypatch.setattr(hot, "_target_map", lambda *_: {key: target})
+    report = {
+        "decisions": [{
+            "identity_key": key,
+            "symbol": "GEN2",
+            "pre_buy": False,
+            "blockers": ["FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET"],
+            "intelligence": _intel(),
+        }]
+    }
+    plan = hot.build_plan({}, {}, {}, report)
+    assert plan["count"] == 0
