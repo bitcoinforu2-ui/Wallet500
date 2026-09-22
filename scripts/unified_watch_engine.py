@@ -400,22 +400,84 @@ def dynamic_candidates(persisted_tokens=None):
         except (TypeError, ValueError):
             turnover = 0.0
         armed_hint = 0 if max(gain, momentum) >= QUARTER_WAVE_REVALIDATION_GAIN_PCT else 1
-        return (armed_hint, rank, -max(gain, momentum), -turnover)
+        exact_onchain_hint = 0 if (
+            x["_candidate_type"] != "CEX_MARKET_DISCOVERY"
+            and x.get("network")
+            and x.get("contract")
+            and x.get("pair")
+        ) else 1
+        return (armed_hint, rank, exact_onchain_hint, -max(gain, momentum), -turnover)
 
     spot = sorted(spot, key=_spot_priority)
 
-    # Only the strongest time-sensitive movers are allowed to occupy the
-    # unbounded critical lane. Previously every spot discovery was marked
-    # critical, so 60-100+ candidates could consume the whole GitHub job,
-    # cancel market_watch, and suppress FINAL BUY for candidates that had
-    # already been discovered. Keep the full spot set for research, but bound
-    # the critical subset; lower-priority rows continue under the time budget.
+    def _critical_group(x):
+        # Pools carrying the same exact CEX market are one time-sensitive event.
+        # This prevents five pools for one asset from consuming five critical slots.
+        exchange = str(x.get("exchange") or "").lower().strip()
+        market = str(x.get("currency_pair") or "").upper().strip()
+        if exchange and market:
+            return f"cex:{exchange}:{market}"
+        asset = str(x.get("asset_identity_key") or "").strip()
+        if asset:
+            return f"asset:{asset}"
+        return f"identity:{x['_identity_key']}"
+
+    # Reserve the bounded critical lane for distinct market/asset events first.
+    # Only if there are fewer distinct events than the cap can sibling pools take
+    # additional critical slots. Exact on-chain candidates win ties over CEX-only
+    # venue rows, while all rows remain available to the bounded noncritical scan.
     critical_spot_cap = max(
         8, int(os.environ.get("WALLET500_CRITICAL_SPOT_CAP", "18"))
     )
-    critical_spot_ids = {
-        x["_identity_key"] for x in spot[:critical_spot_cap]
-    }
+    critical_rows = []
+    critical_ids = set()
+    critical_groups = set()
+    for x in spot:
+        group = _critical_group(x)
+        if group in critical_groups:
+            continue
+        critical_rows.append(x)
+        critical_ids.add(x["_identity_key"])
+        critical_groups.add(group)
+        if len(critical_rows) >= critical_spot_cap:
+            break
+    if len(critical_rows) < critical_spot_cap:
+        for x in spot:
+            if x["_identity_key"] in critical_ids:
+                continue
+            critical_rows.append(x)
+            critical_ids.add(x["_identity_key"])
+            if len(critical_rows) >= critical_spot_cap:
+                break
+    critical_spot_ids = set(critical_ids)
+
+    # Fair-rotate the budgeted remainder by oldest successful observation. A row
+    # that was truncated in a prior run therefore moves toward the front next run
+    # instead of being starved indefinitely by the same rank order.
+    persisted_tokens = persisted_tokens or {}
+    def _last_observed_for_rotation(x):
+        key = f"SPOT:{x['_identity_key']}"
+        prev = persisted_tokens.get(key) if isinstance(persisted_tokens, dict) else {}
+        if not isinstance(prev, dict):
+            prev = {}
+        stamp = str(
+            prev.get("last_market_observed_at")
+            or prev.get("observed_at")
+            or ""
+        ).strip()
+        return stamp
+
+    noncritical_rows = [
+        x for x in spot if x["_identity_key"] not in critical_spot_ids
+    ]
+    noncritical_rows.sort(
+        key=lambda x: (
+            1 if _last_observed_for_rotation(x) else 0,
+            _last_observed_for_rotation(x),
+            _spot_priority(x),
+        )
+    )
+    spot = critical_rows + noncritical_rows
 
     bootstrap = [x for x in rows if x["_candidate_type"] == "NEW_CHAIN_BOOTSTRAP"]
     bootstrap = sorted(
@@ -491,6 +553,8 @@ def dynamic_candidates(persisted_tokens=None):
                     ctype == "BUY_ZONE"
                     or (is_spot and c["_identity_key"] in critical_spot_ids)
                 ),
+                "critical_market_group": _critical_group(c) if is_spot else None,
+                "cex_market_identity_recovered": bool(c.get("cex_market_identity_recovered")),
                 "candidate_type": ctype,
                 "priority": c.get("priority") or ("HIGHEST" if ctype == "BUY_ZONE" else ("HIGH" if hot_spot else None)),
                 "close_watch": c.get("close_watch") or ("HIGHEST" if ctype == "BUY_ZONE" else ("HIGHEST" if hot_spot else None)),
@@ -1423,6 +1487,13 @@ def main():
         "dynamic_alpha_targets": sum(bool(x.get("dynamic_alpha_candidate")) for x in dynamic),
         "dynamic_bootstrap_targets": sum(bool(x.get("dynamic_bootstrap_candidate")) for x in dynamic),
         "dynamic_spot_targets": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
+        "critical_spot_targets": sum(bool(x.get("critical_market_lane") and x.get("dynamic_spot_candidate")) for x in dynamic),
+        "critical_spot_unique_groups": len({
+            str(x.get("critical_market_group") or "")
+            for x in dynamic
+            if x.get("critical_market_lane") and x.get("dynamic_spot_candidate")
+        } - {""}),
+        "noncritical_fair_rotation_enabled": True,
         "scan_elapsed_seconds": round(time.monotonic() - scan_started_monotonic, 2),
         "noncritical_scan_budget_seconds": noncritical_budget_seconds,
         "noncritical_targets_truncated": noncritical_truncated,
