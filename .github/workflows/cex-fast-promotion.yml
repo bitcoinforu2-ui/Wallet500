@@ -15,6 +15,8 @@ on:
       - 'src/wallet500/cex_fast_current_bypass.py'
       - 'src/wallet500/cex_endpoint_fallbacks.py'
       - 'src/wallet500/reentry_active_watch.py'
+      - 'src/wallet500/cex_reactivation_hold.py'
+      - 'src/wallet500/reactivation_event_ledger.py'
       - 'scripts/run_cex_action_guarded.py'
       - 'scripts/run_cex_action_resilient.py'
       - 'tests/test_cex_fast_promotion.py'
@@ -22,6 +24,7 @@ on:
       - 'tests/test_cex_action_freshness.py'
       - 'tests/test_cex_endpoint_fallbacks.py'
       - 'tests/test_reentry_active_watch.py'
+      - 'tests/test_reactivation_event_ledger.py'
       - 'tests/test_cex_liquidity_context.py'
 
 permissions:
@@ -55,6 +58,7 @@ jobs:
             tests/test_cex_spot_dynamic_identity_bridge.py \
             tests/test_cex_endpoint_fallbacks.py \
             tests/test_reentry_active_watch.py \
+            tests/test_reactivation_event_ledger.py \
             tests/test_cex_liquidity_context.py
       - name: Refuse stale exact-identity source
         run: |
@@ -155,4 +159,4 @@ jobs:
           set -euo pipefail
           git config user.name 'wallet500-truth-bot'
           git config user.email 'wallet500-truth-bot@users.noreply.github.com'
-          python scripts/serialized_publish.py --github-api-cas --attempts 80 --message 'alerts: persist CEX action-only promotion state' data/cex-fast-real-alerts.json data/cex-fast-promotion-state.json data/cex-fast-current-bypass-state.json data/cex-fast-promotion-report.json
+          python scripts/serialized_publish.py --github-api-cas --attempts 80 --message 'alerts: persist CEX action-only promotion state' data/cex-fast-real-alerts.json data/cex-fast-promotion-state.json data/cex-fast-current-bypass-state.json data/cex-fast-promotion-report.json data/cex-reactivation-ledger.json
