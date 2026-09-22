@@ -62,7 +62,9 @@ jobs:
           if dt.tzinfo is None: dt=dt.replace(tzinfo=timezone.utc)
           age=(datetime.now(timezone.utc)-dt.astimezone(timezone.utc)).total_seconds()
           if age > 45*60: raise SystemExit(f'REVIVAL_90D_EXPANDED_SOURCE_STALE age={age:.0f}s')
-          print('REVIVAL_90D_EXPANDED_SOURCE_OK', {'age_seconds':round(age,1),'coins':len(d.get('coins') or [])})
+          if d.get('publisher_contract_version')!='REVIVAL_GENERATION_HANDSHAKE_V1': raise SystemExit('REVIVAL_GENERATION_HANDSHAKE_MISSING')
+          if not d.get('generation_id') or not d.get('published_from_commit'): raise SystemExit('REVIVAL_GENERATION_IDENTITY_MISSING')
+          print('REVIVAL_90D_EXPANDED_SOURCE_OK', {'age_seconds':round(age,1),'coins':len(d.get('coins') or []),'generation_id':d.get('generation_id')})
           PY
       - name: Send forward-only actionable Revival REAL ALERTs after deep intelligence
         if: github.event_name != 'pull_request'
