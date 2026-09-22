@@ -284,15 +284,17 @@ def main():
                 or gate_rank <= 10
             )
             if gate_can_own_market:
-                # Suppress only the exact same on-chain asset. A ticker match on a
-                # different chain/contract must never hide a verified identity.
-                gate_can_own_market = bool(
+                canonical_gate_market_suppressed += 1
+                # Preserve the existing one-canonical-market rule for unrelated
+                # chain representations. Multi-pool expansion is allowed only when
+                # the Gate candidate and identity row prove the same chain+contract.
+                same_gate_asset = bool(
                     asset_ident(gate_row)
                     and asset_ident(row)
                     and asset_ident(gate_row) == asset_ident(row)
                 )
-                if gate_can_own_market:
-                    canonical_gate_market_suppressed += 1
+                if not same_gate_asset:
+                    continue
         if row.get("identity_status") != "DEX_VERIFIED" or row.get("identity_verified") is not True:
             continue
         if row.get("execution_pair_price_coherent") is not True:
@@ -333,7 +335,11 @@ def main():
                 "contract": pool.get("contract"),
                 "pair": pool.get("pair"),
                 "dex_url": pool.get("dex_url") or "",
-                "source": "CEX Spot Asset Multi-Pool Exact Identity",
+                "source": (
+                    "CEX Spot Multi-Venue Exact Identity"
+                    if i[2] == primary_pair
+                    else "CEX Spot Asset Multi-Pool Exact Identity"
+                ),
                 "exchange": "gate" if gate_exec.get("currency_pair") else None,
                 "currency_pair": gate_exec.get("currency_pair"),
                 "execution_identity_scope": (
