@@ -1,44 +1,22 @@
 {
   "version": 1,
-  "generated_at": "2026-09-22T10:20:45.981032+00:00",
+  "generated_at": "2026-09-22T10:22:45.996800+00:00",
   "mode": "CEX_FAST_PROMOTION_V2_SENSOR_HANDOFF",
   "configured": false,
   "telegram_delivery_enabled": false,
   "telegram_delivery_policy": "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE",
   "identity_source_generated_at": "2026-09-22T10:19:22.765281+00:00",
   "identity_rows_seen": 50,
-  "usdc_markets_seen": 1074,
+  "usdc_markets_seen": 1158,
   "usdc_groups_seen": 10,
   "usdc_source_health": {
-    "coinex": {
+    "okx": {
       "ok": true,
-      "markets": 68,
-      "endpoint": "https://api.coinex.com/v2/spot/ticker",
-      "endpoint_fallback_used": false,
-      "endpoint_attempts": [
-        {
-          "endpoint": "https://api.coinex.com/v2/spot/ticker",
-          "ok": true
-        }
-      ],
-      "official_endpoint_only": true,
-      "fallback_pool_size": 1
+      "markets": 295
     },
-    "bybit": {
-      "ok": false,
-      "markets": 0,
-      "error": "RuntimeError: all official endpoints failed: https://api.bytick.com/v5/market/tickers?category=spot => HTTPError: HTTP Error 403: Forbidden; https://api.bybit.com/v5/market/tickers?category=spot => HTTPError: HTTP Error 403: Forbidden",
-      "endpoint": null,
-      "endpoint_fallback_used": true,
-      "endpoint_attempts": [
-        {
-          "endpoint": "official_bybit_pool",
-          "ok": false,
-          "error": "RuntimeError: all official endpoints failed: https://api.bytick.com/v5/market/tickers?category=spot => HTTPError: HTTP Error 403: Forbidden; https://api.bybit.com/v5/market/tickers"
-        }
-      ],
-      "official_endpoint_only": true,
-      "fallback_pool_size": 2
+    "kucoin": {
+      "ok": true,
+      "markets": 57
     },
     "bitget": {
       "ok": true,
@@ -54,17 +32,37 @@
       "official_endpoint_only": true,
       "fallback_pool_size": 2
     },
-    "kucoin": {
+    "coinex": {
       "ok": true,
-      "markets": 57
-    },
-    "okx": {
-      "ok": true,
-      "markets": 295
+      "markets": 68,
+      "endpoint": "https://api.coinex.com/v2/spot/ticker",
+      "endpoint_fallback_used": false,
+      "endpoint_attempts": [
+        {
+          "endpoint": "https://api.coinex.com/v2/spot/ticker",
+          "ok": true
+        }
+      ],
+      "official_endpoint_only": true,
+      "fallback_pool_size": 1
     },
     "mexc": {
       "ok": true,
       "markets": 223
+    },
+    "bybit": {
+      "ok": true,
+      "markets": 84,
+      "endpoint": "https://api.bytick.com/v5/market/tickers?category=spot",
+      "endpoint_fallback_used": false,
+      "endpoint_attempts": [
+        {
+          "endpoint": "https://api.bytick.com/v5/market/tickers?category=spot",
+          "ok": true
+        }
+      ],
+      "official_endpoint_only": true,
+      "fallback_pool_size": 2
     },
     "gate": {
       "ok": true,
@@ -86,8 +84,8 @@
     },
     "bybit_gap_coverage": {
       "ok": true,
-      "direct_bybit_available": false,
-      "coverage_state": "INDEPENDENT_TWO_CEX_REDUNDANCY",
+      "direct_bybit_available": true,
+      "coverage_state": "DIRECT_BYBIT",
       "compensation_sources": [
         "bitget",
         "coinex"
@@ -123,13 +121,13 @@
       "actionable_research_alert": false,
       "manual_decision_only": true,
       "automatic_buy": false,
-      "signal_score": 38,
+      "signal_score": 33,
       "signal_change_24h_pct": 7.76,
       "current_change_24h_pct": 52.63,
       "signal_price": 0.03124,
       "signal_at": "2026-09-17T20:27:18.012924+00:00",
       "signal_milestone": "first_cross_venue_slow_ignition",
-      "current_price": 0.0620355,
+      "current_price": 0.0614205,
       "cex_turnover_usd": 2424809.84,
       "relative_volume_shock": true,
       "relative_volume_max_multiple": 20.5076,
@@ -160,11 +158,12 @@
         "ACTION_MOVE_ALREADY_EXTENDED",
         "ACTION_SCORE_LT_50",
         "LATE_MOVE_DO_NOT_CHASE",
+        "SIGNAL_SCORE_LT_35",
         "WAIT_FOR_RETEST_ABOVE_DISCOVERY"
       ],
-      "since_discovery_pct": 98.5771,
+      "since_discovery_pct": 96.6085,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 109.892,
+      "signal_age_hours": 109.925,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 2,
@@ -172,7 +171,7 @@
         "binance",
         "gate"
       ],
-      "fresh_reactivation_turnover_usd": 3883728.274,
+      "fresh_reactivation_turnover_usd": 3887383.9314,
       "fresh_reactivation_required_for_stale_signal": true,
       "cross_lane_action_fusion_used": false,
       "action_state": "WAIT_OR_REJECT",
@@ -232,7 +231,7 @@
       ],
       "since_discovery_pct": 292.2724,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 129.97,
+      "signal_age_hours": 130.004,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 1,
@@ -294,7 +293,7 @@
       ],
       "since_discovery_pct": 29.213,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 6.997,
+      "signal_age_hours": 7.031,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 1,
@@ -360,7 +359,7 @@
       ],
       "since_discovery_pct": 22.7345,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 106.834,
+      "signal_age_hours": 106.867,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 1,
@@ -424,7 +423,7 @@
       ],
       "since_discovery_pct": 87.8545,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 104.892,
+      "signal_age_hours": 104.926,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 1,
@@ -487,7 +486,7 @@
       ],
       "since_discovery_pct": 35.4743,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 122.392,
+      "signal_age_hours": 122.425,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 1,
@@ -548,7 +547,7 @@
       ],
       "since_discovery_pct": 18.672,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 126.588,
+      "signal_age_hours": 126.622,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 1,
@@ -611,7 +610,7 @@
       ],
       "since_discovery_pct": 76.3973,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 179.824,
+      "signal_age_hours": 179.858,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 1,
@@ -678,7 +677,7 @@
       ],
       "since_discovery_pct": 9.8216,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 91.077,
+      "signal_age_hours": 91.111,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 1,
@@ -752,7 +751,7 @@
       ],
       "since_discovery_pct": 21.1219,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 140.554,
+      "signal_age_hours": 140.588,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 4,
@@ -828,7 +827,7 @@
       ],
       "since_discovery_pct": 12.9877,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 100.604,
+      "signal_age_hours": 100.637,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 1,
@@ -899,7 +898,7 @@
       ],
       "since_discovery_pct": 21.9713,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 106.457,
+      "signal_age_hours": 106.49,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 3,
@@ -975,7 +974,7 @@
       ],
       "since_discovery_pct": 25.3902,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 113.417,
+      "signal_age_hours": 113.45,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 5,
@@ -1049,7 +1048,7 @@
       ],
       "since_discovery_pct": -3.1914,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 170.848,
+      "signal_age_hours": 170.882,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 1,
@@ -1113,7 +1112,7 @@
       ],
       "since_discovery_pct": 0.0,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 126.053,
+      "signal_age_hours": 126.086,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 0,
@@ -1170,7 +1169,7 @@
       ],
       "since_discovery_pct": 0.0,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 181.08,
+      "signal_age_hours": 181.113,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 0,
@@ -1227,7 +1226,7 @@
       ],
       "since_discovery_pct": 0.0,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 106.834,
+      "signal_age_hours": 106.867,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 0,
@@ -1284,7 +1283,7 @@
       ],
       "since_discovery_pct": 0.0,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 117.696,
+      "signal_age_hours": 117.73,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 0,
@@ -1341,7 +1340,7 @@
       ],
       "since_discovery_pct": 0.0,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 189.299,
+      "signal_age_hours": 189.332,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 0,
@@ -1398,7 +1397,7 @@
       ],
       "since_discovery_pct": 0.0,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 131.083,
+      "signal_age_hours": 131.117,
       "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
       "fresh_reactivation_confirmations": 0,
@@ -1464,19 +1463,15 @@
     "delivered": 0,
     "resolve_failures": [
       {
-        "symbol": "FLOKIUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "MINAUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
         "symbol": "DATAUSDT",
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
         "symbol": "PENGUUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "FLOKIUSDT",
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
@@ -1496,15 +1491,7 @@
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
-        "symbol": "TAOUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
         "symbol": "CARVUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "ANTFUNUSDT",
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
@@ -1512,7 +1499,19 @@
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
+        "symbol": "ANTFUNUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "MINAUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
         "symbol": "QORPOUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "TAOUSDT",
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       }
     ],
@@ -1535,7 +1534,7 @@
   },
   "reactivation_hold_state": {
     "version": 1,
-    "updated_at": "2026-09-22T10:20:48.517737+00:00",
+    "updated_at": "2026-09-22T10:22:49.633401+00:00",
     "assets": {
       "bsc:0xa0c56a8c0692bd10b3fa8f8ba79cf5332b7107f9": {
         "triggered_at": "2026-09-21T08:48:07.985101+00:00",
