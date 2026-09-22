@@ -63,9 +63,18 @@ def main() -> int:
 
     _verify_contract_files()
 
+    tracked = subprocess.run(
+        ["git", "ls-files", "*.py"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    if not tracked:
+        raise SystemExit("FULL GUARD FAILED: no tracked Python files found")
     _run(
-        "Python syntax/import compilation",
-        [sys.executable, "-m", "compileall", "-q", "src", "tests", "scripts/full_guard.py"],
+        "All tracked Python syntax compilation",
+        [sys.executable, "-m", "py_compile", *tracked],
     )
     _run(
         "Fatal static defects",
@@ -74,9 +83,7 @@ def main() -> int:
             "-m",
             "ruff",
             "check",
-            "src",
-            "tests",
-            "scripts/full_guard.py",
+            ".",
             "--select=E9,F63,F7,F82",
         ],
     )
