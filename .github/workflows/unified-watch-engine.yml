@@ -175,7 +175,15 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # This is a successor write to the critical-persist snapshot created
+          # earlier in this same workflow. Use the latest main SHA as the CAS
+          # base; otherwise atomic_publish compares against the checkout SHA,
+          # sees our own critical-persist commit as "newer", and silently
+          # preserves the pre-recheck report/state instead of the hot recheck.
+          git fetch --no-tags --depth=1 origin main
+          HOT_RECHECK_BASE_SHA="$(git rev-parse origin/main)"
           python scripts/serialized_publish.py \
+            --base "$HOT_RECHECK_BASE_SHA" \
             --message 'chore: persist hot candidate fast recheck [skip ci]' \
             data/unified-watch-state.json \
             data/user-watch-final-buy-state.json \
