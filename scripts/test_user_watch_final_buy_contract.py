@@ -162,6 +162,28 @@ def main() -> None:
     research_only = dict(bootstrap, bootstrap_final_buy_lane=False)
     assert gate.eligible_targets({"tokens": []}, {"candidates": [research_only]}) == []
 
+    genesis = {
+        "candidate_type": "GENESIS_PREBREAKOUT",
+        "symbol": "GEN",
+        "network": "solana",
+        "contract": "GenesisMint111111111111111111111111111111",
+        "pair": "GenesisPair111111111111111111111111111111",
+        "genesis_final_buy_lane": True,
+        "telegram_policy": "FINAL_BUY_ONLY",
+        "exact_identity_required": True,
+        "exact_pair_required": True,
+        "prebreakout_score": 78,
+    }
+    selected_genesis = gate.eligible_targets({"tokens": []}, {"candidates": [genesis]})
+    assert len(selected_genesis) == 1
+    assert selected_genesis[0]["candidate_type"] == "GENESIS_PREBREAKOUT"
+    assert selected_genesis[0]["genesis_final_buy_lane"] is True
+
+    genesis_not_final = dict(genesis, telegram_policy="RESEARCH_ONLY")
+    assert gate.eligible_targets({"tokens": []}, {"candidates": [genesis_not_final]}) == []
+    genesis_no_exact_pair = dict(genesis, exact_pair_required=False)
+    assert gate.eligible_targets({"tokens": []}, {"candidates": [genesis_no_exact_pair]}) == []
+
     cex = {
         "candidate_type": "GATE_SPOT_DISCOVERY",
         "symbol": "MGT",
