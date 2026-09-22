@@ -1,4 +1,5 @@
 import json
+import pytest
 from datetime import datetime, timedelta, timezone
 
 from wallet500.system_health import build_health
@@ -16,6 +17,21 @@ def _heartbeat(tmp_path, created_at="2026-08-29T23:58:00+00:00"):
         "strict_validation": "PASS",
         "source_sha": "abc123",
         "run_id": "42",
+    })
+
+
+@pytest.fixture(autouse=True)
+def _healthy_decision_path(tmp_path):
+    _write(tmp_path / "unified-watch-runtime-evidence.json", {
+        "generated_at": "2026-08-29T23:59:00+00:00",
+        "stage_outcomes": {"market_watch": "success"},
+    })
+    _write(tmp_path / "user-watch-final-buy-report.json", {
+        "generated_at": "2026-08-29T23:59:00+00:00",
+        "status": "OK",
+        "configured_targets": 3,
+        "partial_upstream_evaluated": 0,
+        "partial_upstream_skipped": 0,
     })
 
 
@@ -168,3 +184,42 @@ def test_health_fails_closed_on_liquidity_drift(tmp_path):
     out = build_health(str(tmp_path), now)
     assert out["overall"] == "FAILED"
     assert out["checks"]["liquidity_policy"]["status"] == "FAILED"
+
+
+def test_health_degrades_when_unified_buy_path_has_zero_current_coverage(tmp_path, monkeypatch):
+    monkeypatch.setenv("WALLET500_WORKFLOW_DEGRADED_SECONDS", "600")
+    now = datetime(2026, 8, 30, 0, 0, 0, tzinfo=timezone.utc)
+    _write(tmp_path / "run-summary.json", _policy_summary("2026-08-29T23:59:00+00:00", active=0))
+    _write(tmp_path / "holder-cluster-production-report.json", {
+        "mode": "PRODUCTION_FAIL_CLOSED", "input_count": 0, "promoted_count": 0,
+        "quarantine_count": 0, "blocked_count": 0,
+    })
+    _write(tmp_path / "wallet-forensics-summary.json", {
+        "updated_at": "2026-08-29T23:59:00+00:00",
+        "source": "active-qualified-candidates.json",
+        "lane": "PRE_PRODUCTION_EVIDENCE_GATHERING",
+        "production_authorization": False,
+        "active_candidates_seen": 0,
+    })
+    _heartbeat(tmp_path)
+    _write(tmp_path / "unified-watch-runtime-evidence.json", {
+        "generated_at": "2026-08-29T23:59:30+00:00",
+        "stage_outcomes": {"market_watch": "cancelled"},
+    })
+    _write(tmp_path / "user-watch-final-buy-report.json", {
+        "generated_at": "2026-08-29T23:59:30+00:00",
+        "status": "PARTIAL_UPSTREAM_FRESH_TARGETS_ONLY",
+        "configured_targets": 114,
+        "partial_upstream_evaluated": 0,
+        "partial_upstream_skipped": 114,
+    })
+
+    out = build_health(str(tmp_path), now)
+    check = out["checks"]["decision_path"]
+    assert check["status"] == "DEGRADED"
+    assert check["failure_code"] == "DECISION_PATH_NO_CURRENT_COVERAGE"
+    assert check["blocks_production"] is False
+    assert check["configured_targets"] == 114
+    assert check["partial_upstream_skipped"] == 114
+    assert out["pipeline_health"] == "DEGRADED"
+    assert out["overall"] == "DEGRADED"
