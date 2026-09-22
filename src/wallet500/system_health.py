@@ -149,6 +149,8 @@ def _diagnose(name, check, now):
                 "configured_targets": check.get("configured_targets"),
                 "partial_upstream_evaluated": check.get("partial_upstream_evaluated"),
                 "partial_upstream_skipped": check.get("partial_upstream_skipped"),
+                "evaluated_target_count": check.get("evaluated_target_count"),
+                "decision_coverage_pct": check.get("decision_coverage_pct"),
                 "final_buy_status": check.get("final_buy_status"),
             },
             recommended_action="RESTORE_UNIFIED_MARKET_WATCH_CURRENT_SNAPSHOT_COVERAGE",
@@ -250,6 +252,9 @@ def build_health(output_dir="data", now=None):
     configured_buy_targets = int(final_buy.get("configured_targets", 0) or 0) if isinstance(final_buy, dict) else 0
     partial_evaluated = int(final_buy.get("partial_upstream_evaluated", 0) or 0) if isinstance(final_buy, dict) else 0
     partial_skipped = int(final_buy.get("partial_upstream_skipped", 0) or 0) if isinstance(final_buy, dict) else 0
+    evaluated_buy_targets = int(
+        final_buy.get("evaluated_target_count", configured_buy_targets - partial_skipped) or 0
+    ) if isinstance(final_buy, dict) else 0
     final_buy_status = str(final_buy.get("status") or "") if isinstance(final_buy, dict) else ""
     runtime_current = unified_runtime_age is not None and 0 <= unified_runtime_age <= 3600
     decision_path_ok = bool(
@@ -257,7 +262,10 @@ def build_health(output_dir="data", now=None):
         and market_watch_outcome == "success"
         and (
             configured_buy_targets == 0
-            or final_buy_status not in {"PARTIAL_UPSTREAM_FRESH_TARGETS_ONLY", ""}
+            or (
+                evaluated_buy_targets > 0
+                and final_buy_status not in {"PARTIAL_UPSTREAM_FRESH_TARGETS_ONLY", ""}
+            )
         )
     )
 
@@ -299,6 +307,8 @@ def build_health(output_dir="data", now=None):
             "configured_targets": configured_buy_targets,
             "partial_upstream_evaluated": partial_evaluated,
             "partial_upstream_skipped": partial_skipped,
+            "evaluated_target_count": evaluated_buy_targets,
+            "decision_coverage_pct": final_buy.get("decision_coverage_pct") if isinstance(final_buy, dict) else None,
             "final_buy_status": final_buy_status or None,
             "interpretation": "Discovery health is not decision health; current market-watch coverage is required.",
         },
