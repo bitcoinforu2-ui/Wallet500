@@ -38,6 +38,11 @@ NETWORKS = {
     "optimism": "optimism", "polygon": "polygon_pos", "avalanche": "avax",
 }
 EVM = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche"}
+DEX_CHAIN_SLUGS = {
+    "ethereum": "ethereum", "eth": "ethereum", "bsc": "bsc", "bnb": "bsc",
+    "solana": "solana", "base": "base", "arbitrum": "arbitrum",
+    "optimism": "optimism", "polygon": "polygon", "avalanche": "avalanche",
+}
 
 
 def _now() -> str:
@@ -95,6 +100,18 @@ def _exact_key(chain: Any, token: Any, pair: Any) -> str:
     c = str(chain or "").strip().lower()
     t, p = _norm(c, token), _norm(c, pair)
     return f"{c}:{t}:{p}" if c and t and p else ""
+
+
+def _dex_url(row: dict[str, Any]) -> str:
+    existing = str(row.get("dex_url") or "").strip()
+    if existing.startswith(("https://", "http://")):
+        return existing
+    chain = str(row.get("chain") or "").strip().lower()
+    pair = str(row.get("pair_address") or "").strip()
+    slug = DEX_CHAIN_SLUGS.get(chain)
+    if not slug or not pair:
+        return ""
+    return f"https://dexscreener.com/{slug}/{urllib.parse.quote(pair, safe='')}"
 
 
 def _request_json(url: str, timeout: int = 12) -> dict[str, Any] | None:
@@ -247,6 +264,7 @@ def _source_positions(user_state: dict[str, Any], real_ledger: dict[str, Any], n
         out[exact] = {
             "key": exact, "symbol": str(state.get("symbol") or "TOKEN"),
             "chain": chain, "token_address": token, "pair_address": pair,
+            "dex_url": state.get("dex_url") or state.get("last_dex_url"),
             "entry_price_usd": entry, "entry_time": alert_at.isoformat(),
             "entry_liquidity_hint_usd": _num(state.get("last_liquidity")),
             "source": "UNIFIED_WATCH_FINAL_BUY_DELIVERED",
@@ -264,6 +282,7 @@ def _source_positions(user_state: dict[str, Any], real_ledger: dict[str, Any], n
             "key": exact, "symbol": str(pos.get("symbol") or "TOKEN"),
             "chain": str(pos.get("chain") or "").lower(),
             "token_address": pos.get("token_address"), "pair_address": pos.get("pair_address"),
+            "dex_url": pos.get("dex_url"),
             "entry_price_usd": entry, "entry_time": entry_at.isoformat(),
             "entry_liquidity_hint_usd": _num(pos.get("entry_liquidity_usd")),
             "source": "CANONICAL_REAL_ALERT_DELIVERED",
@@ -429,6 +448,9 @@ def telegram_message(row: dict[str, Any], event: str) -> str:
         f"CA: {row.get('token_address')}",
         f"Pair: {row.get('pair_address')}",
     ])
+    dex_url = _dex_url(row)
+    if dex_url:
+        lines.append(f"DEX: {dex_url}")
     return "\n".join(lines)
 
 
