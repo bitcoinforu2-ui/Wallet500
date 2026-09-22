@@ -58,6 +58,22 @@ def _blocked(chain,token):
  return norm in BLOCKED_BASE_TOKENS.get(chain,set())
 def _chain_limit(chain,limit):return max(int(limit),BSC_MIN_DISCOVERY_CAP) if chain=="bsc" else int(limit)
 
+def _source_family(source):
+ raw=str(source or "").strip().lower()
+ if raw.startswith("birdeye:"):return "birdeye"
+ if raw.startswith("geckoterminal:"):return "geckoterminal"
+ if raw.startswith("moonshot:"):return "moonshot"
+ if raw.startswith("dexscreener:"):return "dexscreener"
+ return raw.split(":",1)[0] if raw else "unknown"
+
+def _refresh_source_evidence(row):
+ srcs=[str(x) for x in (row.get("sources") or [row.get("source")]) if x]
+ families=sorted({_source_family(x) for x in srcs if _source_family(x)!="unknown"})
+ row["source_confirmations"]=len(srcs)
+ row["independent_source_families"]=families
+ row["independent_source_confirmations"]=len(families)
+ return row
+
 def _add(rows,seen,counts,filtered,chain,token,source,limit,**extra):
  if chain not in counts or not token:return
  if _blocked(chain,token):filtered[chain]=filtered.get(chain,0)+1;return
@@ -67,11 +83,11 @@ def _add(rows,seen,counts,filtered,chain,token,source,limit,**extra):
    if _key(row["chain"],row["token"])==key:
     srcs=row.setdefault("sources",[row.get("source")])
     if source not in srcs:srcs.append(source)
-    row["source_confirmations"]=len(srcs); row.update({k:v for k,v in extra.items() if v is not None}); break
+    row.update({k:v for k,v in extra.items() if v is not None}); _refresh_source_evidence(row); break
   return
  if counts[chain]>=_chain_limit(chain,limit):return
  seen.add(key); counts[chain]+=1
- rows.append({"chain":chain,"token":token,"source":source,"sources":[source],"source_confirmations":1,**extra})
+ rows.append(_refresh_source_evidence({"chain":chain,"token":token,"source":source,"sources":[source],**extra}))
 
 def _moonshot(wanted,limit,rows,seen,counts,filtered,errors):
  if "solana" not in wanted:return
