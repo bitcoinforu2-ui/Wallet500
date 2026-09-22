@@ -16,6 +16,8 @@ PREWAVE_IDENTITY_PRIORITY_SLOTS = 12
 CURRENT_REACTIVATION_PRIORITY_SLOTS = 12
 LIVE_LEADERBOARD_PRIORITY_SLOTS = 24
 LIVE_LEADERBOARD_MAX_RANK = 10
+# Kept as telemetry for post-mortems only. Price extension must never prevent
+# identity resolution; anti-chase belongs to the downstream action gate.
 LIVE_LEADERBOARD_MAX_PRE_RESOLVE_CHANGE_PCT = 45.0
 PREWAVE_MIN_VOLUME_ACCEL_PCT = 50.0
 PREWAVE_MIN_VOLUME_WINDOW_MULTIPLE = 3.0
@@ -188,13 +190,9 @@ def _is_live_leaderboard_identity_candidate(row: dict) -> bool:
     rank = int(_num(row.get("leaderboard_best_rank") or 999))
     if rank < 1 or rank > LIVE_LEADERBOARD_MAX_RANK:
         return False
-    change = max(
-        _num(row.get("leaderboard_change_24h_max_pct")),
-        _num(row.get("change_24h_max_pct")),
-        _num(row.get("current_change_24h_max_pct")),
-    )
-    if change > LIVE_LEADERBOARD_MAX_PRE_RESOLVE_CHANGE_PCT:
-        return False
+    # Do not gate identity work on current price extension. A token that moved
+    # beyond an entry window still needs exact identity for re-entry, risk,
+    # learning and future reset/reclaim decisions.
     return any(
         _num(m.get("price")) > 0
         for m in (row.get("markets") or [])
@@ -639,6 +637,7 @@ def _build_identity_queue(spot: dict, pending: dict, previous_identity: dict | N
         "live_leaderboard_priority_slot_cap": LIVE_LEADERBOARD_PRIORITY_SLOTS,
         "live_leaderboard_max_rank": LIVE_LEADERBOARD_MAX_RANK,
         "live_leaderboard_max_pre_resolve_change_pct": LIVE_LEADERBOARD_MAX_PRE_RESOLVE_CHANGE_PCT,
+        "live_leaderboard_price_extension_blocks_identity_resolution": False,
         "regular_watch_count": len(watch_rows),
         "cross_lane_identity_priority_count": len(cross_lane_rows),
         "prewave_shadow_identity_priority_count": len(prewave_rows),

@@ -245,7 +245,8 @@ def test_earlier_unified_anchor_repairs_newer_spot_collector_anchor():
 def test_bounded_identity_batch_keeps_priority_semantics_and_fails_closed(monkeypatch):
     calls = []
 
-    def fake_resolve(symbol, native_registry=None, *, cex_price=None):
+    def fake_resolve(symbol, native_registry=None, *, cex_price=None, allow_expensive_recovery=True):
+        assert allow_expensive_recovery is False
         calls.append(symbol)
         if symbol == "FAIL":
             raise RuntimeError("provider down")
@@ -279,3 +280,27 @@ def test_bounded_identity_batch_keeps_priority_semantics_and_fails_closed(monkey
     assert result[2]["identity_status"] == "RESOLVED_EXACT"
     assert result[3]["identity_status"] == "UNRESOLVED"
     assert result[3]["identity_reason"] == "RESOLUTION_EXCEPTION_FAIL_CLOSED"
+
+
+def test_bulk_discovery_defers_expensive_coingecko_recovery(monkeypatch):
+    def fake_get(url, timeout=12):
+        if "currency_chains" in url:
+            return [{"chain": "ETH", "contract_address": ""}]
+        raise AssertionError("bulk discovery should not reach DEX without a contract")
+
+    def forbidden_cg(url, timeout=12):
+        raise AssertionError("bulk discovery must never call expensive CoinGecko recovery")
+
+    monkeypatch.setattr(mod, "get_json", fake_get)
+    monkeypatch.setattr(mod, "coingecko_get_json", forbidden_cg)
+    row = mod.resolve_identity(
+        "FAST",
+        native_registry={},
+        cex_price=1.0,
+        allow_expensive_recovery=False,
+    )
+
+    assert row["identity_status"] == "UNRESOLVED"
+    assert row["identity_reason"] == "DEFERRED_EXPENSIVE_IDENTITY_RECOVERY"
+    assert row["identity_recovery_deferred"] is True
+    assert row["identity_recovery_attempted"] is False

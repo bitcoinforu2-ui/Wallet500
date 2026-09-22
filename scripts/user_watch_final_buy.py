@@ -1230,6 +1230,14 @@ def main() -> int:
     }
     write(STATE, persistent)
 
+    configured_target_count = len(eligible_targets(config, dynamic, watch_state))
+    evaluated_target_count = max(0, len(decisions) - partial_upstream_skipped)
+    decision_coverage_pct = (
+        round((evaluated_target_count / configured_target_count) * 100.0, 2)
+        if configured_target_count
+        else 100.0
+    )
+
     report = {
         "version": 1,
         "generated_at": now.isoformat(),
@@ -1239,7 +1247,9 @@ def main() -> int:
         "upstream_outcome": upstream,
         "partial_upstream_evaluated": partial_upstream_evaluated,
         "partial_upstream_skipped": partial_upstream_skipped,
-        "configured_targets": len(eligible_targets(config, dynamic, watch_state)),
+        "configured_targets": configured_target_count,
+        "evaluated_target_count": evaluated_target_count,
+        "decision_coverage_pct": decision_coverage_pct,
         "buy_zone_count": sum(1 for x in decisions if x.get("state") == "BUY_ZONE"),
         "pre_buy_count": sum(1 for x in decisions if x.get("pre_buy") is True),
         "pre_buy_delivered_count": len(pre_buy_delivered),
@@ -1264,6 +1274,8 @@ def main() -> int:
             "generic_near_buy_notifications": False,
             "fail_closed_per_target_on_partial_upstream": True,
             "partial_upstream_max_snapshot_age_seconds": partial_upstream_max_age_seconds,
+            "decision_coverage_is_explicit": True,
+            "zero_current_coverage_never_counts_as_healthy": True,
             "automatic_trade": False,
             "veteran_production_real_alert_policy_unchanged": True,
         },
@@ -1273,6 +1285,8 @@ def main() -> int:
         "status": ("DELIVERY_ERROR" if errors else ("PARTIAL_UPSTREAM_FRESH_TARGETS_ONLY" if partial_upstream else "OK")),
         "mode": POLICY_MODE,
         "configured_targets": report["configured_targets"],
+        "evaluated_target_count": report["evaluated_target_count"],
+        "decision_coverage_pct": report["decision_coverage_pct"],
         "buy_zone_count": report["buy_zone_count"],
         "pre_buy_count": report["pre_buy_count"],
         "pre_buy_delivered_count": report["pre_buy_delivered_count"],
