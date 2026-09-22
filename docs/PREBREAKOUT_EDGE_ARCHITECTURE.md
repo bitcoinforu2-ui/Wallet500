@@ -72,7 +72,33 @@ Free intelligence and cross-domain intelligence explicitly include these targets
 the same run so a good early candidate does not stall simply because its candidate
 type was missing from an old whitelist.
 
-### 5. Hot recheck
+### 5. Deep-verification budget follows early activity
+
+The expensive Solana holder/mint/distribution checks are no longer assigned by
+liquidity alone. Genesis calculates a bounded `genesis_deep_priority_score` from:
+
+- minimum-safe liquidity and depth band;
+- independent discovery-source corroboration;
+- volume relative to liquidity;
+- buy/sell imbalance;
+- prime launch age;
+- whether price is still early rather than already vertically extended.
+
+Liquidity remains a floor and a tie-breaker, but a large idle pool no longer
+automatically displaces a smaller pool showing verified early demand.
+
+### 6. Dropout hysteresis
+
+A `GENESIS_PREBREAKOUT` identity that disappears from a discovery provider can be
+retained for up to 30 minutes. Retention stores the canonical chain/contract/pair
+again and only preserves **watch priority**. It never preserves a BUY decision:
+every production evaluation still needs fresh market data, current intelligence,
+the existing risk gates and confirmation spacing.
+
+This protects against provider pagination/ranking churn without turning stale
+research evidence into execution approval.
+
+### 7. Hot recheck
 
 A Genesis candidate can enter the existing bounded fast-recheck lane when only
 market/timing confirmation remains. It cannot use the fast market refresh to repair:
@@ -103,10 +129,13 @@ For Pump.fun, Moonshot, Raydium LaunchLab, Four.meme and future launchpads:
 - exact migration transaction/instruction;
 - first AMM pool initialization;
 - first meaningful post-migration liquidity;
-- migration-to-tradable latency.
+- migration-to-tradable latency;
+- optional **pending/mempool lifecycle state** on chains where a trustworthy feed
+  exposes simulated TokenCreate/LiquidityAdded/PairCreated events before inclusion.
 
-**Rule:** curve progress is only an attention signal. Migration must be verified by
-chain/program identity, not inferred from ticker or social posts.
+**Rule:** curve progress and pending transactions are attention signals only.
+Migration must be verified by chain/program identity and confirmed on-chain before
+it can satisfy a production BUY gate; ticker/social inference is never sufficient.
 
 ### B. Creator + Funder Graph
 
