@@ -465,6 +465,7 @@ def execute_plan(plan: dict) -> dict:
             continue
 
     watch_state["version"] = max(4, int(watch_state.get("version") or 0))
+    watch_state["updated_at"] = gate.now_iso()
     watch_state["tokens"] = token_state
     gate.write(gate.WATCH_STATE, watch_state)
 
@@ -483,9 +484,16 @@ def execute_plan(plan: dict) -> dict:
     existing_delivered = list(prior_report.get("delivered") or [])
     existing_pre_buy_delivered = list(prior_report.get("pre_buy_delivered") or [])
     existing_errors = list(prior_report.get("errors") or [])
+    delivery_errors = [
+        x for x in errors
+        if isinstance(x, dict) and x.get("event") in {"PRE_BUY", "FINAL_BUY"}
+    ]
     all_delivered = list(dict.fromkeys([*existing_delivered, *delivered]))
     all_prebuy = list(dict.fromkeys([*existing_pre_buy_delivered, *pre_buy_delivered]))
-    all_errors = [*existing_errors, *errors]
+    # Keep provider/market recheck misses inside the hot-recheck audit block.
+    # The canonical FINAL BUY report error_count remains reserved for actual
+    # Telegram delivery failures, matching the normal user_watch_final_buy path.
+    all_errors = [*existing_errors, *delivery_errors]
 
     report = dict(prior_report)
     report["generated_at"] = gate.now_iso()
@@ -507,6 +515,7 @@ def execute_plan(plan: dict) -> dict:
         "delivered_count": len(delivered),
         "pre_buy_delivered_count": len(pre_buy_delivered),
         "error_count": len(errors),
+        "errors": errors,
         "delay_seconds": int(plan.get("delay_seconds") or 0),
         "min_confirmation_spacing_seconds": int(plan.get("min_confirmation_spacing_seconds") or 0),
         "targets": [
