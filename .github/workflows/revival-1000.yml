@@ -3,7 +3,7 @@ name: Wallet500 Revival Solana Expanded
 on:
   workflow_dispatch:
   schedule:
-    - cron: '7,37 * * * *'
+    - cron: '7,27,47 * * * *'
   push:
     branches: [main]
     paths:
@@ -173,6 +173,22 @@ jobs:
               for o in e.get('observations') or []:
                   if int(o.get('horizon_min') or 0) not in {0,60,360,1440,4320}: raise SystemExit('PAID_EVENT_HORIZON_INVALID')
           print('PAID_VISIBILITY_LAB_V1_TRUTH_OK', {'active':summary.get('active_paid_events_now'),'solana':summary.get('active_solana_paid_events_now'),'events':summary.get('total_events_observed')})
+          PY
+      - name: Stamp Revival generation handshake
+        run: |
+          python - <<'PY'
+          import json, os, uuid
+          from datetime import datetime, timezone
+          from pathlib import Path
+          p=Path('data/revival-1000-latest.json')
+          d=json.loads(p.read_text())
+          now=datetime.now(timezone.utc).isoformat().replace('+00:00','Z')
+          d['generation_id']=f"revival-{now}-{uuid.uuid4().hex[:12]}"
+          d['published_from_commit']=os.environ.get('GITHUB_SHA')
+          d['publisher_workflow']='revival-1000.yml'
+          d['publisher_contract_version']='REVIVAL_GENERATION_HANDSHAKE_V1'
+          p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          print('REVIVAL_GENERATION_HANDSHAKE',d['generation_id'])
           PY
       - name: Publish expanded Revival snapshot with contention-safe CAS
         shell: bash
