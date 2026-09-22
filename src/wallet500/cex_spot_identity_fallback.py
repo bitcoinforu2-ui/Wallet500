@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 UA = {"User-Agent": "Wallet500/2.1", "Accept": "application/json"}
 DEX_SEARCH = "https://api.dexscreener.com/latest/dex/search?q="
+DEX_TOKEN = "https://api.dexscreener.com/latest/dex/tokens/"
 MIN_MARKET_AGE_DAYS = 90
 MAX_PRICE_ERROR_PCT = 12.0
 SUPPORTED_CHAINS = {
@@ -72,6 +73,100 @@ def _age_days(created_ms: object) -> int:
     except Exception:
         return -1
     return int((datetime.now(timezone.utc) - created).total_seconds() // 86400)
+
+
+def _same_addr(chain: str, left: object, right: object) -> bool:
+    a, b = str(left or "").strip(), str(right or "").strip()
+    if chain in {"ethereum", "bsc", "base", "arbitrum", "polygon", "avalanche", "optimism", "harmony"}:
+        return a.lower() == b.lower()
+    return a == b
+
+
+def _exact_token_pool_universe(best: dict, ref: float) -> dict:
+    """Expand a uniquely resolved token into price-coherent exact base-token pools.
+
+    The strict symbol+price+age fallback establishes the token identity first. Only
+    after that proof do we query by exact contract address. Sibling pools never
+    establish identity by themselves and quote-side pools are omitted here because
+    DexScreener priceUsd represents the base token.
+    """
+    chain = str(best.get("chain") or "").lower().strip()
+    token = str(best.get("token_address") or "").strip()
+    if not chain or not token:
+        return {}
+
+    try:
+        payload = _get(DEX_TOKEN + urllib.parse.quote(token, safe=""))
+    except Exception:
+        payload = {"pairs": []}
+
+    pools = []
+    seen = set()
+    for pair in (payload or {}).get("pairs") or []:
+        if not isinstance(pair, dict):
+            continue
+        if str(pair.get("chainId") or "").lower().strip() != chain:
+            continue
+        base_token = pair.get("baseToken") if isinstance(pair.get("baseToken"), dict) else {}
+        if not _same_addr(chain, base_token.get("address"), token):
+            continue
+        pair_address = str(pair.get("pairAddress") or "").strip()
+        price = _f(pair.get("priceUsd"))
+        if not pair_address or price <= 0:
+            continue
+        err = abs(price / ref - 1.0) * 100.0
+        if err > MAX_PRICE_ERROR_PCT:
+            continue
+        key = pair_address.lower() if chain in {"ethereum", "bsc", "base", "arbitrum", "polygon", "avalanche", "optimism", "harmony"} else pair_address
+        if key in seen:
+            continue
+        seen.add(key)
+        pools.append({
+            "chain": chain,
+            "token_address": token,
+            "pair_address": pair_address,
+            "dex": pair.get("dexId"),
+            "price_usd": price,
+            "liquidity_usd": _f((pair.get("liquidity") or {}).get("usd")),
+            "volume_h1": _f((pair.get("volume") or {}).get("h1")),
+            "volume_h24": _f((pair.get("volume") or {}).get("h24")),
+            "pair_created_at": pair.get("pairCreatedAt"),
+            "exact_token_side": "BASE",
+            "provider": "DEXSCREENER_TOKEN_PAIRS",
+            "url": pair.get("url"),
+        })
+
+    primary_key = str(best.get("pair_address") or "")
+    primary_norm = primary_key.lower() if chain in {"ethereum", "bsc", "base", "arbitrum", "polygon", "avalanche", "optimism", "harmony"} else primary_key
+    if primary_key and primary_norm not in seen:
+        pools.append({
+            "chain": chain,
+            "token_address": token,
+            "pair_address": primary_key,
+            "dex": best.get("dex"),
+            "price_usd": _f(best.get("price_usd")),
+            "liquidity_usd": _f(best.get("liquidity_usd")),
+            "volume_h1": _f(best.get("volume_h1")),
+            "volume_h24": _f(best.get("volume_h24")),
+            "pair_created_at": best.get("pair_created_at"),
+            "exact_token_side": "BASE",
+            "provider": "DEXSCREENER_SEARCH",
+            "url": best.get("dex_url"),
+        })
+
+    pools.sort(
+        key=lambda x: (_f(x.get("liquidity_usd")), _f(x.get("volume_h24"))),
+        reverse=True,
+    )
+    total = sum(_f(x.get("liquidity_usd")) for x in pools)
+    return {
+        "dex_total_liquidity_usd": round(total, 2),
+        "dex_pool_count": len(pools),
+        "dex_tradable_pool_count_50k": sum(1 for x in pools if _f(x.get("liquidity_usd")) >= 50_000),
+        "dex_liquidity_scope": "STRICT_FALLBACK_EXACT_TOKEN_BASE_POOLS",
+        "liquidity_gate_metric": "EXECUTION_POOL_LIQUIDITY_USD",
+        "dex_liquidity_pools_top5": pools[:5],
+    }
 
 
 def resolve(alert: dict) -> dict | None:
@@ -144,6 +239,8 @@ def resolve(alert: dict) -> dict | None:
             return None
 
     created = datetime.fromtimestamp(float(best["pair_created_at"]) / 1000.0, tz=timezone.utc).isoformat()
+    pool_universe = _exact_token_pool_universe(best, ref)
+    ratio = max(ref, best["price_usd"]) / min(ref, best["price_usd"])
     return {
         **alert,
         **best,
@@ -162,7 +259,16 @@ def resolve(alert: dict) -> dict | None:
         "identity_candidate_source": "STRICT_DEXSCREENER_CEX_FALLBACK",
         "pair_provider": "DEXSCREENER_SEARCH",
         "exact_token_side": "BASE",
+        "dex_price_usd": best["price_usd"],
         "dex_liquidity_usd": best["liquidity_usd"],
+        "execution_pool_liquidity_usd": best["liquidity_usd"],
         "dex_volume_h1": best["volume_h1"],
         "dex_volume_h24": best["volume_h24"],
+        "cex_reference_price_usd": ref,
+        "dex_execution_price_usd": best["price_usd"],
+        "cex_dex_price_ratio": round(ratio, 6),
+        "max_cex_dex_price_ratio": max(1.0, 1.0 / (1.0 - MAX_PRICE_ERROR_PCT / 100.0)),
+        "execution_pair_price_coherent": True,
+        "registry_learning_eligible": False,
+        **pool_universe,
     }

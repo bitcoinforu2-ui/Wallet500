@@ -597,6 +597,84 @@ def test_critical_spot_lane_is_hard_bounded_and_keeps_top_movers(monkeypatch, tm
     assert selected[17]["critical_market_lane"] is True
     assert selected[18]["critical_market_lane"] is False
 
+
+def test_critical_spot_lane_dedupes_same_market_pools_and_fair_rotates(monkeypatch, tmp_path):
+    import json
+
+    rows = [
+        {
+            "candidate_type": "CEX_SPOT_DISCOVERY",
+            "symbol": "AKEUSDT",
+            "network": "bsc",
+            "contract": "0xtoken",
+            "pair": f"0xpool{i}",
+            "exchange": "gate",
+            "currency_pair": "AKE_USDT",
+            "execution_identity_scope": "EXACT_CHAIN_CONTRACT_PAIR_PLUS_CEX_MARKET",
+            "asset_identity_key": "bsc:0xtoken",
+            "multi_pool_watch": True,
+            "asset_pool_role": "PRIMARY" if i == 0 else "SIBLING",
+            "gain_from_first_seen_pct": 45.0,
+            "discovery_momentum_change_pct": 42.0,
+            "quote_volume_24h_usd": 33_000_000,
+            "positive_gainer_rank": 1,
+        }
+        for i in range(4)
+    ]
+    rows.append({
+        "candidate_type": "CEX_MARKET_DISCOVERY",
+        "symbol": "AKE",
+        "exchange": "gate",
+        "currency_pair": "AKE_USDT",
+        "execution_identity_scope": "EXACT_CEX_MARKET",
+        "gain_from_first_seen_pct": 45.0,
+        "discovery_momentum_change_pct": 42.0,
+        "quote_volume_24h_usd": 33_000_000,
+        "positive_gainer_rank": 1,
+    })
+    for i in range(2, 12):
+        rows.append({
+            "candidate_type": "CEX_MARKET_DISCOVERY",
+            "symbol": f"T{i:02d}",
+            "exchange": "gate",
+            "currency_pair": f"T{i:02d}_USDT",
+            "execution_identity_scope": "EXACT_CEX_MARKET",
+            "gain_from_first_seen_pct": 40.0 - i,
+            "discovery_momentum_change_pct": 35.0 - i,
+            "quote_volume_24h_usd": 100000.0 + i,
+            "positive_gainer_rank": i,
+        })
+
+    dynamic = tmp_path / "dynamic.json"
+    dynamic.write_text(json.dumps({"candidates": rows}))
+    monkeypatch.setattr(engine, "DYNAMIC", dynamic)
+    monkeypatch.setenv("WALLET500_CRITICAL_SPOT_CAP", "8")
+
+    pool_keys = [f"bsc:0xtoken:0xpool{i}" for i in range(4)]
+    persisted = {
+        f"SPOT:{pool_keys[1]}": {"last_market_observed_at": "2026-09-22T08:00:00+00:00"},
+        f"SPOT:{pool_keys[2]}": {"last_market_observed_at": "2026-09-22T07:00:00+00:00"},
+    }
+    selected = engine.dynamic_candidates(persisted)
+
+    critical = [x for x in selected if x.get("critical_market_lane") is True]
+    assert len(critical) == 8
+    ake_critical = [x for x in critical if x.get("currency_pair") == "AKE_USDT"]
+    assert len(ake_critical) == 1
+    assert ake_critical[0]["candidate_type"] == "CEX_SPOT_DISCOVERY"
+    assert ake_critical[0]["pair"] == "0xpool0"
+    assert len({x.get("critical_market_group") for x in critical}) == 8
+
+    noncritical_ake = [
+        x for x in selected
+        if x.get("currency_pair") == "AKE_USDT"
+        and x.get("critical_market_lane") is not True
+    ]
+    # Never-observed sibling pool rotates ahead of previously scanned siblings.
+    assert noncritical_ake[0]["pair"] == "0xpool3"
+    assert noncritical_ake[-1]["pair"] == "0xpool1"
+
+
 def _pha_late_entry_case(now):
     target = {
         "candidate_type": "GATE_SPOT_DISCOVERY",
