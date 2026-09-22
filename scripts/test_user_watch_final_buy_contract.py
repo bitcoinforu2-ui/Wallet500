@@ -521,6 +521,79 @@ def main() -> None:
     assert "HARD_RISK_PRESENT" in r2_risky["blockers"]
     assert r2_risky["recommended_action"] == "WAIT"
 
+    # Regression: a real 0.0 source spread is valid and must never be
+    # converted into the 999 "unknown/wide" sentinel. This exact bug blocked
+    # AURORA-like CEX+DEX continuation despite coherent execution data.
+    aurora_target = {
+        "candidate_type": "CEX_SPOT_DISCOVERY",
+        "symbol": "AURORAUSDT",
+        "network": "ethereum",
+        "contract": "0xaaaaaa20d9e0e2461697782ef11675f668207961",
+        "pair": "0x629d22e6eeac46a11dbc96be93b90aee9309be4c",
+        "exchange": "gate",
+        "currency_pair": "AURORA_USDT",
+        "execution_identity_scope": "EXACT_CHAIN_CONTRACT_PAIR_PLUS_CEX_MARKET",
+        "quarter_wave_revalidation_lane": True,
+        "quarter_wave_anchor_price_usd": 0.01527,
+        "quarter_wave_gain_from_anchor_pct": 294.0,
+    }
+    aurora_key = gate.identity_key(aurora_target)
+    aurora_market = {
+        "identity_key": aurora_key,
+        "price": 0.06028,
+        "liquidity": 443350.54,
+        "volume_h1": 22357.29,
+        "buys_h1": 53,
+        "sells_h1": 46,
+        "spread_pct": 0.0,
+        "observed_at": t2.isoformat(),
+        "cex_quote_volume_24h_usd": 1984779.22,
+        "cex_relative_volume_multiple": 16.9006,
+        "positive_gainer_rank": 1,
+        "cex_led_revival": True,
+        "cex_execution_verified": True,
+        "cex_execution_scope": "EXACT_CEX_MARKET",
+        "price_source_count": 1,
+        "single_source_degraded": True,
+        "cex_market_price_spread_pct": 0.85,
+        "cex_orderbook_spread_pct": 0.117,
+        "cex_depth_1pct_usd": 3279.12,
+        "cex_bid_ask_depth_ratio": 6.03,
+    }
+    aurora_obs = {
+        "identity_key": aurora_key,
+        "market_verified": True,
+        "_report_age_seconds": 0,
+        "intelligence": {
+            "status": "CURRENT",
+            "score": 10,
+            "families": 1,
+            "current_evidence_count": 2,
+            "evidence_age_minutes": 0.1,
+            "hard_risks": [],
+            "family_scores": {
+                "market_microstructure": 10,
+                "wallet_flow": 0,
+                "holder_network": 0,
+            },
+        },
+    }
+    aurora_decision, _ = gate.evaluate(
+        aurora_target,
+        aurora_market,
+        aurora_obs,
+        {
+            "last_price": 0.0590,
+            "last_market_observed_at": (t2 - timedelta(minutes=4)).isoformat(),
+            "watch_low_price": 0.0550,
+        },
+        POLICY,
+        now=t2,
+    )
+    assert aurora_decision["quarter_wave_revalidation"]["cex_fast_path"] is True
+    assert "PRICE_SOURCE_SPREAD_TOO_WIDE" not in aurora_decision["blockers"]
+    assert "BUY_FLOW_NOT_CONFIRMED" not in aurora_decision["blockers"]
+
     print("USER_WATCH_FINAL_BUY_CONTRACT_OK")
 
 

@@ -380,7 +380,8 @@ def evaluate(
     sells = int(num((market or {}).get("sells_h1"), 0.0) or 0)
     activity = buys + sells
     ratio = (buys + 1.0) / (sells + 1.0)
-    spread = num((market or {}).get("spread_pct"), 999.0) or 999.0
+    spread_raw = num((market or {}).get("spread_pct"))
+    spread = 999.0 if spread_raw is None else spread_raw
     cex_turnover = num((market or {}).get("cex_quote_volume_24h_usd"), 0.0) or 0.0
     cex_relative_multiple = num((market or {}).get("cex_relative_volume_multiple"), 0.0) or 0.0
     cex_rank_raw = num((market or {}).get("positive_gainer_rank"))
@@ -394,7 +395,10 @@ def evaluate(
         or (1 if single_source_degraded else 2)
     )
     cex_market_price_spread = num((market or {}).get("cex_market_price_spread_pct"))
-    cex_orderbook_spread = num((market or {}).get("cex_orderbook_spread_pct"), 999.0) or 999.0
+    cex_orderbook_spread_raw = num((market or {}).get("cex_orderbook_spread_pct"))
+    cex_orderbook_spread = (
+        999.0 if cex_orderbook_spread_raw is None else cex_orderbook_spread_raw
+    )
     cex_depth_1pct = num((market or {}).get("cex_depth_1pct_usd"), 0.0) or 0.0
     cex_bid_ask_depth_ratio = num((market or {}).get("cex_bid_ask_depth_ratio"), 0.0) or 0.0
     cex_market_only = (

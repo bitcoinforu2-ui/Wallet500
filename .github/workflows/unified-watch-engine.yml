@@ -35,7 +35,7 @@ jobs:
         run: |
           python scripts/test_intelligence_fusion_contract.py
           python -m pip install --disable-pip-version-check -q pytest
-          python -m pytest -q tests/test_unified_watch_cex_resilience.py tests/test_hot_candidate_recheck.py tests/test_spot_market_discovery_native_identity.py tests/test_chain_context_shadow.py tests/test_protocol_buyback_sensor.py
+          python -m pytest -q tests/test_unified_watch_cex_resilience.py tests/test_hot_candidate_recheck.py tests/test_same_run_cex_intelligence.py tests/test_spot_market_discovery_native_identity.py tests/test_chain_context_shadow.py tests/test_protocol_buyback_sensor.py
 
       - name: Test user-requested FINAL BUY contract
         id: user_buy_contract
@@ -62,17 +62,22 @@ jobs:
           set -o pipefail
           timeout --signal=TERM --kill-after=10s 3m python scripts/spot_market_discovery_collector.py
 
+      # Build current-scan exact identities before intelligence collection.
+      # This removes the one-cycle lag where a mover was discovered now but its
+      # recovered chain/contract/pair existed only after free intelligence ran.
+      - name: Bridge final BUY and Gate movers into dynamic decision candidates
+        id: candidate_bridge
+        run: python scripts/unified_candidate_bridge.py
+
       # CEX decision data is built before new-chain/social/research collectors.
-      # Those enrich the next scan and can never starve the current BUY decision.
+      # Free intelligence now consumes same-run recovered canonical CEX identities,
+      # so hot movers can reach fusion CURRENT in this very scan.
       - name: Collect configured plus final-BUY free intelligence
         id: free_intel
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          WALLET500_CRITICAL_FREE_INTEL_HOT_CAP: '12'
         run: python scripts/free_intelligence_collector.py
-
-      - name: Bridge final BUY and Gate movers into dynamic decision candidates
-        id: candidate_bridge
-        run: python scripts/unified_candidate_bridge.py
 
       - name: Fast handoff CEX volume and rank shocks into exact-pair close watch
         id: cex_sensor_handoff
