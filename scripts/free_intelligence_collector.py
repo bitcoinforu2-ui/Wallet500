@@ -796,20 +796,54 @@ def targets():
     # Same-run CEX movers must receive fresh microstructure/security intelligence.
     # Reading Spot Discovery directly avoids the one-workflow lag caused by the
     # dynamic bridge running later in the pipeline.
-    spot_hot_targets = []
-    for t in (spot.get("resolved_candidates") or []):
+    def hot_cex_target(t):
         if not isinstance(t, dict):
-            continue
+            return False
+        ctype = str(t.get("candidate_type") or "").upper()
+        if ctype not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY"}:
+            return False
         momentum = num(t.get("discovery_momentum_change_pct") or t.get("change_24h_pct")) or 0.0
         gain = num(t.get("gain_from_first_seen_pct")) or 0.0
         rank = int(num(t.get("positive_gainer_rank")) or 999999)
         turnover = num(t.get("quote_volume_24h_usd")) or 0.0
-        if momentum >= 25.0 or gain >= 25.0 or (rank <= 15 and turnover >= 20000.0):
-            spot_hot_targets.append(t)
+        return momentum >= 25.0 or gain >= 25.0 or (rank <= 15 and turnover >= 20000.0)
+
+    spot_hot_targets = [
+        t for t in (spot.get("resolved_candidates") or [])
+        if hot_cex_target(t)
+    ]
+
+    # The candidate bridge can recover an exact chain/contract/pair in the same
+    # workflow even when Spot Discovery itself still reports IDENTITY_PENDING.
+    # Pull those canonical/primary exact identities into free intelligence now,
+    # instead of waiting one scheduler cycle and leaving FINAL BUY with stale
+    # fusion. Sibling pools are deliberately excluded to keep the critical path
+    # bounded and to avoid multiplying the same asset into many HTTP calls.
+    dynamic_hot_targets = []
+    for t in (dyn.get("candidates") or []):
+        if not hot_cex_target(t):
+            continue
+        if str(t.get("asset_pool_role") or "").upper() == "SIBLING":
+            continue
+        if not all(identity(t)[:3]):
+            continue
+        dynamic_hot_targets.append(t)
+    dynamic_hot_targets.sort(
+        key=lambda x: (
+            int(num(x.get("positive_gainer_rank")) or 999999),
+            -float(num(x.get("quote_volume_24h_usd")) or 0.0),
+            -float(num(x.get("dex_liquidity_usd")) or 0.0),
+        )
+    )
+    dynamic_hot_cap = max(
+        1, int(os.getenv("WALLET500_CRITICAL_FREE_INTEL_HOT_CAP", "12"))
+    )
+    dynamic_hot_targets = dynamic_hot_targets[:dynamic_hot_cap]
 
     raw_targets = (
         registry_buy_targets
         + dynamic_buy_targets
+        + dynamic_hot_targets
         + spot_hot_targets
         + bootstrap_targets
         + [t for t in (cfg.get("tokens") or []) if isinstance(t, dict)]
