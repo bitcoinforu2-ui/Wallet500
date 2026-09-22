@@ -345,3 +345,131 @@ def test_gate_canonical_keeps_same_asset_sibling_pools_for_watch(tmp_path, monke
     assert sibling["currency_pair"] == "AKE_USDT"
     assert sibling["execution_identity_scope"] == "EXACT_CHAIN_CONTRACT_PAIR_PLUS_CEX_MARKET"
     assert result["counts"]["multi_pool_sibling_candidates"] == 1
+
+
+def test_cex_only_gate_mover_recovers_exact_identity_and_sibling_pools(tmp_path, monkeypatch):
+    paths = {
+        "SPOT": tmp_path / "spot.json",
+        "CEX_SPOT_IDENTITY": tmp_path / "cex_identity.json",
+        "ALPHA": tmp_path / "alpha.json",
+        "BUY_REGISTRY": tmp_path / "buy.json",
+        "BOOTSTRAP": tmp_path / "bootstrap.json",
+        "OUT": tmp_path / "out.json",
+        "EVENTS": tmp_path / "events.json",
+    }
+    token = "0x2c3a8ee94ddd97244a93bc48298f97d2c412f7db"
+    primary = "0x83fcd80d7973cca1aa821590bbec66d27a2d4ad4"
+    sibling = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+    paths["SPOT"].write_text(json.dumps({
+        "candidates": [{
+            "symbol": "AKE",
+            "currency_pair": "AKE_USDT",
+            "source": "Gate Spot",
+            "discovery_price": 0.054505,
+            "change_24h_pct": 42.6,
+            "discovery_momentum_change_pct": 42.6,
+            "quote_volume_24h_usd": 33356392.9,
+            "positive_gainer_rank": 13,
+            "first_seen_at": "2026-09-22T01:57:20+00:00",
+            "first_seen_price": 0.057827,
+            "first_seen_change_24h_pct": 13.34,
+            "status": "DISCOVERED_CEX_SPOT",
+            "identity_status": "PENDING",
+            "identity_reason": "RESOLUTION_BUDGET",
+        }]
+    }), encoding="utf-8")
+    paths["CEX_SPOT_IDENTITY"].write_text(json.dumps({
+        "candidates": [{
+            "symbol": "AKEUSDT",
+            "base_symbol": "AKE",
+            "identity_status": "DEX_VERIFIED",
+            "identity_verified": True,
+            "execution_pair_price_coherent": True,
+            "market_age_verified": True,
+            "identity_candidate_source": "STRICT_DEXSCREENER_CEX_FALLBACK",
+            "chain": "bsc",
+            "token_address": token,
+            "pair_address": primary,
+            "dex_url": "https://dexscreener.com/bsc/" + primary,
+            "dex_price_usd": 0.05347,
+            "dex_liquidity_usd": 31784.18,
+            "execution_pool_liquidity_usd": 31784.18,
+            "dex_total_liquidity_usd": 151784.18,
+            "dex_pool_count": 2,
+            "change_24h_max_pct": 42.6,
+            "leaderboard_best_rank": 13,
+            "markets": [{
+                "exchange": "gate",
+                "market_type": "spot",
+                "symbol": "AKEUSDT",
+                "market_id": "AKE_USDT",
+                "quote_symbol": "USDT",
+                "price": 0.054505,
+                "volume_24h": 33356392.9,
+                "volume_comparable_usd_like": True,
+            }],
+            "milestones": {
+                "first_seen": {
+                    "observed_at": "2026-09-22T01:57:20+00:00",
+                    "reference_price": 0.057827,
+                    "reference_change_24h_pct": 13.34,
+                }
+            },
+            "dex_liquidity_pools_top5": [
+                {
+                    "chain": "bsc",
+                    "token_address": token,
+                    "pair_address": primary,
+                    "dex": "pancakeswap",
+                    "price_usd": 0.05347,
+                    "liquidity_usd": 31784.18,
+                    "volume_h1": 3622.9,
+                    "volume_h24": 203710.16,
+                    "provider": "DEXSCREENER_SEARCH",
+                    "url": "https://dexscreener.com/bsc/" + primary,
+                },
+                {
+                    "chain": "bsc",
+                    "token_address": token,
+                    "pair_address": sibling,
+                    "dex": "pancakeswap",
+                    "price_usd": 0.0541,
+                    "liquidity_usd": 120000,
+                    "volume_h1": 12000,
+                    "volume_h24": 450000,
+                    "provider": "DEXSCREENER_TOKEN_PAIRS",
+                    "url": "https://dexscreener.com/bsc/" + sibling,
+                },
+            ],
+        }]
+    }), encoding="utf-8")
+    paths["ALPHA"].write_text('{"candidates":[]}', encoding="utf-8")
+    paths["BUY_REGISTRY"].write_text('{"entries":{}}', encoding="utf-8")
+    paths["BOOTSTRAP"].write_text('{"candidates":[]}', encoding="utf-8")
+    paths["EVENTS"].write_text('{"version":3,"events":[]}', encoding="utf-8")
+    for name, path in paths.items():
+        monkeypatch.setattr(bridge, name, path)
+
+    bridge.main()
+    result = json.loads(paths["OUT"].read_text(encoding="utf-8"))
+
+    exact = [
+        x for x in result["candidates"]
+        if x.get("asset_identity_key") == "bsc:" + token
+    ]
+    assert len(exact) == 2
+    assert {x["pair"].lower() for x in exact} == {primary, sibling}
+    assert all(x["candidate_type"] == "CEX_SPOT_DISCOVERY" for x in exact)
+    assert all(x["currency_pair"] == "AKE_USDT" for x in exact)
+    assert all(x["execution_identity_scope"] == "EXACT_CHAIN_CONTRACT_PAIR_PLUS_CEX_MARKET" for x in exact)
+    assert all(x["cex_market_identity_recovered"] is True for x in exact)
+    assert any(x["asset_pool_role"] == "SIBLING" for x in exact)
+    assert result["counts"]["cex_market_exact_identity_recovered"] == 1
+
+    venue_only = [
+        x for x in result["candidates"]
+        if x.get("candidate_type") == "CEX_MARKET_DISCOVERY"
+        and x.get("currency_pair") == "AKE_USDT"
+    ]
+    assert len(venue_only) == 1
