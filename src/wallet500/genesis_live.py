@@ -98,7 +98,12 @@ def _priority(row: dict) -> tuple:
         lane = 3
     else:
         lane = 4
-    return (lane, -_n(row.get("reserve_usd")), -int(row.get("source_confirmations") or 1))
+    return (
+        lane,
+        -int(row.get("independent_source_confirmations") or 1),
+        -_n(row.get("reserve_usd")),
+        -int(row.get("source_confirmations") or 1),
+    )
 
 
 def _prior(history: list[dict], now_epoch: float, seconds_ago: int) -> dict | None:
@@ -434,7 +439,8 @@ def _compact_candidate(row: dict) -> dict:
         "volume_m5", "volume_h1", "buys_h1", "sells_h1", "holders", "holder_truth_status",
         "top10_ex_system_pct", "largest_non_system_wallet_pct", "distribution_status", "lp_vault_match_count",
         "mint_authority_safe", "freeze_authority_safe", "transfer_restrictions_safe", "lp_integrity_safe",
-        "source", "sources", "source_confirmations", "genesis_score", "shadow_score", "shadow_paper_ready",
+        "source", "sources", "source_confirmations", "independent_source_confirmations", "independent_source_families",
+        "genesis_score", "shadow_score", "shadow_paper_ready",
         "status", "age_band", "extension_band", "safety", "acceleration", "prebreakout", "subscores", "measurement_method",
         "quality_wallet_evidence_verified", "bonding_curve_progress_pct", "launchpad_curve_progress_pct",
         "launchpad_migration_confirmed", "creator_prior_successes", "creator_prior_rugs",
@@ -509,6 +515,8 @@ def run(data_dir: Path | None = None, now: datetime | None = None) -> dict:
             "source": discovery.get("source"),
             "sources": discovery.get("sources") or [discovery.get("source")],
             "source_confirmations": discovery.get("source_confirmations") or 1,
+            "independent_source_confirmations": discovery.get("independent_source_confirmations") or 1,
+            "independent_source_families": discovery.get("independent_source_families") or [],
             "pair_age_minutes": round(age_minutes, 2),
             "quality_wallet_buyers": 0,
             "high_confidence_wallet_buyers": 0,
