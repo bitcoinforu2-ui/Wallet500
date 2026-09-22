@@ -218,3 +218,130 @@ def test_gate_market_is_canonical_and_merges_earlier_cex_history(tmp_path, monke
     assert row["first_seen_price"] == 0.0006883
     assert row["merged_cex_identity_history"] is True
     assert not any(x.get("symbol") == "PTBUSDT" for x in result["candidates"])
+
+
+def test_gate_canonical_keeps_same_asset_sibling_pools_for_watch(tmp_path, monkeypatch):
+    paths = {
+        "SPOT": tmp_path / "spot.json",
+        "CEX_SPOT_IDENTITY": tmp_path / "cex_identity.json",
+        "ALPHA": tmp_path / "alpha.json",
+        "BUY_REGISTRY": tmp_path / "buy.json",
+        "BOOTSTRAP": tmp_path / "bootstrap.json",
+        "OUT": tmp_path / "out.json",
+        "EVENTS": tmp_path / "events.json",
+    }
+    token = "0x1111111111111111111111111111111111111111"
+    gate_pair = "0x2222222222222222222222222222222222222222"
+    wbnb_pair = "0x3333333333333333333333333333333333333333"
+
+    paths["SPOT"].write_text(json.dumps({
+        "candidates": [{
+            "symbol": "AKE",
+            "currency_pair": "AKE_USDT",
+            "status": "IDENTITY_RESOLVED",
+            "identity_status": "RESOLVED_EXACT",
+            "network": "bsc",
+            "contract": token,
+            "pair": gate_pair,
+            "dex_url": "https://dexscreener.com/bsc/" + gate_pair,
+            "dex_liquidity_usd": 250000,
+            "first_seen_at": "2026-09-22T01:57:20+00:00",
+            "first_seen_price": 0.057827,
+            "first_seen_change_24h_pct": 13.34,
+            "first_seen_quote_volume_24h_usd": 33798632.63,
+            "discovery_price": 0.0542,
+            "change_24h_pct": 31.19,
+            "discovery_momentum_change_pct": 31.19,
+            "gain_from_first_seen_pct": -6.2,
+            "quote_volume_24h_usd": 33589833.43,
+            "positive_gainer_rank": 17,
+        }]
+    }), encoding="utf-8")
+    paths["CEX_SPOT_IDENTITY"].write_text(json.dumps({
+        "candidates": [{
+            "symbol": "AKEUSDT",
+            "base_symbol": "AKE",
+            "identity_status": "DEX_VERIFIED",
+            "identity_verified": True,
+            "execution_pair_price_coherent": True,
+            "market_age_verified": True,
+            "chain": "bsc",
+            "token_address": token,
+            "pair_address": gate_pair,
+            "dex_url": "https://dexscreener.com/bsc/" + gate_pair,
+            "dex_price_usd": 0.0542,
+            "dex_liquidity_usd": 250000,
+            "execution_pool_liquidity_usd": 250000,
+            "dex_total_liquidity_usd": 410000,
+            "dex_pool_count": 2,
+            "change_24h_max_pct": 31.19,
+            "leaderboard_best_rank": 17,
+            "markets": [{
+                "exchange": "gate",
+                "market_id": "AKE_USDT",
+                "volume_24h": 33589833.43,
+                "volume_comparable_usd_like": True,
+            }],
+            "milestones": {
+                "first_seen": {
+                    "observed_at": "2026-09-22T01:57:20+00:00",
+                    "reference_price": 0.057827,
+                    "reference_change_24h_pct": 13.34,
+                }
+            },
+            "dex_liquidity_pools_top5": [
+                {
+                    "chain": "bsc",
+                    "token_address": token,
+                    "pair_address": gate_pair,
+                    "dex": "pancakeswap",
+                    "price_usd": 0.0542,
+                    "liquidity_usd": 250000,
+                    "volume_h1": 200000,
+                    "volume_h24": 5000000,
+                    "provider": "DEXSCREENER_TOKEN_PAIRS",
+                    "url": "https://dexscreener.com/bsc/" + gate_pair,
+                },
+                {
+                    "chain": "bsc",
+                    "token_address": token,
+                    "pair_address": wbnb_pair,
+                    "dex": "pancakeswap",
+                    "price_usd": 0.0538,
+                    "liquidity_usd": 160000,
+                    "volume_h1": 350000,
+                    "volume_h24": 7200000,
+                    "provider": "GECKOTERMINAL_EXACT_TOKEN_POOLS",
+                    "url": "https://dexscreener.com/bsc/" + wbnb_pair,
+                },
+            ],
+        }]
+    }), encoding="utf-8")
+    paths["ALPHA"].write_text('{"candidates":[]}', encoding="utf-8")
+    paths["BUY_REGISTRY"].write_text('{"entries":{}}', encoding="utf-8")
+    paths["BOOTSTRAP"].write_text('{"candidates":[]}', encoding="utf-8")
+    paths["EVENTS"].write_text('{"version":3,"events":[]}', encoding="utf-8")
+    for name, path in paths.items():
+        monkeypatch.setattr(bridge, name, path)
+
+    bridge.main()
+
+    result = json.loads(paths["OUT"].read_text(encoding="utf-8"))
+    same_asset = [
+        x for x in result["candidates"]
+        if x.get("contract", "").lower() == token.lower()
+    ]
+    assert len(same_asset) == 2
+
+    canonical = next(x for x in same_asset if x.get("pair", "").lower() == gate_pair.lower())
+    sibling = next(x for x in same_asset if x.get("pair", "").lower() == wbnb_pair.lower())
+
+    assert canonical["candidate_type"] == "GATE_SPOT_DISCOVERY"
+    assert canonical["multi_pool_watch"] is True
+    assert sibling["candidate_type"] == "CEX_SPOT_DISCOVERY"
+    assert sibling["multi_pool_watch"] is True
+    assert sibling["asset_pool_role"] == "SIBLING"
+    assert sibling["asset_identity_key"] == "bsc:" + token.lower()
+    assert sibling["currency_pair"] == "AKE_USDT"
+    assert sibling["execution_identity_scope"] == "EXACT_CHAIN_CONTRACT_PAIR_PLUS_CEX_MARKET"
+    assert result["counts"]["multi_pool_sibling_candidates"] == 1

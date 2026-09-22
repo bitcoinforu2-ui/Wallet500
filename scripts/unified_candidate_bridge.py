@@ -16,6 +16,8 @@ EVENTS = ROOT / "data/close-watch-events.json"
 EVM = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc"}
 ALIASES = {"eth": "ethereum", "bnb": "bsc"}
 PUBLIC_ALPHA_LIVE_WINDOW_MINUTES = 180
+MULTI_POOL_WATCH_MAX_POOLS = 5
+MULTI_POOL_WATCH_MIN_LIQUIDITY_USD = 5000.0
 
 
 def now():
@@ -37,6 +39,80 @@ def ident(row):
     t = norm_addr(c, row.get("contract") or row.get("token_address"))
     p = norm_addr(c, row.get("pair") or row.get("pair_address"))
     return (c, t, p, f"{c}:{t}:{p}") if c and t and p else None
+
+
+def asset_ident(row):
+    c = chain_name(row.get("network") or row.get("chain"))
+    t = norm_addr(c, row.get("contract") or row.get("token_address"))
+    return f"{c}:{t}" if c and t else ""
+
+
+def verified_asset_pools(row):
+    """Return bounded exact-token pools for asset-level monitoring.
+
+    Pool discovery is contract-address based. Thin/noisy siblings are ignored unless
+    they have meaningful current volume, while the selected execution pool is always
+    retained. FINAL BUY still evaluates each exact pair independently.
+    """
+    chain = chain_name(row.get("chain") or row.get("network"))
+    token = norm_addr(chain, row.get("token_address") or row.get("contract"))
+    primary_pair = norm_addr(chain, row.get("pair_address") or row.get("pair"))
+    candidates = []
+    for raw in row.get("dex_liquidity_pools_top5") or []:
+        if not isinstance(raw, dict):
+            continue
+        pool_chain = chain_name(raw.get("chain") or chain)
+        pool_token = norm_addr(pool_chain, raw.get("token_address") or token)
+        pair = norm_addr(pool_chain, raw.get("pair_address"))
+        if not pair or pool_chain != chain or pool_token != token:
+            continue
+        liq = float(raw.get("liquidity_usd") or 0)
+        vol = float(raw.get("volume_h24") or 0)
+        if pair != primary_pair and liq < MULTI_POOL_WATCH_MIN_LIQUIDITY_USD and vol < 10000.0:
+            continue
+        candidates.append({
+            "network": chain,
+            "contract": token,
+            "pair": raw.get("pair_address"),
+            "dex_url": raw.get("url") or "",
+            "dex": raw.get("dex"),
+            "price_usd": raw.get("price_usd"),
+            "liquidity_usd": liq,
+            "volume_h1": float(raw.get("volume_h1") or 0),
+            "volume_h24": vol,
+            "pair_created_at": raw.get("pair_created_at"),
+            "exact_token_side": raw.get("exact_token_side"),
+            "provider": raw.get("provider"),
+        })
+
+    if primary_pair and not any(
+        norm_addr(chain, x.get("pair")) == primary_pair for x in candidates
+    ):
+        candidates.append({
+            "network": chain,
+            "contract": token,
+            "pair": row.get("pair_address") or row.get("pair"),
+            "dex_url": row.get("dex_url") or row.get("url") or "",
+            "dex": row.get("dex"),
+            "price_usd": row.get("dex_price_usd"),
+            "liquidity_usd": float(
+                row.get("execution_pool_liquidity_usd")
+                or row.get("dex_pair_liquidity_usd")
+                or row.get("dex_liquidity_usd")
+                or 0
+            ),
+            "volume_h1": float(row.get("dex_volume_h1") or 0),
+            "volume_h24": float(row.get("dex_volume_h24") or 0),
+            "pair_created_at": row.get("pair_created_at"),
+            "exact_token_side": row.get("exact_token_side"),
+            "provider": row.get("pair_provider"),
+        })
+
+    candidates.sort(
+        key=lambda x: (float(x.get("liquidity_usd") or 0), float(x.get("volume_h24") or 0)),
+        reverse=True,
+    )
+    return candidates[:MULTI_POOL_WATCH_MAX_POOLS]
 
 
 def load(path, default):
@@ -193,6 +269,7 @@ def main():
         # retain the verified multi-venue DEX identity so weak-but-valid candidates
         # are not lost merely because Gate also lists the ticker.
         gate_row = gate_spot_by_market.get(gate_market) if gate_market else None
+        gate_can_own_market = False
         if isinstance(gate_row, dict):
             gate_change = float(
                 gate_row.get("discovery_momentum_change_pct")
@@ -208,50 +285,87 @@ def main():
             )
             if gate_can_own_market:
                 canonical_gate_market_suppressed += 1
-                continue
+                # Preserve the existing one-canonical-market rule for unrelated
+                # chain representations. Multi-pool expansion is allowed only when
+                # the Gate candidate and identity row prove the same chain+contract.
+                same_gate_asset = bool(
+                    asset_ident(gate_row)
+                    and asset_ident(row)
+                    and asset_ident(gate_row) == asset_ident(row)
+                )
+                if not same_gate_asset:
+                    continue
         if row.get("identity_status") != "DEX_VERIFIED" or row.get("identity_verified") is not True:
             continue
         if row.get("execution_pair_price_coherent") is not True:
             continue
         if row.get("market_age_verified") is not True:
             continue
-        i = ident(row)
-        if not i or i[3] in seen:
-            continue
-        seen.add(i[3])
         milestone = cex_signal_milestone(row)
-        gate_exec = gate_spot_by_identity.get(i[3]) or {}
-        out.append({
-            "candidate_type": "CEX_SPOT_DISCOVERY",
-            "symbol": str(row.get("symbol") or "").upper(),
-            "network": row.get("chain"),
-            "contract": row.get("token_address"),
-            "pair": row.get("pair_address"),
-            "dex_url": row.get("dex_url") or row.get("url") or "",
-            "source": "CEX Spot Multi-Venue Exact Identity",
-            "exchange": "gate" if gate_exec.get("currency_pair") else None,
-            "currency_pair": gate_exec.get("currency_pair"),
-            "execution_identity_scope": (
-                "EXACT_CHAIN_CONTRACT_PAIR_PLUS_CEX_MARKET"
-                if gate_exec.get("currency_pair")
-                else "EXACT_CHAIN_CONTRACT_PAIR"
-            ),
-            "first_seen_at": milestone.get("observed_at") or row.get("identity_attempted_at"),
-            "first_seen_price": milestone.get("reference_price"),
-            "first_seen_change_24h_pct": milestone.get("reference_change_24h_pct"),
-            "discovery_price": milestone.get("reference_price"),
-            "change_24h_pct": row.get("change_24h_max_pct"),
-            "quote_volume_24h_usd": max_cex_turnover(row),
-            "positive_gainer_rank": row.get("leaderboard_best_rank"),
-            "dex_liquidity_usd": (
-                row.get("execution_pool_liquidity_usd")
-                or row.get("dex_pair_liquidity_usd")
-                or row.get("dex_liquidity_usd")
-            ),
-            "spot_revival_score": row.get("spot_revival_score"),
-            "coherent_confirmations": row.get("coherent_confirmations"),
-            "identity_key": i[3],
-        })
+        primary_pair = norm_addr(
+            chain_name(row.get("chain")),
+            row.get("pair_address"),
+        )
+        gate_pair = (
+            norm_addr(chain_name(gate_row.get("network") or gate_row.get("chain")), gate_row.get("pair"))
+            if gate_can_own_market and isinstance(gate_row, dict)
+            else ""
+        )
+        pools = verified_asset_pools(row)
+        for pool_rank, pool in enumerate(pools, start=1):
+            i = ident(pool)
+            if not i or i[3] in seen:
+                continue
+            # The Gate-resolved exact pair remains the canonical candidate and is
+            # added by the Gate loop below. Keep its sibling pools as independent
+            # monitors of the same contract so ignition on WBNB/USDT/etc. is seen.
+            if gate_can_own_market and gate_pair and i[2] == gate_pair:
+                continue
+
+            gate_exec = (
+                gate_row
+                if gate_can_own_market and isinstance(gate_row, dict)
+                else (gate_spot_by_identity.get(i[3]) or {})
+            )
+            seen.add(i[3])
+            out.append({
+                "candidate_type": "CEX_SPOT_DISCOVERY",
+                "symbol": str(row.get("symbol") or "").upper(),
+                "network": pool.get("network"),
+                "contract": pool.get("contract"),
+                "pair": pool.get("pair"),
+                "dex_url": pool.get("dex_url") or "",
+                "source": (
+                    "CEX Spot Multi-Venue Exact Identity"
+                    if i[2] == primary_pair
+                    else "CEX Spot Asset Multi-Pool Exact Identity"
+                ),
+                "exchange": "gate" if gate_exec.get("currency_pair") else None,
+                "currency_pair": gate_exec.get("currency_pair"),
+                "execution_identity_scope": (
+                    "EXACT_CHAIN_CONTRACT_PAIR_PLUS_CEX_MARKET"
+                    if gate_exec.get("currency_pair")
+                    else "EXACT_CHAIN_CONTRACT_PAIR"
+                ),
+                "first_seen_at": milestone.get("observed_at") or row.get("identity_attempted_at"),
+                "first_seen_price": milestone.get("reference_price") or pool.get("price_usd"),
+                "first_seen_change_24h_pct": milestone.get("reference_change_24h_pct"),
+                "discovery_price": pool.get("price_usd") or milestone.get("reference_price"),
+                "change_24h_pct": row.get("change_24h_max_pct"),
+                "quote_volume_24h_usd": max_cex_turnover(row),
+                "positive_gainer_rank": row.get("leaderboard_best_rank"),
+                "dex_liquidity_usd": pool.get("liquidity_usd"),
+                "spot_revival_score": row.get("spot_revival_score"),
+                "coherent_confirmations": row.get("coherent_confirmations"),
+                "identity_key": i[3],
+                "asset_identity_key": asset_ident(pool),
+                "multi_pool_watch": True,
+                "asset_pool_rank": pool_rank,
+                "asset_pool_role": "PRIMARY" if i[2] == primary_pair else "SIBLING",
+                "asset_pool_count": int(row.get("dex_pool_count") or len(pools)),
+                "asset_total_dex_liquidity_usd": row.get("dex_total_liquidity_usd"),
+                "pool_provider": pool.get("provider"),
+            })
 
     for row in spot.get("candidates") or []:
         if row.get("status") != "IDENTITY_RESOLVED" or row.get("identity_status") != "RESOLVED_EXACT":
@@ -300,6 +414,16 @@ def main():
             "positive_gainer_rank": row.get("positive_gainer_rank"),
             "dex_liquidity_usd": row.get("dex_liquidity_usd"),
             "identity_key": i[3],
+            "asset_identity_key": asset_ident(row),
+            "multi_pool_watch": True,
+            "asset_pool_role": "CANONICAL_EXECUTION",
+            "asset_pool_rank": 1,
+            "asset_pool_count": int((cex_hist.get("dex_pool_count") if isinstance(cex_hist, dict) else 0) or 1),
+            "asset_total_dex_liquidity_usd": (
+                cex_hist.get("dex_total_liquidity_usd")
+                if isinstance(cex_hist, dict)
+                else None
+            ),
             "identity_source": row.get("identity_source"),
             "identity_reason": row.get("identity_reason"),
             "merged_cex_identity_history": bool(use_cex_anchor),
@@ -429,9 +553,9 @@ def main():
         -(float(x.get("dex_liquidity_usd") or 0)),
     ))
     doc = {
-        "version": 1,
+        "version": 2,
         "generated_at": now(),
-        "mode": "EXACT_IDENTITY_DYNAMIC_RESEARCH",
+        "mode": "EXACT_IDENTITY_ASSET_MULTI_POOL_RESEARCH",
         "counts": {
             "buy_zone": sum(x["candidate_type"] == "BUY_ZONE" for x in out),
             "cex_spot": sum(x["candidate_type"] == "CEX_SPOT_DISCOVERY" for x in out),
@@ -442,6 +566,8 @@ def main():
             "public_alpha_stale_excluded": stale_alpha_excluded,
             "public_alpha_invalid_time_excluded": invalid_time_alpha_excluded,
             "canonical_gate_market_suppressed": canonical_gate_market_suppressed,
+            "multi_pool_watch_candidates": sum(bool(x.get("multi_pool_watch")) for x in out),
+            "multi_pool_sibling_candidates": sum(x.get("asset_pool_role") == "SIBLING" for x in out),
             "public_alpha_live_window_minutes": PUBLIC_ALPHA_LIVE_WINDOW_MINUTES,
             "total": len(out),
         },

@@ -178,6 +178,13 @@ def test_resolve_one_selects_deepest_pool_and_keeps_total_liquidity(monkeypatch)
     assert row["dex_pool_count"] == 2
     assert row["dex_tradable_pool_count_50k"] == 1
     assert row["liquidity_gate_metric"] == "EXECUTION_POOL_LIQUIDITY_USD"
+    assert len(row["dex_liquidity_pools_top5"]) == 2
+    assert row["dex_liquidity_pools_top5"][0]["pair_address"] == "0xDEEP"
+    assert row["dex_liquidity_pools_top5"][0]["chain"] == "bsc"
+    assert row["dex_liquidity_pools_top5"][0]["token_address"] == "0xABC"
+    assert row["dex_liquidity_pools_top5"][0]["price_usd"] == 0.55
+    assert row["dex_liquidity_pools_top5"][0]["volume_h1"] == 20000
+    assert row["dex_liquidity_pools_top5"][1]["pair_address"] == "0xTHIN"
 
 
 def test_registry_fallback_requires_exact_coingecko_id_match():
