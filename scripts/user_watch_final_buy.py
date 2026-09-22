@@ -700,15 +700,6 @@ def evaluate(
         and scan_gain is not None
         and scan_gain >= float(policy["cex_breakout_min_scan_gain_pct"])
     )
-    late_entry_chase_risk = bool(
-        policy.get("late_entry_guard_enabled") is True
-        and late_entry_extended
-        and not late_entry_reset_reclaim
-        and not late_entry_exceptional_continuation
-    )
-    if late_entry_chase_risk:
-        blockers.append("EXTENDED_MOVE_WAIT_FOR_RESET")
-
     cex_breakout_continuation = bool(
         policy.get("cex_breakout_continuation_enabled") is True
         and quarter_wave_lane
@@ -796,6 +787,28 @@ def evaluate(
             f"_REL_{cex_relative_multiple:.2f}X_RANK_{cex_rank}"
             f"_SCAN_{scan_gain:.2f}PCT"
         )
+
+    # A verified hybrid continuation is a stronger execution contract than the
+    # ordinary quarter-wave fast path: current exact DEX liquidity/flow and an
+    # executable coherent CEX market must agree on the same scan. Preserve that
+    # intentional exception while still blocking NIL-style anchor-only chases.
+    late_entry_hybrid_continuation_exception = bool(
+        hybrid_breakout_continuation
+        and report_verified
+        and cex_execution_verified
+        and cex_price_coherent
+        and status == "CURRENT"
+        and not hard_risks
+    )
+    late_entry_chase_risk = bool(
+        policy.get("late_entry_guard_enabled") is True
+        and late_entry_extended
+        and not late_entry_reset_reclaim
+        and not late_entry_exceptional_continuation
+        and not late_entry_hybrid_continuation_exception
+    )
+    if late_entry_chase_risk:
+        blockers.append("EXTENDED_MOVE_WAIT_FOR_RESET")
 
     observable = bool(
         market is not None
@@ -890,6 +903,8 @@ def evaluate(
         )
     elif late_entry_exceptional_continuation:
         proof.append("ENTRY_EXTREME_CEX_CONTINUATION_EXCEPTION")
+    elif late_entry_hybrid_continuation_exception and late_entry_extended:
+        proof.append("ENTRY_VERIFIED_HYBRID_CONTINUATION_EXCEPTION")
     if ratio >= float(policy["min_buy_sell_ratio"]):
         proof.append(f"BUY_SELL_{ratio:.2f}X")
     if rebound is not None and rebound >= float(policy["min_rebound_from_watch_low_pct"]):
@@ -971,6 +986,7 @@ def evaluate(
             "reset_seen": reset_seen,
             "reset_reclaim_confirmed": late_entry_reset_reclaim,
             "exceptional_cex_continuation": late_entry_exceptional_continuation,
+            "verified_hybrid_continuation_exception": late_entry_hybrid_continuation_exception,
             "chase_risk_blocked": late_entry_chase_risk,
         },
         "quarter_wave_revalidation": {
@@ -1045,6 +1061,7 @@ def evaluate(
             "cex_fast_path_still_requires_current_intelligence_no_hard_risk_microstructure_and_two_scans": True,
             "late_entry_chase_guard_blocks_extended_rebounds_without_reset_reclaim": True,
             "late_entry_extreme_cex_exception_requires_existing_strict_extreme_breakout_gate": True,
+            "late_entry_hybrid_exception_requires_verified_coherent_exact_cex_and_strong_exact_dex": True,
             "cex_breakout_continuation_requires_current_intelligence": True,
             "cex_breakout_continuation_requires_exact_cex_execution": True,
             "cex_breakout_continuation_never_bypasses_hard_risk": True,
