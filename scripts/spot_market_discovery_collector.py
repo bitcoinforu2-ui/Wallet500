@@ -26,7 +26,10 @@ UA = "Wallet500-SpotDiscovery/1.1-EvidenceRecovery"
 COINGECKO = "https://api.coingecko.com/api/v3"
 IDENTITY_RECOVERY_MAX_PRICE_DIVERGENCE_PCT = 20.0
 IDENTITY_RESOLUTION_BUDGET = 30
-IDENTITY_RESOLUTION_WORKERS = 6
+IDENTITY_RESOLUTION_WORKERS = 8
+# Discovery is latency-critical. Expensive CoinGecko/platform recovery belongs to
+# the asynchronous CEX identity lane, not the critical discovery -> market-watch path.
+BULK_IDENTITY_EXPENSIVE_RECOVERY = False
 COINGECKO_PLATFORM_MAP = {
     "ethereum": ("eth", "ethereum"),
     "binance-smart-chain": ("bsc", "bsc"),
@@ -381,6 +384,7 @@ def resolve_identity(
     native_registry: dict[str, dict] | None = None,
     *,
     cex_price: float | None = None,
+    allow_expensive_recovery: bool = True,
 ) -> dict:
     q = urllib.parse.urlencode({"currency": symbol})
     chains = get_json(f"{GATE}/wallet/currency_chains?{q}")
@@ -424,6 +428,14 @@ def resolve_identity(
 
     if not possibilities:
         possibilities.extend(_native_proxy_possibilities(symbol, native_registry))
+
+    if not possibilities and not allow_expensive_recovery:
+        return {
+            "identity_status": "UNRESOLVED",
+            "identity_reason": "DEFERRED_EXPENSIVE_IDENTITY_RECOVERY",
+            "identity_recovery_attempted": False,
+            "identity_recovery_deferred": True,
+        }
 
     if not possibilities:
         recovery = _coingecko_identity_recovery(symbol, cex_price)
@@ -473,6 +485,7 @@ def resolve_identity_targets(
                 row.get("symbol") or "",
                 native_registry=native_registry,
                 cex_price=row.get("discovery_price"),
+                allow_expensive_recovery=BULK_IDENTITY_EXPENSIVE_RECOVERY,
             )
             return idx, result if isinstance(result, dict) else {
                 "identity_status": "UNRESOLVED",
@@ -881,6 +894,8 @@ def run() -> dict:
             "curated_native_discovery_symbols": sorted(native_registry),
             "native_proxy_research_only": True,
             "missing_identity_self_recovery_enabled": True,
+            "bulk_expensive_identity_recovery_deferred": not BULK_IDENTITY_EXPENSIVE_RECOVERY,
+            "identity_recovery_owner": "CEX_IDENTITY_ASYNC_LANE",
             "missing_identity_recovery_sources": [
                 "Gate currency_chains",
                 "curated native registry",
