@@ -594,6 +594,181 @@ def main() -> None:
     assert "PRICE_SOURCE_SPREAD_TOO_WIDE" not in aurora_decision["blockers"]
     assert "BUY_FLOW_NOT_CONFIRMED" not in aurora_decision["blockers"]
 
+
+    # Regression: PRE-BUY is one warning per opportunity episode. Two ordinary
+    # observable misses must not silently re-arm another PRE-BUY.
+    miss1_t = t2 + timedelta(minutes=5)
+    miss1, miss1_state = gate.evaluate(
+        TARGET,
+        market(0.000260, miss1_t, buys=40, sells=120),
+        observed(),
+        s2,
+        POLICY,
+        now=miss1_t,
+    )
+    assert miss1["qualified_this_scan"] is False
+    assert miss1_state["pre_buy_armed"] is False
+
+    miss2_t = t2 + timedelta(minutes=10)
+    miss2, miss2_state = gate.evaluate(
+        TARGET,
+        market(0.000258, miss2_t, buys=40, sells=120),
+        observed(),
+        miss1_state,
+        POLICY,
+        now=miss2_t,
+    )
+    assert miss2["qualified_this_scan"] is False
+    assert miss2_state["observable_miss_streak"] >= 2
+    assert miss2_state["pre_buy_armed"] is False
+
+    recovery_t = t2 + timedelta(minutes=15)
+    recovery, _ = gate.evaluate(
+        TARGET,
+        market(0.000263, recovery_t),
+        observed(),
+        miss2_state,
+        POLICY,
+        now=recovery_t,
+    )
+    assert recovery["pre_buy"] is True
+    assert recovery["pre_buy_alert"] is False
+
+    # A PRE-BUY cannot mature into a much more expensive chase entry merely
+    # because the current scan is still green.
+    chase_t = t2 + timedelta(minutes=15)
+    chase, _ = gate.evaluate(
+        TARGET,
+        market(0.000290, chase_t),
+        observed(),
+        s2,
+        POLICY,
+        now=chase_t,
+    )
+    assert chase["recommended_action"] == "WAIT"
+    assert "PRE_BUY_PRICE_CHASE_FROM_ALERT" in chase["blockers"]
+
+    # Likewise, the warning expires in time; an old PRE-BUY is not a permanent
+    # credential for a later FINAL BUY.
+    expired_t = t2 + timedelta(minutes=61)
+    expired, _ = gate.evaluate(
+        TARGET,
+        market(0.000269, expired_t),
+        observed(),
+        s2,
+        POLICY,
+        now=expired_t,
+    )
+    assert expired["recommended_action"] == "WAIT"
+    assert "PRE_BUY_EPISODE_EXPIRED_REQUIRES_RESET" in expired["blockers"]
+
+    # Migration guard for state created by the old bug: if the same exact pair
+    # already emitted multiple PRE-BUY alerts without a FINAL BUY, quarantine it
+    # until a genuinely fresh post-alert reset + reclaim occurs.
+    duplicate_prior = dict(s2)
+    duplicate_prior["pre_buy_episode_count"] = 2
+    duplicate_t = t2 + timedelta(minutes=15)
+    duplicate_episode, _ = gate.evaluate(
+        TARGET,
+        market(0.0002703, duplicate_t),
+        observed(),
+        duplicate_prior,
+        POLICY,
+        now=duplicate_t,
+    )
+    assert duplicate_episode["recommended_action"] == "WAIT"
+    assert "PRE_BUY_DUPLICATE_EPISODE_REQUIRES_RESET" in duplicate_episode["blockers"]
+
+    # A real new opportunity may re-arm PRE-BUY, but only after a fresh reset
+    # that happened AFTER the previous PRE-BUY and a later positive reclaim.
+    episode_target = dict(TARGET)
+    episode_target.update({
+        "quarter_wave_revalidation_lane": True,
+        "quarter_wave_anchor_price_usd": 0.00020,
+        "quarter_wave_gain_from_anchor_pct": 32.5,
+    })
+    first_ep, first_ep_state = gate.evaluate(
+        episode_target,
+        market(0.000250, NOW),
+        observed(),
+        {},
+        POLICY,
+        now=NOW,
+    )
+    assert first_ep["pre_buy"] is False
+
+    pre_ep, pre_ep_state = gate.evaluate(
+        episode_target,
+        market(0.000265, t2),
+        observed(),
+        first_ep_state,
+        POLICY,
+        now=t2,
+    )
+    assert pre_ep["pre_buy_alert"] is True
+
+    high_t = t2 + timedelta(minutes=5)
+    high_ep, high_state = gate.evaluate(
+        episode_target,
+        market(0.000340, high_t),
+        observed(),
+        pre_ep_state,
+        POLICY,
+        now=high_t,
+    )
+    assert high_ep["recommended_action"] == "WAIT"
+    assert high_state["late_entry_extension_seen"] is True
+
+    reset_t = t2 + timedelta(minutes=10)
+    reset_ep, reset_state = gate.evaluate(
+        episode_target,
+        market(0.000310, reset_t),
+        observed(),
+        high_state,
+        POLICY,
+        now=reset_t,
+    )
+    assert reset_ep["recommended_action"] == "WAIT"
+    assert reset_state["late_entry_reset_seen"] is True
+    assert reset_state["late_entry_reset_seen_at"] is not None
+
+    reclaim_t = t2 + timedelta(minutes=15)
+    reclaim_ep, _ = gate.evaluate(
+        episode_target,
+        market(0.000315, reclaim_t),
+        observed(),
+        reset_state,
+        POLICY,
+        now=reclaim_t,
+    )
+    assert reclaim_ep["pre_buy_episode"]["fresh_reset_reclaim"] is True
+    assert reclaim_ep["pre_buy"] is True
+    assert reclaim_ep["pre_buy_alert"] is True
+
+    # A stale reset credential cannot be reused hours later. Legacy boolean-only
+    # reset state also fails closed because there is no timestamp proving freshness.
+    stale_reset_t = t2 + timedelta(hours=2)
+    stale_reset_prior = {
+        "last_price": 0.000250,
+        "last_market_observed_at": (stale_reset_t - timedelta(minutes=5)).isoformat(),
+        "watch_low_price": 0.000100,
+        "watch_high_price": 0.000300,
+        "late_entry_extension_seen": True,
+        "late_entry_reset_seen": True,
+        "late_entry_reset_seen_at": (stale_reset_t - timedelta(hours=2)).isoformat(),
+        "late_entry_reset_max_pullback_pct": 10.0,
+    }
+    stale_reset, _ = gate.evaluate(
+        episode_target,
+        market(0.000255, stale_reset_t),
+        observed(),
+        stale_reset_prior,
+        POLICY,
+        now=stale_reset_t,
+    )
+    assert stale_reset["entry_timing"]["reset_reclaim_confirmed"] is False
+    assert "EXTENDED_MOVE_WAIT_FOR_RESET" in stale_reset["blockers"]
+
     print("USER_WATCH_FINAL_BUY_CONTRACT_OK")
 
 

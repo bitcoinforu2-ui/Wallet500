@@ -255,6 +255,15 @@ def _policy(config: dict) -> dict:
         "late_entry_max_rebound_without_reset_pct": 30.0,
         "late_entry_reset_pullback_pct": 8.0,
         "late_entry_reclaim_min_scan_gain_pct": 1.0,
+        # A reset/reclaim is a short-lived timing credential, not a permanent
+        # permission slip for every later positive scan.
+        "late_entry_reset_valid_seconds": 3600,
+        # PRE-BUY is one warning per opportunity episode. A FINAL BUY must stay
+        # near that warning in both price and time, otherwise a fresh reset and
+        # reclaim must create a new episode before another PRE-BUY can be sent.
+        "pre_buy_episode_ttl_seconds": 3600,
+        "pre_buy_max_price_drift_pct": 8.0,
+        "pre_buy_rearm_requires_fresh_reset": True,
         "strong_min_fusion_score": 55.0,
         "strong_min_positive_families": 3,
         "relaxed_min_fusion_score": 30.0,
@@ -625,22 +634,81 @@ def evaluate(
     extension_seen_prior = bool(prior.get("late_entry_extension_seen"))
     extension_seen = bool(extension_seen_prior or late_entry_extended)
     reset_seen_prior = bool(prior.get("late_entry_reset_seen"))
+    reset_seen_at_prior = parse_dt(prior.get("late_entry_reset_seen_at"))
+    reset_valid_seconds = max(1.0, float(policy.get("late_entry_reset_valid_seconds", 3600)))
+    reset_age_seconds = (
+        (now - reset_seen_at_prior).total_seconds()
+        if reset_seen_at_prior is not None
+        else None
+    )
+    # Legacy state only stored a boolean/depth, so it cannot prove WHEN the
+    # pullback happened. Fail it closed instead of reusing an hours-old reset.
+    reset_prior_valid = bool(
+        reset_seen_prior
+        and reset_seen_at_prior is not None
+        and reset_age_seconds is not None
+        and 0 <= reset_age_seconds <= reset_valid_seconds
+    )
     reset_now = bool(
         extension_seen
         and pullback_from_watch_high is not None
         and pullback_from_watch_high >= float(policy["late_entry_reset_pullback_pct"])
     )
-    reset_seen = bool(reset_seen_prior or reset_now)
-    reset_depth_prior = num(prior.get("late_entry_reset_max_pullback_pct"), 0.0) or 0.0
+    reset_seen = bool(reset_prior_valid or reset_now)
+    reset_seen_at = now if reset_now else (reset_seen_at_prior if reset_prior_valid else None)
+    reset_depth_prior = (
+        num(prior.get("late_entry_reset_max_pullback_pct"), 0.0) or 0.0
+        if reset_prior_valid
+        else 0.0
+    )
     reset_depth = max(
         reset_depth_prior,
         pullback_from_watch_high if reset_now and pullback_from_watch_high is not None else 0.0,
     )
     late_entry_reset_reclaim = bool(
-        reset_seen_prior
+        reset_prior_valid
         and scan_gain is not None
         and scan_gain >= float(policy["late_entry_reclaim_min_scan_gain_pct"])
     )
+
+    # PRE-BUY episode guard. The old implementation re-armed PRE-BUY after two
+    # ordinary misses and reused a historical reset forever. That allowed the
+    # same exact pair to emit another PRE-BUY much higher in the same move.
+    last_pre_buy_at = parse_dt(prior.get("last_pre_buy_alert_at"))
+    last_pre_buy_price = num(prior.get("last_pre_buy_alert_price"), 0.0) or 0.0
+    pre_buy_episode_age_seconds = (
+        (now - last_pre_buy_at).total_seconds()
+        if last_pre_buy_at is not None
+        else None
+    )
+    pre_buy_price_drift_pct = (
+        ((price / last_pre_buy_price) - 1.0) * 100.0
+        if price > 0 and last_pre_buy_price > 0
+        else None
+    )
+    pre_buy_episode_ttl = max(1.0, float(policy.get("pre_buy_episode_ttl_seconds", 3600)))
+    pre_buy_max_price_drift = max(0.0, float(policy.get("pre_buy_max_price_drift_pct", 8.0)))
+    fresh_reset_after_prebuy = bool(
+        last_pre_buy_at is not None
+        and reset_seen_at_prior is not None
+        and reset_seen_at_prior > last_pre_buy_at
+        and reset_prior_valid
+        and late_entry_reset_reclaim
+    )
+    open_pre_buy_episode = bool(last_pre_buy_at is not None and not prior.get("last_alert_at"))
+    if open_pre_buy_episode and not fresh_reset_after_prebuy:
+        if (
+            pre_buy_episode_age_seconds is not None
+            and pre_buy_episode_age_seconds > pre_buy_episode_ttl
+        ):
+            blockers.append("PRE_BUY_EPISODE_EXPIRED_REQUIRES_RESET")
+        if (
+            pre_buy_price_drift_pct is not None
+            and pre_buy_price_drift_pct > pre_buy_max_price_drift
+        ):
+            blockers.append("PRE_BUY_PRICE_CHASE_FROM_ALERT")
+        if int(prior.get("pre_buy_episode_count") or 0) > 1:
+            blockers.append("PRE_BUY_DUPLICATE_EPISODE_REQUIRES_RESET")
 
     # Strong CEX continuation can substitute for weak DEX microstructure, but only
     # when the exact CEX market is executable, the move is still advancing, current
@@ -823,10 +891,11 @@ def evaluate(
     # Strict PRE-BUY: every current market/intelligence/safety gate passed,
     # with exactly one configured confirmation scan remaining before FINAL BUY.
     pre_buy_armed = bool(prior.get("pre_buy_armed", True))
+    # Ordinary misses may re-arm FINAL BUY monitoring, but they must never
+    # manufacture a second PRE-BUY in the same opportunity episode.
     if (
-        observable
-        and not qualified
-        and miss_streak >= max(1, int(policy["rearm_after_observable_misses"]))
+        policy.get("pre_buy_rearm_requires_fresh_reset", True) is True
+        and fresh_reset_after_prebuy
     ):
         pre_buy_armed = True
     pre_buy = bool(
@@ -929,9 +998,29 @@ def evaluate(
             ),
             "reset_pullback_required_pct": float(policy["late_entry_reset_pullback_pct"]),
             "reset_seen": reset_seen,
+            "reset_seen_at": reset_seen_at.isoformat() if reset_seen_at is not None else None,
+            "reset_valid_seconds": reset_valid_seconds,
             "reset_reclaim_confirmed": late_entry_reset_reclaim,
             "exceptional_cex_continuation": late_entry_exceptional_continuation,
             "chase_risk_blocked": late_entry_chase_risk,
+        },
+        "pre_buy_episode": {
+            "last_alert_at": prior.get("last_pre_buy_alert_at"),
+            "last_alert_price": last_pre_buy_price if last_pre_buy_price > 0 else None,
+            "age_seconds": (
+                round(pre_buy_episode_age_seconds, 3)
+                if pre_buy_episode_age_seconds is not None
+                else None
+            ),
+            "price_drift_pct": (
+                round(pre_buy_price_drift_pct, 4)
+                if pre_buy_price_drift_pct is not None
+                else None
+            ),
+            "max_price_drift_pct": pre_buy_max_price_drift,
+            "ttl_seconds": pre_buy_episode_ttl,
+            "fresh_reset_reclaim": fresh_reset_after_prebuy,
+            "episode_count": int(prior.get("pre_buy_episode_count") or 0),
         },
         "quarter_wave_revalidation": {
             "enabled_for_target": quarter_wave_lane,
@@ -995,6 +1084,10 @@ def evaluate(
             "pre_buy_is_one_confirmation_scan_before_final_buy": True,
             "pre_buy_fast_recheck_requires_real_time_spacing": True,
             "pre_buy_never_after_delivered_final_buy_same_episode": True,
+            "pre_buy_rearm_requires_fresh_reset_reclaim": True,
+            "pre_buy_price_chase_guard_enabled": True,
+            "pre_buy_episode_ttl_enabled": True,
+            "late_entry_reset_credential_expires": True,
             "manual_decision_only": True,
             "automatic_trade": False,
             "quarter_wave_revalidation_lane": quarter_wave_lane,
@@ -1028,6 +1121,11 @@ def evaluate(
         "watch_high_price": max(num(prior.get("watch_high_price"), 0.0) or 0.0, price),
         "late_entry_extension_seen": False if alert else extension_seen,
         "late_entry_reset_seen": False if alert else reset_seen,
+        "late_entry_reset_seen_at": (
+            None
+            if alert
+            else (reset_seen_at.isoformat() if reset_seen_at is not None else None)
+        ),
         "late_entry_reset_max_pullback_pct": 0.0 if alert else reset_depth,
         "qualified_streak": streak,
         "last_qualified_scan_at": (
