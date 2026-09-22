@@ -237,17 +237,23 @@ def event_needs_refresh(event: dict) -> bool:
 def ledger_summary(ledger: dict) -> dict:
     events = [x for x in (ledger.get("events") or {}).values() if isinstance(x, dict)]
     completed_72h = 0
+    missed_72h = 0
     positive_72h = 0
     for event in events:
         outcome = event.get("outcome") if isinstance(event.get("outcome"), dict) else {}
         h = (outcome.get("horizons") or {}).get("72h") if isinstance(outcome.get("horizons"), dict) else None
-        if isinstance(h, dict) and h.get("closed") is True:
+        if not isinstance(h, dict):
+            continue
+        if h.get("checkpoint_status") == "CAPTURED":
             completed_72h += 1
             if float(h.get("checkpoint_return_pct") or 0.0) > 0:
                 positive_72h += 1
+        elif h.get("checkpoint_status") == "MISSED_NO_TIMELY_SAMPLE":
+            missed_72h += 1
     return {
         "confirmed_events": len(events),
         "open_outcome_events": sum(1 for x in events if event_needs_refresh(x)),
         "completed_72h_events": completed_72h,
+        "missed_72h_events": missed_72h,
         "positive_72h_events": positive_72h,
     }
