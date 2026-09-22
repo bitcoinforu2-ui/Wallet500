@@ -35,7 +35,7 @@ jobs:
         run: |
           python scripts/test_intelligence_fusion_contract.py
           python -m pip install --disable-pip-version-check -q pytest
-          python -m pytest -q tests/test_unified_watch_cex_resilience.py tests/test_hot_candidate_recheck.py tests/test_same_run_cex_intelligence.py tests/test_spot_market_discovery_native_identity.py tests/test_chain_context_shadow.py tests/test_protocol_buyback_sensor.py
+          python -m pytest -q tests/test_unified_watch_cex_resilience.py tests/test_hot_candidate_recheck.py tests/test_hot_recheck_publish_workflow_contract.py tests/test_same_run_cex_intelligence.py tests/test_spot_market_discovery_native_identity.py tests/test_chain_context_shadow.py tests/test_protocol_buyback_sensor.py
 
       - name: Test user-requested FINAL BUY contract
         id: user_buy_contract
@@ -175,7 +175,15 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # This is a successor write to the critical-persist snapshot created
+          # earlier in this same workflow. Use the latest main SHA as the CAS
+          # base; otherwise atomic_publish compares against the checkout SHA,
+          # sees our own critical-persist commit as "newer", and silently
+          # preserves the pre-recheck report/state instead of the hot recheck.
+          git fetch --no-tags --depth=1 origin main
+          HOT_RECHECK_BASE_SHA="$(git rev-parse origin/main)"
           python scripts/serialized_publish.py \
+            --base "$HOT_RECHECK_BASE_SHA" \
             --message 'chore: persist hot candidate fast recheck [skip ci]' \
             data/unified-watch-state.json \
             data/user-watch-final-buy-state.json \
