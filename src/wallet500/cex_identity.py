@@ -445,10 +445,16 @@ def _pool_universe(pairs: list[dict], best: dict) -> dict:
         "liquidity_provider_coverage": sorted({str(x.get("pair_provider") or "UNKNOWN") for x in selected}),
         "dex_liquidity_pools_top5": [
             {
+                "chain": x.get("chain"),
+                "token_address": x.get("token_address"),
                 "pair_address": x.get("pair_address"),
                 "dex": x.get("dex"),
+                "price_usd": _float(x.get("price_usd")) or None,
                 "liquidity_usd": round(_float(x.get("liquidity_usd")), 2),
+                "volume_h1": round(_float(x.get("volume_h1")), 2),
                 "volume_h24": round(_float(x.get("volume_h24")), 2),
+                "pair_created_at": x.get("pair_created_at"),
+                "exact_token_side": x.get("exact_token_side"),
                 "provider": x.get("pair_provider"),
                 "url": x.get("dex_url"),
             }
