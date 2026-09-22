@@ -106,6 +106,54 @@ def _priority(row: dict) -> tuple:
     )
 
 
+def _deep_priority_score(row: dict) -> float:
+    """Allocate expensive deep verification to early activity, not liquidity alone."""
+    liquidity = _n(row.get("liquidity_usd"))
+    volume_h1 = _n(row.get("volume_h1"))
+    buys = _n(row.get("buys_h1"))
+    sells = _n(row.get("sells_h1"))
+    age = _n(row.get("pair_age_minutes"))
+    price_h1 = _n(row.get("price_change_h1"))
+    independent = int(row.get("independent_source_confirmations") or 1)
+
+    score = 0.0
+    if liquidity >= 250_000:
+        score += 20.0
+    elif liquidity >= 100_000:
+        score += 15.0
+    elif liquidity >= THRESHOLDS.min_liquidity_usd:
+        score += 10.0
+
+    score += min(16.0, max(0, independent - 1) * 8.0)
+
+    activity_to_liquidity = volume_h1 / max(liquidity, 1.0)
+    score += min(20.0, activity_to_liquidity * 10.0)
+
+    ratio = buys / max(sells, 1.0)
+    if ratio >= 2.0:
+        score += 20.0
+    elif ratio >= 1.5:
+        score += 14.0
+    elif ratio >= THRESHOLDS.min_buy_sell_ratio:
+        score += 8.0
+
+    if 60.0 <= age <= 360.0:
+        score += 15.0
+    elif 15.0 <= age < 60.0:
+        score += 12.0
+    elif 360.0 < age <= 1440.0:
+        score += 6.0
+
+    if 0.0 <= price_h1 < 35.0:
+        score += 10.0
+    elif 35.0 <= price_h1 < 100.0:
+        score += 4.0
+    elif price_h1 >= 200.0:
+        score -= 15.0
+
+    return round(max(0.0, min(100.0, score)), 2)
+
+
 def _prior(history: list[dict], now_epoch: float, seconds_ago: int) -> dict | None:
     eligible = [x for x in history if now_epoch - _n(x.get("ts")) >= seconds_ago]
     return max(eligible, key=lambda x: _n(x.get("ts")), default=None)
@@ -440,6 +488,7 @@ def _compact_candidate(row: dict) -> dict:
         "top10_ex_system_pct", "largest_non_system_wallet_pct", "distribution_status", "lp_vault_match_count",
         "mint_authority_safe", "freeze_authority_safe", "transfer_restrictions_safe", "lp_integrity_safe",
         "source", "sources", "source_confirmations", "independent_source_confirmations", "independent_source_families",
+        "genesis_deep_priority_score",
         "genesis_score", "shadow_score", "shadow_paper_ready",
         "status", "age_band", "extension_band", "safety", "acceleration", "prebreakout", "subscores", "measurement_method",
         "quality_wallet_evidence_verified", "bonding_curve_progress_pct", "launchpad_curve_progress_pct",
@@ -524,11 +573,16 @@ def run(data_dir: Path | None = None, now: datetime | None = None) -> dict:
             "organic_social_confirmed": False,
             "lp_integrity_safe": None,
         })
+        raw_candidates[-1]["genesis_deep_priority_score"] = _deep_priority_score(raw_candidates[-1])
 
     deep_limit = max(1, int(os.getenv("GENESIS_MAX_SOLANA_DEEP", "18")))
     solana_deep = sorted(
         [x for x in raw_candidates if x.get("chain") == "solana" and _n(x.get("liquidity_usd")) >= THRESHOLDS.min_liquidity_usd and _n(x.get("pair_age_minutes")) <= 1440],
-        key=lambda x: _n(x.get("liquidity_usd")),
+        key=lambda x: (
+            _n(x.get("genesis_deep_priority_score")),
+            int(x.get("independent_source_confirmations") or 1),
+            _n(x.get("liquidity_usd")),
+        ),
         reverse=True,
     )[:deep_limit]
     deep_keys = {x["candidate_key"] for x in solana_deep}
