@@ -868,3 +868,28 @@ def test_pre_buy_never_redelivers_after_recorded_final_buy_even_without_status_f
     assert decision["pre_buy_alert"] is False
     assert state.get("last_pre_buy_alert_at") is None
 
+
+
+
+def test_final_buy_user_watch_is_never_stranded_behind_budgeted_research():
+    rows = [
+        {"symbol": "RESEARCH_A"},
+        {"symbol": "HOT_CEX", "critical_market_lane": True},
+        {"symbol": "MCAT", "user_watch_final_buy_lane": True},
+        {"symbol": "BUY_ZONE", "dynamic_buy_candidate": True},
+        {"symbol": "RESEARCH_B"},
+    ]
+
+    ordered = engine.prioritize_scan_targets(rows)
+
+    assert [row["symbol"] for row in ordered] == [
+        "BUY_ZONE",
+        "MCAT",
+        "HOT_CEX",
+        "RESEARCH_A",
+        "RESEARCH_B",
+    ]
+    assert engine.scan_priority(ordered[0]) == 0
+    assert engine.scan_priority(ordered[1]) == 1
+    assert engine.scan_priority(ordered[2]) == 2
+    assert all(engine.scan_priority(row) == 3 for row in ordered[3:])

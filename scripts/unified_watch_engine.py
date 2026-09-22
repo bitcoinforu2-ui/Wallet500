@@ -1087,6 +1087,27 @@ def quarter_wave_revalidation(
             )
     return out
 
+
+def scan_priority(target):
+    """Stable execution tier for the market watcher.
+
+    FINAL-BUY user watches are a correctness-critical lane: they must be refreshed
+    before the rate-limited CEX research backlog and can never be stranded behind
+    a noncritical runtime-budget break.
+    """
+    if target.get("dynamic_buy_candidate"):
+        return 0
+    if target.get("user_watch_final_buy_lane"):
+        return 1
+    if target.get("critical_market_lane"):
+        return 2
+    return 3
+
+
+def prioritize_scan_targets(targets):
+    # sorted() is stable, so ordering inside each tier is preserved.
+    return sorted(list(targets), key=scan_priority)
+
 def main():
     cfg = json.loads(CONFIG.read_text())
     state = json.loads(STATE.read_text()) if STATE.exists() else {"version": 3, "tokens": {}}
@@ -1151,6 +1172,12 @@ def main():
             tokens.append(item)
             used.add(identity)
 
+    # Correctness-critical targets must physically precede the budgeted research
+    # tail. Previously a noncritical target could hit the runtime budget and
+    # `break` the loop before a later configured FINAL-BUY watch (for example
+    # MCAT) was refreshed, leaving its canonical market observation stale.
+    tokens = prioritize_scan_targets(tokens)
+
     dynamic = dynamic_all
     intel_index, intel_doc = load_intelligence()
     intel_rows = []
@@ -1168,23 +1195,25 @@ def main():
         # All BUY and hot CEX spot candidates are ordered first and are never
         # skipped by this budget. Once they are complete, do not let ordinary
         # static/research targets consume the time needed by FINAL BUY evaluation.
-        is_critical_market_lane = bool(
-            t.get("dynamic_buy_candidate")
-            or t.get("critical_market_lane")
-            or t.get("user_watch_final_buy_lane")
-        )
+        is_critical_market_lane = scan_priority(t) < 3
         elapsed = time.monotonic() - scan_started_monotonic
         if not is_critical_market_lane and elapsed >= noncritical_budget_seconds:
-            noncritical_truncated = len(tokens) - token_index
-            print(
-                "NONCRITICAL_WATCH_BUDGET_TRUNCATED",
-                {
-                    "elapsed_seconds": round(elapsed, 2),
-                    "remaining_targets": noncritical_truncated,
-                    "critical_targets_already_completed": token_index,
-                },
-            )
-            break
+            # Never terminate the whole loop here. Even though critical targets
+            # are explicitly sorted first, continue is the fail-safe that keeps
+            # a future ordering regression from starving a later FINAL-BUY watch.
+            noncritical_truncated += 1
+            if noncritical_truncated == 1:
+                print(
+                    "NONCRITICAL_WATCH_BUDGET_TRUNCATED",
+                    {
+                        "elapsed_seconds": round(elapsed, 2),
+                        "first_skipped_index": token_index,
+                        "critical_targets_already_completed": sum(
+                            scan_priority(x) < 3 for x in tokens[:token_index]
+                        ),
+                    },
+                )
+            continue
         sym = t["symbol"].upper()
         identity_key = candidate_identity_key(t)
         chain_identity_key = exact_identity_key(t)
