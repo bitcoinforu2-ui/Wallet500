@@ -435,7 +435,10 @@ def _compact_candidate(row: dict) -> dict:
         "top10_ex_system_pct", "largest_non_system_wallet_pct", "distribution_status", "lp_vault_match_count",
         "mint_authority_safe", "freeze_authority_safe", "transfer_restrictions_safe", "lp_integrity_safe",
         "source", "sources", "source_confirmations", "genesis_score", "shadow_score", "shadow_paper_ready",
-        "status", "age_band", "extension_band", "safety", "acceleration", "subscores", "measurement_method",
+        "status", "age_band", "extension_band", "safety", "acceleration", "prebreakout", "subscores", "measurement_method",
+        "quality_wallet_evidence_verified", "bonding_curve_progress_pct", "launchpad_curve_progress_pct",
+        "launchpad_migration_confirmed", "creator_prior_successes", "creator_prior_rugs",
+        "funder_quality_score", "sniper_bundle_share_pct",
     )
     return {k: row.get(k) for k in keep if k in row}
 
