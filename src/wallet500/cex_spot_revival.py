@@ -167,9 +167,6 @@ def _load_derivatives_first_alerts(out: Path) -> dict[str, dict]:
             if isinstance(alert, dict) and alert.get("observed_at"):
                 index[_norm_symbol(str(symbol))] = dict(alert)
 
-    if index:
-        return index
-
     try:
         learning = json.loads((out / "cex-learning.json").read_text(encoding="utf-8"))
     except Exception:
@@ -179,8 +176,52 @@ def _load_derivatives_first_alerts(out: Path) -> dict[str, dict]:
             continue
         alert = ((row.get("milestones") or {}).get("first_alert"))
         symbol = _norm_symbol(str(row.get("symbol") or ""))
-        if symbol and isinstance(alert, dict) and alert.get("observed_at"):
+        if symbol and symbol not in index and isinstance(alert, dict) and alert.get("observed_at"):
             index[symbol] = dict(alert)
+
+    # Current RAW derivatives evidence is attached separately and never overwrites
+    # the immutable FIRST_ALERT. It can only create an identity-priority shadow for
+    # extended/dislocated moves; it is never backdated into an earlier signal.
+    try:
+        raw = json.loads((out / "cex-revival-raw.json").read_text(encoding="utf-8"))
+    except Exception:
+        raw = {}
+    raw_at = raw.get("generated_at")
+    current_rows = []
+    seen_current = set()
+    for collection in ("alerts", "watchlist"):
+        for row in raw.get(collection) or []:
+            if not isinstance(row, dict):
+                continue
+            symbol = _norm_symbol(str(row.get("symbol") or ""))
+            if not symbol or symbol in seen_current:
+                continue
+            seen_current.add(symbol)
+            current_rows.append(row)
+    for row in current_rows:
+        symbol = _norm_symbol(str(row.get("symbol") or ""))
+        markets = [x for x in (row.get("markets") or []) if isinstance(x, dict) and _f(x.get("price")) > 0]
+        ref = max(markets, key=lambda x: (_f(x.get("volume_24h")), _f(x.get("open_interest"))), default={})
+        if not symbol or not raw_at or _f(ref.get("price")) <= 0:
+            continue
+        current = {
+            "kind": "CURRENT_DERIVATIVES_ALERT",
+            "observed_at": raw_at,
+            "reference_exchange": ref.get("exchange"),
+            "reference_price": _f(ref.get("price")),
+            "reference_change_24h_pct": _f(ref.get("change_24h_pct")),
+            "score": int(_f(row.get("cex_revival_score"))),
+            "confirmations": int(_f(row.get("confirmations"))),
+            "coherent_confirmations": int(_f(row.get("coherent_confirmations"))),
+            "dispersion_status": row.get("dispersion_status"),
+            "change_24h_max_pct": _f(row.get("change_24h_max_pct")),
+            "watch_reason": row.get("watch_reason"),
+            "mover_watch": row.get("mover_watch") is True,
+            "max_derivatives_turnover_usd": _f(row.get("max_derivatives_turnover_usd")),
+        }
+        bundle = index.setdefault(symbol, {})
+        if isinstance(bundle, dict):
+            bundle["_current_alert"] = current
     return index
 
 
@@ -189,79 +230,136 @@ def _cross_lane_derivatives_precursor(
     spot_milestones: dict,
     derivatives_first_alerts: dict[str, dict],
 ) -> dict | None:
-    """Qualify a strong derivatives alert only when contemporaneous spot price anchors it.
+    """Fuse derivatives evidence into an identity-priority spot shadow.
 
-    The fusion is intentionally shadow-only here: it may accelerate exact-identity
-    resolution, but it cannot alter the spot score or become actionable by itself.
+    Coherent, early immutable FIRST_ALERT evidence may remain eligible for downstream
+    action-score fusion after exact identity. Extended or cross-exchange-dislocated
+    evidence is retained only for identity/re-entry monitoring and can never raise the
+    spot score or become actionable by itself.
     """
-    alert = derivatives_first_alerts.get(_norm_symbol(symbol))
-    if not isinstance(alert, dict):
+    bundle = derivatives_first_alerts.get(_norm_symbol(symbol))
+    if not isinstance(bundle, dict):
         return None
 
-    score = int(_f(alert.get("score")))
-    coherent = int(_f(alert.get("coherent_confirmations")))
-    dispersion = str(alert.get("dispersion_status") or "").upper()
-    signal_move = _f(alert.get("reference_change_24h_pct"))
-    derivative_price = _f(alert.get("reference_price"))
-    derivative_at = _parse_ts(alert.get("observed_at"))
-    if (
-        score < CROSS_LANE_MIN_DERIVATIVES_SCORE
-        or coherent < CROSS_LANE_MIN_DERIVATIVES_COHERENT_CONFIRMATIONS
-        or dispersion != "COHERENT_RANGE"
-        or signal_move > CROSS_LANE_MAX_SIGNAL_MOVE_PCT
-        or derivative_price <= 0
-        or derivative_at is None
-    ):
-        return None
+    candidates = []
+    if bundle.get("observed_at"):
+        candidates.append(("FIRST_ALERT", bundle))
+    current = bundle.get("_current_alert")
+    if isinstance(current, dict) and current.get("observed_at"):
+        candidates.append(("CURRENT_ALERT", current))
 
-    anchors = []
-    for name in ("first_seen", "first_anomaly", "first_watch", "first_alert"):
-        item = spot_milestones.get(name) if isinstance(spot_milestones, dict) else None
-        if not isinstance(item, dict):
+    qualified = []
+    for evidence_kind, alert in candidates:
+        score = int(_f(alert.get("score")))
+        coherent = int(_f(alert.get("coherent_confirmations")))
+        dispersion = str(alert.get("dispersion_status") or "").upper()
+        signal_move = _f(alert.get("reference_change_24h_pct"))
+        derivative_price = _f(alert.get("reference_price"))
+        derivative_at = _parse_ts(alert.get("observed_at"))
+        early_coherent = (
+            score >= CROSS_LANE_MIN_DERIVATIVES_SCORE
+            and coherent >= CROSS_LANE_MIN_DERIVATIVES_COHERENT_CONFIRMATIONS
+            and dispersion == "COHERENT_RANGE"
+            and signal_move <= CROSS_LANE_MAX_SIGNAL_MOVE_PCT
+        )
+        current_mover_watch = (
+            evidence_kind == "CURRENT_ALERT"
+            and alert.get("mover_watch") is True
+            and _f(alert.get("change_24h_max_pct")) >= 30.0
+            and _f(alert.get("max_derivatives_turnover_usd")) >= 50_000.0
+        )
+        identity_only = (
+            (
+                score >= ALERT_SCORE
+                and coherent >= 2
+                and (
+                    (dispersion == "EXTREME_DISLOCATION_VERIFY" and coherent >= 3)
+                    or evidence_kind == "CURRENT_ALERT"
+                    and (signal_move > CROSS_LANE_MAX_SIGNAL_MOVE_PCT or dispersion != "COHERENT_RANGE")
+                )
+            )
+            or current_mover_watch
+        )
+        if not (early_coherent or identity_only) or derivative_price <= 0 or derivative_at is None:
             continue
-        spot_price = _f(item.get("reference_price"))
-        spot_at = _parse_ts(item.get("observed_at"))
-        if spot_price <= 0 or spot_at is None:
-            continue
-        delta_minutes = (spot_at - derivative_at).total_seconds() / 60.0
-        if delta_minutes < -CROSS_LANE_MAX_SPOT_BEFORE_DERIVATIVES_MINUTES:
-            continue
-        if delta_minutes > CROSS_LANE_MAX_SPOT_AFTER_DERIVATIVES_MINUTES:
-            continue
-        price_error = abs(spot_price / derivative_price - 1.0) * 100.0
-        if price_error > CROSS_LANE_MAX_PRICE_ERROR_PCT:
-            continue
-        anchors.append((abs(delta_minutes), price_error, name, item, spot_at, delta_minutes))
 
-    if not anchors:
+        anchors = []
+        for name in ("first_seen", "first_anomaly", "first_watch", "first_alert"):
+            item = spot_milestones.get(name) if isinstance(spot_milestones, dict) else None
+            if not isinstance(item, dict):
+                continue
+            spot_price = _f(item.get("reference_price"))
+            spot_at = _parse_ts(item.get("observed_at"))
+            if spot_price <= 0 or spot_at is None:
+                continue
+            delta_minutes = (spot_at - derivative_at).total_seconds() / 60.0
+            if delta_minutes < -CROSS_LANE_MAX_SPOT_BEFORE_DERIVATIVES_MINUTES:
+                continue
+            if delta_minutes > CROSS_LANE_MAX_SPOT_AFTER_DERIVATIVES_MINUTES:
+                continue
+            price_error = abs(spot_price / derivative_price - 1.0) * 100.0
+            if price_error > CROSS_LANE_MAX_PRICE_ERROR_PCT:
+                continue
+            anchors.append((abs(delta_minutes), price_error, name, item, spot_at, delta_minutes))
+        if not anchors:
+            continue
+
+        _, price_error, anchor_name, anchor, spot_at, delta_minutes = min(anchors)
+        fused_at = max(spot_at, derivative_at)
+        fused_change = max(_f(anchor.get("reference_change_24h_pct")), signal_move)
+        action_fusion_eligible = bool(early_coherent)
+        qualified.append({
+            "status": (
+                "QUALIFIED_CEX_DERIVATIVES_SPOT_PRECURSOR"
+                if action_fusion_eligible
+                else "QUALIFIED_CEX_DERIVATIVES_IDENTITY_ONLY_PRECURSOR"
+            ),
+            "research_only": True,
+            "actionable": False,
+            "affects_spot_score": False,
+            "identity_priority": True,
+            "eligible_for_action_score_fusion_after_exact_identity": action_fusion_eligible,
+            "no_hindsight": True,
+            "evidence_kind": evidence_kind,
+            "identity_only_reason": None if action_fusion_eligible else (
+                "CURRENT_MOVER_WATCH"
+                if current_mover_watch
+                else "EXTREME_DISLOCATION_VERIFY"
+                if dispersion == "EXTREME_DISLOCATION_VERIFY"
+                else "CURRENT_MOVE_EXTENDED_OR_NONCOHERENT"
+            ),
+            "action_signal_score": score,
+            "action_signal_at": fused_at.isoformat(),
+            "action_signal_price": _f(anchor.get("reference_price")),
+            "action_signal_change_24h_pct": round(fused_change, 4),
+            "derivatives_first_alert_at": derivative_at.isoformat(),
+            "derivatives_score": score,
+            "derivatives_coherent_confirmations": coherent,
+            "derivatives_dispersion_status": dispersion,
+            "derivatives_reference_price": derivative_price,
+            "spot_anchor_kind": anchor_name,
+            "spot_anchor_at": spot_at.isoformat(),
+            "spot_anchor_price": _f(anchor.get("reference_price")),
+            "spot_derivatives_time_delta_minutes": round(delta_minutes, 3),
+            "spot_derivatives_price_error_pct": round(price_error, 4),
+            "fusion_rule": (
+                "IMMUTABLE_DERIVATIVES_FIRST_ALERT_PLUS_CONTEMPORANEOUS_SPOT_PRICE_ANCHOR"
+                if evidence_kind == "FIRST_ALERT"
+                else "CURRENT_DERIVATIVES_ALERT_PLUS_CONTEMPORANEOUS_SPOT_PRICE_ANCHOR_IDENTITY_ONLY"
+            ),
+        })
+
+    if not qualified:
         return None
-    _, price_error, anchor_name, anchor, spot_at, delta_minutes = min(anchors, key=lambda x: (x[0], x[1]))
-    fused_at = max(derivative_at, spot_at)
-    fused_change = max(signal_move, _f(anchor.get("reference_change_24h_pct")))
-    return {
-        "status": "QUALIFIED_CEX_DERIVATIVES_SPOT_PRECURSOR",
-        "research_only": True,
-        "actionable": False,
-        "affects_spot_score": False,
-        "identity_priority": True,
-        "eligible_for_action_score_fusion_after_exact_identity": True,
-        "no_hindsight": True,
-        "action_signal_score": score,
-        "action_signal_at": fused_at.isoformat(),
-        "action_signal_price": _f(anchor.get("reference_price")),
-        "action_signal_change_24h_pct": round(fused_change, 4),
-        "derivatives_first_alert_at": derivative_at.isoformat(),
-        "derivatives_score": score,
-        "derivatives_coherent_confirmations": coherent,
-        "derivatives_dispersion_status": dispersion,
-        "derivatives_reference_price": derivative_price,
-        "spot_anchor_kind": anchor_name,
-        "spot_anchor_at": spot_at.isoformat(),
-        "spot_anchor_price": _f(anchor.get("reference_price")),
-        "spot_derivatives_time_delta_minutes": round(delta_minutes, 3),
-        "spot_derivatives_price_error_pct": round(price_error, 4),
-        "fusion_rule": "IMMUTABLE_DERIVATIVES_FIRST_ALERT_PLUS_CONTEMPORANEOUS_SPOT_PRICE_ANCHOR",
-    }
+    qualified.sort(
+        key=lambda x: (
+            x.get("eligible_for_action_score_fusion_after_exact_identity") is True,
+            x.get("evidence_kind") == "FIRST_ALERT",
+            int(x.get("derivatives_score") or 0),
+        ),
+        reverse=True,
+    )
+    return qualified[0]
 
 
 def _row(

@@ -4,6 +4,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 UA={'User-Agent':'Wallet500/1.4','Accept':'application/json'}
+WATCH_SCORE=25
+MOVER_WATCH_MIN_CHANGE_PCT=30.0
+MOVER_WATCH_MIN_VOLUME_USD=50_000.0
 
 def _get(url,timeout=12):
     req=urllib.request.Request(url,headers=UA)
@@ -187,7 +190,7 @@ def run_cex_revival(out:Path,now:str):
     groups={}
     for x in rows:
         if x['symbol'].endswith('USDT'):groups.setdefault(x['symbol'],[]).append(x)
-    alerts=[]
+    alerts=[];watchlist=[]
     for sym,markets in groups.items():
         exs={m['exchange'] for m in markets};conf=len(exs)
         changes=[m['change_24h_pct'] for m in markets if m['change_24h_pct']]
@@ -226,13 +229,25 @@ def run_cex_revival(out:Path,now:str):
         anomaly=bool(best.get('hit_count'))
         if anomaly and 'first_anomaly' not in ms:
             ms['first_anomaly']={**snapshot,'kind':'FIRST_ANOMALY'}
+
+        max_turnover=max([_f(m.get('volume_24h')) for m in markets],default=0)
+        mover_watch=change>=MOVER_WATCH_MIN_CHANGE_PCT and max_turnover>=MOVER_WATCH_MIN_VOLUME_USD
+        watch_qualified=score>=WATCH_SCORE or mover_watch
+        if watch_qualified and 'first_watch' not in ms:
+            ms['first_watch']={**snapshot,'kind':'FIRST_WATCH'}
+        record={'symbol':sym,'cex_revival_score':min(score,100),'archetype':_classify(markets),'reasons':reasons,'confirmations':conf,'coherent_confirmations':coherent_conf,'coherent_exchange':best.get('exchange'),'coherent_feature_hits':best.get('hits',[]),'dispersion_status':dispersion_status,'exchanges':sorted(exs),'change_24h_max_pct':round(change,4),'price_acceleration_max_pct':round(price_acc,4),'volume_acceleration_max_pct':round(vol_acc,4),'oi_acceleration_max_pct':round(oi_acc,4),'funding_abs_max':fund_abs,'momentum_dispersion_pp':round(dispersion,3),'milestones':ms,'markets':markets}
+        if watch_qualified:
+            watch_reason='SCORE_WATCH' if score>=WATCH_SCORE else 'CURRENT_MOVER_WATCH'
+            watchlist.append({**record,'research_only':True,'actionable':False,'automatic_buy':False,'watch_reason':watch_reason,'mover_watch':bool(mover_watch),'max_derivatives_turnover_usd':max_turnover})
         if score>=35:
             if 'first_alert' not in ms:ms['first_alert']={**snapshot,'kind':'FIRST_ALERT'}
-            alerts.append({'symbol':sym,'cex_revival_score':min(score,100),'archetype':_classify(markets),'reasons':reasons,'confirmations':conf,'coherent_confirmations':coherent_conf,'coherent_exchange':best.get('exchange'),'coherent_feature_hits':best.get('hits',[]),'dispersion_status':dispersion_status,'exchanges':sorted(exs),'change_24h_max_pct':round(change,4),'price_acceleration_max_pct':round(price_acc,4),'volume_acceleration_max_pct':round(vol_acc,4),'oi_acceleration_max_pct':round(oi_acc,4),'funding_abs_max':fund_abs,'momentum_dispersion_pp':round(dispersion,3),'milestones':ms,'markets':markets})
+            record['milestones']=ms
+            alerts.append(record)
     _write_state_lossless(state_path,state)
     alerts.sort(key=lambda x:(x['cex_revival_score'],x['coherent_confirmations'],x['confirmations']),reverse=True)
-    payload={'version':6,'generated_at':now,'requested_sources':[x[0] for x in SOURCES],'source_health':health,'healthy_sources':sum(1 for x in health.values() if x['ok']),'contracts_seen':len(rows),'symbols_seen':len(groups),'alerts_count':len(alerts),'scoring_method':'SINGLE_VENUE_FEATURE_COHERENCE_PLUS_REAL_CROSS_VENUE_CONFIRMATION','dispersion_policy':'NO_BONUS_FOR_DISPERSION;_GE25PP_PENALIZED_AND_FLAGGED_FOR_VERIFICATION','milestone_method':'IMMUTABLE_FIRST_SEEN_FIRST_FEATURE_ANOMALY_FIRST_SCORE35_ALERT','errors':errors,'alerts':alerts}
+    watchlist.sort(key=lambda x:(x['cex_revival_score'],x['change_24h_max_pct'],x['max_derivatives_turnover_usd']),reverse=True)
+    payload={'version':7,'generated_at':now,'requested_sources':[x[0] for x in SOURCES],'source_health':health,'healthy_sources':sum(1 for x in health.values() if x['ok']),'contracts_seen':len(rows),'symbols_seen':len(groups),'watch_score':WATCH_SCORE,'mover_watch_min_change_pct':MOVER_WATCH_MIN_CHANGE_PCT,'mover_watch_min_volume_usd':MOVER_WATCH_MIN_VOLUME_USD,'watch_count':len(watchlist),'watchlist':watchlist[:250],'alerts_count':len(alerts),'scoring_method':'SINGLE_VENUE_FEATURE_COHERENCE_PLUS_REAL_CROSS_VENUE_CONFIRMATION','dispersion_policy':'NO_BONUS_FOR_DISPERSION;_GE25PP_PENALIZED_AND_FLAGGED_FOR_VERIFICATION','milestone_method':'IMMUTABLE_FIRST_SEEN_FIRST_FEATURE_ANOMALY_FIRST_WATCH_FIRST_SCORE35_ALERT','errors':errors,'alerts':alerts}
     (out/'cex-revival-radar.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
-    learning={'version':4,'updated_at':now,'purpose':'learn which early CEX revival features precede verified follow-through; case studies are not counted as Wallet500 calls','features':['same_exchange_feature_coherence','price_acceleration','volume24_acceleration','open_interest_acceleration','funding_divergence','real_cross_exchange_confirmation','momentum_dispersion_as_verification_risk'],'scoring_method':'SINGLE_VENUE_FEATURE_COHERENCE_PLUS_REAL_CROSS_VENUE_CONFIRMATION','milestone_method':'IMMUTABLE_FIRST_SEEN_FIRST_FEATURE_ANOMALY_FIRST_SCORE35_ALERT','top_candidates':[{'symbol':x['symbol'],'score':x['cex_revival_score'],'archetype':x['archetype'],'confirmations':x['confirmations'],'coherent_confirmations':x['coherent_confirmations'],'coherent_exchange':x['coherent_exchange'],'coherent_feature_hits':x['coherent_feature_hits'],'dispersion_status':x['dispersion_status'],'price_acceleration_max_pct':x['price_acceleration_max_pct'],'volume_acceleration_max_pct':x['volume_acceleration_max_pct'],'oi_acceleration_max_pct':x['oi_acceleration_max_pct'],'funding_abs_max':x['funding_abs_max'],'milestones':x.get('milestones',{})} for x in alerts[:50]]}
+    learning={'version':5,'updated_at':now,'purpose':'learn which early CEX revival features precede verified follow-through; case studies are not counted as Wallet500 calls','features':['same_exchange_feature_coherence','price_acceleration','volume24_acceleration','open_interest_acceleration','funding_divergence','real_cross_exchange_confirmation','momentum_dispersion_as_verification_risk','current_mover_research_watch'],'scoring_method':'SINGLE_VENUE_FEATURE_COHERENCE_PLUS_REAL_CROSS_VENUE_CONFIRMATION','milestone_method':'IMMUTABLE_FIRST_SEEN_FIRST_FEATURE_ANOMALY_FIRST_WATCH_FIRST_SCORE35_ALERT','top_candidates':[{'symbol':x['symbol'],'score':x['cex_revival_score'],'archetype':x['archetype'],'confirmations':x['confirmations'],'coherent_confirmations':x['coherent_confirmations'],'coherent_exchange':x['coherent_exchange'],'coherent_feature_hits':x['coherent_feature_hits'],'dispersion_status':x['dispersion_status'],'price_acceleration_max_pct':x['price_acceleration_max_pct'],'volume_acceleration_max_pct':x['volume_acceleration_max_pct'],'oi_acceleration_max_pct':x['oi_acceleration_max_pct'],'funding_abs_max':x['funding_abs_max'],'milestones':x.get('milestones',{})} for x in alerts[:50]],'top_watch_candidates':[{'symbol':x['symbol'],'score':x['cex_revival_score'],'watch_reason':x.get('watch_reason'),'change_24h_max_pct':x['change_24h_max_pct'],'max_derivatives_turnover_usd':x.get('max_derivatives_turnover_usd'),'confirmations':x['confirmations'],'coherent_confirmations':x['coherent_confirmations'],'dispersion_status':x['dispersion_status'],'milestones':x.get('milestones',{})} for x in watchlist[:100]]}
     (out/'cex-learning.json').write_text(json.dumps(learning,indent=2),encoding='utf-8')
     return payload

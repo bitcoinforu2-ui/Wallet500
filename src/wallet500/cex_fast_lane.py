@@ -100,6 +100,39 @@ def _preflight_unknown(raw_payload: dict, unknown: list[dict], data_dir: Path) -
         except Exception: pass
 
 
+def _retain_preflight_blockers(unknown: list[dict], report: dict, error: str | None, now: str) -> list[dict]:
+    """Keep every collected derivatives alert auditable even when safety gates reject it.
+
+    These rows are research-only and never enter the actionable alert list. The purpose is
+    to eliminate silent RAW -> preflight disappearance while preserving fail-closed
+    identity, age, pair, liquidity and Telegram semantics.
+    """
+    rejections = report.get("rejections") if isinstance(report, dict) else []
+    by_symbol = {}
+    for item in rejections or []:
+        if isinstance(item, dict):
+            by_symbol[_base_symbol(item.get("symbol"))] = item
+    out = []
+    for row in unknown:
+        detail = by_symbol.get(_base_symbol(row.get("symbol"))) or {}
+        reason = (
+            detail.get("reason")
+            or ("AGE_IDENTITY_PREFLIGHT_PROVIDER_TRANSIENT" if error else "AGE_IDENTITY_PREFLIGHT_REJECTED")
+        )
+        out.append({
+            **row,
+            "research_only": True,
+            "actionable": False,
+            "automatic_buy": False,
+            "pipeline_status": "BLOCKED_RETAINED",
+            "pipeline_stage": "AGE_IDENTITY_PREFLIGHT",
+            "pipeline_blocker": reason,
+            "pipeline_blocker_detail": detail,
+            "pipeline_blocked_at": now,
+        })
+    return out
+
+
 def _apply_registry_dex_fallback(payload: dict) -> dict:
     rows = list(payload.get("alerts") or [])
     for i, row in enumerate(rows):
@@ -174,7 +207,12 @@ def run(data_dir: Path = DATA) -> dict:
     _write(data_dir / "cex-revival-raw.json", raw_payload)
     spot = run_cex_spot_revival(data_dir, now)
     if MIN_AGE_DAYS != PROJECT_SCOPE_MIN_AGE_DAYS or MIN_AGE_DAYS != APPROVED_PRODUCTION_MIN_AGE_DAYS:
-        blocked_payload = {**raw_payload, "version": max(int(raw_payload.get("version") or 0), 12), "alerts": [], "alerts_count": 0,
+        scope_blocked = [{**row, "research_only": True, "actionable": False, "automatic_buy": False,
+            "pipeline_status": "BLOCKED_RETAINED", "pipeline_stage": "VETERAN_SCOPE_POLICY",
+            "pipeline_blocker": "VETERAN_SCOPE_POLICY_DRIFT", "pipeline_blocked_at": now} for row in raw_rows]
+        blocked_payload = {**raw_payload, "version": max(int(raw_payload.get("version") or 0), 13), "alerts": [], "alerts_count": 0,
+            "blocked_alerts": scope_blocked, "blocked_alerts_count": len(scope_blocked),
+            "pipeline_audit": {"raw_alerts": len(raw_rows), "actionable_candidates_after_preflight": 0, "blocked_retained": len(scope_blocked), "silent_drop_count": 0, "blocked_alerts_retained": True},
             "raw_alerts_before_age_gate": len(raw_rows), "raw_collection_generated_at": raw_payload.get("generated_at") or now,
             "collection_status": "FRESH_COLLECTION_CONTINUES", "spot_collection": {"generated_at": spot.get("generated_at"), "healthy_sources": spot.get("healthy_sources", 0), "markets_seen": spot.get("markets_seen", 0), "symbols_seen": spot.get("symbols_seen", 0), "watch_count": spot.get("watch_count", 0), "alerts_count": spot.get("alerts_count", 0), "production_portfolio_impact": "NONE"},
             "age_gate": {"status": "BLOCKED_FAIL_CLOSED_VETERAN_SCOPE_POLICY_DRIFT", "minimum_market_age_days": MIN_AGE_DAYS, "project_scope_minimum_market_age_days": PROJECT_SCOPE_MIN_AGE_DAYS, "approved_production_minimum_market_age_days": APPROVED_PRODUCTION_MIN_AGE_DAYS, "accepted": 0, "rejected": len(raw_rows), "unknown_or_unresolved_identity": "REJECT", "production_change_allowed": False, "policy": "VETERAN_ONLY_SCOPE_MUST_BE_90D_EVERYWHERE; SIGNAL_THRESHOLDS_ARE_SEPARATELY_GOVERNED"},
@@ -184,8 +222,14 @@ def run(data_dir: Path = DATA) -> dict:
     registered, unknown = _registry_rows(raw_rows, data_dir, now_dt)
     external_rows, ext_report, ext_error = _preflight_unknown(raw_payload, unknown, data_dir)
     merged = registered + external_rows
+    accepted_symbols = {_base_symbol(x.get("symbol")) for x in external_rows}
+    blocked_unknown = [x for x in unknown if _base_symbol(x.get("symbol")) not in accepted_symbols]
+    blocked_rows = _retain_preflight_blockers(blocked_unknown, ext_report, ext_error, now)
     merged.sort(key=lambda x: (float(x.get("cex_revival_score") or 0), int(x.get("coherent_confirmations") or 0)), reverse=True)
-    preflight_payload = {**raw_payload, "version": max(int(raw_payload.get("version") or 0), 12), "alerts": merged, "alerts_count": len(merged),
+    blocked_rows.sort(key=lambda x: (float(x.get("cex_revival_score") or 0), float(x.get("change_24h_max_pct") or 0)), reverse=True)
+    preflight_payload = {**raw_payload, "version": max(int(raw_payload.get("version") or 0), 13), "alerts": merged, "alerts_count": len(merged),
+        "blocked_alerts": blocked_rows, "blocked_alerts_count": len(blocked_rows),
+        "pipeline_audit": {"raw_alerts": len(raw_rows), "registry_accepted": len(registered), "external_preflight_accepted": len(external_rows), "actionable_candidates_after_preflight": len(merged), "blocked_retained": len(blocked_rows), "silent_drop_count": max(0, len(raw_rows)-len(merged)-len(blocked_rows)), "blocked_alerts_retained": True},
         "raw_alerts_before_age_gate": len(raw_rows), "raw_collection_generated_at": raw_payload.get("generated_at") or now, "collection_status": "FRESH_COLLECTION_CONTINUES",
         "spot_collection": {"generated_at": spot.get("generated_at"), "healthy_sources": spot.get("healthy_sources", 0), "markets_seen": spot.get("markets_seen", 0), "symbols_seen": spot.get("symbols_seen", 0), "watch_count": spot.get("watch_count", 0), "alerts_count": spot.get("alerts_count", 0), "production_portfolio_impact": "NONE"},
         "age_gate": {"status": "ENFORCED_FAIL_CLOSED" if ext_error is None else "DEGRADED_UNKNOWN_IDENTITIES_FAIL_CLOSED", "minimum_market_age_days": MIN_AGE_DAYS, "project_scope_minimum_market_age_days": PROJECT_SCOPE_MIN_AGE_DAYS, "approved_production_minimum_market_age_days": APPROVED_PRODUCTION_MIN_AGE_DAYS, "scope_policy": "VETERAN_ONLY_PRODUCT_SCOPE_NOT_ALPHA_THRESHOLD", "accepted": len(merged), "rejected": max(0, len(raw_rows)-len(merged)), "registered_exact_identities": len(registered), "external_preflight": ext_report, "unknown_or_unresolved_identity": "REJECT"}, "generated_identity_preflight_at": now}

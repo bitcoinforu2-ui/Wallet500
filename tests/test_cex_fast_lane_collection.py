@@ -63,3 +63,75 @@ def test_collection_runs_before_scope_drift_block(tmp_path: Path, monkeypatch):
     assert published["alerts"] == []
     assert published["spot_collection"]["alerts_count"] == 1
     assert published["age_gate"]["status"] == "BLOCKED_FAIL_CLOSED_VETERAN_SCOPE_POLICY_DRIFT"
+
+
+def test_preflight_rejection_is_retained_with_explicit_blocker(tmp_path: Path, monkeypatch):
+    def fake_futures(out: Path, now: str):
+        payload = {
+            "version": 7,
+            "generated_at": now,
+            "symbols_seen": 1,
+            "alerts_count": 1,
+            "alerts": [{
+                "symbol": "MUSEBOOKUSDT",
+                "cex_revival_score": 66,
+                "coherent_confirmations": 3,
+                "change_24h_max_pct": 292.0,
+            }],
+            "watch_count": 1,
+            "watchlist": [{"symbol": "MUSEBOOKUSDT", "research_only": True, "actionable": False}],
+        }
+        (out / "cex-revival-radar.json").write_text(json.dumps(payload), encoding="utf-8")
+        return payload
+
+    def fake_spot(out: Path, now: str):
+        return {
+            "generated_at": now,
+            "healthy_sources": 1,
+            "markets_seen": 1,
+            "symbols_seen": 1,
+            "watch_count": 0,
+            "alerts_count": 0,
+            "production_portfolio_impact": "NONE",
+        }
+
+    monkeypatch.setattr(fast, "run_cex_revival", fake_futures)
+    monkeypatch.setattr(fast, "run_cex_spot_revival", fake_spot)
+    monkeypatch.setattr(fast, "_registry_rows", lambda rows, data_dir, now: ([], rows))
+    monkeypatch.setattr(
+        fast,
+        "_preflight_unknown",
+        lambda raw, rows, data_dir: (
+            [],
+            {
+                "accepted": 0,
+                "rejected": 1,
+                "status": "ENFORCED_FAIL_CLOSED",
+                "rejections": [{"symbol": "MUSEBOOKUSDT", "reason": "AGE_IDENTITY_NOT_FOUND"}],
+            },
+            None,
+        ),
+    )
+    monkeypatch.setattr(fast, "resolve_identity", lambda path: {"dex_verified": 0, "pair_pending": 0, "identity_pending": 0})
+    monkeypatch.setattr(fast, "_apply_registry_dex_fallback", lambda payload: payload)
+    monkeypatch.setattr(fast, "_apply_dex_activity_gate", lambda payload: payload)
+    monkeypatch.setattr(fast, "sanitize_cex_radar", lambda path: {"ok": True})
+    monkeypatch.setattr(fast, "build_real_alerts", lambda out: {"alerts_count": 0})
+    monkeypatch.setattr(fast, "sanitize_real_alerts", lambda path: {"alerts_count": 0})
+    monkeypatch.setattr(fast, "MIN_AGE_DAYS", 90)
+    monkeypatch.setattr(fast, "APPROVED_PRODUCTION_MIN_AGE_DAYS", 90)
+
+    result = fast.run(tmp_path)
+    assert result["status"] == "OK"
+
+    published = json.loads((tmp_path / "cex-revival-radar.json").read_text(encoding="utf-8"))
+    assert published["alerts"] == []
+    assert published["blocked_alerts_count"] == 1
+    blocked = published["blocked_alerts"][0]
+    assert blocked["symbol"] == "MUSEBOOKUSDT"
+    assert blocked["pipeline_status"] == "BLOCKED_RETAINED"
+    assert blocked["pipeline_stage"] == "AGE_IDENTITY_PREFLIGHT"
+    assert blocked["pipeline_blocker"] == "AGE_IDENTITY_NOT_FOUND"
+    assert blocked["actionable"] is False
+    assert published["pipeline_audit"]["silent_drop_count"] == 0
+    assert published["pipeline_audit"]["blocked_alerts_retained"] is True
