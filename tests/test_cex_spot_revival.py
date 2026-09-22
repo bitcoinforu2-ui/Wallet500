@@ -611,7 +611,7 @@ def test_ake_like_derivatives_precursor_surfaces_before_spot_watch_threshold(tmp
     assert precursor["actionable"] is False
 
 
-def test_cross_lane_precursor_rejects_extreme_derivatives_dispersion():
+def test_cross_lane_extreme_derivatives_dispersion_is_identity_only():
     spot_ms = {
         "first_seen": {
             "observed_at": "2026-09-04T10:50:55+00:00",
@@ -629,4 +629,71 @@ def test_cross_lane_precursor_rejects_extreme_derivatives_dispersion():
             "dispersion_status": "EXTREME_DISLOCATION_VERIFY",
         }
     }
-    assert spot._cross_lane_derivatives_precursor("AKEUSDT", spot_ms, derivative) is None
+    result = spot._cross_lane_derivatives_precursor("AKEUSDT", spot_ms, derivative)
+    assert result is not None
+    assert result["status"] == "QUALIFIED_CEX_DERIVATIVES_IDENTITY_ONLY_PRECURSOR"
+    assert result["identity_priority"] is True
+    assert result["eligible_for_action_score_fusion_after_exact_identity"] is False
+    assert result["identity_only_reason"] == "EXTREME_DISLOCATION_VERIFY"
+    assert result["actionable"] is False
+
+
+def test_cross_lane_current_extended_alert_can_only_prioritize_identity():
+    now = "2026-09-22T15:00:00+00:00"
+    spot_ms = {
+        "first_seen": {
+            "observed_at": now,
+            "reference_price": 0.000265,
+            "reference_change_24h_pct": 250.0,
+        }
+    }
+    derivative = {
+        "MUSEBOOKUSDT": {
+            "_current_alert": {
+                "observed_at": now,
+                "reference_price": 0.0002585,
+                "reference_change_24h_pct": 292.0,
+                "score": 66,
+                "coherent_confirmations": 3,
+                "dispersion_status": "EXTREME_DISLOCATION_VERIFY",
+            }
+        }
+    }
+    result = spot._cross_lane_derivatives_precursor("MUSEBOOKUSDT", spot_ms, derivative)
+    assert result is not None
+    assert result["evidence_kind"] == "CURRENT_ALERT"
+    assert result["identity_priority"] is True
+    assert result["eligible_for_action_score_fusion_after_exact_identity"] is False
+    assert result["actionable"] is False
+
+
+def test_current_single_venue_mover_watch_can_only_prioritize_identity():
+    now = "2026-09-22T15:00:00+00:00"
+    spot_ms = {
+        "first_seen": {
+            "observed_at": now,
+            "reference_price": 0.00642,
+            "reference_change_24h_pct": 35.0,
+        }
+    }
+    derivative = {
+        "PAIRUSDT": {
+            "_current_alert": {
+                "observed_at": now,
+                "reference_price": 0.00640,
+                "reference_change_24h_pct": 37.0,
+                "score": 20,
+                "coherent_confirmations": 1,
+                "dispersion_status": "COHERENT_RANGE",
+                "change_24h_max_pct": 37.0,
+                "mover_watch": True,
+                "max_derivatives_turnover_usd": 94_250.0,
+            }
+        }
+    }
+    result = spot._cross_lane_derivatives_precursor("PAIRUSDT", spot_ms, derivative)
+    assert result is not None
+    assert result["identity_priority"] is True
+    assert result["identity_only_reason"] == "CURRENT_MOVER_WATCH"
+    assert result["eligible_for_action_score_fusion_after_exact_identity"] is False
+    assert result["actionable"] is False
