@@ -44,3 +44,36 @@ jobs:
 
           gh workflow run live-scan.yml --repo "${{ github.repository }}" --ref main
           echo "Primary live scan dispatched by scheduler sentinel."
+      - name: Refresh Revival before hard freshness expiry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          age="$(python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from urllib.request import urlopen, Request
+          url='https://raw.githubusercontent.com/${{ github.repository }}/main/data/revival-1000-latest.json'
+          try:
+              d=json.load(urlopen(Request(url,headers={'Cache-Control':'no-cache'}),timeout=15))
+              s=str(d.get('generated_at') or '')
+              if s.endswith('Z'): s=s[:-1]+'+00:00'
+              dt=datetime.fromisoformat(s)
+              if dt.tzinfo is None: dt=dt.replace(tzinfo=timezone.utc)
+              print(max(0,int((datetime.now(timezone.utc)-dt.astimezone(timezone.utc)).total_seconds())))
+          except Exception:
+              print(999999)
+          PY
+          )"
+          echo "Revival snapshot age: ${age}s"
+          if [ "${age}" -lt 2100 ]; then
+            echo "Revival below 35-minute proactive refresh threshold."
+            exit 0
+          fi
+          active="$(gh run list --repo "${{ github.repository }}" --workflow revival-1000.yml --limit 20 --json status --jq '[.[] | select(.status == "in_progress" or .status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length')"
+          if [ "${active}" -gt 0 ]; then
+            echo "Revival producer already active/queued (${active}); refresh dispatch skipped."
+            exit 0
+          fi
+          gh workflow run revival-1000.yml --repo "${{ github.repository }}" --ref main
+          echo "Revival producer proactively dispatched before 45-minute hard expiry."
