@@ -114,3 +114,24 @@ def test_sampled_outcomes_close_1h_6h_24h_72h_without_rewriting_event():
 
     for key, value in immutable.items():
         assert event[key] == value
+
+
+def test_late_first_sample_does_not_back_project_into_earlier_horizons():
+    event = build_confirmed_event(
+        asset_key="bsc:0xtoken",
+        entry=_entry(),
+        metrics=_metrics(),
+        snapshot={"pair_address": "0xPair", "price_usd": 0.03485, "liquidity_usd": 2_430_000},
+        confirmed_at=datetime(2026, 9, 18, 7, 45, 7, tzinfo=UTC),
+    )
+    confirmed = datetime(2026, 9, 18, 7, 45, 7, tzinfo=UTC)
+    observe_event(event, observed_at=confirmed + timedelta(hours=30), price_usd=0.050)
+
+    horizons = event["outcome"]["horizons"]
+    assert horizons["1h"]["checkpoint_status"] == "MISSED_NO_TIMELY_SAMPLE"
+    assert horizons["6h"]["checkpoint_status"] == "MISSED_NO_TIMELY_SAMPLE"
+    assert horizons["24h"]["checkpoint_status"] == "MISSED_NO_TIMELY_SAMPLE"
+    assert horizons["1h"]["sampled_mfe_pct"] == 0.0
+    assert horizons["6h"]["sampled_mfe_pct"] == 0.0
+    assert horizons["24h"]["sampled_mfe_pct"] == 0.0
+    assert horizons["72h"]["checkpoint_status"] == "PENDING"
