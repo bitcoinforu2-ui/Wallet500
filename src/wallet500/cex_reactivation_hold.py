@@ -17,11 +17,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .reactivation_event_ledger import (
+    build_confirmed_event,
+    event_needs_refresh,
+    ledger_summary,
+    load_ledger,
+    observe_event,
+    record_confirmed_event,
+)
+
 MIN_HOLD_MINUTES = 5.0
 MAX_HOLD_MINUTES = 20.0
 STATE_VERSION = 1
 REPORT_FILE = "cex-fast-promotion-report.json"
 ALERT_FILE = "cex-fast-real-alerts.json"
+LEDGER_FILE = "cex-reactivation-ledger.json"
+MAX_OUTCOME_REFRESH_PER_RUN = 40
+MAX_OUTCOME_REFRESH_AGE_HOURS = 168.0
 EVM_CHAINS = {"ethereum", "bsc", "base", "arbitrum", "optimism", "polygon", "avalanche"}
 
 
@@ -147,7 +159,9 @@ def evaluate_hold(
     else:
         state = "CONFIRMED_HOLD"
         confirmed = True
-        entry["confirmed_at"] = now_dt.isoformat()
+        # Confirmation time is part of the historical event identity. Repeated
+        # evaluations inside the same hold window must never move it forward.
+        entry.setdefault("confirmed_at", now_dt.isoformat())
 
     entry["last_state"] = state
     return {
@@ -166,6 +180,8 @@ class ReactivationHoldGate:
         self.original_eligibility = guard.promo._eligibility
         self.original_message = guard.promo._message
         self.state = self._load_state()
+        self.ledger_path = self.out / LEDGER_FILE
+        self.ledger = load_ledger(self.ledger_path)
 
     def _load_state(self) -> dict:
         path = self.out / REPORT_FILE
@@ -220,6 +236,13 @@ class ReactivationHoldGate:
                 "source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
             }
         return None
+
+    def _fresh_event_snapshot(self, event: dict) -> dict | None:
+        return self._fresh_exact_pair_snapshot({
+            "chain": event.get("chain"),
+            "token_address": event.get("token_address"),
+            "pair_address": event.get("pair_address"),
+        })
 
     def eligibility(self, row: object):
         ok, metrics = self.original_eligibility(row)
@@ -285,6 +308,17 @@ class ReactivationHoldGate:
         })
 
         if decision["confirmed"]:
+            confirmed_at = _parse_ts(entry.get("confirmed_at")) or now_dt
+            event = build_confirmed_event(
+                asset_key=key,
+                entry=entry,
+                metrics=metrics,
+                snapshot=snapshot,
+                confirmed_at=confirmed_at,
+            )
+            stored_event, created = record_confirmed_event(self.ledger, event)
+            metrics["reactivation_event_id"] = stored_event.get("event_id")
+            metrics["reactivation_event_new"] = created
             metrics["action_state"] = "REENTRY_ZONE"
             metrics["action_basis"] = "FRESH_MULTI_CEX_REACTIVATION_HOLD_VERIFIED"
             metrics["blockers"] = []
@@ -328,10 +362,48 @@ class ReactivationHoldGate:
         lines = text.splitlines()
         return "\n".join([lines[0], *extra, *lines[1:]]) if lines else "\n".join(extra)
 
+    def _refresh_outcomes(self, now: datetime) -> None:
+        candidates: list[dict] = []
+        for event in (self.ledger.get("events") or {}).values():
+            if not isinstance(event, dict) or not event_needs_refresh(event):
+                continue
+            confirmed = _parse_ts(event.get("confirmed_at"))
+            if confirmed is None:
+                continue
+            age_hours = (now - confirmed).total_seconds() / 3600.0
+            outcome = event.setdefault("outcome", {})
+            if age_hours > MAX_OUTCOME_REFRESH_AGE_HOURS:
+                outcome["sampling_status"] = "EXPIRED_INCOMPLETE"
+                outcome["sampling_expired_at"] = now.isoformat()
+                continue
+            candidates.append(event)
+
+        candidates.sort(
+            key=lambda event: str(
+                ((event.get("outcome") or {}).get("latest_observed_at"))
+                or event.get("confirmed_at")
+                or ""
+            )
+        )
+        for event in candidates[:MAX_OUTCOME_REFRESH_PER_RUN]:
+            outcome = event.setdefault("outcome", {})
+            outcome["last_refresh_attempt_at"] = now.isoformat()
+            snapshot = self._fresh_event_snapshot(event)
+            if snapshot is None:
+                outcome["last_refresh_status"] = "EXACT_PAIR_SNAPSHOT_UNAVAILABLE"
+                continue
+            observe_event(
+                event,
+                observed_at=now,
+                price_usd=float(snapshot.get("price_usd") or 0.0),
+            )
+            outcome["last_refresh_status"] = "SAMPLED"
+            outcome["last_sample_liquidity_usd"] = float(snapshot.get("liquidity_usd") or 0.0)
+
     def persist(self) -> None:
-        # Prune very old state while preserving active audit evidence long enough to
-        # diagnose false positives/negatives without allowing it to satisfy new holds.
+        # Prune very old active state while preserving immutable confirmed events.
         now = datetime.now(timezone.utc)
+        self._refresh_outcomes(now)
         kept: dict[str, dict] = {}
         for key, entry in self.state.get("assets", {}).items():
             if not isinstance(entry, dict):
@@ -356,6 +428,7 @@ class ReactivationHoldGate:
             "fade_reclaim_required": sum(1 for x in kept.values() if x.get("last_state") == "FADE_RECLAIM_REQUIRED"),
             "confirmed": sum(1 for x in kept.values() if x.get("last_state") == "CONFIRMED_HOLD"),
         }
+        report["reactivation_event_ledger_summary"] = ledger_summary(self.ledger)
         truth = report.get("truth_contract") if isinstance(report.get("truth_contract"), dict) else {}
         truth.update({
             "stale_reactivation_requires_second_fresh_observation": True,
@@ -364,8 +437,14 @@ class ReactivationHoldGate:
             "reactivation_confirmation_max_minutes": MAX_HOLD_MINUTES,
             "reactivation_fade_never_real_alert": True,
             "runner_candidate_requires_hold_verified": True,
+            "confirmed_reactivation_events_immutable": True,
+            "reactivation_outcome_horizons_hours": [1, 6, 24, 72],
+            "reactivation_outcomes_are_sampled_not_tick_complete": True,
+            "reactivation_ledger_file": LEDGER_FILE,
         })
         report["truth_contract"] = truth
+        self.ledger["updated_at"] = now.isoformat()
+        _atomic_json_write(self.ledger_path, self.ledger)
         _atomic_json_write(report_path, report)
 
         alert_path = self.out / ALERT_FILE
