@@ -165,6 +165,26 @@ def build_plan(
             })
             continue
 
+        if ctype == "GENESIS_PREBREAKOUT":
+            if target.get("genesis_final_buy_lane") is not True:
+                continue
+            if "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET" in blockers:
+                continue
+            if blockers and not blockers.issubset(MARKET_RECOVERABLE_BLOCKERS):
+                continue
+            if len(blockers) > 3:
+                continue
+            candidates.append({
+                "identity_key": key,
+                "symbol": str(target.get("symbol") or decision.get("symbol") or "").upper(),
+                "candidate_type": ctype,
+                "priority": 2,
+                "reason": "GENESIS_PREBREAKOUT_CLOSE_WATCH",
+                "prebreakout_score": target.get("prebreakout_score"),
+                "blockers": sorted(blockers),
+            })
+            continue
+
         if ctype == "NEW_CHAIN_BOOTSTRAP":
             if "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET" in blockers:
                 continue
@@ -176,7 +196,7 @@ def build_plan(
                 "identity_key": key,
                 "symbol": str(target.get("symbol") or decision.get("symbol") or "").upper(),
                 "candidate_type": ctype,
-                "priority": 2,
+                "priority": 3,
                 "reason": "NEW_CHAIN_CLOSE_WATCH",
                 "blockers": sorted(blockers),
             })
@@ -206,6 +226,7 @@ def build_plan(
             "no_extra_github_workflow_run": True,
             "recheck_runs_inside_existing_unified_watch_job": True,
             "pre_buy_is_highest_priority": True,
+            "genesis_prebreakout_runs_before_bootstrap_when_market_only_confirmation_remains": True,
             "hard_risk_or_stale_intelligence_never_enters_recheck": True,
             "recheck_never_weakens_final_buy_gates": True,
             "second_qualified_scan_requires_real_time_spacing": True,
