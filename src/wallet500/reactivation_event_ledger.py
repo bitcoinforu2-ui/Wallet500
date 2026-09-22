@@ -196,30 +196,31 @@ def observe_event(event: dict, *, observed_at: datetime, price_usd: float) -> di
         })
         if h.get("closed") is True:
             continue
+        tolerance = float(CHECKPOINT_TOLERANCE_HOURS[hours])
+        if age_hours > hours + tolerance:
+            # A late first sample must not be back-projected into an earlier horizon.
+            h.update({
+                "closed": True,
+                "checkpoint_status": "MISSED_NO_TIMELY_SAMPLE",
+                "checkpoint_observed_at": None,
+                "checkpoint_age_hours": None,
+                "checkpoint_price_usd": None,
+                "checkpoint_return_pct": None,
+                "missed_detected_at": now.isoformat(),
+                "first_late_sample_age_hours": round(age_hours, 4),
+            })
+            continue
         h["sampled_mfe_pct"] = round(max(float(h.get("sampled_mfe_pct") or 0.0), ret), 4)
         h["sampled_mae_pct"] = round(min(float(h.get("sampled_mae_pct") or 0.0), ret), 4)
         if age_hours >= hours:
-            tolerance = float(CHECKPOINT_TOLERANCE_HOURS[hours])
-            if age_hours <= hours + tolerance:
-                h.update({
-                    "closed": True,
-                    "checkpoint_status": "CAPTURED",
-                    "checkpoint_observed_at": now.isoformat(),
-                    "checkpoint_age_hours": round(age_hours, 4),
-                    "checkpoint_price_usd": price,
-                    "checkpoint_return_pct": round(ret, 4),
-                })
-            else:
-                h.update({
-                    "closed": True,
-                    "checkpoint_status": "MISSED_NO_TIMELY_SAMPLE",
-                    "checkpoint_observed_at": None,
-                    "checkpoint_age_hours": None,
-                    "checkpoint_price_usd": None,
-                    "checkpoint_return_pct": None,
-                    "missed_detected_at": now.isoformat(),
-                    "first_late_sample_age_hours": round(age_hours, 4),
-                })
+            h.update({
+                "closed": True,
+                "checkpoint_status": "CAPTURED",
+                "checkpoint_observed_at": now.isoformat(),
+                "checkpoint_age_hours": round(age_hours, 4),
+                "checkpoint_price_usd": price,
+                "checkpoint_return_pct": round(ret, 4),
+            })
     return event
 
 
