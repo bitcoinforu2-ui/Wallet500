@@ -38,3 +38,18 @@ def test_arc_evm_addresses_are_case_insensitive():
     _add(rows,seen,counts,filtered,"arc","0xabcdef","second",120)
     assert counts["arc"] == 1
     assert rows[0]["source_confirmations"] == 2
+
+
+def test_same_provider_views_do_not_fake_independent_confirmation():
+    rows=[];seen=set();counts={"solana":0};filtered={"solana":0}
+    token="IndependentSourceMint111111111111111111111111"
+    _add(rows,seen,counts,filtered,"solana",token,"moonshot:rising",120)
+    _add(rows,seen,counts,filtered,"solana",token,"moonshot:new",120)
+    assert rows[0]["source_confirmations"] == 2
+    assert rows[0]["independent_source_confirmations"] == 1
+    assert rows[0]["independent_source_families"] == ["moonshot"]
+
+    _add(rows,seen,counts,filtered,"solana",token,"birdeye:new_listing",120)
+    assert rows[0]["source_confirmations"] == 3
+    assert rows[0]["independent_source_confirmations"] == 2
+    assert rows[0]["independent_source_families"] == ["birdeye", "moonshot"]
