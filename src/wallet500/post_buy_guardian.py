@@ -379,7 +379,10 @@ def _transition_event(current: dict[str, Any], prior: dict[str, Any] | None, now
     previous = str((prior or {}).get("risk_state") or "")
     state = str(current.get("risk_state") or "")
     if state == "DATA_DEGRADED":
-        return "DATA_DEGRADED" if int(current.get("data_miss_streak") or 0) >= 3 and previous != state else None
+        # Data loss is operationally important, but it is never a sell signal.
+        # Notify only when the third consecutive exact-pair miss is reached.
+        misses = int(current.get("data_miss_streak") or 0)
+        return "DATA_DEGRADED" if misses == 3 and (prior or {}).get("last_telegram_event") != "DATA_DEGRADED" else None
     if state in {"CAUTION", "EXIT_REVIEW", "INVALIDATED"} and state != previous:
         last = _parse_ts((prior or {}).get("last_telegram_at"))
         if state == "CAUTION" and last and (now - last).total_seconds() < DELIVERY_COOLDOWN_MINUTES * 60:
@@ -462,6 +465,13 @@ def build(
 
     for key, source in sources.items():
         prior = prior_positions.get(key) if isinstance(prior_positions.get(key), dict) else {}
+        # A later FINAL BUY on the same exact pair is a new position episode.
+        # Never inherit an old peak/baseline/alert state across entries.
+        if prior and (
+            str(prior.get("entry_time") or "") != str(source.get("entry_time") or "")
+            or abs(float(prior.get("entry_price_usd") or 0) - float(source.get("entry_price_usd") or 0)) > 1e-15
+        ):
+            prior = {}
         row = evaluate_position(source, fetcher(source), prior, ts)
         event = _transition_event(row, prior, now)
         if event:
