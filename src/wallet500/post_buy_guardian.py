@@ -226,8 +226,15 @@ def _momentum_15m(candles: list[dict[str, Any]], market: dict[str, Any]) -> floa
 
 def _source_positions(user_state: dict[str, Any], real_ledger: dict[str, Any], now: datetime) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
-    tokens = user_state.get("tokens") if isinstance(user_state, dict) and isinstance(user_state.get("tokens"), dict) else {}
-    for key, state in tokens.items():
+    # Production user-watch state stores durable rows under "targets".
+    # Accept the earlier "tokens" key as a migration fallback.
+    if isinstance(user_state, dict) and isinstance(user_state.get("targets"), dict):
+        targets = user_state.get("targets") or {}
+    elif isinstance(user_state, dict) and isinstance(user_state.get("tokens"), dict):
+        targets = user_state.get("tokens") or {}
+    else:
+        targets = {}
+    for key, state in targets.items():
         if not isinstance(state, dict) or state.get("last_delivery_status") != "DELIVERED":
             continue
         alert_at = _parse_ts(state.get("last_alert_at"))
