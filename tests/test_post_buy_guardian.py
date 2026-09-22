@@ -3,6 +3,7 @@ from wallet500.post_buy_guardian import (
     _source_positions,
     build,
     evaluate_position,
+    telegram_message,
 )
 
 
@@ -210,3 +211,14 @@ def test_recovery_emits_once():
     )
     assert report["delivered_count"] == 1
     assert report["deliveries"][0]["event"] == "RECOVERED"
+
+
+def test_telegram_message_includes_exact_pair_dexscreener_link():
+    row = evaluate_position(
+        source(),
+        market(price=0.091, liq=580_000, buys5=20, sells5=30),
+        {"peak_price_usd": 0.108, "baseline_liquidity_usd": 600_000},
+        NOW,
+    )
+    message = telegram_message(row, "EXIT_REVIEW")
+    assert "DEX: https://dexscreener.com/ethereum/0x629d22e6eeac46a11dbc96be93b90aee9309be4c" in message
