@@ -208,6 +208,9 @@ def genesis_prebreakout_candidate(row, current=None):
 
     score = float(pre.get("score") or 0.0)
     genesis_score = float(row.get("genesis_score") or 0.0)
+    current = current or datetime.now(timezone.utc)
+    pair_created = row.get("pair_created_at")
+    first_seen_at = pair_created if parse_ts(pair_created) is not None else current.isoformat()
     return {
         "candidate_type": "GENESIS_PREBREAKOUT",
         "symbol": str(row.get("symbol") or "GENESIS").upper(),
@@ -217,7 +220,7 @@ def genesis_prebreakout_candidate(row, current=None):
         "dex_url": row.get("url") or row.get("dex_url") or "",
         "source": "Genesis Prebreakout Edge",
         "source_url": row.get("url") or row.get("dex_url") or "",
-        "first_seen_at": row.get("pair_created_at"),
+        "first_seen_at": first_seen_at,
         "first_seen_price": row.get("price_usd"),
         "discovery_price": row.get("price_usd"),
         "change_24h_pct": row.get("price_change_h24"),
@@ -291,7 +294,10 @@ def main():
     alpha = load(ALPHA, {"candidates": []})
     buy_registry = load(BUY_REGISTRY, {"entries": {}})
     bootstrap = load(BOOTSTRAP, {"candidates": []})
-    genesis = load(GENESIS, {"candidates": []})
+    # Keep test/workspace overrides isolated: if OUT is redirected to a temporary
+    # directory, do not leak the repository's live Genesis radar into that run.
+    genesis_path = GENESIS if GENESIS.parent == OUT.parent else OUT.with_name("genesis-radar.json")
+    genesis = load(genesis_path, {"candidates": []})
     event_doc = load(EVENTS, {"version": 3, "events": []})
     out = []
     seen = set()
