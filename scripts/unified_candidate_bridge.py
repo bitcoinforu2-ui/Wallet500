@@ -20,6 +20,7 @@ PUBLIC_ALPHA_LIVE_WINDOW_MINUTES = 180
 MULTI_POOL_WATCH_MAX_POOLS = 5
 MULTI_POOL_WATCH_MIN_LIQUIDITY_USD = 5000.0
 GENESIS_MAX_SOURCE_AGE_MINUTES = 45.0
+GENESIS_RETAIN_MINUTES = 30.0
 GENESIS_MIN_EXECUTION_LIQUIDITY_USD = 15_000.0
 
 
@@ -294,6 +295,7 @@ def main():
     alpha = load(ALPHA, {"candidates": []})
     buy_registry = load(BUY_REGISTRY, {"entries": {}})
     bootstrap = load(BOOTSTRAP, {"candidates": []})
+    previous_dynamic = load(OUT, {"candidates": []})
     # Keep test/workspace overrides isolated: if OUT is redirected to a temporary
     # directory, do not leak the repository's live Genesis radar into that run.
     genesis_path = GENESIS if GENESIS.parent == OUT.parent else OUT.with_name("genesis-radar.json")
@@ -634,6 +636,8 @@ def main():
                 continue
             seen.add(i[3])
             candidate["identity_key"] = i[3]
+            candidate["genesis_bridge_observed_at"] = current.isoformat()
+            candidate["genesis_retained"] = False
             out.append(candidate)
     else:
         genesis_stale_excluded = sum(
@@ -642,6 +646,36 @@ def main():
             and isinstance(row.get("prebreakout"), dict)
             and row["prebreakout"].get("priority_ready") is True
         )
+
+    genesis_retained = 0
+    for prior in previous_dynamic.get("candidates") or []:
+        if not isinstance(prior, dict):
+            continue
+        if str(prior.get("candidate_type") or "").upper() != "GENESIS_PREBREAKOUT":
+            continue
+        i = ident(prior)
+        if not i or i[3] in seen:
+            continue
+        observed = parse_ts(prior.get("genesis_bridge_observed_at"))
+        if observed is None:
+            continue
+        retained_age = max(0.0, (current - observed).total_seconds() / 60.0)
+        if retained_age > GENESIS_RETAIN_MINUTES:
+            continue
+        risks = set(prior.get("prebreakout_risks") or [])
+        if "BUNDLE_DOMINATED_LAUNCH" in risks:
+            continue
+        kept = dict(prior)
+        kept["genesis_retained"] = True
+        kept["genesis_retained_age_minutes"] = round(retained_age, 2)
+        kept["source"] = "Genesis Prebreakout Edge (retained)"
+        kept["priority"] = kept.get("priority") or "HIGH"
+        kept["deep_investigation"] = True
+        kept["full_intelligence"] = True
+        kept["proactive_evidence_recovery"] = True
+        seen.add(i[3])
+        out.append(kept)
+        genesis_retained += 1
 
     for row in bootstrap.get("candidates") or []:
         if not isinstance(row, dict) or row.get("bootstrap_actionable_watch") is not True:
@@ -729,6 +763,7 @@ def main():
             "cex_market": sum(x["candidate_type"] == "CEX_MARKET_DISCOVERY" for x in out),
             "new_chain_bootstrap": sum(x["candidate_type"] == "NEW_CHAIN_BOOTSTRAP" for x in out),
             "genesis_prebreakout": sum(x["candidate_type"] == "GENESIS_PREBREAKOUT" for x in out),
+            "genesis_retained": genesis_retained,
             "genesis_source_fresh": genesis_source_fresh,
             "genesis_source_age_minutes": None if genesis_source_age is None else round(genesis_source_age, 2),
             "genesis_stale_excluded": genesis_stale_excluded,
