@@ -369,7 +369,7 @@ def dynamic_candidates(persisted_tokens=None):
     seen = set()
     for c in d.get("candidates") or []:
         ctype = str(c.get("candidate_type") or "").upper()
-        if ctype not in {"BUY_ZONE", "PUBLIC_ALPHA", "GATE_SPOT_DISCOVERY", "CEX_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY", "NEW_CHAIN_BOOTSTRAP"}:
+        if ctype not in {"BUY_ZONE", "PUBLIC_ALPHA", "GATE_SPOT_DISCOVERY", "CEX_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY", "NEW_CHAIN_BOOTSTRAP", "GENESIS_PREBREAKOUT"}:
             continue
         ca = str(c.get("contract") or "")
         pair = str(c.get("pair") or "")
@@ -497,6 +497,12 @@ def dynamic_candidates(persisted_tokens=None):
     )
     spot = critical_rows + noncritical_rows
 
+    genesis = [x for x in rows if x["_candidate_type"] == "GENESIS_PREBREAKOUT"]
+    genesis = sorted(
+        genesis,
+        key=lambda x: (float(x.get("prebreakout_score") or 0), float(x.get("dex_liquidity_usd") or 0)),
+        reverse=True,
+    )[:10]
     bootstrap = [x for x in rows if x["_candidate_type"] == "NEW_CHAIN_BOOTSTRAP"]
     bootstrap = sorted(
         bootstrap,
@@ -504,8 +510,8 @@ def dynamic_candidates(persisted_tokens=None):
         reverse=True,
     )[:12]
     alpha = [x for x in rows if x["_candidate_type"] == "PUBLIC_ALPHA"]
-    dynamic_cap = 48
-    alpha_budget = max(0, dynamic_cap - len(buy_zone) - len(bootstrap) - len(spot))
+    dynamic_cap = 58
+    alpha_budget = max(0, dynamic_cap - len(buy_zone) - len(genesis) - len(bootstrap) - len(spot))
 
     def _liq(x):
         try:
@@ -528,7 +534,7 @@ def dynamic_candidates(persisted_tokens=None):
             chosen_ids.add(key)
             chosen.append(x)
 
-    selected = buy_zone + spot + bootstrap + chosen
+    selected = buy_zone + spot + genesis + bootstrap + chosen
     out = []
     for c in selected:
         ctype = c["_candidate_type"]
@@ -565,10 +571,11 @@ def dynamic_candidates(persisted_tokens=None):
                 "dynamic_buy_candidate": ctype == "BUY_ZONE",
                 "dynamic_alpha_candidate": ctype == "PUBLIC_ALPHA",
                 "dynamic_bootstrap_candidate": ctype == "NEW_CHAIN_BOOTSTRAP",
+                "dynamic_genesis_candidate": ctype == "GENESIS_PREBREAKOUT",
                 "dynamic_spot_candidate": ctype in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"},
                 "dynamic_cex_market_candidate": ctype == "CEX_MARKET_DISCOVERY",
                 "critical_market_lane": bool(
-                    ctype == "BUY_ZONE"
+                    ctype in {"BUY_ZONE", "GENESIS_PREBREAKOUT"}
                     or (is_spot and c["_identity_key"] in critical_spot_ids)
                 ),
                 "critical_market_group": _critical_group(c) if is_spot else None,
@@ -583,15 +590,15 @@ def dynamic_candidates(persisted_tokens=None):
                 ),
                 "deep_investigation": bool(
                     c.get("deep_investigation")
-                    or ctype in {"BUY_ZONE", "NEW_CHAIN_BOOTSTRAP"}
+                    or ctype in {"BUY_ZONE", "NEW_CHAIN_BOOTSTRAP", "GENESIS_PREBREAKOUT"}
                     or hot_spot
                 ),
                 "full_intelligence": bool(
                     c.get("full_intelligence")
-                    or ctype in {"BUY_ZONE", "NEW_CHAIN_BOOTSTRAP"}
+                    or ctype in {"BUY_ZONE", "NEW_CHAIN_BOOTSTRAP", "GENESIS_PREBREAKOUT"}
                     or hot_spot
                 ),
-                "proactive_evidence_recovery": hot_spot,
+                "proactive_evidence_recovery": bool(c.get("proactive_evidence_recovery") or hot_spot or ctype == "GENESIS_PREBREAKOUT"),
                 "derivatives_intelligence": bool(c.get("derivatives_intelligence")),
                 "derivatives_symbol": c.get("derivatives_symbol"),
                 "buy_zone_price_usd": c.get("buy_zone_price_usd"),
@@ -619,6 +626,16 @@ def dynamic_candidates(persisted_tokens=None):
                 "bootstrap_score": c.get("bootstrap_score"),
                 "bootstrap_reasons": c.get("bootstrap_reasons") or [],
                 "bootstrap_final_buy_lane": bool(c.get("bootstrap_final_buy_lane")),
+                "genesis_final_buy_lane": bool(c.get("genesis_final_buy_lane")),
+                "genesis_score": c.get("genesis_score"),
+                "genesis_shadow_score": c.get("genesis_shadow_score"),
+                "genesis_status": c.get("genesis_status"),
+                "genesis_age_band": c.get("genesis_age_band"),
+                "genesis_extension_band": c.get("genesis_extension_band"),
+                "prebreakout_score": c.get("prebreakout_score"),
+                "prebreakout_coverage_pct": c.get("prebreakout_coverage_pct"),
+                "prebreakout_signals": c.get("prebreakout_signals") or [],
+                "prebreakout_risks": c.get("prebreakout_risks") or [],
             }
         )
 
@@ -1136,6 +1153,14 @@ def main():
             tokens.append(item)
             used.add(identity)
 
+    # Strong prebreakout leads are exact-identity, bounded, and run before
+    # the ordinary static/research set. CEX critical movers still stay ahead.
+    for item in [x for x in dynamic_all if x.get("dynamic_genesis_candidate")]:
+        identity = candidate_identity_key(item)
+        if identity and identity not in used:
+            tokens.append(item)
+            used.add(identity)
+
     for item in static_tokens:
         identity = exact_identity_key(item)
         if identity and identity not in used:
@@ -1144,7 +1169,7 @@ def main():
 
     for item in [
         x for x in dynamic_all
-        if not x.get("dynamic_buy_candidate") and not x.get("dynamic_spot_candidate")
+        if not x.get("dynamic_buy_candidate") and not x.get("dynamic_spot_candidate") and not x.get("dynamic_genesis_candidate")
     ]:
         identity = candidate_identity_key(item)
         if identity and identity not in used:
@@ -1194,6 +1219,8 @@ def main():
             key = f"ALPHA:{identity_key}"
         elif t.get("dynamic_spot_candidate"):
             key = f"SPOT:{identity_key}"
+        elif t.get("dynamic_genesis_candidate"):
+            key = f"GENESIS:{identity_key}"
         else:
             key = sym
         prev = st.get(key) or {}
@@ -1316,6 +1343,7 @@ def main():
             "asset_total_dex_liquidity_usd": t.get("asset_total_dex_liquidity_usd"),
             "dynamic_buy_candidate": bool(t.get("dynamic_buy_candidate")),
             "dynamic_alpha_candidate": bool(t.get("dynamic_alpha_candidate")),
+            "dynamic_genesis_candidate": bool(t.get("dynamic_genesis_candidate")),
             "dynamic_spot_candidate": bool(t.get("dynamic_spot_candidate")),
             # Dynamic discovery carries the canonical immutable first observation and
             # is allowed to repair bad legacy state. Fall back to prior state only
@@ -1504,6 +1532,7 @@ def main():
         "dynamic_buy_targets": sum(bool(x.get("dynamic_buy_candidate")) for x in dynamic),
         "dynamic_alpha_targets": sum(bool(x.get("dynamic_alpha_candidate")) for x in dynamic),
         "dynamic_bootstrap_targets": sum(bool(x.get("dynamic_bootstrap_candidate")) for x in dynamic),
+        "dynamic_genesis_targets": sum(bool(x.get("dynamic_genesis_candidate")) for x in dynamic),
         "dynamic_spot_targets": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
         "critical_spot_targets": sum(bool(x.get("critical_market_lane") and x.get("dynamic_spot_candidate")) for x in dynamic),
         "critical_spot_unique_groups": len({
@@ -1525,6 +1554,7 @@ def main():
         "dynamic_buy": sum(bool(x.get("dynamic_buy_candidate")) for x in dynamic),
         "dynamic_alpha": sum(bool(x.get("dynamic_alpha_candidate")) for x in dynamic),
         "dynamic_bootstrap": sum(bool(x.get("dynamic_bootstrap_candidate")) for x in dynamic),
+        "dynamic_genesis": sum(bool(x.get("dynamic_genesis_candidate")) for x in dynamic),
         "dynamic_spot": sum(bool(x.get("dynamic_spot_candidate")) for x in dynamic),
         "scan_elapsed_seconds": round(time.monotonic() - scan_started_monotonic, 2),
         "noncritical_targets_truncated": noncritical_truncated,
