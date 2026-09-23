@@ -661,6 +661,9 @@ def run() -> dict:
     rank = {r["currency_pair"]: i for i, r in enumerate(positive, 1)}
     ts = now_dt()
     recent_cutoff = int(ts.timestamp()) - 14 * 86400
+    for row in eligible:
+        if row.get("buy_start") and int(row["buy_start"]) >= recent_cutoff:
+            row["new_listing_fast_lane"] = True
 
     # Broad discovery is intentionally permissive because it does not alert or trade.
     # Exact identity and the existing fusion/risk gates remain downstream.
@@ -869,6 +872,11 @@ def run() -> dict:
             "identity_source": row.get("identity_source") or old.get("identity_source"),
             "forced_cex_watch": bool(row.get("forced_cex_watch")),
             "forced_hot_watch": bool(row.get("forced_hot_watch")),
+            "buy_start": row.get("buy_start"),
+            "new_listing_fast_lane": bool(row.get("new_listing_fast_lane")),
+            "gate_pair_type": row.get("gate_pair_type"),
+            "gate_st_tag": bool(row.get("gate_st_tag")),
+            "gate_special_surface": bool(row.get("gate_special_surface")),
         }
 
     resolved = [r for r in selected if r.get("status") == "IDENTITY_RESOLVED"]
@@ -888,13 +896,14 @@ def run() -> dict:
             "persist_exact_identity_across_resolution_budget": True,
             "new_listing_window_days": 14,
             "identity_resolution_budget": resolution_budget,
-        "recent_listing_priority_enabled": True,
-        "special_gate_surfaces_observed_research_first": True,
+            "recent_listing_priority_enabled": True,
+            "special_gate_surfaces_observed_research_first": True,
             "identity_resolution_workers": min(IDENTITY_RESOLUTION_WORKERS, max(1, len(identity_results))),
             "identity_resolution_concurrent": True,
             "configured_cex_research_watch_pairs": sorted(configured_watch),
             "leveraged_products_excluded": True,
-            "st_risk_pairs_excluded": True,
+            "st_risk_pairs_excluded": False,
+            "st_risk_pairs_research_visible": True,
             "curated_native_discovery_bridge_enabled": True,
             "curated_native_discovery_symbols": sorted(native_registry),
             "native_proxy_research_only": True,
