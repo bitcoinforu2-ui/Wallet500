@@ -1075,7 +1075,7 @@ def run(data_dir: Path = DATA) -> dict:
             "live_leaderboard_identity_capacity_protected": True,
             "live_leaderboard_identity_priority_is_ordering_only": True,
             "live_leaderboard_identity_never_satisfies_identity_or_actionability": True,
-            "live_leaderboard_identity_stops_before_late_move_cutoff": True,
+            "live_leaderboard_price_extension_blocks_identity_resolution": False,
             "no_hindsight": True,
         },
         "source_watch_count": len(watch),
