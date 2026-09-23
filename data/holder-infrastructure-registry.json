@@ -1,7 +1,7 @@
 {
-  "version": 2,
-  "updated_at": "2026-09-21T19:30:00Z",
-  "policy": "EXACT_CHAIN_ADDRESS_ROLES_ONLY; EXCLUDE_FROM_WHALE_CONCENTRATION_ONLY_AT_CONFIDENCE_GE_0_90; UNKNOWN_ADDRESSES_REMAIN_COUNTED",
+  "version": 3,
+  "updated_at": "2026-09-23T05:30:00Z",
+  "policy": "EXACT_CHAIN_ADDRESS_ROLES_ONLY; EXCLUDE_FROM_WHALE_CONCENTRATION_ONLY_AT_CONFIDENCE_GE_0_90; SOLANA_POOL_ROLES_REQUIRE_VERIFIED_REGISTRY_OR_EXACT_ONCHAIN_POOL_RELATION; UNKNOWN_ADDRESSES_REMAIN_COUNTED",
   "entries": [
     {
       "chain": "BSC",
@@ -33,6 +33,21 @@
           "FOMOBAG regression case: exact locker balance must not be counted as a beneficial-owner whale"
         ],
         "truth_note": "Exclude only this exact Robinhood-chain locker address from beneficial-owner whale concentration. Do not infer that other Pons, creator, factory, escrow, or similarly named addresses are locked. Unknown addresses remain counted fail-closed."
+      }
+    },
+    {
+      "chain": "SOLANA",
+      "address": "HLnpSz9h2S4hiLQ43rnSD9XkcUThA7B8hQMKmDaiTLcC",
+      "role": "DEX_POOL_AUTHORITY",
+      "label": "Meteora Pool Authority",
+      "confidence": 1,
+      "evidence": {
+        "status": "VERIFIED_PROTOCOL_INFRASTRUCTURE_LABEL_PLUS_EXACT_MCAT_POOL_FORENSIC_CASE",
+        "sources": [
+          "Solscan public account label: Meteora Pool Authority",
+          "MCAT exact-pair holder forensic review 2026-09-23"
+        ],
+        "truth_note": "Exclude only this exact Solana authority from beneficial-owner whale concentration. Its balances remain tracked as DEX liquidity infrastructure and must not be interpreted as one private whale. Unknown Meteora-like or unlabeled addresses remain counted fail-closed."
       }
     }
   ]
