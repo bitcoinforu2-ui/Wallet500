@@ -767,6 +767,87 @@ def main() -> None:
     assert trio_buy["recommended_action"] == "BUY"
     assert trio_buy["alert"] is True
 
+    # Regression: a fresh Gate listing must remain actionable even when Gate's
+    # standard 24h percentage/rank does not match the app's listing-reference move.
+    # We trust executable order-book quality + current intelligence, not the headline.
+    new_target = {
+        "candidate_type": "CEX_MARKET_DISCOVERY",
+        "symbol": "NEWX",
+        "exchange": "gate",
+        "currency_pair": "NEWX_USDT",
+        "execution_identity_scope": "EXACT_CEX_MARKET",
+        "identity_key": "cex:gate:NEWX_USDT",
+        "new_listing_fast_lane": True,
+        "new_listing_buy_start": int((t2 - timedelta(hours=2)).timestamp()),
+        "gate_st_tag": False,
+    }
+    new_key = gate.identity_key(new_target)
+    new_market = {
+        "identity_key": new_key,
+        "price": 0.0105,
+        "liquidity": 0,
+        "volume_h1": 0,
+        "buys_h1": 0,
+        "sells_h1": 0,
+        "spread_pct": 0.30,
+        "observed_at": t2.isoformat(),
+        "cex_quote_volume_24h_usd": 250000,
+        "cex_relative_volume_multiple": 1.2,
+        "positive_gainer_rank": None,
+        "cex_led_revival": True,
+        "cex_execution_verified": True,
+        "cex_execution_scope": "EXACT_CEX_MARKET",
+        "cex_orderbook_spread_pct": 0.30,
+        "cex_depth_1pct_usd": 15000,
+        "cex_bid_ask_depth_ratio": 1.35,
+    }
+    new_obs = {
+        "identity_key": new_key,
+        "market_verified": True,
+        "_report_age_seconds": 0,
+        "intelligence": {
+            "status": "CURRENT",
+            "score": 0,
+            "families": 1,
+            "current_evidence_count": 3,
+            "evidence_age_minutes": 0.2,
+            "hard_risks": [],
+            "family_scores": {"market_microstructure": 8, "holder_network": 0, "wallet_flow": 0},
+        },
+    }
+    new_decision, _ = gate.evaluate(
+        new_target,
+        new_market,
+        new_obs,
+        {
+            "last_price": 0.0100,
+            "last_market_observed_at": (t2 - timedelta(minutes=5)).isoformat(),
+            "watch_low_price": 0.0095,
+        },
+        POLICY,
+        now=t2,
+    )
+    assert any(x.startswith("CEX_NEW_LISTING_FAST_PATH") for x in new_decision["proof"])
+    assert "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET" not in new_decision["blockers"]
+    assert "LIQUIDITY_BELOW_FINAL_BUY_FLOOR" not in new_decision["blockers"]
+    assert new_decision["pre_buy"] is True
+
+    st_target = dict(new_target, gate_st_tag=True)
+    st_decision, _ = gate.evaluate(
+        st_target,
+        new_market,
+        new_obs,
+        {
+            "last_price": 0.0100,
+            "last_market_observed_at": (t2 - timedelta(minutes=5)).isoformat(),
+            "watch_low_price": 0.0095,
+        },
+        POLICY,
+        now=t2,
+    )
+    assert "GATE_ST_REQUIRES_EXACT_ONCHAIN_IDENTITY" in st_decision["blockers"]
+    assert st_decision["recommended_action"] == "WAIT"
+
     # R2-like hybrid continuation: strong exact DEX execution + CEX shock/rank
     # can override a slightly sub-threshold buy/sell ratio and shallow rebound.
     r2_target = dict(mgt_target)
