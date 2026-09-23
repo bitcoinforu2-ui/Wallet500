@@ -25,8 +25,8 @@ GATE = "https://api.gateio.ws/api/v4"
 UA = "Wallet500-SpotDiscovery/1.1-EvidenceRecovery"
 COINGECKO = "https://api.coingecko.com/api/v3"
 IDENTITY_RECOVERY_MAX_PRICE_DIVERGENCE_PCT = 20.0
-IDENTITY_RESOLUTION_BUDGET = 30
-IDENTITY_RESOLUTION_WORKERS = 8
+IDENTITY_RESOLUTION_BUDGET = 60
+IDENTITY_RESOLUTION_WORKERS = 12
 # Discovery is latency-critical. Expensive CoinGecko/platform recovery belongs to
 # the asynchronous CEX identity lane, not the critical discovery -> market-watch path.
 BULK_IDENTITY_EXPENSIVE_RECOVERY = False
@@ -613,10 +613,8 @@ def run() -> dict:
             continue
         if p.get("trade_status") not in (None, "tradable"):
             continue
-        if str(p.get("type") or "normal").lower() != "normal":
-            continue
-        if bool(p.get("st_tag")):
-            continue
+        pair_type = str(p.get("type") or "normal").lower()
+        st_tag = bool(p.get("st_tag"))
         if is_leveraged(base, t):
             ignored_leveraged.append(pair_id)
             continue
@@ -645,7 +643,9 @@ def run() -> dict:
             "high_24h": num(t.get("high_24h")),
             "low_24h": num(t.get("low_24h")),
             "buy_start": buy_start or None,
-            "gate_pair_type": str(p.get("type") or "normal"),
+            "gate_pair_type": pair_type,
+            "gate_st_tag": st_tag,
+            "gate_special_surface": bool(pair_type != "normal" or st_tag),
             "leveraged": False,
         })
 
@@ -675,6 +675,8 @@ def run() -> dict:
         if row["currency_pair"] in seen:
             continue
         if row.get("buy_start") and int(row["buy_start"]) >= recent_cutoff:
+            row = dict(row)
+            row["new_listing_fast_lane"] = True
             selected.append(row)
             seen.add(row["currency_pair"])
 
@@ -755,6 +757,7 @@ def run() -> dict:
     selected.sort(
         key=lambda r: (
             0 if r["currency_pair"] in configured_watch else 1,
+            0 if r.get("new_listing_fast_lane") else 1,
             0 if r.get("forced_hot_watch") else 1,
             rank.get(r["currency_pair"], 999999),
             -float(r.get("discovery_momentum_change_pct") or r.get("change_24h_pct") or 0),
@@ -885,6 +888,8 @@ def run() -> dict:
             "persist_exact_identity_across_resolution_budget": True,
             "new_listing_window_days": 14,
             "identity_resolution_budget": resolution_budget,
+        "recent_listing_priority_enabled": True,
+        "special_gate_surfaces_observed_research_first": True,
             "identity_resolution_workers": min(IDENTITY_RESOLUTION_WORKERS, max(1, len(identity_results))),
             "identity_resolution_concurrent": True,
             "configured_cex_research_watch_pairs": sorted(configured_watch),
