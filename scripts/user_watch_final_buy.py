@@ -1512,6 +1512,12 @@ def targeted_risk_event(
         or cooled_new_signature
     )
 
+    confidence = (
+        "HIGH"
+        if severe or (len(evidence_groups) >= 3 and risk_score >= 3.0)
+        else "MEDIUM"
+    )
+
     return {
         "active": True,
         "event": event_name,
@@ -1519,6 +1525,10 @@ def targeted_risk_event(
         "alert": should_alert,
         "signature": signature,
         "reasons": list(dict.fromkeys(reasons)),
+        "evidence_groups": sorted(evidence_groups),
+        "evidence_group_count": len(evidence_groups),
+        "risk_score": round(risk_score, 2),
+        "confidence": confidence,
         "price_usd": price,
         "scan_price_change_pct": round(scan_change, 4),
         "liquidity_usd": liquidity,
@@ -1527,14 +1537,46 @@ def targeted_risk_event(
             if liquidity_drop_pct is not None
             else None
         ),
+        "liquidity_floor_headroom_pct": (
+            round(floor_headroom_pct, 4)
+            if floor_headroom_pct is not None
+            else None
+        ),
         "volume_h1_usd": volume_h1,
+        "total_volume_multiple": (
+            round(total_volume_multiple, 4)
+            if total_volume_multiple is not None
+            else None
+        ),
+        "buys_h1": buys,
+        "sells_h1": sells,
         "buy_sell_ratio": round(ratio, 4),
         "previous_buy_sell_ratio": (
             round(prev_ratio, 4) if prev_ratio is not None else None
         ),
+        "sell_count_multiple": (
+            round(sell_count_multiple, 4)
+            if sell_count_multiple is not None
+            else None
+        ),
+        "buy_count_change_pct": (
+            round(buy_count_change_pct, 4)
+            if buy_count_change_pct is not None
+            else None
+        ),
+        "flow_deterioration_pct": (
+            round(flow_deterioration, 4)
+            if flow_deterioration is not None
+            else None
+        ),
         "crossed_down_levels": sorted(set(crossed_levels), reverse=True),
         "cooldown_seconds": cooldown_seconds,
         "manual_decision_only": True,
+        "sensor_semantics": {
+            "total_volume_expansion": "INFERRED_BEARISH_WHEN_PRICE_DOWN_AND_FLOW_SELL_DOMINANT",
+            "sell_count_acceleration": "DIRECT_TRANSACTION_COUNT_CHANGE_WHEN_PRIOR_COUNTS_AVAILABLE",
+            "sell_notional_usd": "NOT_AVAILABLE_FROM_CURRENT_EXACT_PAIR_FEED",
+        },
     }
 
 
@@ -1549,11 +1591,13 @@ def targeted_risk_message(target: dict, decision: dict, event: dict) -> str:
     action = (
         "הידרדרות מהותית זוהתה. יש לבחון הגנת פוזיציה / צמצום או יציאה מיידית לפי מצבך."
         if severe
-        else "המומנטום נחלש. יש לבחון צמצום סיכון לפני שהמהלך מחמיר."
+        else "המומנטום נחלש במספר חיישנים בלתי תלויים. יש לבחון צמצום סיכון לפני שהמהלך מחמיר."
     )
+    groups = ", ".join(event.get("evidence_groups") or []) or "n/a"
     lines = [
         title,
         action,
+        f"Risk confidence: {event.get('confidence') or 'n/a'} | score {float(event.get('risk_score') or 0):.2f} | evidence: {groups}",
         f"Price: ${float(event.get('price_usd') or 0):.10f}",
         f"Scan move: {float(event.get('scan_price_change_pct') or 0):+.2f}%",
         (
@@ -1570,12 +1614,22 @@ def targeted_risk_message(target: dict, decision: dict, event: dict) -> str:
             f"({float(event.get('buy_sell_ratio') or 0):.2f}x)"
         ),
         "Signals: " + " | ".join(event.get("reasons") or []),
+    ]
+    if any(
+        str(x).startswith("BEARISH_TOTAL_VOLUME_EXPANSION_")
+        for x in (event.get("reasons") or [])
+    ):
+        lines.append(
+            "Volume note: total 1H volume expanded while price/flow were bearish; "
+            "this is inferred bearish pressure, not measured sell-notional USD."
+        )
+    lines.extend([
         "התראה זו ייעודית למטבע שביקשת לעקוב אחריו; אינה התראת RESEARCH כללית.",
         "Manual decision only. No automatic sell.",
         f"CA: {target.get('contract')}",
         f"Pair: {target.get('pair')}",
         str(target.get("dex_url") or ""),
-    ]
+    ])
     return "\n".join(lines)
 
 
