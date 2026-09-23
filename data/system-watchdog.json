@@ -1,27 +1,46 @@
 {
   "version": 1,
   "mode": "INDEPENDENT_OBSERVABILITY_NO_TRADING_POLICY_EFFECT",
-  "updated_at": "2026-09-23T13:10:50.012100+00:00",
-  "overall": "DEGRADED",
-  "incident_count": 3,
-  "critical_count": 0,
-  "high_count": 3,
-  "new_notifications": [],
-  "recovered_codes": [],
-  "real_alert_transitions_entered": [
-    "bsc:0xd55c9fb62e176a8eb6968f32958fefdd0962727e:0xe4af4797afbf733591b6e0c4ea3566ad3979ca94"
+  "updated_at": "2026-09-23T14:09:59.547038+00:00",
+  "overall": "CRITICAL",
+  "incident_count": 5,
+  "critical_count": 1,
+  "high_count": 4,
+  "new_notifications": [
+    {
+      "code": "REAL_ALERT_FEED_STALE",
+      "severity": "CRITICAL",
+      "detail": "real-alerts.json age=3195.5s max=2700s"
+    },
+    {
+      "code": "SCHEDULER_TELEMETRY_STALE",
+      "severity": "HIGH",
+      "detail": "scheduler-health.json age=3195.1s max=2700s"
+    },
+    {
+      "code": "SYSTEM_HEALTH_STALE",
+      "severity": "HIGH",
+      "detail": "system-health.json age=3195.2s max=2700s"
+    }
   ],
+  "recovered_codes": [],
+  "real_alert_transitions_entered": [],
   "buy_only_policy_active": true,
   "final_buy_keys_expected": [],
   "pre_buy_delivery_gaps": [],
   "incidents": [
     {
+      "code": "REAL_ALERT_FEED_STALE",
+      "severity": "CRITICAL",
+      "detail": "real-alerts.json age=3195.5s max=2700s"
+    },
+    {
       "code": "GITHUB_ACTIONS_CAPACITY_PRESSURE",
       "severity": "HIGH",
-      "detail": "queued=22, in_progress=13, runs_today=5869",
+      "detail": "queued=22, in_progress=12, runs_today=6326",
       "queued": 22,
-      "in_progress": 13,
-      "runs_today": 5869,
+      "in_progress": 12,
+      "runs_today": 6326,
       "thresholds": {
         "queued": 8,
         "in_progress": 12,
@@ -31,88 +50,90 @@
     {
       "code": "GITHUB_ACTIONS_FAILURE_PRESSURE",
       "severity": "HIGH",
-      "detail": "workflow failures today=457",
-      "failures_today": 457,
+      "detail": "workflow failures today=547",
+      "failures_today": 547,
       "threshold": 20
     },
     {
-      "code": "REVIVAL_NEWER_RUN_FAILED_TO_PUBLISH",
+      "code": "SCHEDULER_TELEMETRY_STALE",
       "severity": "HIGH",
-      "detail": "latest Revival run failed after the currently published snapshot was generated",
-      "run_id": 35863528072,
-      "run_updated_at": "2026-09-23T12:57:24Z",
-      "published_generated_at": "2026-09-23T12:39:38.593472+00:00"
+      "detail": "scheduler-health.json age=3195.1s max=2700s"
+    },
+    {
+      "code": "SYSTEM_HEALTH_STALE",
+      "severity": "HIGH",
+      "detail": "system-health.json age=3195.2s max=2700s"
     }
   ],
   "checks": {
     "real-alerts.json": {
-      "timestamp": "2026-09-23T13:02:13.231679+00:00",
-      "age_seconds": 516.8,
+      "timestamp": "2026-09-23T13:16:44.022849+00:00",
+      "age_seconds": 3195.5,
       "max_age_seconds": 2700,
-      "ok": true
+      "ok": false
     },
     "system-health.json": {
-      "timestamp": "2026-09-23T13:02:13.715305+00:00",
-      "age_seconds": 516.3,
+      "timestamp": "2026-09-23T13:16:44.391210+00:00",
+      "age_seconds": 3195.2,
       "max_age_seconds": 2700,
-      "ok": true
+      "ok": false
     },
     "scheduler-health.json": {
-      "timestamp": "2026-09-23T13:02:13.771309+00:00",
-      "age_seconds": 516.2,
+      "timestamp": "2026-09-23T13:16:44.431280+00:00",
+      "age_seconds": 3195.1,
       "max_age_seconds": 2700,
-      "ok": true
+      "ok": false
     },
     "telegram-alert-report.json": {
-      "timestamp": "2026-09-23T13:09:46.762538+00:00",
-      "age_seconds": 63.2,
+      "timestamp": "2026-09-23T13:26:58.985824+00:00",
+      "age_seconds": 2580.6,
       "max_age_seconds": 3600,
       "ok": true
     },
     "real-alert-10usd-summary.json": {
-      "timestamp": "2026-09-23T13:09:52.056454+00:00",
-      "age_seconds": 58.0,
+      "timestamp": "2026-09-23T13:52:31.488216+00:00",
+      "age_seconds": 1048.1,
       "max_age_seconds": 3600,
       "ok": true
     },
     "github_live_scan": {
-      "latest_status": "in_progress",
-      "latest_conclusion": null,
+      "latest_status": "completed",
+      "latest_conclusion": "success",
       "latest_event": "workflow_dispatch",
-      "latest_created_at": "2026-09-23T13:07:34Z",
-      "latest_updated_at": "2026-09-23T13:07:38Z",
-      "latest_run_id": 35864924722,
-      "last_success_at": "2026-09-23T13:02:25Z",
-      "last_success_run_id": 35863905147,
+      "latest_created_at": "2026-09-23T14:04:49Z",
+      "latest_updated_at": "2026-09-23T14:08:56Z",
+      "latest_run_id": 35871555578,
+      "last_success_at": "2026-09-23T14:08:56Z",
+      "last_success_run_id": 35871555578,
       "cancellations_since_success": 0,
       "latest_cancelled_run_id": null,
       "latest_hard_failure_conclusion": null,
       "latest_hard_failure_run_id": null,
-      "active_run_count": 1,
+      "active_run_count": 0,
       "ignored_non_operational_run_count": 0
     },
     "public_surface": {
       "dashboard_ok": true,
       "real_feed_ok": true,
-      "real_feed_generated_at": "2026-09-23T12:51:09.870322+00:00"
+      "real_feed_generated_at": "2026-09-23T13:16:44.022849+00:00"
     },
     "github_actions_capacity": {
       "queued": 22,
-      "in_progress": 13,
-      "runs_today": 5869,
-      "failures_today": 457,
+      "in_progress": 12,
+      "runs_today": 6326,
+      "failures_today": 547,
       "ok": false
     },
     "revival_publish_freshness": {
-      "latest_run_id": 35863528072,
+      "latest_run_id": 35871750924,
       "latest_status": "completed",
-      "latest_conclusion": "failure",
-      "latest_updated_at": "2026-09-23T12:57:24Z",
-      "published_generated_at": "2026-09-23T12:39:38.593472+00:00",
-      "ok": false
+      "latest_conclusion": "success",
+      "latest_updated_at": "2026-09-23T14:10:03Z",
+      "published_generated_at": "2026-09-23T13:20:27.154326+00:00",
+      "ok": true
     },
     "candidate_starvation": {
-      "zero_active_started_at": "2026-09-23T13:10:52.415146+00:00",
+      "zero_active_started_at": "2026-09-23T14:10:02.469605+00:00",
       "zero_active_age_seconds": 0.0,
       "active_qualified": 0,
       "market_scan": 384,
@@ -141,7 +162,7 @@
     "attempted": false,
     "sent": false,
     "reason": "WATCHDOG_USER_TELEGRAM_DISABLED_BY_NEAR_BUY_AND_BUY_ONLY_POLICY",
-    "suppressed_technical_notification_count": 0
+    "suppressed_technical_notification_count": 3
   },
-  "operational_guard_updated_at": "2026-09-23T13:10:52.415146+00:00"
+  "operational_guard_updated_at": "2026-09-23T14:10:02.469605+00:00"
 }
