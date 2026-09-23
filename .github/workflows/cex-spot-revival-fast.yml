@@ -9,6 +9,8 @@ on:
     paths:
       - '.github/workflows/cex-spot-revival-fast.yml'
       - 'src/wallet500/cex_spot_revival.py'
+      - 'src/wallet500/cex_revival.py'
+      - 'src/wallet500/cex_fast_promotion.py'
       - 'src/wallet500/cex_spot_identity.py'
       - 'src/wallet500/cex_identity.py'
       - 'src/wallet500/cex_identity_preflight.py'
@@ -20,6 +22,9 @@ on:
       - 'tests/test_cex_identity.py'
       - 'tests/test_cex_spot_identity.py'
       - 'tests/test_cex_spot_revival.py'
+      - 'tests/test_cex_revival_coherence.py'
+      - 'tests/test_cex_identity_priority_capacity.py'
+      - 'tests/test_cex_fast_promotion.py'
       - 'tests/test_cex_early_revival_pending.py'
       - 'tests/test_cex_identity_certainty_1_5.py'
       - 'tests/test_spot_market_discovery_native_identity.py'
@@ -29,7 +34,7 @@ permissions:
 
 concurrency:
   group: wallet500-cex-spot-fast-lane
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   refresh:
@@ -48,6 +53,9 @@ jobs:
         run: >-
           python -m pytest -q
           tests/test_cex_spot_revival.py
+          tests/test_cex_revival_coherence.py
+          tests/test_cex_identity_priority_capacity.py
+          tests/test_cex_fast_promotion.py
           tests/test_cex_early_revival_pending.py
           tests/test_cex_spot_identity.py
           tests/test_cex_identity_certainty_1_5.py
@@ -66,16 +74,22 @@ jobs:
           python - <<'PY'
           from datetime import datetime, timezone
           from pathlib import Path
+          from wallet500.cex_revival import run_cex_revival
           from wallet500.cex_spot_revival import run_cex_spot_revival
           from wallet500.cex_spot_identity import run as resolve_spot_identity
           from wallet500.cex_early_revival_pending import run as persist_early_revival
 
           now=datetime.now(timezone.utc).isoformat()
+          derivatives=run_cex_revival(Path('data'), now)
           spot=run_cex_spot_revival(Path('data'), now)
           ident=resolve_spot_identity(Path('data'))
           pending=persist_early_revival(Path('data'))
           print('CEX_SPOT_FAST', {
               'generated_at': spot.get('generated_at'),
+              'derivatives_generated_at': derivatives.get('generated_at'),
+              'derivatives_healthy_sources': derivatives.get('healthy_sources'),
+              'derivatives_watch_count': derivatives.get('watch_count'),
+              'derivatives_alerts_count': derivatives.get('alerts_count'),
               'healthy_sources': spot.get('healthy_sources'),
               'symbols_seen': spot.get('symbols_seen'),
               'watch_count': spot.get('watch_count'),
@@ -95,6 +109,7 @@ jobs:
           from datetime import datetime, timezone
           from pathlib import Path
 
+          derivatives=json.loads(Path('data/cex-revival-radar.json').read_text())
           spot=json.loads(Path('data/cex-spot-revival-radar.json').read_text())
           learning=json.loads(Path('data/cex-spot-learning.json').read_text())
           ident=json.loads(Path('data/cex-spot-identity-radar.json').read_text())
@@ -102,6 +117,7 @@ jobs:
           def age(ts):
               s=str(ts or '').replace('Z','+00:00')
               return (datetime.now(timezone.utc)-datetime.fromisoformat(s)).total_seconds()
+          if age(derivatives.get('generated_at')) > 600: raise SystemExit('CEX_DERIVATIVES_OUTPUT_STALE')
           if age(spot.get('generated_at')) > 600: raise SystemExit('CEX_SPOT_OUTPUT_STALE')
           if age(learning.get('updated_at')) > 600: raise SystemExit('CEX_SPOT_LEARNING_STALE')
           if age(ident.get('generated_at')) > 600: raise SystemExit('CEX_SPOT_IDENTITY_OUTPUT_STALE')
@@ -121,6 +137,8 @@ jobs:
           truth=ident.get('truth_contract') or {}
           if truth.get('symbol_only_never_actionable') is not True: raise SystemExit('SYMBOL_ONLY_GUARD_MISSING')
           if truth.get('cex_only_never_real_alert') is not True: raise SystemExit('CEX_ONLY_REAL_ALERT_GUARD_MISSING')
+          if truth.get('current_derivatives_mover_identity_priority_only') is not True: raise SystemExit('IDENTITY_DERIVATIVES_PRIORITY_TRUTH_MISSING')
+          if truth.get('current_derivatives_mover_never_satisfies_identity_or_actionability') is not True: raise SystemExit('IDENTITY_DERIVATIVES_ACTIONABILITY_LEAK')
           if truth.get('exact_dex_pair_required_before_registry_learning') is not True: raise SystemExit('EXACT_PAIR_GUARD_MISSING')
           if truth.get('persistent_pending_never_satisfies_identity') is not True: raise SystemExit('PERSISTENT_PENDING_IDENTITY_LEAK')
           if truth.get('priority_uses_only_preexisting_evidence') is not True: raise SystemExit('IDENTITY_PRIORITY_HINDSIGHT_RISK')
@@ -184,6 +202,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           base="$GITHUB_SHA"
           targets=(
+            data/cex-revival-radar.json
+            data/cex-learning.json
+            data/cex-state.json
+            data/cex-state.json.gz
             data/cex-spot-revival-radar.json
             data/cex-spot-learning.json
             data/cex-spot-identity-radar.json
