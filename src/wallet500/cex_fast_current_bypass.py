@@ -28,15 +28,16 @@ DATA = Path("data")
 RADAR_FILE = "cex-spot-revival-radar.json"
 STATE_FILE = "cex-fast-current-bypass-state.json"
 IDENTITY_FILE = "cex-spot-identity-radar.json"
-MAX_STRICT_RESOLVES_PER_RUN = 24
-MAX_LIVE_LEADERBOARD_STRICT_RESOLVES_PER_RUN = 12
-MAX_PREWAVE_STRICT_RESOLVES_PER_RUN = 8
+MAX_STRICT_RESOLVES_PER_RUN = 36
+MAX_LIVE_LEADERBOARD_STRICT_RESOLVES_PER_RUN = 20
+MAX_PREWAVE_STRICT_RESOLVES_PER_RUN = 10
 MAX_DELIVER_PER_RUN = 6
 MIN_PRIORITY_SCORE = 35
 LIVE_LEADERBOARD_MAX_RANK = 10
 LIVE_LEADERBOARD_MIN_CHANGE_PCT = 8.0
 LIVE_LEADERBOARD_MIN_TURNOVER_USD = 20_000.0
-MAX_PRE_RESOLVE_24H_CHANGE_PCT = 45.0
+# Identity work must not be blocked just because price is already extended.
+# Anti-chase belongs exclusively to the downstream action gate.
 
 
 def _milestone_score(row: dict) -> int:
@@ -62,7 +63,7 @@ def _live_leaderboard_identity_candidate(row: dict) -> bool:
     change = _f(row.get("change_24h_max_pct"))
     if rank < 1 or rank > LIVE_LEADERBOARD_MAX_RANK:
         return False
-    if change < LIVE_LEADERBOARD_MIN_CHANGE_PCT or change > MAX_PRE_RESOLVE_24H_CHANGE_PCT:
+    if change < LIVE_LEADERBOARD_MIN_CHANGE_PCT:
         return False
     markets = [
         x for x in (row.get("markets") or [])
@@ -127,8 +128,6 @@ def _priority_candidates(radar: dict) -> list[dict]:
         prewave_strength = _prewave_shadow_strength(row)
         change = _f(row.get("change_24h_max_pct"))
         if score < MIN_PRIORITY_SCORE and not prewave and not live_leaderboard:
-            continue
-        if change > MAX_PRE_RESOLVE_24H_CHANGE_PCT:
             continue
         markets = [x for x in (row.get("markets") or []) if isinstance(x, dict) and _f(x.get("price")) > 0]
         if not markets:
@@ -434,6 +433,7 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
         "live_leaderboard_min_turnover_usd": LIVE_LEADERBOARD_MIN_TURNOVER_USD,
         "live_leaderboard_priority_enabled": True,
         "live_leaderboard_priority_is_identity_only": True,
+        "price_extension_never_blocks_identity_resolution": True,
         "prewave_strict_resolve_reserved_cap": MAX_PREWAVE_STRICT_RESOLVES_PER_RUN,
         "prewave_shadow_priority_enabled": True,
         "prewave_shadow_priority_is_identity_only": True,
