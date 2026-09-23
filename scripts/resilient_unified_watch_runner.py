@@ -236,6 +236,11 @@ def _refresh_deep_intelligence(last_alert, live, fusion, triggers, base_reasons,
         t.get("dynamic_buy_candidate")
         or str(t.get("candidate_type") or "").upper() == "BUY_ZONE"
     ) and bool(t.get("deep_investigation", True))
+    force_targeted_deep_watch = bool(
+        t.get("deep_investigation") is True
+        and t.get("targeted_telegram_watch") is True
+        and str(t.get("close_watch") or "").upper() == "HIGHEST"
+    )
 
     status = str(fusion.get("status") or "").upper()
     current_evidence = int(fusion.get("current_evidence_count") or 0)
@@ -261,6 +266,10 @@ def _refresh_deep_intelligence(last_alert, live, fusion, triggers, base_reasons,
             live, triggers, base_reasons, policy
         )
     )
+    if force_targeted_deep_watch:
+        qualification = list(
+            dict.fromkeys([*qualification, "TARGETED_HIGHEST_DEEP_WATCH"])
+        )
     if proactive_hot_recovery:
         missing = []
         if status != "CURRENT":
@@ -279,7 +288,11 @@ def _refresh_deep_intelligence(last_alert, live, fusion, triggers, base_reasons,
         return False
 
     max_targets = max(1, int(policy.get("deep_investigation_max_targets_per_cycle", 8)))
-    if len(_DEEP_DONE) >= max_targets and not force_buy_watch:
+    if (
+        len(_DEEP_DONE) >= max_targets
+        and not force_buy_watch
+        and not force_targeted_deep_watch
+    ):
         print("DEEP_INVESTIGATION_CAP_REACHED", identity_key, qualification)
         return False
 
@@ -294,6 +307,7 @@ def _refresh_deep_intelligence(last_alert, live, fusion, triggers, base_reasons,
             previous_scan,
             triggers,
             base_reasons,
+            qualification_override=qualification,
         )
         if not result:
             return False
@@ -505,8 +519,9 @@ def main():
     global _TARGETS_BY_IDENTITY, _PREVIOUS_STATE
     # Give the previous collector stage a short quiet period, then use a
     # process-shared per-host limiter/cooldown. Exact identity/spread checks in
-    # unified_watch_engine remain fail-closed. Positive material market changes
-    # are upgraded into a targeted deep-intelligence refresh before alert gating.
+    # unified_watch_engine remain fail-closed. Positive material changes, proactive
+    # evidence recovery, and explicitly targeted HIGHEST deep watches are upgraded
+    # into a deep-intelligence refresh before alert gating.
     time.sleep(4)
     engine.http_json = resilient_http_json
     engine.load_intelligence = identity_aware_load_intelligence
