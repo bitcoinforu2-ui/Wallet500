@@ -145,6 +145,106 @@ def main() -> None:
     assert unverified["recommended_action"] == "WAIT"
     assert "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN" in unverified["blockers"]
 
+    # MCAT regression: a user-requested targeted Telegram watch must warn on
+    # early price weakness + buy-flow deterioration before a larger breakdown.
+    targeted = dict(TARGET)
+    targeted.update({
+        "targeted_telegram_watch": True,
+        "targeted_telegram_events": ["RISK_WARNING", "BREAKDOWN", "PRE_BUY", "FINAL_BUY"],
+        "down_levels": [0.00018, 0.00017, 0.00016, 0.00014],
+        "liquidity_drop_pct": 20,
+        "targeted_risk_policy": {
+            "price_drop_warning_pct": 3.0,
+            "price_drop_breakdown_pct": 8.0,
+            "flow_warning_ratio": 1.2,
+            "liquidity_drop_breakdown_pct": 20.0,
+            "realert_additional_price_drop_pct": 8.0,
+            "cooldown_seconds": 1800,
+        },
+    })
+    warn_time = NOW + timedelta(hours=1)
+    warn_market = market(
+        0.00018443465403139244,
+        warn_time,
+        buys=9,
+        sells=10,
+    )
+    warn_market.update({
+        "liquidity": 56743.1109,
+        "volume_h1": 1476.9343692398,
+    })
+    warn_prior = {
+        "last_price": 0.00019153666430998714,
+        "last_liquidity": 57759.2301,
+        "last_volume_h1": 2263.11333281,
+        "last_buy_sell_ratio": 1.35,
+        "targeted_risk_active": False,
+    }
+    warn_decision, warn_state = gate.evaluate(
+        targeted,
+        warn_market,
+        observed(),
+        warn_prior,
+        POLICY,
+        now=warn_time,
+    )
+    warning = gate.targeted_risk_event(
+        targeted, warn_decision, warn_prior, POLICY, warn_time
+    )
+    assert warning is not None
+    assert warning["severity"] == "RISK_WARNING"
+    assert warning["alert"] is True
+    assert any(
+        reason.startswith("PRICE_WEAKNESS_WITH_FLOW_FAILURE")
+        or reason.startswith("BUY_FLOW_REVERSAL")
+        for reason in warning["reasons"]
+    )
+    assert "SELL-RISK" in gate.targeted_risk_message(targeted, warn_decision, warning)
+    assert warn_state["last_buy_sell_ratio"] < 1.2
+
+    # A later MCAT-style flush escalates immediately to BREAKDOWN even if the
+    # warning cooldown has not expired.
+    breakdown_time = warn_time + timedelta(minutes=15)
+    breakdown_market = market(
+        0.0001349,
+        breakdown_time,
+        buys=49,
+        sells=29,
+    )
+    breakdown_market.update({
+        "liquidity": 48417.73,
+        "volume_h1": 9440.09,
+    })
+    breakdown_prior = {
+        **warn_state,
+        "last_targeted_risk_alert_at": warn_time.isoformat(),
+        "last_targeted_risk_alert_price": warning["price_usd"],
+        "last_targeted_risk_signature": warning["signature"],
+        "last_targeted_risk_severity": warning["severity"],
+        "targeted_risk_active": True,
+    }
+    breakdown_decision, _ = gate.evaluate(
+        targeted,
+        breakdown_market,
+        observed(),
+        breakdown_prior,
+        POLICY,
+        now=breakdown_time,
+    )
+    breakdown = gate.targeted_risk_event(
+        targeted, breakdown_decision, breakdown_prior, POLICY, breakdown_time
+    )
+    assert breakdown is not None
+    assert breakdown["severity"] == "BREAKDOWN"
+    assert breakdown["alert"] is True
+    assert 0.00018 in breakdown["crossed_down_levels"]
+    assert any(x.startswith("LIQUIDITY_FLOOR_BREACH") for x in breakdown["reasons"])
+
+    # Generic watched tokens keep the global no-spam rule.
+    assert gate.targeted_risk_event(
+        TARGET, warn_decision, warn_prior, POLICY, warn_time
+    ) is None
+
     bootstrap = {
         "candidate_type": "NEW_CHAIN_BOOTSTRAP",
         "symbol": "ARCUS",
