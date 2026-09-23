@@ -473,3 +473,221 @@ def test_cex_only_gate_mover_recovers_exact_identity_and_sibling_pools(tmp_path,
         and x.get("currency_pair") == "AKE_USDT"
     ]
     assert len(venue_only) == 1
+
+
+def _empty_bridge_paths(tmp_path):
+    paths = {
+        "SPOT": tmp_path / "spot.json",
+        "CEX_SPOT_IDENTITY": tmp_path / "cex_identity.json",
+        "ALPHA": tmp_path / "alpha.json",
+        "BUY_REGISTRY": tmp_path / "buy.json",
+        "BOOTSTRAP": tmp_path / "bootstrap.json",
+        "GENESIS": tmp_path / "genesis.json",
+        "OUT": tmp_path / "out.json",
+        "EVENTS": tmp_path / "events.json",
+    }
+    paths["SPOT"].write_text('{"candidates":[]}', encoding="utf-8")
+    paths["CEX_SPOT_IDENTITY"].write_text('{"candidates":[]}', encoding="utf-8")
+    paths["ALPHA"].write_text('{"candidates":[]}', encoding="utf-8")
+    paths["BUY_REGISTRY"].write_text('{"entries":{}}', encoding="utf-8")
+    paths["BOOTSTRAP"].write_text('{"candidates":[]}', encoding="utf-8")
+    paths["EVENTS"].write_text('{"version":3,"events":[]}', encoding="utf-8")
+    return paths
+
+
+def test_fresh_genesis_prebreakout_enters_unified_dynamic_lane(tmp_path, monkeypatch):
+    paths = _empty_bridge_paths(tmp_path)
+    paths["GENESIS"].write_text(
+        json.dumps({
+            "generated_at": "2026-09-22T12:00:00+00:00",
+            "candidates": [{
+                "chain": "solana",
+                "token": "GenesisMint111111111111111111111111111111",
+                "pair_address": "GenesisPair111111111111111111111111111111",
+                "symbol": "GEN",
+                "url": "https://dexscreener.com/solana/GenesisPair",
+                "price_usd": 0.001,
+                "liquidity_usd": 85000,
+                "pair_created_at": "2026-09-22T10:00:00+00:00",
+                "status": "WATCH",
+                "age_band": "PRIME_GENESIS_WINDOW",
+                "extension_band": "NORMAL",
+                "safety": {"hard_blocks": [], "research_only_reasons": ["UNKNOWN_LP_INTEGRITY"]},
+                "genesis_score": 69,
+                "shadow_score": 81,
+                "prebreakout": {
+                    "score": 78,
+                    "coverage_pct": 63,
+                    "priority_ready": True,
+                    "signals": ["PRESSURE_BEFORE_PRICE_EXTENSION", "LIQUIDITY_COMMITMENT"],
+                    "risks": [],
+                },
+            }],
+        }),
+        encoding="utf-8",
+    )
+    for name, path in paths.items():
+        monkeypatch.setattr(bridge, name, path)
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 9, 22, 12, 20, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(bridge, "datetime", FixedDatetime)
+    bridge.main()
+
+    result = json.loads(paths["OUT"].read_text(encoding="utf-8"))
+    assert result["counts"]["genesis_prebreakout"] == 1
+    assert result["counts"]["genesis_source_fresh"] is True
+    row = next(x for x in result["candidates"] if x.get("candidate_type") == "GENESIS_PREBREAKOUT")
+    assert row["genesis_final_buy_lane"] is True
+    assert row["telegram_policy"] == "FINAL_BUY_ONLY"
+    assert row["deep_investigation"] is True
+    assert row["prebreakout_score"] == 78
+
+    events = json.loads(paths["EVENTS"].read_text(encoding="utf-8"))
+    assert any(
+        e.get("canonical_event_id", "").startswith("genesis-prebreakout:")
+        for e in events["events"]
+    )
+
+
+def test_stale_genesis_prebreakout_fails_closed(tmp_path, monkeypatch):
+    paths = _empty_bridge_paths(tmp_path)
+    paths["GENESIS"].write_text(
+        json.dumps({
+            "generated_at": "2026-09-22T08:00:00+00:00",
+            "candidates": [{
+                "chain": "solana",
+                "token": "StaleGenesisMint111111111111111111111111111",
+                "pair_address": "StaleGenesisPair11111111111111111111111111",
+                "symbol": "OLDG",
+                "liquidity_usd": 100000,
+                "status": "WATCH",
+                "age_band": "PRIME_GENESIS_WINDOW",
+                "extension_band": "NORMAL",
+                "safety": {"hard_blocks": []},
+                "prebreakout": {
+                    "score": 90,
+                    "coverage_pct": 90,
+                    "priority_ready": True,
+                    "signals": ["PRESSURE_BEFORE_PRICE_EXTENSION", "LIQUIDITY_COMMITMENT"],
+                    "risks": [],
+                },
+            }],
+        }),
+        encoding="utf-8",
+    )
+    for name, path in paths.items():
+        monkeypatch.setattr(bridge, name, path)
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 9, 22, 12, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(bridge, "datetime", FixedDatetime)
+    bridge.main()
+
+    result = json.loads(paths["OUT"].read_text(encoding="utf-8"))
+    assert result["counts"]["genesis_prebreakout"] == 0
+    assert result["counts"]["genesis_source_fresh"] is False
+    assert result["counts"]["genesis_stale_excluded"] == 1
+
+
+def test_bundle_dominated_genesis_never_bridges():
+    row = {
+        "chain": "solana",
+        "token": "BundleMint111111111111111111111111111111",
+        "pair_address": "BundlePair111111111111111111111111111111",
+        "liquidity_usd": 90000,
+        "status": "WATCH",
+        "age_band": "PRIME_GENESIS_WINDOW",
+        "extension_band": "NORMAL",
+        "safety": {"hard_blocks": []},
+        "prebreakout": {
+            "score": 90,
+            "coverage_pct": 90,
+            "priority_ready": True,
+            "signals": ["PRESSURE_BEFORE_PRICE_EXTENSION", "LIQUIDITY_COMMITMENT"],
+            "risks": ["BUNDLE_DOMINATED_LAUNCH"],
+        },
+    }
+    assert bridge.genesis_prebreakout_candidate(row) is None
+
+
+def _prior_genesis_dynamic(observed_at):
+    return {
+        "candidate_type": "GENESIS_PREBREAKOUT",
+        "symbol": "KEEP",
+        "network": "solana",
+        "contract": "KeepMint1111111111111111111111111111111111",
+        "pair": "KeepPair11111111111111111111111111111111111",
+        "dex_liquidity_usd": 75000,
+        "genesis_final_buy_lane": True,
+        "exact_identity_required": True,
+        "exact_pair_required": True,
+        "telegram_policy": "FINAL_BUY_ONLY",
+        "prebreakout_score": 76,
+        "prebreakout_signals": ["PRESSURE_BEFORE_PRICE_EXTENSION", "LIQUIDITY_COMMITMENT"],
+        "prebreakout_risks": [],
+        "genesis_bridge_observed_at": observed_at,
+        "deep_investigation": True,
+        "full_intelligence": True,
+    }
+
+
+def test_genesis_prebreakout_survives_one_brief_discovery_dropout(tmp_path, monkeypatch):
+    paths = _empty_bridge_paths(tmp_path)
+    paths["GENESIS"].write_text(
+        '{"generated_at":"2026-09-22T12:15:00+00:00","candidates":[]}',
+        encoding="utf-8",
+    )
+    paths["OUT"].write_text(
+        json.dumps({"candidates": [_prior_genesis_dynamic("2026-09-22T12:00:00+00:00")]}),
+        encoding="utf-8",
+    )
+    for name, path in paths.items():
+        monkeypatch.setattr(bridge, name, path)
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 9, 22, 12, 20, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(bridge, "datetime", FixedDatetime)
+    bridge.main()
+
+    result = json.loads(paths["OUT"].read_text(encoding="utf-8"))
+    assert result["counts"]["genesis_retained"] == 1
+    kept = next(x for x in result["candidates"] if x.get("symbol") == "KEEP")
+    assert kept["genesis_retained"] is True
+    assert kept["genesis_retained_age_minutes"] == 20.0
+    assert kept["telegram_policy"] == "FINAL_BUY_ONLY"
+
+
+def test_genesis_prebreakout_dropout_retention_expires_fail_closed(tmp_path, monkeypatch):
+    paths = _empty_bridge_paths(tmp_path)
+    paths["GENESIS"].write_text(
+        '{"generated_at":"2026-09-22T12:30:00+00:00","candidates":[]}',
+        encoding="utf-8",
+    )
+    paths["OUT"].write_text(
+        json.dumps({"candidates": [_prior_genesis_dynamic("2026-09-22T11:59:00+00:00")]}),
+        encoding="utf-8",
+    )
+    for name, path in paths.items():
+        monkeypatch.setattr(bridge, name, path)
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 9, 22, 12, 31, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(bridge, "datetime", FixedDatetime)
+    bridge.main()
+
+    result = json.loads(paths["OUT"].read_text(encoding="utf-8"))
+    assert result["counts"]["genesis_retained"] == 0
+    assert not any(x.get("symbol") == "KEEP" for x in result["candidates"])

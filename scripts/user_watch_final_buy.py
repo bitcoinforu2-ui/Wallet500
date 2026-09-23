@@ -135,6 +135,17 @@ def eligible_targets(
             rows.append(row)
             continue
 
+        if ctype == "GENESIS_PREBREAKOUT":
+            if row.get("genesis_final_buy_lane") is not True:
+                continue
+            if str(row.get("telegram_policy") or "").upper() != "FINAL_BUY_ONLY":
+                continue
+            if row.get("exact_identity_required") is not True or row.get("exact_pair_required") is not True:
+                continue
+            seen.add(key)
+            rows.append(row)
+            continue
+
         if ctype not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"}:
             continue
         live = market_row(watch_state or {}, key)
@@ -1219,9 +1230,13 @@ def telegram_message(target: dict, decision: dict) -> str:
             "New Chain Bootstrap Radar candidate."
             if str(target.get("candidate_type") or "").upper() == "NEW_CHAIN_BOOTSTRAP"
             else (
+                "Genesis prebreakout candidate; early-priority evidence passed into the same strict FINAL BUY gates."
+                if str(target.get("candidate_type") or "").upper() == "GENESIS_PREBREAKOUT"
+                else (
                 "CEX +25% revalidation candidate; all FINAL BUY gates passed."
                 if target.get("quarter_wave_revalidation_lane") is True
                 else "Unified user watch candidate."
+                )
             )
         ),
         "Manual decision only. No automatic trade.",

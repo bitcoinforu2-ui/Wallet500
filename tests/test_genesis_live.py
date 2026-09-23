@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from wallet500.genesis_live import _mark_entry, _open_paper_entry, _shadow_ready, _shadow_score
+from wallet500.genesis_live import _deep_priority_score, _mark_entry, _open_paper_entry, _shadow_ready, _shadow_score
 from wallet500.genesis_radar import PAPER_ENTRY_USD, genesis_score
 
 
@@ -93,3 +93,39 @@ def test_no_shadow_paper_after_five_thousand_percent():
     shadow = _shadow_score(c, scored)
     assert scored["extension_band"] == "LATE_NO_CHASE"
     assert _shadow_ready(c, scored, shadow) is False
+
+
+def test_deep_scan_priority_prefers_early_flow_over_liquidity_only():
+    early = {
+        "liquidity_usd": 70_000,
+        "volume_h1": 140_000,
+        "buys_h1": 320,
+        "sells_h1": 120,
+        "pair_age_minutes": 120,
+        "price_change_h1": 14,
+        "independent_source_confirmations": 2,
+    }
+    large_but_idle = {
+        "liquidity_usd": 500_000,
+        "volume_h1": 20_000,
+        "buys_h1": 100,
+        "sells_h1": 100,
+        "pair_age_minutes": 700,
+        "price_change_h1": 2,
+        "independent_source_confirmations": 1,
+    }
+    assert _deep_priority_score(early) > _deep_priority_score(large_but_idle)
+
+
+def test_deep_scan_priority_penalizes_already_exploded_hour():
+    base = {
+        "liquidity_usd": 90_000,
+        "volume_h1": 180_000,
+        "buys_h1": 300,
+        "sells_h1": 100,
+        "pair_age_minutes": 120,
+        "independent_source_confirmations": 2,
+    }
+    early = dict(base, price_change_h1=18)
+    exploded = dict(base, price_change_h1=260)
+    assert _deep_priority_score(early) > _deep_priority_score(exploded)

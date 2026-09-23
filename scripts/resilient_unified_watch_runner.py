@@ -217,6 +217,8 @@ def _state_key(t):
         return f"ALPHA:{identity_key}"
     if t.get("dynamic_bootstrap_candidate"):
         return f"BOOTSTRAP:{identity_key}"
+    if t.get("dynamic_genesis_candidate"):
+        return f"GENESIS:{identity_key}"
     if t.get("dynamic_spot_candidate"):
         return f"SPOT:{identity_key}"
     return str(t.get("symbol") or "").upper()
@@ -244,7 +246,7 @@ def _refresh_deep_intelligence(last_alert, live, fusion, triggers, base_reasons,
     micro = float(family_scores.get("market_microstructure") or 0)
     required_evidence = max(1, int(policy.get("real_alert_min_current_evidence", 2)))
     proactive_hot_recovery = bool(
-        t.get("dynamic_spot_candidate")
+        (t.get("dynamic_spot_candidate") or t.get("dynamic_genesis_candidate"))
         and t.get("deep_investigation")
         and (
             status != "CURRENT"

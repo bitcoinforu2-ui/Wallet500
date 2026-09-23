@@ -10,6 +10,7 @@ CEX_SPOT_IDENTITY = ROOT / "data/cex-spot-identity-radar.json"
 ALPHA = ROOT / "data/alpha-caller-candidates.json"
 BUY_REGISTRY = ROOT / "data/buy-zone-close-watch-registry.json"
 BOOTSTRAP = ROOT / "data/new-chain-bootstrap-radar.json"
+GENESIS = ROOT / "data/genesis-radar.json"
 OUT = ROOT / "data/unified-dynamic-candidates.json"
 EVENTS = ROOT / "data/close-watch-events.json"
 
@@ -18,6 +19,9 @@ ALIASES = {"eth": "ethereum", "bnb": "bsc"}
 PUBLIC_ALPHA_LIVE_WINDOW_MINUTES = 180
 MULTI_POOL_WATCH_MAX_POOLS = 5
 MULTI_POOL_WATCH_MIN_LIQUIDITY_USD = 5000.0
+GENESIS_MAX_SOURCE_AGE_MINUTES = 45.0
+GENESIS_RETAIN_MINUTES = 30.0
+GENESIS_MIN_EXECUTION_LIQUIDITY_USD = 15_000.0
 
 
 def now():
@@ -162,6 +166,89 @@ def cex_signal_milestone(row):
     return max(candidates, key=lambda x: (x[0], x[1]))[2] if candidates else {}
 
 
+def genesis_source_age_minutes(payload, current=None):
+    current = current or datetime.now(timezone.utc)
+    ts = parse_ts((payload or {}).get("generated_at"))
+    if ts is None:
+        return None
+    return max(0.0, (current - ts).total_seconds() / 60.0)
+
+
+def genesis_prebreakout_candidate(row, current=None):
+    """Convert a fresh research-only Genesis lead into strict unified watch input.
+
+    This does not create a BUY. It only lets an exact identity with forward
+    prebreakout evidence enter the existing deep-intelligence + FINAL BUY gates.
+    """
+    if not isinstance(row, dict):
+        return None
+    pre = row.get("prebreakout") if isinstance(row.get("prebreakout"), dict) else {}
+    if pre.get("priority_ready") is not True:
+        return None
+    if str(row.get("age_band") or "") not in {"EARLY_WATCH", "PRIME_GENESIS_WINDOW", "LATE_GENESIS_WINDOW"}:
+        return None
+    if str(row.get("extension_band") or "") in {"VERY_EXTENDED", "LATE_NO_CHASE"}:
+        return None
+    if str(row.get("status") or "") in {"BLOCKED", "LATE_NO_CHASE", "OUTSIDE_GENESIS"}:
+        return None
+    if "BUNDLE_DOMINATED_LAUNCH" in set(pre.get("risks") or []):
+        return None
+
+    safety = row.get("safety") if isinstance(row.get("safety"), dict) else {}
+    if safety.get("hard_blocks"):
+        return None
+    liquidity = float(row.get("liquidity_usd") or 0.0)
+    if liquidity < GENESIS_MIN_EXECUTION_LIQUIDITY_USD:
+        return None
+
+    chain = chain_name(row.get("chain") or row.get("network"))
+    token = norm_addr(chain, row.get("token") or row.get("token_address") or row.get("contract"))
+    pair = norm_addr(chain, row.get("pair_address") or row.get("pair"))
+    if not chain or not token or not pair:
+        return None
+
+    score = float(pre.get("score") or 0.0)
+    genesis_score = float(row.get("genesis_score") or 0.0)
+    current = current or datetime.now(timezone.utc)
+    pair_created = row.get("pair_created_at")
+    first_seen_at = pair_created if parse_ts(pair_created) is not None else current.isoformat()
+    return {
+        "candidate_type": "GENESIS_PREBREAKOUT",
+        "symbol": str(row.get("symbol") or "GENESIS").upper(),
+        "network": chain,
+        "contract": row.get("token") or row.get("token_address") or row.get("contract"),
+        "pair": row.get("pair_address") or row.get("pair"),
+        "dex_url": row.get("url") or row.get("dex_url") or "",
+        "source": "Genesis Prebreakout Edge",
+        "source_url": row.get("url") or row.get("dex_url") or "",
+        "first_seen_at": first_seen_at,
+        "first_seen_price": row.get("price_usd"),
+        "discovery_price": row.get("price_usd"),
+        "change_24h_pct": row.get("price_change_h24"),
+        "dex_liquidity_usd": liquidity,
+        "genesis_score": genesis_score,
+        "genesis_shadow_score": row.get("shadow_score"),
+        "genesis_status": row.get("status"),
+        "genesis_age_band": row.get("age_band"),
+        "genesis_extension_band": row.get("extension_band"),
+        "prebreakout_score": score,
+        "prebreakout_coverage_pct": pre.get("coverage_pct"),
+        "prebreakout_signals": pre.get("signals") or [],
+        "prebreakout_risks": pre.get("risks") or [],
+        "genesis_final_buy_lane": True,
+        "exact_identity_required": True,
+        "exact_pair_required": True,
+        "telegram_policy": "FINAL_BUY_ONLY",
+        "priority": "HIGHEST" if score >= 80.0 else "HIGH",
+        "close_watch": "HIGHEST",
+        "collector_priority": 1,
+        "deep_investigation": True,
+        "full_intelligence": True,
+        "proactive_evidence_recovery": True,
+        "identity_key": f"{chain}:{token}:{pair}",
+    }
+
+
 def max_cex_turnover(row):
     values = []
     for market in row.get("markets") or []:
@@ -208,6 +295,11 @@ def main():
     alpha = load(ALPHA, {"candidates": []})
     buy_registry = load(BUY_REGISTRY, {"entries": {}})
     bootstrap = load(BOOTSTRAP, {"candidates": []})
+    previous_dynamic = load(OUT, {"candidates": []})
+    # Keep test/workspace overrides isolated: if OUT is redirected to a temporary
+    # directory, do not leak the repository's live Genesis radar into that run.
+    genesis_path = GENESIS if GENESIS.parent == OUT.parent else OUT.with_name("genesis-radar.json")
+    genesis = load(genesis_path, {"candidates": []})
     event_doc = load(EVENTS, {"version": 3, "events": []})
     out = []
     seen = set()
@@ -216,6 +308,9 @@ def main():
     invalid_time_alpha_excluded = 0
     canonical_gate_market_suppressed = 0
     cex_market_exact_identity_recovered = 0
+    genesis_source_age = genesis_source_age_minutes(genesis, current=current)
+    genesis_source_fresh = genesis_source_age is not None and genesis_source_age <= GENESIS_MAX_SOURCE_AGE_MINUTES
+    genesis_stale_excluded = 0
 
     gate_spot_by_identity = {}
     gate_spot_by_market = {}
@@ -531,6 +626,61 @@ def main():
             "telegram_policy": "FINAL_BUY_ONLY",
         })
 
+    if genesis_source_fresh:
+        for row in genesis.get("candidates") or []:
+            candidate = genesis_prebreakout_candidate(row, current=current)
+            if not candidate:
+                continue
+            i = ident(candidate)
+            if not i or i[3] in seen:
+                continue
+            seen.add(i[3])
+            candidate["identity_key"] = i[3]
+            candidate["genesis_bridge_observed_at"] = current.isoformat()
+            candidate["genesis_retained"] = False
+            out.append(candidate)
+    else:
+        genesis_stale_excluded = sum(
+            1 for row in (genesis.get("candidates") or [])
+            if isinstance(row, dict)
+            and isinstance(row.get("prebreakout"), dict)
+            and row["prebreakout"].get("priority_ready") is True
+        )
+
+    genesis_retained = 0
+    for prior in previous_dynamic.get("candidates") or []:
+        if not isinstance(prior, dict):
+            continue
+        if str(prior.get("candidate_type") or "").upper() != "GENESIS_PREBREAKOUT":
+            continue
+        i = ident(prior)
+        if not i or i[3] in seen:
+            continue
+        observed = parse_ts(prior.get("genesis_bridge_observed_at"))
+        if observed is None:
+            continue
+        retained_age = max(0.0, (current - observed).total_seconds() / 60.0)
+        if retained_age > GENESIS_RETAIN_MINUTES:
+            continue
+        risks = set(prior.get("prebreakout_risks") or [])
+        if "BUNDLE_DOMINATED_LAUNCH" in risks:
+            continue
+        kept = dict(prior)
+        # Re-normalize the canonical identity instead of trusting a previously
+        # serialized helper field. Retained candidates must satisfy the exact
+        # same event/watch identity contract as fresh Genesis candidates.
+        kept["identity_key"] = i[3]
+        kept["genesis_retained"] = True
+        kept["genesis_retained_age_minutes"] = round(retained_age, 2)
+        kept["source"] = "Genesis Prebreakout Edge (retained)"
+        kept["priority"] = kept.get("priority") or "HIGH"
+        kept["deep_investigation"] = True
+        kept["full_intelligence"] = True
+        kept["proactive_evidence_recovery"] = True
+        seen.add(i[3])
+        out.append(kept)
+        genesis_retained += 1
+
     for row in bootstrap.get("candidates") or []:
         if not isinstance(row, dict) or row.get("bootstrap_actionable_watch") is not True:
             continue
@@ -598,7 +748,7 @@ def main():
         })
 
     out.sort(key=lambda x: (
-        0 if x["candidate_type"] == "BUY_ZONE" else 1 if x["candidate_type"] == "NEW_CHAIN_BOOTSTRAP" else 2 if x["candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"} else 3,
+        0 if x["candidate_type"] == "BUY_ZONE" else 1 if x["candidate_type"] in {"GENESIS_PREBREAKOUT", "NEW_CHAIN_BOOTSTRAP"} else 2 if x["candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"} else 3,
         (
             x.get("alpha_age_minutes", 999999)
             if x["candidate_type"] == "PUBLIC_ALPHA"
@@ -616,6 +766,11 @@ def main():
             "gate_spot": sum(x["candidate_type"] == "GATE_SPOT_DISCOVERY" for x in out),
             "cex_market": sum(x["candidate_type"] == "CEX_MARKET_DISCOVERY" for x in out),
             "new_chain_bootstrap": sum(x["candidate_type"] == "NEW_CHAIN_BOOTSTRAP" for x in out),
+            "genesis_prebreakout": sum(x["candidate_type"] == "GENESIS_PREBREAKOUT" for x in out),
+            "genesis_retained": genesis_retained,
+            "genesis_source_fresh": genesis_source_fresh,
+            "genesis_source_age_minutes": None if genesis_source_age is None else round(genesis_source_age, 2),
+            "genesis_stale_excluded": genesis_stale_excluded,
             "public_alpha": sum(x["candidate_type"] == "PUBLIC_ALPHA" for x in out),
             "public_alpha_stale_excluded": stale_alpha_excluded,
             "public_alpha_invalid_time_excluded": invalid_time_alpha_excluded,
@@ -634,28 +789,40 @@ def main():
     existing = {str(e.get("canonical_event_id") or "") for e in events}
     added = 0
     for c in out:
-        if c["candidate_type"] not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "NEW_CHAIN_BOOTSTRAP"}:
+        if c["candidate_type"] not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "NEW_CHAIN_BOOTSTRAP", "GENESIS_PREBREAKOUT"}:
             continue
         is_bootstrap = c["candidate_type"] == "NEW_CHAIN_BOOTSTRAP"
-        cid = ("new-chain-bootstrap:" if is_bootstrap else "cex-spot-discovery:") + c["identity_key"]
+        is_genesis = c["candidate_type"] == "GENESIS_PREBREAKOUT"
+        cid = (
+            "genesis-prebreakout:" if is_genesis
+            else ("new-chain-bootstrap:" if is_bootstrap else "cex-spot-discovery:")
+        ) + c["identity_key"]
         if cid in existing:
             continue
         change = max(0.0, float(c.get("change_24h_pct") or 0))
-        strength = min(85.0, max(25.0, float(c.get("bootstrap_score") or 0))) if is_bootstrap else min(75.0, 20.0 + change * 0.35)
+        strength = (
+            min(95.0, max(35.0, float(c.get("prebreakout_score") or 0)))
+            if is_genesis
+            else (min(85.0, max(25.0, float(c.get("bootstrap_score") or 0))) if is_bootstrap else min(75.0, 20.0 + change * 0.35))
+        )
         events.append({
             "symbol": c["symbol"],
             "network": c["network"],
             "contract": c["contract"],
             "pair": c["pair"],
             "identity_key": c["identity_key"],
-            "family": "catalyst_news" if is_bootstrap else "search_discovery",
-            "kind": "new_chain_bootstrap" if is_bootstrap else "cex_spot_mover",
+            "family": "market_microstructure" if is_genesis else ("catalyst_news" if is_bootstrap else "search_discovery"),
+            "kind": "genesis_prebreakout" if is_genesis else ("new_chain_bootstrap" if is_bootstrap else "cex_spot_mover"),
             "direction": 1,
             "strength": round(strength, 1),
             "confidence": 72,
-            "source": c.get("source") or ("New Chain Bootstrap Radar" if is_bootstrap else "CEX Spot"),
+            "source": c.get("source") or ("Genesis Prebreakout Edge" if is_genesis else ("New Chain Bootstrap Radar" if is_bootstrap else "CEX Spot")),
             "source_url": c.get("source_url") or "",
-            "subject": (f"bootstrap_score={c.get('bootstrap_score')} chain={c.get('network')}" if is_bootstrap else f"rank={c.get('positive_gainer_rank')} change24h={c.get('change_24h_pct')}"),
+            "subject": (
+                f"prebreakout_score={c.get('prebreakout_score')} signals={','.join(c.get('prebreakout_signals') or [])}"
+                if is_genesis
+                else (f"bootstrap_score={c.get('bootstrap_score')} chain={c.get('network')}" if is_bootstrap else f"rank={c.get('positive_gainer_rank')} change24h={c.get('change_24h_pct')}")
+            ),
             "canonical_event_id": cid,
             "event_time": c.get("first_seen_at") or now(),
             "observed_at": now(),

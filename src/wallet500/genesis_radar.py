@@ -196,9 +196,139 @@ def acceleration_signals(candidate: Dict[str, Any], t: GenesisThresholds = THRES
     }
 
 
+
+def prebreakout_signals(
+    candidate: Dict[str, Any],
+    t: GenesisThresholds = THRESHOLDS,
+    acceleration: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Score evidence that tends to lead price instead of merely confirming it.
+
+    This is intentionally a research/priority score, not a BUY gate. Missing
+    evidence lowers coverage rather than becoming a false negative, and explicit
+    launch-manipulation evidence can only reduce priority.
+    """
+    accel = acceleration or acceleration_signals(candidate, t)
+    signals: List[str] = []
+    risks: List[str] = []
+    earned = 0.0
+    available = 0.0
+
+    gain = _maybe_num(candidate.get("gain_from_baseline_pct"))
+    price_h1 = _maybe_num(candidate.get("price_change_h1"))
+    price_m5 = _maybe_num(candidate.get("price_change_m5"))
+    has_flow_baseline = (
+        _num(candidate.get("prev_volume_15m_usd")) > 0
+        or _num(candidate.get("baseline_volume_30m_usd")) > 0
+    )
+    if has_flow_baseline and (gain is not None or price_h1 is not None or price_m5 is not None):
+        available += 30.0
+        not_extended = (gain is None or gain < 300.0) and (price_h1 is None or price_h1 < 35.0)
+        if accel.get("primary_count", 0) >= 1 and not_extended:
+            signals.append("PRESSURE_BEFORE_PRICE_EXTENSION")
+            earned += 30.0
+
+    liq30 = _maybe_num(candidate.get("liquidity_growth_30m_pct"))
+    liq2h = _maybe_num(candidate.get("liquidity_growth_2h_pct"))
+    liq_dd = _maybe_num(candidate.get("liquidity_drawdown_from_peak_pct"))
+    if liq30 is not None or liq2h is not None or liq_dd is not None:
+        available += 20.0
+        liq_growth = max(x for x in (liq30, liq2h, 0.0) if x is not None)
+        if liq_growth >= 10.0 and liq_dd is not None and liq_dd <= 15.0:
+            signals.append("LIQUIDITY_COMMITMENT")
+            earned += 20.0
+
+    holder30 = _maybe_num(candidate.get("holder_growth_30m_pct"))
+    holder2h = _maybe_num(candidate.get("holder_growth_2h_pct"))
+    concentration_delta = _maybe_num(candidate.get("top10_concentration_delta_pct"))
+    if concentration_delta is not None and (holder30 is not None or holder2h is not None):
+        available += 20.0
+        holder_growth = max(x for x in (holder30, holder2h, 0.0) if x is not None)
+        if holder_growth > 0.0 and concentration_delta <= 0.0:
+            signals.append("BREADTH_WITHOUT_CONCENTRATION")
+            earned += 20.0
+
+    wallet_verified = _bool(candidate.get("quality_wallet_evidence_verified")) is True
+    if wallet_verified:
+        available += 15.0
+        quality_wallets = int(_num(candidate.get("quality_wallet_buyers")))
+        high_conf_wallets = int(_num(candidate.get("high_confidence_wallet_buyers")))
+        if quality_wallets >= t.min_quality_wallets or high_conf_wallets >= 1:
+            signals.append("QUALITY_BUYER_BREADTH")
+            earned += 15.0
+
+    curve = next(
+        (
+            x
+            for x in (
+                _maybe_num(candidate.get("bonding_curve_progress_pct")),
+                _maybe_num(candidate.get("launchpad_curve_progress_pct")),
+            )
+            if x is not None
+        ),
+        None,
+    )
+    migrated = _bool(candidate.get("launchpad_migration_confirmed"))
+    if curve is not None or migrated is not None:
+        available += 15.0
+        if migrated is True:
+            signals.append("LAUNCHPAD_MIGRATION_CONFIRMED")
+            earned += 15.0
+        elif curve is not None and 75.0 <= curve < 100.0:
+            signals.append("BONDING_CURVE_NEAR_GRADUATION")
+            earned += 12.0
+
+    creator_successes = _maybe_num(candidate.get("creator_prior_successes"))
+    creator_rugs = _maybe_num(candidate.get("creator_prior_rugs"))
+    funder_quality = _maybe_num(candidate.get("funder_quality_score"))
+    if creator_successes is not None or creator_rugs is not None or funder_quality is not None:
+        available += 10.0
+        if (creator_successes or 0.0) >= 2.0 and (creator_rugs or 0.0) <= 0.0:
+            signals.append("CREATOR_HISTORY_POSITIVE")
+            earned += 6.0
+        if funder_quality is not None and funder_quality >= 70.0:
+            signals.append("FUNDER_GRAPH_POSITIVE")
+            earned += 4.0
+        if creator_rugs is not None and creator_rugs > 0:
+            risks.append("CREATOR_PRIOR_RUG_HISTORY")
+
+    bundle_share = _maybe_num(candidate.get("sniper_bundle_share_pct"))
+    penalty = 0.0
+    if bundle_share is not None:
+        if bundle_share >= 75.0:
+            risks.append("BUNDLE_DOMINATED_LAUNCH")
+            penalty += 35.0
+        elif bundle_share >= 50.0:
+            risks.append("HIGH_BUNDLE_CONCENTRATION")
+            penalty += 20.0
+
+    raw = (earned / available * 100.0) if available > 0 else 0.0
+    score = max(0.0, min(100.0, raw - penalty))
+    coverage = min(100.0, available / 110.0 * 100.0)
+    ext = extension_band(_num(candidate.get("gain_from_baseline_pct")))
+    priority_ready = bool(
+        score >= 62.0
+        and coverage >= 40.0
+        and len(signals) >= 2
+        and accel.get("primary_count", 0) >= 1
+        and ext not in {"VERY_EXTENDED", "LATE_NO_CHASE"}
+        and "BUNDLE_DOMINATED_LAUNCH" not in risks
+    )
+    return {
+        "score": round(score, 1),
+        "coverage_pct": round(coverage, 1),
+        "priority_ready": priority_ready,
+        "signals": signals,
+        "risks": risks,
+        "role": "EARLY_PRIORITY_ONLY_NOT_BUY_GATE",
+        "method": "FORWARD_PRESSURE_BREADTH_LIQUIDITY_LIFECYCLE_V1",
+    }
+
+
 def genesis_score(candidate: Dict[str, Any], t: GenesisThresholds = THRESHOLDS) -> Dict[str, Any]:
     safety = safety_gate(candidate, t)
     accel = acceleration_signals(candidate, t)
+    prebreakout = prebreakout_signals(candidate, t, accel)
 
     liquidity = _maybe_num(candidate.get("liquidity_usd"))
     holders = _maybe_num(candidate.get("holders"))
@@ -298,6 +428,7 @@ def genesis_score(candidate: Dict[str, Any], t: GenesisThresholds = THRESHOLDS) 
         "extension_band": ext,
         "safety": safety,
         "acceleration": accel,
+        "prebreakout": prebreakout,
         "subscores": {
             "safety_tradability": round(safety_points, 1),
             "organic_acceleration": round(acceleration_points, 1),
