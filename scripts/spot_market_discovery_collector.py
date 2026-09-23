@@ -764,7 +764,11 @@ def run() -> dict:
     # Resolve the strongest movers/new listings first. The network-bound exact-identity
     # slice runs concurrently behind resilient_http host pacing so this discovery stage
     # cannot serialize dozens of provider waits before the live CEX radar gets its turn.
-    resolution_budget = IDENTITY_RESOLUTION_BUDGET
+    try:
+        configured_resolution_budget = int(os.environ.get("SPOT_DISCOVERY_IDENTITY_BUDGET", str(IDENTITY_RESOLUTION_BUDGET)))
+    except (TypeError, ValueError):
+        configured_resolution_budget = IDENTITY_RESOLUTION_BUDGET
+    resolution_budget = max(0, min(IDENTITY_RESOLUTION_BUDGET, configured_resolution_budget))
     identity_results = resolve_identity_targets(
         selected,
         native_registry,

@@ -57,6 +57,10 @@ jobs:
           tests/test_multichain_veteran_revival.py
           tests/test_spot_market_discovery_native_identity.py
       - name: Refresh current Gate spot discovery before identity queue
+        env:
+          # The canonical exact-identity resolver runs in the next step. Keep this
+          # discovery prepass bounded so duplicate provider work cannot delay the live radar.
+          SPOT_DISCOVERY_IDENTITY_BUDGET: "6"
         run: python scripts/spot_market_discovery_collector.py
 
       - name: Refresh veteran Spot momentum, dynamic exact identity and persistent pending lane
