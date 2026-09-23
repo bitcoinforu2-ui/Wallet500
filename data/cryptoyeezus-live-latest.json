@@ -1,7 +1,7 @@
 {
   "version": 1,
   "mode": "CRYPTOYEEZUS_LIVE_SOURCE_WATCH_V1",
-  "observed_at": "2026-09-23T15:24:12.362101+00:00",
+  "observed_at": "2026-09-23T16:09:32.724220+00:00",
   "status": "OK",
   "providers": {
     "telegram": {
@@ -14,9 +14,9 @@
       "status": "HTTP_402",
       "direct": true,
       "count_after_author_lock": 0,
-      "redundancy_status": "OK_FXTWITTER_PUBLIC",
-      "redundancy_provider": "x_fxtwitter_public",
-      "effective_status": "OK_WITH_PUBLIC_FALLBACK"
+      "redundancy_status": "ALL_X_FALLBACKS_FAILED",
+      "redundancy_provider": "x_public_redundancy",
+      "effective_status": "DEGRADED_NO_X_REDUNDANCY"
     }
   },
   "new_posts": 0,
@@ -24,11 +24,8 @@
   "latest_events": [],
   "automatic_buy": false,
   "x_fallback": {
-    "provider": "x_fxtwitter_public",
-    "status": "OK_FXTWITTER_PUBLIC",
-    "count": 20,
-    "url": "https://api.fxtwitter.com/2/profile/CryptoYeezussss/statuses?count=50",
-    "code": 200,
+    "provider": "x_public_redundancy",
+    "status": "ALL_X_FALLBACKS_FAILED",
     "syndication_attempts": [
       {
         "url": "https://syndication.x.com/srv/timeline-profile/screen-name/CryptoYeezussss",
@@ -38,7 +35,22 @@
         "url": "https://syndication.twitter.com/srv/timeline-profile/screen-name/CryptoYeezussss",
         "status": "HTTPError:HTTP Error 429: Too Many Requests"
       }
-    ]
+    ],
+    "fxtwitter": {
+      "provider": "x_fxtwitter_public",
+      "status": "HTTPError:HTTP Error 404: Not Found",
+      "url": "https://api.fxtwitter.com/2/profile/CryptoYeezussss/statuses?count=50",
+      "syndication_attempts": [
+        {
+          "url": "https://syndication.x.com/srv/timeline-profile/screen-name/CryptoYeezussss",
+          "status": "HTTPError:HTTP Error 429: Too Many Requests"
+        },
+        {
+          "url": "https://syndication.twitter.com/srv/timeline-profile/screen-name/CryptoYeezussss",
+          "status": "HTTPError:HTTP Error 429: Too Many Requests"
+        }
+      ]
+    }
   },
   "x_fallback_new_posts": 0,
   "x_fallback_new_call_events": 0,
