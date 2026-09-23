@@ -550,6 +550,112 @@ def test_targeted_highest_deep_watch_refreshes_without_positive_trigger(monkeypa
     assert "TARGETED_HIGHEST_DEEP_WATCH" in captured["qualification"]
 
 
+def test_targeted_position_risk_warns_before_breakdown_and_escalates():
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime(2026, 9, 23, 9, 7, tzinfo=timezone.utc)
+    target = {
+        "symbol": "MCAT",
+        "network": "solana",
+        "contract": "241aTYhVXZ4WBVSFpfY37RqoCGBQ73KiRFAKvTtnmoon",
+        "pair": "EcFsXQJjVCjCYWHsuhXUnZH4XB2MzF7iZ3dJu48wmoa9",
+        "targeted_telegram_watch": True,
+        "targeted_telegram_events": ["RISK_WARNING", "BREAKDOWN", "PRE_BUY", "FINAL_BUY"],
+        "down_levels": [0.00018, 0.00017, 0.00016, 0.00014],
+        "liquidity_drop_pct": 20,
+        "targeted_risk_policy": {
+            "price_drop_warning_pct": 3.0,
+            "price_drop_breakdown_pct": 8.0,
+            "flow_warning_ratio": 1.2,
+            "liquidity_drop_breakdown_pct": 20.0,
+            "realert_additional_price_drop_pct": 8.0,
+            "cooldown_seconds": 1800,
+        },
+    }
+    policy = gate._policy({})
+    key = gate.identity_key(target)
+
+    prior = {
+        "last_price": 0.00019153666430998714,
+        "last_liquidity": 57759.2301,
+        "last_volume_h1": 2263.11333281,
+        "last_buy_sell_ratio": 1.35,
+        "targeted_risk_active": False,
+    }
+    market = {
+        "identity_key": key,
+        "price": 0.00018443465403139244,
+        "liquidity": 56743.1109,
+        "volume_h1": 1476.9343692398,
+        "buys_h1": 9,
+        "sells_h1": 10,
+        "spread_pct": 0.1,
+        "observed_at": now.isoformat(),
+        "price_source_count": 2,
+    }
+    observed = {
+        "identity_key": key,
+        "market_verified": True,
+        "_report_age_seconds": 0,
+        "intelligence": {
+            "status": "CURRENT",
+            "score": 15,
+            "families": 1,
+            "current_evidence_count": 10,
+            "evidence_age_minutes": 0.2,
+            "hard_risks": [],
+            "family_scores": {
+                "market_microstructure": 15,
+                "wallet_flow": 0,
+                "holder_network": 0,
+            },
+        },
+    }
+    decision, state = gate.evaluate(target, market, observed, prior, policy, now=now)
+    warning = gate.targeted_risk_event(target, decision, prior, policy, now)
+    assert warning is not None
+    assert warning["severity"] == "RISK_WARNING"
+    assert warning["alert"] is True
+    assert any(
+        x.startswith("PRICE_WEAKNESS_WITH_FLOW_FAILURE")
+        or x.startswith("BUY_FLOW_REVERSAL")
+        for x in warning["reasons"]
+    )
+
+    later = now + timedelta(minutes=15)
+    breakdown_prior = {
+        **state,
+        "targeted_risk_active": True,
+        "last_targeted_risk_alert_at": now.isoformat(),
+        "last_targeted_risk_alert_price": warning["price_usd"],
+        "last_targeted_risk_signature": warning["signature"],
+        "last_targeted_risk_severity": warning["severity"],
+    }
+    market2 = dict(
+        market,
+        price=0.0001349,
+        liquidity=48417.73,
+        volume_h1=9440.09,
+        buys_h1=49,
+        sells_h1=29,
+        observed_at=later.isoformat(),
+    )
+    decision2, _ = gate.evaluate(
+        target, market2, observed, breakdown_prior, policy, now=later
+    )
+    breakdown = gate.targeted_risk_event(
+        target, decision2, breakdown_prior, policy, later
+    )
+    assert breakdown is not None
+    assert breakdown["severity"] == "BREAKDOWN"
+    assert breakdown["alert"] is True
+    assert 0.00018 in breakdown["crossed_down_levels"]
+    assert any(
+        x.startswith("LIQUIDITY_FLOOR_BREACH")
+        for x in breakdown["reasons"]
+    )
+
+
 def test_market_row_prefers_freshest_duplicate_exact_identity():
     key = "bsc:0xabc:0xpair"
     stale = {
