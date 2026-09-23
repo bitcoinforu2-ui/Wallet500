@@ -504,7 +504,14 @@ def dynamic_candidates(persisted_tokens=None):
         reverse=True,
     )[:12]
     kol = [x for x in rows if x["_candidate_type"] == "EARLY_KOL_CONVERGENCE"]
-    kol = sorted(\n        kol,\n        key=lambda x: (bool(x.get("emergency_deep_scan")), int(x.get("independent_groups_60m") or 0), str(x.get("first_seen_at") or "")),\n        reverse=True,\n    )[:12]\n    alpha = [x for x in rows if x["_candidate_type"] == "PUBLIC_ALPHA"]\n    dynamic_cap = 48\n    alpha_budget = max(0, dynamic_cap - len(buy_zone) - len(kol) - len(bootstrap) - len(spot))
+    kol = sorted(
+        kol,
+        key=lambda x: (bool(x.get("emergency_deep_scan")), int(x.get("independent_groups_60m") or 0), str(x.get("first_seen_at") or "")),
+        reverse=True,
+    )[:12]
+    alpha = [x for x in rows if x["_candidate_type"] == "PUBLIC_ALPHA"]
+    dynamic_cap = 48
+    alpha_budget = max(0, dynamic_cap - len(buy_zone) - len(kol) - len(bootstrap) - len(spot))
 
     def _liq(x):
         try:
@@ -562,7 +569,9 @@ def dynamic_candidates(persisted_tokens=None):
                 "volume_acceleration_multiple": 2.0,
                 "min_volume_h1_for_momentum": 0,
                 "dynamic_buy_candidate": ctype == "BUY_ZONE",
-                "dynamic_alpha_candidate": ctype == "PUBLIC_ALPHA",\n                "dynamic_kol_candidate": ctype == "EARLY_KOL_CONVERGENCE",\n                "dynamic_bootstrap_candidate": ctype == "NEW_CHAIN_BOOTSTRAP",
+                "dynamic_alpha_candidate": ctype == "PUBLIC_ALPHA",
+                "dynamic_kol_candidate": ctype == "EARLY_KOL_CONVERGENCE",
+                "dynamic_bootstrap_candidate": ctype == "NEW_CHAIN_BOOTSTRAP",
                 "dynamic_spot_candidate": ctype in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"},
                 "dynamic_cex_market_candidate": ctype == "CEX_MARKET_DISCOVERY",
                 "critical_market_lane": bool(
@@ -616,7 +625,18 @@ def dynamic_candidates(persisted_tokens=None):
                 "asset_total_dex_liquidity_usd": c.get("asset_total_dex_liquidity_usd"),
                 "bootstrap_score": c.get("bootstrap_score"),
                 "bootstrap_reasons": c.get("bootstrap_reasons") or [],
-                "bootstrap_final_buy_lane": bool(c.get("bootstrap_final_buy_lane")),\n                "early_kol_convergence": c.get("early_kol_convergence") or {},\n                "emergency_deep_scan": bool(c.get("emergency_deep_scan") or (c.get("early_kol_convergence") or {}).get("emergency_deep_scan")),\n                "independent_groups_15m": c.get("independent_groups_15m") or (c.get("early_kol_convergence") or {}).get("independent_groups_15m"),\n                "independent_groups_30m": c.get("independent_groups_30m") or (c.get("early_kol_convergence") or {}).get("independent_groups_30m"),\n                "independent_groups_60m": c.get("independent_groups_60m") or (c.get("early_kol_convergence") or {}).get("independent_groups_60m"),\n                "independent_groups_under_100k": c.get("independent_groups_under_100k") or (c.get("early_kol_convergence") or {}).get("independent_groups_under_100k"),\n                "wallet_names": c.get("wallet_names") or (c.get("early_kol_convergence") or {}).get("wallet_names") or [],\n                "research_only": bool(c.get("research_only") or ctype == "EARLY_KOL_CONVERGENCE"),\n                "automatic_buy": False if ctype == "EARLY_KOL_CONVERGENCE" else c.get("automatic_buy"),\n                "requires_full_wallet500_gates": bool(c.get("requires_full_wallet500_gates") or ctype == "EARLY_KOL_CONVERGENCE"),\n            }
+                "bootstrap_final_buy_lane": bool(c.get("bootstrap_final_buy_lane")),
+                "early_kol_convergence": c.get("early_kol_convergence") or {},
+                "emergency_deep_scan": bool(c.get("emergency_deep_scan") or (c.get("early_kol_convergence") or {}).get("emergency_deep_scan")),
+                "independent_groups_15m": c.get("independent_groups_15m") or (c.get("early_kol_convergence") or {}).get("independent_groups_15m"),
+                "independent_groups_30m": c.get("independent_groups_30m") or (c.get("early_kol_convergence") or {}).get("independent_groups_30m"),
+                "independent_groups_60m": c.get("independent_groups_60m") or (c.get("early_kol_convergence") or {}).get("independent_groups_60m"),
+                "independent_groups_under_100k": c.get("independent_groups_under_100k") or (c.get("early_kol_convergence") or {}).get("independent_groups_under_100k"),
+                "wallet_names": c.get("wallet_names") or (c.get("early_kol_convergence") or {}).get("wallet_names") or [],
+                "research_only": bool(c.get("research_only") or ctype == "EARLY_KOL_CONVERGENCE"),
+                "automatic_buy": False if ctype == "EARLY_KOL_CONVERGENCE" else c.get("automatic_buy"),
+                "requires_full_wallet500_gates": bool(c.get("requires_full_wallet500_gates") or ctype == "EARLY_KOL_CONVERGENCE"),
+            }
         )
 
     # Once a CEX spot candidate crosses the +25% verified-price threshold it must
