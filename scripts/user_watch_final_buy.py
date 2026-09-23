@@ -1207,6 +1207,8 @@ def evaluate(
         "last_liquidity": liquidity,
         "last_volume_h1": volume_h1,
         "last_buy_sell_ratio": round(ratio, 6),
+        "last_buys_h1": buys,
+        "last_sells_h1": sells,
         "last_activity_h1": activity,
         "watch_low_price": low if low is not None else prior.get("watch_low_price"),
         "watch_high_price": max(num(prior.get("watch_high_price"), 0.0) or 0.0, price),
