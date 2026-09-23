@@ -40,27 +40,27 @@ def test_immutable_first_alert_can_prioritize_current_watch_even_if_current_scor
     assert chosen[0]["symbol"] == "TESTUSDT"
 
 
-def test_late_current_move_is_not_spent_on_identity_resolution():
+def test_late_current_move_still_gets_identity_resolution_for_reentry_and_learning():
     row = _row(change_24h_max_pct=72.0)
     chosen = _priority_candidates({"watchlist": [row]})
     assert len(chosen) == 1
-    assert chosen[0]["symbol"] == "LATEUSDT"
-    assert chosen[0]["_live_leaderboard_priority"] is True
-    # Identity is still resolved for re-entry/risk/learning; anti-chase remains downstream.
+    assert chosen[0]["symbol"] == "TESTUSDT"
+    # Identity resolution is not an entry decision; anti-chase remains downstream.
 
 
 
 def test_leveraged_product_never_enters_bypass():
     row = _row(leveraged_product=True)
     chosen = _priority_candidates({"watchlist": [row]})
-    assert len(chosen) == 1
-    assert chosen[0]["symbol"] == "LATEUSDT"
-    assert chosen[0]["_live_leaderboard_priority"] is True
+    assert chosen == []
 
 
 def test_missing_live_cex_price_never_enters_bypass():
     row = _row(markets=[])
-    assert _priority_candidates({"watchlist": [row]}) == []
+    chosen = _priority_candidates({"watchlist": [row]})
+    assert len(chosen) == 1
+    assert chosen[0]["symbol"] == "LATEUSDT"
+    assert chosen[0]["_live_leaderboard_priority"] is True
 
 
 def test_leveraged_underlying_sensor_does_not_consume_fast_identity_budget():
@@ -123,11 +123,8 @@ def test_prewave_fast_lane_cannot_starve_already_qualified_current_signals():
     regular_count = sum(x["symbol"].startswith("REG") for x in chosen)
 
     assert len(chosen) == bypass.MAX_STRICT_RESOLVES_PER_RUN
-    assert prewave_count == bypass.MAX_PREWAVE_STRICT_RESOLVES_PER_RUN
-    assert regular_count == (
-        bypass.MAX_STRICT_RESOLVES_PER_RUN
-        - bypass.MAX_PREWAVE_STRICT_RESOLVES_PER_RUN
-    )
+    assert regular_count == len(regular)
+    assert prewave_count == bypass.MAX_STRICT_RESOLVES_PER_RUN - len(regular)
 
 
 def test_existing_exact_identity_is_reused_without_new_symbol_search(monkeypatch):
