@@ -16,6 +16,7 @@ WATCH_REPORT = ROOT / "data/unified-watch-intelligence-report.json"
 DYNAMIC = ROOT / "data/unified-dynamic-candidates.json"
 STATE = ROOT / "data/user-watch-final-buy-state.json"
 REPORT = ROOT / "data/user-watch-final-buy-report.json"
+CLOSE_INTELLIGENCE = ROOT / "data/close-watch-intelligence.json"
 
 EVM = {"ethereum", "eth", "bsc", "bnb", "base", "arbitrum", "optimism", "polygon", "avalanche", "arc"}
 ALIASES = {"eth": "ethereum", "bnb": "bsc"}
@@ -233,6 +234,94 @@ def report_row(report: dict, key: str) -> dict | None:
         if isinstance(row, dict) and str(row.get("identity_key") or "") == key:
             return row
     return None
+
+
+def close_intelligence_row(doc: dict, key: str) -> dict | None:
+    for row in (doc.get("tokens") or []) if isinstance(doc, dict) else []:
+        if isinstance(row, dict) and str(row.get("identity_key") or "") == key:
+            return row
+    return None
+
+
+def observed_with_fresh_intelligence_fallback(
+    observed: dict | None,
+    market: dict | None,
+    intelligence: dict | None,
+    key: str,
+    *,
+    now: datetime,
+    max_age_seconds: float,
+) -> dict | None:
+    """Repair only report-publication lag using two fresh exact-identity sources.
+
+    Unified Watch state is written only after the live exact pair/market fetch succeeds;
+    close-watch intelligence is independently fused by exact identity. If both are fresh
+    and agree on the exact key, they may replace a missing/stale report row. This never
+    bypasses liquidity, activity, hard-risk, anti-chase, execution-quality, or two-scan
+    confirmation gates in evaluate().
+    """
+    if not isinstance(market, dict) or not isinstance(intelligence, dict):
+        return observed
+    if str(market.get("identity_key") or "") != key:
+        return observed
+    if str(intelligence.get("identity_key") or "") != key:
+        return observed
+    if str(intelligence.get("status") or "").upper() != "CURRENT":
+        return observed
+    if (num(market.get("price"), 0.0) or 0.0) <= 0:
+        return observed
+
+    market_age = age_seconds(market.get("observed_at"), now)
+    intel_time = intelligence.get("updated_at") or intelligence.get("freshest_event_at")
+    intel_age = age_seconds(intel_time, now)
+    if (
+        market_age is None or market_age < -120 or market_age > max_age_seconds
+        or intel_age is None or intel_age < -120 or intel_age > max_age_seconds
+    ):
+        return observed
+
+    existing_intel = (
+        observed.get("intelligence")
+        if isinstance(observed, dict) and isinstance(observed.get("intelligence"), dict)
+        else {}
+    )
+    existing_report_age = age_seconds(
+        (observed or {}).get("observed_at") or (observed or {}).get("updated_at"),
+        now,
+    )
+    if existing_report_age is None:
+        existing_report_age = num((observed or {}).get("_report_age_seconds"))
+    existing_intel_age_minutes = num(existing_intel.get("evidence_age_minutes"))
+    existing_is_fresh = bool(
+        isinstance(observed, dict)
+        and observed.get("market_verified") is True
+        and existing_report_age is not None
+        and -120 <= existing_report_age <= max_age_seconds
+        and str(existing_intel.get("status") or "").upper() == "CURRENT"
+        and existing_intel_age_minutes is not None
+        and 0 <= existing_intel_age_minutes * 60 <= max_age_seconds
+    )
+    if existing_is_fresh:
+        return observed
+
+    repaired = dict(observed or {})
+    repaired.update({
+        "identity_key": key,
+        "symbol": market.get("symbol") or repaired.get("symbol"),
+        "market_verified": True,
+        "observed_at": market.get("observed_at"),
+        "updated_at": market.get("observed_at"),
+        "_fresh_state_intelligence_fallback": True,
+        "_fresh_state_intelligence_fallback_source": "UNIFIED_WATCH_STATE_PLUS_CLOSE_WATCH_INTELLIGENCE",
+        "intelligence": {
+            **intelligence,
+            "families": intelligence.get(
+                "families",
+                intelligence.get("independent_positive_families"),
+            ),
+        },
+    })
+    return repaired
 
 
 def _policy(config: dict) -> dict:
@@ -1519,6 +1608,7 @@ def main() -> int:
 
     watch_state = load(WATCH_STATE, {})
     watch_report = load(WATCH_REPORT, {})
+    close_intelligence = load(CLOSE_INTELLIGENCE, {"tokens": []})
     dynamic = load(DYNAMIC, {"candidates": []})
     persistent = load(STATE, {"version": 1, "targets": {}})
 
@@ -1543,6 +1633,7 @@ def main() -> int:
 
     partial_upstream_skipped = 0
     partial_upstream_evaluated = 0
+    fresh_state_intelligence_fallback_count = 0
     for target in eligible_targets(config, dynamic, watch_state):
         key = identity_key(target)
         m = market_row(watch_state, key)
@@ -1550,6 +1641,16 @@ def main() -> int:
         if rr is not None:
             rr = dict(rr)
             rr["_report_age_seconds"] = top_report_age
+        rr = observed_with_fresh_intelligence_fallback(
+            rr,
+            m,
+            close_intelligence_row(close_intelligence, key),
+            key,
+            now=now,
+            max_age_seconds=float(policy.get("max_snapshot_age_seconds", 2100)),
+        )
+        if isinstance(rr, dict) and rr.get("_fresh_state_intelligence_fallback") is True:
+            fresh_state_intelligence_fallback_count += 1
 
         if partial_upstream:
             market_age = age_seconds((m or {}).get("observed_at"), now)
@@ -1680,6 +1781,7 @@ def main() -> int:
         "configured_targets": configured_target_count,
         "evaluated_target_count": evaluated_target_count,
         "decision_coverage_pct": decision_coverage_pct,
+        "fresh_state_intelligence_fallback_count": fresh_state_intelligence_fallback_count,
         "buy_zone_count": sum(1 for x in decisions if x.get("state") == "BUY_ZONE"),
         "pre_buy_count": sum(1 for x in decisions if x.get("pre_buy") is True),
         "pre_buy_delivered_count": len(pre_buy_delivered),
@@ -1692,7 +1794,10 @@ def main() -> int:
         "errors": errors,
         "decisions": decisions,
         "truth_contract": {
-            "source": "Unified Watch exact-pair state + current intelligence report",
+            "source": "Unified Watch exact-pair state + current intelligence report; fresh exact-state + close-watch-intelligence fallback on publication lag",
+            "fresh_state_intelligence_fallback_requires_exact_identity_match": True,
+            "fresh_state_intelligence_fallback_requires_both_sources_current": True,
+            "fresh_state_intelligence_fallback_never_bypasses_final_buy_gates": True,
             "user_requested_targets_new_chain_and_quarter_wave_cex_only": True,
             "new_chain_bootstrap_uses_same_strict_final_buy_gate": True,
             "quarter_wave_cex_uses_same_strict_final_buy_gate": True,
@@ -1726,6 +1831,7 @@ def main() -> int:
         "configured_targets": report["configured_targets"],
         "evaluated_target_count": report["evaluated_target_count"],
         "decision_coverage_pct": report["decision_coverage_pct"],
+        "fresh_state_intelligence_fallback_count": report["fresh_state_intelligence_fallback_count"],
         "buy_zone_count": report["buy_zone_count"],
         "pre_buy_count": report["pre_buy_count"],
         "pre_buy_delivered_count": report["pre_buy_delivered_count"],
