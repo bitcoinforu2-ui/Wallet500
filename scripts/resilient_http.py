@@ -41,6 +41,18 @@ DEFAULT_INTERVALS = {
     "bsc.blockscout.com": 0.25,
 }
 
+CIRCUIT_BREAKERS = {
+    # Hosted-runner egress IPs can inherit a shared GeckoTerminal quota.
+    # After repeated 429s, fail this provider fast for a short window so callers
+    # can use their exact-identity fallback instead of serially sleeping.
+    "api.geckoterminal.com": {
+        "http_429_threshold": 3,
+        "open_seconds": 120.0,
+    },
+}
+
+_CIRCUIT_STATE: dict[str, dict[str, float | int]] = {}
+
 _STATS = {
     "requests": 0,
     "cache_hits": 0,
@@ -48,6 +60,8 @@ _STATS = {
     "http_429": 0,
     "http_5xx": 0,
     "cooldowns": 0,
+    "circuit_opens": 0,
+    "circuit_fast_fails": 0,
     "errors": 0,
     "hosts": {},
 }
@@ -60,12 +74,70 @@ def _host_stats(host: str) -> dict:
         "retries": 0,
         "http_429": 0,
         "cooldowns": 0,
+        "circuit_opens": 0,
+        "circuit_fast_fails": 0,
         "errors": 0,
     })
 
 
 def _safe_host(host: str) -> str:
     return "".join(c if c.isalnum() or c in ".-_" else "_" for c in host)
+
+
+def _circuit_state(host: str) -> dict[str, float | int]:
+    return _CIRCUIT_STATE.setdefault(host, {
+        "consecutive_429": 0,
+        "open_until": 0.0,
+    })
+
+
+def _raise_if_circuit_open(host: str) -> None:
+    cfg = CIRCUIT_BREAKERS.get(host)
+    if not cfg:
+        return
+    state = _circuit_state(host)
+    now = time.time()
+    open_until = float(state.get("open_until") or 0.0)
+    if open_until <= now:
+        if open_until:
+            state["open_until"] = 0.0
+        return
+    remaining = max(0.0, open_until - now)
+    _STATS["circuit_fast_fails"] += 1
+    hs = _host_stats(host)
+    hs["circuit_fast_fails"] += 1
+    _STATS["errors"] += 1
+    hs["errors"] += 1
+    raise RuntimeError(f"HTTP_CIRCUIT_OPEN:{host}:{remaining:.1f}s")
+
+
+def _record_http_429(host: str, retry_after: float) -> None:
+    cfg = CIRCUIT_BREAKERS.get(host)
+    if not cfg:
+        return
+    state = _circuit_state(host)
+    count = int(state.get("consecutive_429") or 0) + 1
+    state["consecutive_429"] = count
+    threshold = max(1, int(cfg.get("http_429_threshold") or 1))
+    if count < threshold:
+        return
+    open_seconds = max(float(cfg.get("open_seconds") or 0.0), max(0.0, retry_after))
+    if open_seconds <= 0:
+        return
+    new_until = time.time() + open_seconds
+    previous_until = float(state.get("open_until") or 0.0)
+    if new_until > previous_until:
+        state["open_until"] = new_until
+        _STATS["circuit_opens"] += 1
+        _host_stats(host)["circuit_opens"] += 1
+
+
+def _record_http_success(host: str) -> None:
+    if host not in CIRCUIT_BREAKERS:
+        return
+    state = _circuit_state(host)
+    state["consecutive_429"] = 0
+    state["open_until"] = 0.0
 
 
 def _cooldown_path(host: str) -> Path:
@@ -187,6 +259,7 @@ def request_bytes(
     last_error: Exception | None = None
     total_attempts = max(1, int(attempts))
     for attempt in range(total_attempts):
+        _raise_if_circuit_open(host)
         _pace(host, min_interval)
         _STATS["requests"] += 1
         hs["requests"] += 1
@@ -194,6 +267,7 @@ def request_bytes(
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = resp.read()
+                _record_http_success(host)
                 if method == "GET" and cache_ttl > 0:
                     _cache_put(cache_path, body)
                 return body
@@ -213,6 +287,7 @@ def request_bytes(
                 # request for this host instead of creating a retry storm.
                 default_cooldown = 15.0 if host == "api.geckoterminal.com" else 5.0
                 _set_cooldown(host, max(retry_after, default_cooldown))
+                _record_http_429(host, retry_after)
             elif 500 <= code < 600:
                 _STATS["http_5xx"] += 1
                 _set_cooldown(host, max(retry_after, 2.0))
