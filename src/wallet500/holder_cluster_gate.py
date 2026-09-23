@@ -23,7 +23,7 @@ TOTAL_SUPPLY_SELECTOR = "0x18160ddd"
 ZERO = "0x0000000000000000000000000000000000000000"
 DEAD = "0x000000000000000000000000000000000000dead"
 ROLE_REGISTRY_FILE = DATA / "holder-infrastructure-registry.json"
-EXCLUDABLE_ROLES = {"DEX_LP_POOL", "CEX_CUSTODY", "BURN_LOCK", "LOCKED_VAULT", "BRIDGE_CUSTODY"}
+EXCLUDABLE_ROLES = {"DEX_LP_POOL", "DEX_LP_VAULT", "DEX_POOL_AUTHORITY", "CEX_CUSTODY", "BURN_LOCK", "LOCKED_VAULT", "BRIDGE_CUSTODY"}
 EVM_CHAINS = {"ETH", "ETHEREUM", "BSC", "BNB", "ROBINHOOD"}
 DEFAULT_RPC = {
     "SOLANA": ["https://api.mainnet-beta.solana.com"],
@@ -136,7 +136,7 @@ def _registered_role(chain, address, entries=None):
     return None
 
 
-def _holder_role(chain, address, pair_address=None, registry=None):
+def _holder_role(chain, address, pair_address=None, registry=None, dynamic_roles=None):
     addr = _norm(chain, address)
     pair = _norm(chain, pair_address)
     if not addr:
@@ -145,6 +145,14 @@ def _holder_role(chain, address, pair_address=None, registry=None):
         return {"role": "DEX_LP_POOL", "label": "Exact execution pair", "confidence": 1.0, "source": "EXACT_PAIR_IDENTITY", "excluded_from_whale_concentration": True}
     if addr in {_norm(chain, ZERO), _norm(chain, DEAD)}:
         return {"role": "BURN_LOCK", "label": "Burn/dead address", "confidence": 1.0, "source": "CANONICAL_BURN_ADDRESS", "excluded_from_whale_concentration": True}
+    dynamic = (dynamic_roles or {}).get(addr)
+    if isinstance(dynamic, dict):
+        role = dict(dynamic)
+        role["excluded_from_whale_concentration"] = bool(
+            str(role.get("role") or "").upper() in EXCLUDABLE_ROLES
+            and float(role.get("confidence") or 0) >= ROLE_EXCLUSION_MIN_CONFIDENCE
+        )
+        return role
     registered = _registered_role(chain, address, registry)
     if registered:
         registered["excluded_from_whale_concentration"] = bool(registered["role"] in EXCLUDABLE_ROLES and registered["confidence"] >= ROLE_EXCLUSION_MIN_CONFIDENCE)
@@ -154,11 +162,11 @@ def _holder_role(chain, address, pair_address=None, registry=None):
     return {"role": "UNKNOWN", "label": None, "confidence": 0.0, "source": "UNCLASSIFIED_FAIL_CLOSED", "excluded_from_whale_concentration": False}
 
 
-def _role_aware_distribution(chain, holders, pair_address=None, registry=None):
+def _role_aware_distribution(chain, holders, pair_address=None, registry=None, dynamic_roles=None):
     classified = []
     for rank, holder in enumerate(holders, 1):
         row = dict(holder)
-        role = _holder_role(chain, row.get("owner"), pair_address, registry)
+        role = _holder_role(chain, row.get("owner"), pair_address, registry, dynamic_roles)
         row.update({"gross_rank": rank, "holder_role": role["role"], "holder_role_label": role.get("label"), "holder_role_confidence": round(float(role.get("confidence") or 0), 4), "holder_role_source": role.get("source"), "excluded_from_whale_concentration": bool(role.get("excluded_from_whale_concentration"))})
         classified.append(row)
     gross = sorted((float(x.get("pct") or 0) for x in classified), reverse=True)
@@ -169,7 +177,8 @@ def _role_aware_distribution(chain, holders, pair_address=None, registry=None):
     def role_pct(role):
         return sum(float(x.get("pct") or 0) for x in classified if x.get("holder_role") == role)
 
-    return {"holders": classified, "real_holders": real_holders, "gross_top1_pct": sum(gross[:1]), "gross_top5_pct": sum(gross[:5]), "gross_top10_pct": sum(gross[:10]), "adjusted_top1_pct": sum(real_pcts[:1]), "adjusted_top5_pct": sum(real_pcts[:5]), "adjusted_top10_pct": sum(real_pcts[:10]), "adjusted_top10_complete": len(real_holders) >= 10, "known_infrastructure_pct": sum(float(x.get("pct") or 0) for x in excluded), "dex_lp_pct": role_pct("DEX_LP_POOL"), "cex_custody_pct": role_pct("CEX_CUSTODY"), "burn_lock_pct": role_pct("BURN_LOCK"), "locked_vault_pct": role_pct("LOCKED_VAULT"), "excluded_holder_count": len(excluded), "unknown_holder_pct_observed": sum(float(x.get("pct") or 0) for x in classified if x.get("holder_role") == "UNKNOWN")}
+    dex_roles = {"DEX_LP_POOL", "DEX_LP_VAULT", "DEX_POOL_AUTHORITY"}
+    return {"holders": classified, "real_holders": real_holders, "gross_top1_pct": sum(gross[:1]), "gross_top5_pct": sum(gross[:5]), "gross_top10_pct": sum(gross[:10]), "adjusted_top1_pct": sum(real_pcts[:1]), "adjusted_top5_pct": sum(real_pcts[:5]), "adjusted_top10_pct": sum(real_pcts[:10]), "adjusted_top10_complete": len(real_holders) >= 10, "known_infrastructure_pct": sum(float(x.get("pct") or 0) for x in excluded), "dex_lp_pct": sum(float(x.get("pct") or 0) for x in classified if x.get("holder_role") in dex_roles), "dex_lp_pool_pct": role_pct("DEX_LP_POOL"), "dex_lp_vault_pct": role_pct("DEX_LP_VAULT"), "dex_pool_authority_pct": role_pct("DEX_POOL_AUTHORITY"), "cex_custody_pct": role_pct("CEX_CUSTODY"), "burn_lock_pct": role_pct("BURN_LOCK"), "locked_vault_pct": role_pct("LOCKED_VAULT"), "excluded_holder_count": len(excluded), "unknown_holder_pct_observed": sum(float(x.get("pct") or 0) for x in classified if x.get("holder_role") == "UNKNOWN")}
 
 
 def _evm_logs_resilient(urls, token, a, b):
@@ -217,6 +226,126 @@ def _sol_holders(token):
     owners.sort(key=lambda x: x["amount"], reverse=True)
     rc = sum(1 for x in resolved if x.get("owner"))
     return owners, resolved, {"supply": total, "largest_accounts_returned": len(token_accounts), "owners_resolved": rc, "owner_resolution_complete": rc == len(token_accounts) and rc > 0, "reason": "SOLANA_OWNER_RESOLUTION_COMPLETE" if rc == len(token_accounts) and rc > 0 else "SOLANA_OWNER_RESOLUTION_INCOMPLETE"}
+
+
+
+_B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+_B58_INDEX = {ch: i for i, ch in enumerate(_B58_ALPHABET)}
+
+
+def _b58decode_pubkey(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    n = 0
+    try:
+        for ch in raw:
+            n = n * 58 + _B58_INDEX[ch]
+    except KeyError:
+        return None
+    body = n.to_bytes((n.bit_length() + 7) // 8, "big") if n else b""
+    leading = len(raw) - len(raw.lstrip("1"))
+    out = b"\x00" * leading + body
+    return out if len(out) == 32 else None
+
+
+def _solana_pool_roles(pair_address, token_accounts):
+    """Classify exact-pool infrastructure without relying on human labels.
+
+    A Solana holder is excluded from whale concentration only when the exact
+    pair's on-chain state directly references its top token account / authority,
+    or the resolved owner account is owned by the exact pair's AMM program.
+    Unknown addresses remain counted fail-closed.
+    """
+    pair = str(pair_address or "").strip()
+    if not pair or not token_accounts:
+        return {}, {"pool_role_scan_status": "NOT_APPLICABLE", "pool_role_matches": 0}
+
+    info = _rpc("getAccountInfo", [pair, {"encoding": "base64", "commitment": "confirmed"}]) or {}
+    value = info.get("value") if isinstance(info, dict) else None
+    if not isinstance(value, dict):
+        return {}, {"pool_role_scan_status": "PAIR_ACCOUNT_UNAVAILABLE", "pool_role_matches": 0}
+
+    pair_program = str(value.get("owner") or "")
+    data = value.get("data")
+    encoded = data[0] if isinstance(data, list) and data else data
+    try:
+        import base64
+        pair_raw = base64.b64decode(str(encoded), validate=True) if encoded else b""
+    except Exception:
+        pair_raw = b""
+
+    owner_addresses = []
+    seen = set()
+    for row in token_accounts:
+        owner = str((row or {}).get("owner") or "").strip()
+        if owner and owner not in seen:
+            seen.add(owner)
+            owner_addresses.append(owner)
+
+    owner_meta = {}
+    if owner_addresses:
+        batch = _rpc(
+            "getMultipleAccounts",
+            [owner_addresses, {"encoding": "base64", "commitment": "confirmed", "dataSlice": {"offset": 0, "length": 0}}],
+        ) or {}
+        values = batch.get("value") if isinstance(batch, dict) else []
+        for owner, account in zip(owner_addresses, values or []):
+            if isinstance(account, dict):
+                owner_meta[owner] = {
+                    "program_owner": str(account.get("owner") or ""),
+                    "executable": bool(account.get("executable")),
+                }
+
+    roles = {}
+    evidence_rows = []
+    for row in token_accounts:
+        owner = str((row or {}).get("owner") or "").strip()
+        token_account = str((row or {}).get("token_account") or "").strip()
+        if not owner:
+            continue
+        token_bytes = _b58decode_pubkey(token_account)
+        owner_bytes = _b58decode_pubkey(owner)
+        evidence = None
+        role = None
+
+        if pair_raw and token_bytes and token_bytes in pair_raw:
+            role = "DEX_LP_VAULT"
+            evidence = "EXACT_POOL_STATE_REFERENCES_TOKEN_ACCOUNT"
+        elif pair_raw and owner_bytes and owner_bytes in pair_raw:
+            role = "DEX_POOL_AUTHORITY"
+            evidence = "EXACT_POOL_STATE_REFERENCES_OWNER_AUTHORITY"
+        else:
+            meta = owner_meta.get(owner) or {}
+            if (
+                pair_program
+                and meta.get("program_owner") == pair_program
+                and meta.get("executable") is False
+            ):
+                role = "DEX_POOL_AUTHORITY"
+                evidence = "OWNER_ACCOUNT_OWNED_BY_EXACT_POOL_PROGRAM"
+
+        if role:
+            roles[_norm("SOLANA", owner)] = {
+                "role": role,
+                "label": "Exact Solana pool infrastructure",
+                "confidence": 1.0,
+                "source": "SOLANA_EXACT_POOL_ONCHAIN_RELATION",
+                "evidence": evidence,
+            }
+            evidence_rows.append({
+                "owner": owner,
+                "token_account": token_account,
+                "role": role,
+                "evidence": evidence,
+            })
+
+    return roles, {
+        "pool_role_scan_status": "OK",
+        "pool_program": pair_program or None,
+        "pool_role_matches": len(roles),
+        "pool_role_evidence": evidence_rows,
+    }
 
 
 def _evm_total_supply(urls, token):
@@ -300,9 +429,12 @@ def _evm_holders(chain, token, row):
 
 def analyze(row):
     chain = row.get("chain"); token = row.get("token") or row.get("token_address") or row.get("mint"); pair = row.get("pair_address") or row.get("locked_pair_address"); c = str(chain or "").upper()
-    reasons = []; token_accounts = []; graph = []; clusters = []; meta = {}; deployer_evidence = {"verified": False, "reason": "NOT_APPLICABLE"}; funding = []
+    reasons = []; token_accounts = []; graph = []; clusters = []; meta = {}; dynamic_roles = {}; deployer_evidence = {"verified": False, "reason": "NOT_APPLICABLE"}; funding = []
     if c in ("SOL", "SOLANA"):
         holders, token_accounts, meta = _sol_holders(token)
+        pool_roles, pool_meta = _solana_pool_roles(pair, token_accounts)
+        dynamic_roles.update(pool_roles)
+        meta = {**meta, **pool_meta}
         if meta.get("reason") not in (None, "SOLANA_OWNER_RESOLUTION_COMPLETE"): reasons.append(meta["reason"])
     elif c in EVM_CHAINS:
         holders, graph, clusters, meta = _evm_holders(c, str(token).lower(), row); urls = RPC.get(c, []); deployer_evidence = {"verified": False, "reason": "RPC_FALLBACK_SET_USED"}
@@ -314,7 +446,7 @@ def analyze(row):
     else:
         holders = []; reasons.append("UNSUPPORTED_CHAIN")
 
-    distribution = _role_aware_distribution(c, holders, pair, _role_registry()); holders = distribution["holders"]
+    distribution = _role_aware_distribution(c, holders, pair, _role_registry(), dynamic_roles); holders = distribution["holders"]
     role_exclusions = {str(x.get("owner") or "").lower() for x in holders if x.get("excluded_from_whale_concentration")}
     if c in EVM_CHAINS:
         clusters = _components(holders, graph, role_exclusions | INFRA_EXCLUSIONS | {ZERO, str(token or "").lower(), str(pair or "").lower()}); clusters = corroborate_clusters(clusters, graph, deployer_evidence, funding)
@@ -333,7 +465,7 @@ def analyze(row):
     hard_block = (verification_complete and any(x in reasons for x in ("TOP1_OWNER_CONCENTRATION_HIGH", "TOP5_OWNER_CONCENTRATION_HIGH", "TOP10_OWNER_CONCENTRATION_HIGH"))) or bool(blockable)
     needs_review = bool(linked) or not verification_complete or any(x.endswith("REVIEW_ONLY") for x in reasons); status = "BLOCK" if hard_block else ("REVIEW" if needs_review else "PASS")
     level = "ONCHAIN_OWNER_CONCENTRATION_RESOLVED" if sol_complete and holders else ("FULL_EVM_TRANSFER_LEDGER" if evm_complete and holders else ("BOUNDED_ONCHAIN_TRANSFER_LEDGER" if holders else "INSUFFICIENT_EVIDENCE"))
-    return {"chain": chain, "token": token, "pair_address": pair, "checked_at": datetime.now(timezone.utc).isoformat(), "status": status, "verification_complete": verification_complete, "top_holders_count": len(holders), "top1_pct": round(top1, 4), "top5_pct": round(top5, 4), "top10_pct": round(top10, 4), "gross_top1_pct": round(distribution["gross_top1_pct"], 4), "gross_top5_pct": round(distribution["gross_top5_pct"], 4), "gross_top10_pct": round(distribution["gross_top10_pct"], 4), "adjusted_real_top1_pct": round(top1, 4), "adjusted_real_top5_pct": round(top5, 4), "adjusted_real_top10_pct": round(top10, 4), "adjusted_top10_complete": distribution["adjusted_top10_complete"], "known_infrastructure_pct": round(distribution["known_infrastructure_pct"], 4), "dex_lp_pct": round(distribution["dex_lp_pct"], 4), "cex_custody_pct": round(distribution["cex_custody_pct"], 4), "burn_lock_pct": round(distribution["burn_lock_pct"], 4), "locked_vault_pct": round(distribution["locked_vault_pct"], 4), "unknown_holder_pct_observed": round(distribution["unknown_holder_pct_observed"], 4), "holder_role_policy": "ONLY_EXACT_HIGH_CONFIDENCE_INFRASTRUCTURE_ROLES_ARE_EXCLUDED;UNKNOWN_FAILS_CLOSED;CEX_CUSTODY_MONITORED_SEPARATELY", "cluster_verified": bool(corroborated), "linked_cluster_candidates": linked, "corroborated_cluster_risks": corroborated, "blockable_cluster_risks": blockable, "deployer_evidence": deployer_evidence, "verified_native_funding_edges": funding, "reasons": list(dict.fromkeys(reasons)), "evidence_level": level, "metadata": meta, "holders": holders, "token_accounts": token_accounts, "transfer_graph": graph}
+    return {"chain": chain, "token": token, "pair_address": pair, "checked_at": datetime.now(timezone.utc).isoformat(), "status": status, "verification_complete": verification_complete, "top_holders_count": len(holders), "top1_pct": round(top1, 4), "top5_pct": round(top5, 4), "top10_pct": round(top10, 4), "gross_top1_pct": round(distribution["gross_top1_pct"], 4), "gross_top5_pct": round(distribution["gross_top5_pct"], 4), "gross_top10_pct": round(distribution["gross_top10_pct"], 4), "adjusted_real_top1_pct": round(top1, 4), "adjusted_real_top5_pct": round(top5, 4), "adjusted_real_top10_pct": round(top10, 4), "adjusted_top10_complete": distribution["adjusted_top10_complete"], "known_infrastructure_pct": round(distribution["known_infrastructure_pct"], 4), "dex_lp_pct": round(distribution["dex_lp_pct"], 4), "cex_custody_pct": round(distribution["cex_custody_pct"], 4), "burn_lock_pct": round(distribution["burn_lock_pct"], 4), "locked_vault_pct": round(distribution["locked_vault_pct"], 4), "unknown_holder_pct_observed": round(distribution["unknown_holder_pct_observed"], 4), "holder_role_policy": "ONLY_EXACT_HIGH_CONFIDENCE_INFRASTRUCTURE_ROLES_ARE_EXCLUDED;SOLANA_POOL_VAULTS_AND_AUTHORITIES_REQUIRE_EXACT_ONCHAIN_POOL_RELATION;UNKNOWN_FAILS_CLOSED;CEX_CUSTODY_MONITORED_SEPARATELY", "cluster_verified": bool(corroborated), "linked_cluster_candidates": linked, "corroborated_cluster_risks": corroborated, "blockable_cluster_risks": blockable, "deployer_evidence": deployer_evidence, "verified_native_funding_edges": funding, "reasons": list(dict.fromkeys(reasons)), "evidence_level": level, "metadata": meta, "holders": holders, "token_accounts": token_accounts, "transfer_graph": graph}
 
 
 def _rows_from_source(src):
@@ -351,7 +483,7 @@ def run():
         if not chain or not token or key in seen: continue
         seen.add(key); out.append(analyze(r))
     now = datetime.now(timezone.utc).isoformat()
-    payload = {"updated_at": now, "method": "WALLET500_HOLDER_CLUSTER_PRETRADE_GATE_V3_ROLE_AWARE_MULTI_EVM", "input_file": INPUT_FILE, "truth_note": "Gross concentration is diagnostic only. Hard concentration gates use adjusted non-infrastructure holders after exact high-confidence role classification. Unknown addresses remain counted. CEX custody is excluded from whale concentration but monitored as a separate flow/concentration risk.", "role_exclusion_min_confidence": ROLE_EXCLUSION_MIN_CONFIDENCE, "rows": out}
+    payload = {"updated_at": now, "method": "WALLET500_HOLDER_CLUSTER_PRETRADE_GATE_V4_ROLE_AWARE_POOL_SAFE", "input_file": INPUT_FILE, "truth_note": "Gross concentration is diagnostic only. Hard concentration gates use adjusted non-infrastructure holders after exact high-confidence role classification. Solana LP vaults/pool authorities are excluded only when tied to the exact pair by on-chain state/program evidence. Unknown addresses remain counted. CEX custody is excluded from whale concentration but monitored separately.", "role_exclusion_min_confidence": ROLE_EXCLUSION_MIN_CONFIDENCE, "rows": out}
     _write(DATA / "holder-cluster-gate.json", payload)
     _write(DATA / "holder-cluster-gate-summary.json", {"updated_at": now, "input_file": INPUT_FILE, "checked": len(out), "block": sum(x["status"] == "BLOCK" for x in out), "review": sum(x["status"] == "REVIEW" for x in out), "pass": sum(x["status"] == "PASS" for x in out), "verification_complete": sum(x["verification_complete"] for x in out), "method": payload["method"]})
     print(json.dumps({"checked": len(out), "pass": sum(x["status"] == "PASS" for x in out), "review": sum(x["status"] == "REVIEW" for x in out), "block": sum(x["status"] == "BLOCK" for x in out)}, indent=2)); return payload
