@@ -246,17 +246,27 @@
       "exact_pair_required": true,
       "user_requested_watch": true,
       "force_monitoring": true,
-      "watch_policy": "SILENT_UNTIL_CANONICAL_BUY",
+      "watch_policy": "TARGETED_POSITION_PROTECTION_PLUS_BUY",
       "telegram_policy": "FINAL_BUY_ONLY",
       "user_watch_final_buy_lane": true,
-      "user_watch_final_buy_reason": "USER_REQUESTED_MCAT_SECOND_WAVE_TARGETED_TELEGRAM",
+      "user_watch_final_buy_reason": "USER_REQUESTED_MCAT_TARGETED_TELEGRAM_BUY_AND_POSITION_PROTECTION",
       "telegram_eligible_only_via_user_watch_final_buy_gate": true,
       "targeted_telegram_watch": true,
       "targeted_telegram_events": [
+        "RISK_WARNING",
+        "BREAKDOWN",
         "PRE_BUY",
         "FINAL_BUY"
       ],
-      "targeted_watch_profile": "MCAT_SECOND_WAVE_REVALIDATION"
+      "targeted_watch_profile": "MCAT_SECOND_WAVE_REVALIDATION",
+      "targeted_risk_policy": {
+        "price_drop_warning_pct": 3,
+        "price_drop_breakdown_pct": 8,
+        "flow_warning_ratio": 1.2,
+        "liquidity_drop_breakdown_pct": 20,
+        "relert_additional_price_drop_pct": 8,
+        "cooldown_seconds": 1800
+      }
     },
     {
       "symbol": "GEOM",
