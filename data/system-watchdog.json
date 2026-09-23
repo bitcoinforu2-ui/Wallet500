@@ -1,46 +1,32 @@
 {
   "version": 1,
   "mode": "INDEPENDENT_OBSERVABILITY_NO_TRADING_POLICY_EFFECT",
-  "updated_at": "2026-09-23T12:11:39.224005+00:00",
-  "overall": "CRITICAL",
-  "incident_count": 5,
-  "critical_count": 1,
-  "high_count": 4,
-  "new_notifications": [
-    {
-      "code": "REAL_ALERT_FEED_STALE",
-      "severity": "CRITICAL",
-      "detail": "real-alerts.json age=3109.2s max=2700s"
-    },
-    {
-      "code": "SCHEDULER_TELEMETRY_STALE",
-      "severity": "HIGH",
-      "detail": "scheduler-health.json age=3108.7s max=2700s"
-    },
-    {
-      "code": "SYSTEM_HEALTH_STALE",
-      "severity": "HIGH",
-      "detail": "system-health.json age=3108.8s max=2700s"
-    }
+  "updated_at": "2026-09-23T12:44:04.070381+00:00",
+  "overall": "DEGRADED",
+  "incident_count": 2,
+  "critical_count": 0,
+  "high_count": 2,
+  "new_notifications": [],
+  "recovered_codes": [
+    "REAL_ALERT_FEED_STALE",
+    "SCHEDULER_TELEMETRY_STALE",
+    "SYSTEM_HEALTH_STALE"
   ],
-  "recovered_codes": [],
-  "real_alert_transitions_entered": [],
+  "real_alert_transitions_entered": [
+    "bsc:0x7c8217517ed4711fe2deccdfeffe8d906b9ae11f:0x49986efbeedea3ab962ca95caf86919860ecc9db",
+    "ethereum:0xe53ec727dbdeb9e2d5456c3be40cff031ab40a55:0x25647e01bd0967c1b9599fa3521939871d1d0888"
+  ],
   "buy_only_policy_active": true,
   "final_buy_keys_expected": [],
   "pre_buy_delivery_gaps": [],
   "incidents": [
     {
-      "code": "REAL_ALERT_FEED_STALE",
-      "severity": "CRITICAL",
-      "detail": "real-alerts.json age=3109.2s max=2700s"
-    },
-    {
       "code": "GITHUB_ACTIONS_CAPACITY_PRESSURE",
       "severity": "HIGH",
-      "detail": "queued=21, in_progress=8, runs_today=5467",
+      "detail": "queued=21, in_progress=18, runs_today=5681",
       "queued": 21,
-      "in_progress": 8,
-      "runs_today": 5467,
+      "in_progress": 18,
+      "runs_today": 5681,
       "thresholds": {
         "queued": 8,
         "in_progress": 12,
@@ -50,61 +36,51 @@
     {
       "code": "GITHUB_ACTIONS_FAILURE_PRESSURE",
       "severity": "HIGH",
-      "detail": "workflow failures today=406",
-      "failures_today": 406,
+      "detail": "workflow failures today=415",
+      "failures_today": 415,
       "threshold": 20
-    },
-    {
-      "code": "SCHEDULER_TELEMETRY_STALE",
-      "severity": "HIGH",
-      "detail": "scheduler-health.json age=3108.7s max=2700s"
-    },
-    {
-      "code": "SYSTEM_HEALTH_STALE",
-      "severity": "HIGH",
-      "detail": "system-health.json age=3108.8s max=2700s"
     }
   ],
   "checks": {
     "real-alerts.json": {
-      "timestamp": "2026-09-23T11:19:50.019236+00:00",
-      "age_seconds": 3109.2,
+      "timestamp": "2026-09-23T12:23:46.780239+00:00",
+      "age_seconds": 1217.3,
       "max_age_seconds": 2700,
-      "ok": false
+      "ok": true
     },
     "system-health.json": {
-      "timestamp": "2026-09-23T11:19:50.440920+00:00",
-      "age_seconds": 3108.8,
+      "timestamp": "2026-09-23T12:23:47.238764+00:00",
+      "age_seconds": 1216.8,
       "max_age_seconds": 2700,
-      "ok": false
+      "ok": true
     },
     "scheduler-health.json": {
-      "timestamp": "2026-09-23T11:19:50.494107+00:00",
-      "age_seconds": 3108.7,
+      "timestamp": "2026-09-23T12:23:47.297469+00:00",
+      "age_seconds": 1216.8,
       "max_age_seconds": 2700,
-      "ok": false
+      "ok": true
     },
     "telegram-alert-report.json": {
-      "timestamp": "2026-09-23T11:28:37.292814+00:00",
-      "age_seconds": 2581.9,
+      "timestamp": "2026-09-23T12:33:38.917274+00:00",
+      "age_seconds": 625.2,
       "max_age_seconds": 3600,
       "ok": true
     },
     "real-alert-10usd-summary.json": {
-      "timestamp": "2026-09-23T11:52:41.747211+00:00",
-      "age_seconds": 1137.5,
+      "timestamp": "2026-09-23T12:33:45.643225+00:00",
+      "age_seconds": 618.4,
       "max_age_seconds": 3600,
       "ok": true
     },
     "github_live_scan": {
       "latest_status": "completed",
       "latest_conclusion": "success",
-      "latest_event": "workflow_dispatch",
-      "latest_created_at": "2026-09-23T12:07:40Z",
-      "latest_updated_at": "2026-09-23T12:10:41Z",
-      "latest_run_id": 35858557020,
-      "last_success_at": "2026-09-23T12:10:41Z",
-      "last_success_run_id": 35858557020,
+      "latest_event": "schedule",
+      "latest_created_at": "2026-09-23T12:37:54Z",
+      "latest_updated_at": "2026-09-23T12:42:02Z",
+      "latest_run_id": 35861696493,
+      "last_success_at": "2026-09-23T12:42:02Z",
+      "last_success_run_id": 35861696493,
       "cancellations_since_success": 0,
       "latest_cancelled_run_id": null,
       "latest_hard_failure_conclusion": null,
@@ -115,25 +91,25 @@
     "public_surface": {
       "dashboard_ok": true,
       "real_feed_ok": true,
-      "real_feed_generated_at": "2026-09-23T11:19:50.019236+00:00"
+      "real_feed_generated_at": "2026-09-23T12:23:46.780239+00:00"
     },
     "github_actions_capacity": {
       "queued": 21,
-      "in_progress": 8,
-      "runs_today": 5467,
-      "failures_today": 406,
+      "in_progress": 18,
+      "runs_today": 5681,
+      "failures_today": 415,
       "ok": false
     },
     "revival_publish_freshness": {
-      "latest_run_id": 35858561648,
-      "latest_status": "in_progress",
-      "latest_conclusion": null,
-      "latest_updated_at": "2026-09-23T12:07:47Z",
-      "published_generated_at": "2026-09-23T11:18:26.641606+00:00",
+      "latest_run_id": 35861782169,
+      "latest_status": "completed",
+      "latest_conclusion": "success",
+      "latest_updated_at": "2026-09-23T12:41:14Z",
+      "published_generated_at": "2026-09-23T12:39:38.593472+00:00",
       "ok": true
     },
     "candidate_starvation": {
-      "zero_active_started_at": "2026-09-23T12:11:40.812988+00:00",
+      "zero_active_started_at": "2026-09-23T12:44:06.413556+00:00",
       "zero_active_age_seconds": 0.0,
       "active_qualified": 0,
       "market_scan": 384,
@@ -162,7 +138,7 @@
     "attempted": false,
     "sent": false,
     "reason": "WATCHDOG_USER_TELEGRAM_DISABLED_BY_NEAR_BUY_AND_BUY_ONLY_POLICY",
-    "suppressed_technical_notification_count": 3
+    "suppressed_technical_notification_count": 0
   },
-  "operational_guard_updated_at": "2026-09-23T12:11:40.812988+00:00"
+  "operational_guard_updated_at": "2026-09-23T12:44:06.413556+00:00"
 }
