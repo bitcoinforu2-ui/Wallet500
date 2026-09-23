@@ -1323,6 +1323,21 @@ def targeted_risk_event(
         25.0, max(0.5, float(rp.get("liquidity_near_floor_headroom_pct", 5.0)))
     )
     min_warning_groups = max(2, int(rp.get("min_warning_evidence_groups", 2)))
+    warning_confirmation_required = bool(rp.get("warning_confirmation_required", True))
+    warning_required_scans = max(1, int(rp.get("warning_required_consecutive_scans", 2)))
+    warning_min_confirmation_spacing = max(
+        0.0, float(rp.get("warning_min_confirmation_spacing_seconds", 180.0))
+    )
+    warning_max_confirmation_gap = max(
+        warning_min_confirmation_spacing,
+        float(rp.get("warning_max_confirmation_gap_seconds", 900.0)),
+    )
+    warning_min_persistent_groups = max(
+        1, int(rp.get("warning_min_persistent_evidence_groups", 1))
+    )
+    warning_min_confirmed_risk_score = max(
+        0.0, float(rp.get("warning_min_confirmed_risk_score", 2.5))
+    )
     liquidity_drop_threshold = max(
         1.0,
         float(rp.get("liquidity_drop_breakdown_pct", target.get("liquidity_drop_pct", 20.0))),
@@ -1474,6 +1489,80 @@ def targeted_risk_event(
     if not severe and len(evidence_groups) < min_warning_groups:
         return None
 
+    # Non-severe SELL-RISK warnings must persist across time-separated scans
+    # before Telegram delivery. Severe breakdown/hard-risk events stay immediate.
+    prior_was_active = bool(prior.get("targeted_risk_active"))
+    previous_pending_streak = int(prior.get("targeted_risk_pending_streak") or 0)
+    previous_pending_at = parse_dt(prior.get("targeted_risk_pending_last_at"))
+    previous_pending_first_at = parse_dt(prior.get("targeted_risk_pending_first_at"))
+    previous_pending_groups = {
+        str(x)
+        for x in (prior.get("targeted_risk_pending_groups") or [])
+        if str(x).strip()
+    }
+    confirmation_streak = 0
+    confirmation_first_at: datetime | None = None
+    confirmation_last_at: datetime | None = None
+    confirmation_gap_seconds: float | None = None
+    persistent_confirmation_groups: set[str] = set()
+
+    if severe:
+        confirmed = True
+        confirmation_status = "BYPASSED_SEVERE"
+        confirmation_streak = warning_required_scans
+        persistent_confirmation_groups = set(evidence_groups)
+    elif prior_was_active:
+        confirmed = True
+        confirmation_status = "CONFIRMED_ACTIVE"
+        confirmation_streak = warning_required_scans
+        persistent_confirmation_groups = set(evidence_groups)
+    elif not warning_confirmation_required or warning_required_scans <= 1:
+        confirmed = risk_score >= warning_min_confirmed_risk_score
+        confirmation_status = "CONFIRMED_SINGLE_SCAN" if confirmed else "PENDING"
+        confirmation_streak = 1
+        confirmation_first_at = now
+        confirmation_last_at = now
+        persistent_confirmation_groups = set(evidence_groups)
+    else:
+        if previous_pending_at is not None:
+            confirmation_gap_seconds = (now - previous_pending_at).total_seconds()
+        same_episode = bool(
+            previous_pending_streak > 0
+            and previous_pending_at is not None
+            and confirmation_gap_seconds is not None
+            and 0 <= confirmation_gap_seconds <= warning_max_confirmation_gap
+        )
+        persistent_confirmation_groups = (
+            evidence_groups & previous_pending_groups if same_episode else set()
+        )
+        corroborated = bool(
+            same_episode
+            and len(persistent_confirmation_groups) >= warning_min_persistent_groups
+        )
+        if (
+            corroborated
+            and confirmation_gap_seconds is not None
+            and confirmation_gap_seconds >= warning_min_confirmation_spacing
+        ):
+            confirmation_streak = previous_pending_streak + 1
+            confirmation_first_at = previous_pending_first_at or previous_pending_at or now
+            confirmation_last_at = now
+        elif corroborated:
+            confirmation_streak = max(1, previous_pending_streak)
+            confirmation_first_at = previous_pending_first_at or previous_pending_at or now
+            confirmation_last_at = previous_pending_at
+        else:
+            confirmation_streak = 1
+            confirmation_first_at = now
+            confirmation_last_at = now
+            persistent_confirmation_groups = set(evidence_groups)
+
+        confirmed = bool(
+            confirmation_streak >= warning_required_scans
+            and risk_score >= warning_min_confirmed_risk_score
+        )
+        confirmation_status = "CONFIRMED" if confirmed else "PENDING"
+
     severity = "BREAKDOWN" if severe else "RISK_WARNING"
     event_name = (
         severity
@@ -1489,7 +1578,7 @@ def targeted_risk_event(
     last_alert_price = num(prior.get("last_targeted_risk_alert_price"), 0.0) or 0.0
     last_signature = str(prior.get("last_targeted_risk_signature") or "")
     last_severity = str(prior.get("last_targeted_risk_severity") or "").upper()
-    prior_active = bool(prior.get("targeted_risk_active"))
+    prior_active = prior_was_active
 
     severity_rank = {"RISK_WARNING": 1, "BREAKDOWN": 2}
     escalated = severity_rank.get(severity, 1) > severity_rank.get(last_severity, 0)
@@ -1504,12 +1593,15 @@ def targeted_risk_event(
         and signature != last_signature
     )
     should_alert = bool(
-        not prior_active
-        or not last_alert_at
-        or escalated
-        or additional_drop
-        or new_break_level
-        or cooled_new_signature
+        confirmed
+        and (
+            not prior_active
+            or not last_alert_at
+            or escalated
+            or additional_drop
+            or new_break_level
+            or cooled_new_signature
+        )
     )
 
     confidence = (
@@ -1519,7 +1611,7 @@ def targeted_risk_event(
     )
 
     return {
-        "active": True,
+        "active": bool(confirmed),
         "event": event_name,
         "severity": severity,
         "alert": should_alert,
@@ -1529,6 +1621,24 @@ def targeted_risk_event(
         "evidence_group_count": len(evidence_groups),
         "risk_score": round(risk_score, 2),
         "confidence": confidence,
+        "confirmation_status": confirmation_status,
+        "confirmation_required": bool(
+            warning_confirmation_required and not severe and not prior_was_active
+        ),
+        "confirmation_streak": confirmation_streak,
+        "confirmation_required_scans": warning_required_scans,
+        "confirmation_first_at": (
+            confirmation_first_at.isoformat() if confirmation_first_at is not None else None
+        ),
+        "confirmation_last_at": (
+            confirmation_last_at.isoformat() if confirmation_last_at is not None else None
+        ),
+        "confirmation_gap_seconds": (
+            round(confirmation_gap_seconds, 3)
+            if confirmation_gap_seconds is not None
+            else None
+        ),
+        "persistent_confirmation_groups": sorted(persistent_confirmation_groups),
         "price_usd": price,
         "scan_price_change_pct": round(scan_change, 4),
         "liquidity_usd": liquidity,
@@ -1847,6 +1957,38 @@ def main() -> int:
         next_state["targeted_risk_active"] = bool(
             targeted_risk and targeted_risk.get("active")
         )
+        pending_keys = [
+            "targeted_risk_pending_streak",
+            "targeted_risk_pending_first_at",
+            "targeted_risk_pending_last_at",
+            "targeted_risk_pending_groups",
+            "targeted_risk_pending_signature",
+            "targeted_risk_pending_price",
+            "targeted_risk_pending_score",
+        ]
+        if (
+            targeted_risk
+            and str(targeted_risk.get("confirmation_status") or "").upper() == "PENDING"
+        ):
+            next_state["targeted_risk_pending_streak"] = int(
+                targeted_risk.get("confirmation_streak") or 1
+            )
+            next_state["targeted_risk_pending_first_at"] = targeted_risk.get(
+                "confirmation_first_at"
+            )
+            next_state["targeted_risk_pending_last_at"] = targeted_risk.get(
+                "confirmation_last_at"
+            )
+            next_state["targeted_risk_pending_groups"] = list(
+                targeted_risk.get("evidence_groups") or []
+            )
+            next_state["targeted_risk_pending_signature"] = targeted_risk.get("signature")
+            next_state["targeted_risk_pending_price"] = targeted_risk.get("price_usd")
+            next_state["targeted_risk_pending_score"] = targeted_risk.get("risk_score")
+        else:
+            for pending_key in pending_keys:
+                next_state.pop(pending_key, None)
+
         if targeted_risk and targeted_risk.get("alert") is True:
             try:
                 send_telegram(targeted_risk_message(target, decision, targeted_risk))
@@ -1940,6 +2082,12 @@ def main() -> int:
         "pre_buy_delivered": pre_buy_delivered,
         "targeted_risk_delivered_count": len(targeted_risk_delivered),
         "targeted_risk_delivered": targeted_risk_delivered,
+        "targeted_risk_pending_count": sum(
+            1
+            for x in decisions
+            if isinstance(x.get("targeted_risk"), dict)
+            and str(x["targeted_risk"].get("confirmation_status") or "").upper() == "PENDING"
+        ),
         "delivered_count": len(delivered),
         "delivered": delivered,
         "error_count": len(errors),
@@ -1968,6 +2116,10 @@ def main() -> int:
             "targeted_position_protection_notifications": True,
             "targeted_risk_requires_explicit_per_token_opt_in": True,
             "targeted_risk_never_uses_stale_or_identity_ambiguous_market_data": True,
+            "targeted_risk_warning_requires_time_separated_confirmation": True,
+            "targeted_risk_pending_warning_is_not_delivered": True,
+            "targeted_risk_severe_breakdown_bypasses_confirmation_delay": True,
+            "targeted_risk_pending_state_clears_when_live_risk_evidence_clears": True,
             "fail_closed_per_target_on_partial_upstream": True,
             "partial_upstream_max_snapshot_age_seconds": partial_upstream_max_age_seconds,
             "decision_coverage_is_explicit": True,
@@ -1988,6 +2140,7 @@ def main() -> int:
         "pre_buy_count": report["pre_buy_count"],
         "pre_buy_delivered_count": report["pre_buy_delivered_count"],
         "targeted_risk_delivered_count": report["targeted_risk_delivered_count"],
+        "targeted_risk_pending_count": report["targeted_risk_pending_count"],
         "delivered_count": report["delivered_count"],
         "error_count": report["error_count"],
     }, ensure_ascii=False))
