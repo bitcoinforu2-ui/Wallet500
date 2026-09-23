@@ -1207,6 +1207,8 @@ def evaluate(
         "last_liquidity": liquidity,
         "last_volume_h1": volume_h1,
         "last_buy_sell_ratio": round(ratio, 6),
+        "last_buys_h1": buys,
+        "last_sells_h1": sells,
         "last_activity_h1": activity,
         "watch_low_price": low if low is not None else prior.get("watch_low_price"),
         "watch_high_price": max(num(prior.get("watch_high_price"), 0.0) or 0.0, price),
@@ -1283,10 +1285,14 @@ def targeted_risk_event(
     liquidity = num(market.get("liquidity_usd"), 0.0) or 0.0
     volume_h1 = num(market.get("volume_h1_usd"), 0.0) or 0.0
     ratio = num(market.get("buy_sell_ratio"), 0.0) or 0.0
+    buys = int(num(market.get("buys_h1"), 0.0) or 0)
+    sells = int(num(market.get("sells_h1"), 0.0) or 0)
     prev_price = num(prior.get("last_price"), 0.0) or 0.0
     prev_liquidity = num(prior.get("last_liquidity"), 0.0) or 0.0
     prev_volume_h1 = num(prior.get("last_volume_h1"), 0.0) or 0.0
     prev_ratio = num(prior.get("last_buy_sell_ratio"))
+    prev_buys = int(num(prior.get("last_buys_h1"), 0.0) or 0)
+    prev_sells = int(num(prior.get("last_sells_h1"), 0.0) or 0)
     scan_change = num(market.get("scan_price_gain_pct"))
 
     if price <= 0 or prev_price <= 0:
@@ -1302,6 +1308,21 @@ def targeted_risk_event(
         0.1,
         float(rp.get("flow_warning_ratio", policy.get("min_buy_sell_ratio", 1.2))),
     )
+    flow_deterioration_pct = max(5.0, float(rp.get("flow_deterioration_pct", 15.0)))
+    volume_acceleration_multiple = max(
+        1.05,
+        float(rp.get("volume_acceleration_multiple", target.get("volume_acceleration_multiple", 1.5))),
+    )
+    sell_count_acceleration_multiple = max(
+        1.05, float(rp.get("sell_count_acceleration_multiple", 1.35))
+    )
+    buy_count_deceleration_pct = min(
+        90.0, max(5.0, float(rp.get("buy_count_deceleration_pct", 25.0)))
+    )
+    near_floor_headroom_pct = min(
+        25.0, max(0.5, float(rp.get("liquidity_near_floor_headroom_pct", 5.0)))
+    )
+    min_warning_groups = max(2, int(rp.get("min_warning_evidence_groups", 2)))
     liquidity_drop_threshold = max(
         1.0,
         float(rp.get("liquidity_drop_breakdown_pct", target.get("liquidity_drop_pct", 20.0))),
@@ -1318,11 +1339,15 @@ def targeted_risk_event(
     )
 
     reasons: list[str] = []
+    evidence_groups: set[str] = set()
     severe = False
+    risk_score = 0.0
 
     hard_risks = [str(x) for x in (intel.get("hard_risks") or []) if str(x).strip()]
     if hard_risks:
         severe = True
+        risk_score += 5.0
+        evidence_groups.add("HARD_RISK")
         reasons.append("HARD_RISK:" + ",".join(sorted(set(hard_risks))))
 
     crossed_levels: list[float] = []
@@ -1334,13 +1359,19 @@ def targeted_risk_event(
             crossed_levels.append(level)
     if crossed_levels:
         severe = True
+        risk_score += 4.0
+        evidence_groups.add("PRICE")
         for level in sorted(set(crossed_levels), reverse=True):
             reasons.append(f"DOWN_LEVEL_BREACH_{level:.10f}")
 
     if scan_change <= -breakdown_drop:
         severe = True
+        risk_score += 4.0
+        evidence_groups.add("PRICE")
         reasons.append(f"SCAN_PRICE_DROP_{abs(scan_change):.2f}PCT")
     elif scan_change <= -warning_drop and ratio < flow_warning_ratio:
+        risk_score += 2.0
+        evidence_groups.update({"PRICE", "FLOW"})
         reasons.append(
             f"PRICE_WEAKNESS_WITH_FLOW_FAILURE_{abs(scan_change):.2f}PCT_RATIO_{ratio:.2f}"
         )
@@ -1351,29 +1382,96 @@ def targeted_risk_event(
         and ratio < flow_warning_ratio
         and scan_change < 0
     ):
+        risk_score += 1.5
+        evidence_groups.add("FLOW")
         reasons.append(f"BUY_FLOW_REVERSAL_{prev_ratio:.2f}_TO_{ratio:.2f}")
 
+    flow_deterioration = None
+    if prev_ratio is not None and prev_ratio > 0:
+        flow_deterioration = max(0.0, (1.0 - ratio / prev_ratio) * 100.0)
+        if (
+            flow_deterioration >= flow_deterioration_pct
+            and ratio < 1.0
+            and scan_change < 0
+        ):
+            risk_score += 1.25
+            evidence_groups.add("FLOW")
+            reasons.append(
+                f"FLOW_DETERIORATION_{flow_deterioration:.1f}PCT_{prev_ratio:.2f}_TO_{ratio:.2f}"
+            )
+
+    total_volume_multiple = volume_h1 / prev_volume_h1 if prev_volume_h1 > 0 else None
     if (
-        prev_volume_h1 > 0
-        and volume_h1 >= prev_volume_h1 * 1.5
+        total_volume_multiple is not None
+        and total_volume_multiple >= volume_acceleration_multiple
         and ratio < 1.0
         and scan_change < 0
     ):
-        reasons.append(f"SELL_VOLUME_ACCELERATION_{volume_h1 / prev_volume_h1:.2f}X")
+        # Exact-pair feed exposes total volume, not side-specific sell notional.
+        risk_score += 1.0
+        evidence_groups.add("VOLUME")
+        reasons.append(f"BEARISH_TOTAL_VOLUME_EXPANSION_{total_volume_multiple:.2f}X")
+
+    sell_count_multiple = sells / prev_sells if prev_sells > 0 else None
+    if (
+        sell_count_multiple is not None
+        and prev_sells >= 5
+        and sell_count_multiple >= sell_count_acceleration_multiple
+        and ratio < 1.0
+        and scan_change < 0
+    ):
+        risk_score += 1.5
+        evidence_groups.update({"FLOW", "SELL_COUNT"})
+        reasons.append(f"SELL_COUNT_ACCELERATION_{sell_count_multiple:.2f}X")
+
+    buy_count_change_pct = None
+    if prev_buys > 0:
+        buy_count_change_pct = (buys / prev_buys - 1.0) * 100.0
+        if (
+            prev_buys >= 5
+            and buy_count_change_pct <= -buy_count_deceleration_pct
+            and ratio < 1.0
+            and scan_change < 0
+        ):
+            risk_score += 0.75
+            evidence_groups.add("FLOW")
+            reasons.append(f"BUY_COUNT_DECELERATION_{abs(buy_count_change_pct):.1f}PCT")
 
     liquidity_drop_pct = None
     if prev_liquidity > 0 and liquidity >= 0:
         liquidity_drop_pct = (prev_liquidity - liquidity) / prev_liquidity * 100.0
         if liquidity_drop_pct >= liquidity_drop_threshold:
             severe = True
+            risk_score += 4.0
+            evidence_groups.add("LIQUIDITY")
             reasons.append(f"LIQUIDITY_DROP_{liquidity_drop_pct:.2f}PCT")
 
     final_buy_floor = float(policy.get("min_liquidity_usd", 50000.0))
+    floor_headroom_pct = (
+        (liquidity / final_buy_floor - 1.0) * 100.0
+        if final_buy_floor > 0 and liquidity > 0
+        else None
+    )
     if prev_liquidity >= final_buy_floor and liquidity < final_buy_floor:
         severe = True
+        risk_score += 4.0
+        evidence_groups.add("LIQUIDITY")
         reasons.append(f"LIQUIDITY_FLOOR_BREACH_{final_buy_floor:.0f}")
+    elif (
+        floor_headroom_pct is not None
+        and 0 <= floor_headroom_pct <= near_floor_headroom_pct
+        and ratio < 1.0
+        and scan_change < 0
+    ):
+        risk_score += 1.0
+        evidence_groups.add("LIQUIDITY")
+        reasons.append(f"LIQUIDITY_NEAR_FLOOR_{floor_headroom_pct:.2f}PCT_HEADROOM")
 
     if not reasons:
+        return None
+
+    # Precision guard: one inferred volume expansion by itself is not enough.
+    if not severe and len(evidence_groups) < min_warning_groups:
         return None
 
     severity = "BREAKDOWN" if severe else "RISK_WARNING"
@@ -1414,6 +1512,12 @@ def targeted_risk_event(
         or cooled_new_signature
     )
 
+    confidence = (
+        "HIGH"
+        if severe or (len(evidence_groups) >= 3 and risk_score >= 3.0)
+        else "MEDIUM"
+    )
+
     return {
         "active": True,
         "event": event_name,
@@ -1421,6 +1525,10 @@ def targeted_risk_event(
         "alert": should_alert,
         "signature": signature,
         "reasons": list(dict.fromkeys(reasons)),
+        "evidence_groups": sorted(evidence_groups),
+        "evidence_group_count": len(evidence_groups),
+        "risk_score": round(risk_score, 2),
+        "confidence": confidence,
         "price_usd": price,
         "scan_price_change_pct": round(scan_change, 4),
         "liquidity_usd": liquidity,
@@ -1429,14 +1537,46 @@ def targeted_risk_event(
             if liquidity_drop_pct is not None
             else None
         ),
+        "liquidity_floor_headroom_pct": (
+            round(floor_headroom_pct, 4)
+            if floor_headroom_pct is not None
+            else None
+        ),
         "volume_h1_usd": volume_h1,
+        "total_volume_multiple": (
+            round(total_volume_multiple, 4)
+            if total_volume_multiple is not None
+            else None
+        ),
+        "buys_h1": buys,
+        "sells_h1": sells,
         "buy_sell_ratio": round(ratio, 4),
         "previous_buy_sell_ratio": (
             round(prev_ratio, 4) if prev_ratio is not None else None
         ),
+        "sell_count_multiple": (
+            round(sell_count_multiple, 4)
+            if sell_count_multiple is not None
+            else None
+        ),
+        "buy_count_change_pct": (
+            round(buy_count_change_pct, 4)
+            if buy_count_change_pct is not None
+            else None
+        ),
+        "flow_deterioration_pct": (
+            round(flow_deterioration, 4)
+            if flow_deterioration is not None
+            else None
+        ),
         "crossed_down_levels": sorted(set(crossed_levels), reverse=True),
         "cooldown_seconds": cooldown_seconds,
         "manual_decision_only": True,
+        "sensor_semantics": {
+            "total_volume_expansion": "INFERRED_BEARISH_WHEN_PRICE_DOWN_AND_FLOW_SELL_DOMINANT",
+            "sell_count_acceleration": "DIRECT_TRANSACTION_COUNT_CHANGE_WHEN_PRIOR_COUNTS_AVAILABLE",
+            "sell_notional_usd": "NOT_AVAILABLE_FROM_CURRENT_EXACT_PAIR_FEED",
+        },
     }
 
 
@@ -1451,11 +1591,13 @@ def targeted_risk_message(target: dict, decision: dict, event: dict) -> str:
     action = (
         "הידרדרות מהותית זוהתה. יש לבחון הגנת פוזיציה / צמצום או יציאה מיידית לפי מצבך."
         if severe
-        else "המומנטום נחלש. יש לבחון צמצום סיכון לפני שהמהלך מחמיר."
+        else "המומנטום נחלש במספר חיישנים בלתי תלויים. יש לבחון צמצום סיכון לפני שהמהלך מחמיר."
     )
+    groups = ", ".join(event.get("evidence_groups") or []) or "n/a"
     lines = [
         title,
         action,
+        f"Risk confidence: {event.get('confidence') or 'n/a'} | score {float(event.get('risk_score') or 0):.2f} | evidence: {groups}",
         f"Price: ${float(event.get('price_usd') or 0):.10f}",
         f"Scan move: {float(event.get('scan_price_change_pct') or 0):+.2f}%",
         (
@@ -1472,12 +1614,22 @@ def targeted_risk_message(target: dict, decision: dict, event: dict) -> str:
             f"({float(event.get('buy_sell_ratio') or 0):.2f}x)"
         ),
         "Signals: " + " | ".join(event.get("reasons") or []),
+    ]
+    if any(
+        str(x).startswith("BEARISH_TOTAL_VOLUME_EXPANSION_")
+        for x in (event.get("reasons") or [])
+    ):
+        lines.append(
+            "Volume note: total 1H volume expanded while price/flow were bearish; "
+            "this is inferred bearish pressure, not measured sell-notional USD."
+        )
+    lines.extend([
         "התראה זו ייעודית למטבע שביקשת לעקוב אחריו; אינה התראת RESEARCH כללית.",
         "Manual decision only. No automatic sell.",
         f"CA: {target.get('contract')}",
         f"Pair: {target.get('pair')}",
         str(target.get("dex_url") or ""),
-    ]
+    ])
     return "\n".join(lines)
 
 
