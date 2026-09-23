@@ -105,3 +105,60 @@ def test_robinhood_is_supported_as_evm_and_uses_adjusted_real_concentration(monk
     assert out["locked_vault_pct"] == 30.0
     assert out["adjusted_real_top1_pct"] == 9.0
     assert "UNSUPPORTED_CHAIN" not in out["reasons"]
+
+
+def test_solana_exact_pool_state_vault_is_not_counted_as_whale(monkeypatch):
+    import base64
+
+    token_account = "So11111111111111111111111111111111111111112"
+    owner = "11111111111111111111111111111111"
+    pair = "EcFsXQJjVCjCYWHsuhXUnZH4XB2MzF7iZ3dJu48wmoa9"
+    pool_program = "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
+    pool_raw = b"prefix" + h._b58decode_pubkey(token_account) + b"suffix"
+
+    def fake_rpc(method, params):
+        if method == "getAccountInfo":
+            return {
+                "value": {
+                    "owner": pool_program,
+                    "data": [base64.b64encode(pool_raw).decode(), "base64"],
+                }
+            }
+        if method == "getMultipleAccounts":
+            return {"value": [{"owner": "11111111111111111111111111111111", "executable": False}]}
+        raise AssertionError(method)
+
+    monkeypatch.setattr(h, "_rpc", fake_rpc)
+    roles, meta = h._solana_pool_roles(
+        pair,
+        [{"token_account": token_account, "owner": owner, "amount": 190_000_000}],
+    )
+    assert roles[owner]["role"] == "DEX_LP_VAULT"
+    assert roles[owner]["confidence"] == 1.0
+    assert meta["pool_role_matches"] == 1
+
+    d = h._role_aware_distribution(
+        "SOLANA",
+        [{"owner": owner, "pct": 19.0}, {"owner": "5HueCGU8rMjxEXxiPuD5BDuRaTft2Y9L7zD8Sxqapump", "pct": 4.0}],
+        pair_address=pair,
+        registry=[],
+        dynamic_roles=roles,
+    )
+    assert d["gross_top1_pct"] == 19.0
+    assert d["adjusted_top1_pct"] == 4.0
+    assert d["dex_lp_vault_pct"] == 19.0
+    assert d["holders"][0]["excluded_from_whale_concentration"] is True
+
+
+def test_solana_unknown_large_owner_remains_counted_fail_closed():
+    owner = "HLnpSz9h2S4hiLQ43rnSD9XkcUThA7B8hQMKmDaiTLcC"
+    d = h._role_aware_distribution(
+        "SOLANA",
+        [{"owner": owner, "pct": 19.5}, {"owner": "11111111111111111111111111111111", "pct": 3.0}],
+        pair_address="EcFsXQJjVCjCYWHsuhXUnZH4XB2MzF7iZ3dJu48wmoa9",
+        registry=[],
+        dynamic_roles={},
+    )
+    assert d["adjusted_top1_pct"] == 19.5
+    assert d["holders"][0]["holder_role"] == "UNKNOWN"
+    assert d["holders"][0]["excluded_from_whale_concentration"] is False
