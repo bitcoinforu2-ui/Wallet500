@@ -42,7 +42,12 @@ def test_immutable_first_alert_can_prioritize_current_watch_even_if_current_scor
 
 def test_late_current_move_is_not_spent_on_identity_resolution():
     row = _row(change_24h_max_pct=72.0)
-    assert _priority_candidates({"watchlist": [row]}) == []
+    chosen = _priority_candidates({"watchlist": [row]})
+    assert len(chosen) == 1
+    assert chosen[0]["symbol"] == "LATEUSDT"
+    assert chosen[0]["_live_leaderboard_priority"] is True
+    # Identity is still resolved for re-entry/risk/learning; anti-chase remains downstream.
+
 
 
 def test_leveraged_product_never_enters_bypass():
@@ -242,7 +247,7 @@ def test_low_score_live_top_gainer_pre_resolves_identity_before_buy_threshold():
     assert chosen[0]["_fast_priority_score"] < bypass.MIN_PRIORITY_SCORE
 
 
-def test_live_top_gainer_priority_still_refuses_already_extended_move():
+def test_live_top_gainer_priority_still_resolves_identity_when_already_extended():
     row = _row(
         symbol="LATEUSDT",
         spot_revival_score=20,
