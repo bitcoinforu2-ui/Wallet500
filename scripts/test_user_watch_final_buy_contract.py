@@ -265,6 +265,80 @@ def main() -> None:
     assert "SELL-RISK" in gate.targeted_risk_message(targeted, warn_decision, warning)
     assert warn_state["last_buy_sell_ratio"] < 1.2
 
+    # Sensor-v2 regression: total-volume expansion is inferred bearish
+    # pressure, not direct sell-notional. MCAT's current combination of
+    # expanding activity, weaker flow and near-floor liquidity should still
+    # warn before a hard breakdown.
+    quality_time = NOW + timedelta(hours=2)
+    quality_market = market(
+        0.0001476,
+        quality_time,
+        buys=23,
+        sells=31,
+    )
+    quality_market.update({
+        "liquidity": 50655.0,
+        "volume_h1": 2632.998660333776,
+    })
+    quality_prior = {
+        "last_price": 0.00014944376727484639,
+        "last_liquidity": 50997.7551,
+        "last_volume_h1": 1343.3666634356,
+        "last_buy_sell_ratio": 0.952381,
+        "targeted_risk_active": False,
+    }
+    quality_decision, _ = gate.evaluate(
+        targeted, quality_market, observed(), quality_prior, POLICY, now=quality_time
+    )
+    quality = gate.targeted_risk_event(
+        targeted, quality_decision, quality_prior, POLICY, quality_time
+    )
+    assert quality is not None
+    assert quality["severity"] == "RISK_WARNING"
+    assert quality["confidence"] == "HIGH"
+    assert quality["evidence_group_count"] >= 3
+    assert any(
+        x.startswith("BEARISH_TOTAL_VOLUME_EXPANSION_1.96")
+        for x in quality["reasons"]
+    )
+    assert any(x.startswith("FLOW_DETERIORATION_") for x in quality["reasons"])
+    assert any(x.startswith("LIQUIDITY_NEAR_FLOOR_") for x in quality["reasons"])
+    assert not any(
+        x.startswith("SELL_VOLUME_ACCELERATION_")
+        for x in quality["reasons"]
+    )
+    quality_text = gate.targeted_risk_message(
+        targeted, quality_decision, quality
+    )
+    assert "inferred bearish pressure" in quality_text
+    assert "not measured sell-notional USD" in quality_text
+
+    # A single inferred volume-expansion observation is not sufficient:
+    # non-severe warnings now require independent corroboration.
+    noise_market = market(
+        0.000198,
+        quality_time,
+        buys=49,
+        sells=51,
+    )
+    noise_market.update({
+        "liquidity": 100000.0,
+        "volume_h1": 1600.0,
+    })
+    noise_prior = {
+        "last_price": 0.0002,
+        "last_liquidity": 100000.0,
+        "last_volume_h1": 1000.0,
+        "last_buy_sell_ratio": 0.99,
+        "targeted_risk_active": False,
+    }
+    noise_decision, _ = gate.evaluate(
+        targeted, noise_market, observed(), noise_prior, POLICY, now=quality_time
+    )
+    assert gate.targeted_risk_event(
+        targeted, noise_decision, noise_prior, POLICY, quality_time
+    ) is None
+
     # A later MCAT-style flush escalates immediately to BREAKDOWN even if the
     # warning cooldown has not expired.
     breakdown_time = warn_time + timedelta(minutes=15)
