@@ -57,10 +57,7 @@ def test_leveraged_product_never_enters_bypass():
 
 def test_missing_live_cex_price_never_enters_bypass():
     row = _row(markets=[])
-    chosen = _priority_candidates({"watchlist": [row]})
-    assert len(chosen) == 1
-    assert chosen[0]["symbol"] == "LATEUSDT"
-    assert chosen[0]["_live_leaderboard_priority"] is True
+    assert _priority_candidates({"watchlist": [row]}) == []
 
 
 def test_leveraged_underlying_sensor_does_not_consume_fast_identity_budget():
@@ -266,4 +263,7 @@ def test_live_top_gainer_priority_still_resolves_identity_when_already_extended(
         ],
     )
 
-    assert _priority_candidates({"watchlist": [row]}) == []
+    chosen = _priority_candidates({"watchlist": [row]})
+    assert len(chosen) == 1
+    assert chosen[0]["symbol"] == "LATEUSDT"
+    assert chosen[0]["_live_leaderboard_priority"] is True
