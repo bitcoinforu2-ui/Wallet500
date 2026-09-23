@@ -318,12 +318,12 @@ def main() -> None:
     confirmed_market = market(
         0.0001817,
         confirmed_time,
-        buys=10,
-        sells=16,
+        buys=8,
+        sells=20,
     )
     confirmed_market.update({
         "liquidity": 55500.0,
-        "volume_h1": 2500.0,
+        "volume_h1": 3500.0,
     })
     confirmed_prior = {
         **too_soon_state,
