@@ -262,12 +262,22 @@ def blockscout_snapshot(t):
         holders_count = float(info.get("holders_count")) if info.get("holders_count") is not None else None
     except Exception:
         holders_count = None
+    gross_top10_pct = (top10 / supply * 100) if supply > 0 else None
+    gross_top20_pct = (top20 / supply * 100) if supply > 0 else None
     return {
         "provider": "Blockscout",
         "holders_count": holders_count,
         "total_supply": supply,
-        "top10_pct": (top10 / supply * 100) if supply > 0 else None,
-        "top20_pct": (top20 / supply * 100) if supply > 0 else None,
+        # Cross-domain collection does not have sufficient role evidence to
+        # distinguish LP/pool/custody infrastructure from beneficial-owner whales.
+        # Keep gross concentration for diagnostics only; the role-aware holder
+        # gate is the sole source allowed to emit whale-concentration evidence.
+        "top10_pct": None,
+        "top20_pct": None,
+        "gross_top10_pct": gross_top10_pct,
+        "gross_top20_pct": gross_top20_pct,
+        "concentration_role_adjusted": False,
+        "concentration_semantics": "RAW_PROVIDER_HOLDERS_DIAGNOSTIC_ONLY_ROLE_AWARE_GATE_REQUIRED",
         "exchange_top_units": exchange_units,
         "top_rows": len(vals),
     }
@@ -288,12 +298,21 @@ def solana_snapshot(t):
         return None
     if total <= 0:
         return None
+    gross_top10_pct = sum(vals[:10]) / total * 100
+    gross_top20_pct = sum(vals[:20]) / total * 100
     return {
         "provider": "Solana RPC",
         "holders_count": None,
         "total_supply": total,
-        "top10_pct": sum(vals[:10]) / total * 100,
-        "top20_pct": sum(vals[:20]) / total * 100,
+        # getTokenLargestAccounts returns token accounts, not beneficial-owner
+        # wallets. LP vaults and pool authorities can dominate this list. Never
+        # turn raw token-account concentration into whale evidence here.
+        "top10_pct": None,
+        "top20_pct": None,
+        "gross_top10_pct": gross_top10_pct,
+        "gross_top20_pct": gross_top20_pct,
+        "concentration_role_adjusted": False,
+        "concentration_semantics": "RAW_TOKEN_ACCOUNT_CONCENTRATION_DIAGNOSTIC_ONLY_ROLE_AWARE_GATE_REQUIRED",
         "exchange_top_units": None,
         "top_rows": len(vals),
     }
@@ -419,7 +438,8 @@ def main():
                     ))
             top10 = hs.get("top10_pct")
             ptop10 = prevh.get("top10_pct")
-            if top10 is not None:
+            role_adjusted = hs.get("concentration_role_adjusted") is True
+            if top10 is not None and role_adjusted:
                 if float(top10) >= 70:
                     fresh.append(ev(
                         t,
