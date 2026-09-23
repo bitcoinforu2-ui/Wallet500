@@ -17,6 +17,7 @@ CURRENT_REACTIVATION_PRIORITY_SLOTS = 12
 LIVE_LEADERBOARD_PRIORITY_SLOTS = 24
 LIVE_LEADERBOARD_MAX_RANK = 10
 DERIVATIVES_RECOVERY_PRIORITY_SLOTS = 12
+DERIVATIVES_RECOVERY_CANDIDATE_LIMIT = 40
 DERIVATIVES_RECOVERY_MIN_SCORE = 35
 DERIVATIVES_RECOVERY_MIN_COHERENT_CONFIRMATIONS = 2
 DERIVATIVES_RECOVERY_MIN_TURNOVER_USD = 50_000.0
@@ -431,7 +432,11 @@ def _derivatives_recovery_candidates(derivatives: dict, discovery: dict) -> list
                 change >= _num(derivatives.get("mover_watch_min_change_pct") or 30.0)
                 and turnover >= _num(derivatives.get("mover_watch_min_volume_usd") or DERIVATIVES_RECOVERY_MIN_TURNOVER_USD)
             )
-            if coherent < DERIVATIVES_RECOVERY_MIN_COHERENT_CONFIRMATIONS:
+            # A strong current mover may be brand-new on one venue. Exact-identity
+            # work is safe to request from that evidence because it is research-only;
+            # cross-venue confirmation is still required for non-mover score recovery
+            # and all downstream actionability gates remain unchanged.
+            if not mover and coherent < DERIVATIVES_RECOVERY_MIN_COHERENT_CONFIRMATIONS:
                 continue
             if score < DERIVATIVES_RECOVERY_MIN_SCORE and not mover:
                 continue
@@ -459,7 +464,7 @@ def _derivatives_recovery_candidates(derivatives: dict, discovery: dict) -> list
             max((_num(m.get("volume_24h")) for m in (item[1].get("markets") or []) if isinstance(m, dict)), default=0.0),
         ),
         reverse=True,
-    )[:DERIVATIVES_RECOVERY_PRIORITY_SLOTS]
+    )[:DERIVATIVES_RECOVERY_CANDIDATE_LIMIT]
 
     recovered: list[dict] = []
     for rank, (symbol, row) in enumerate(ordered, start=1):
@@ -504,8 +509,10 @@ def _derivatives_recovery_candidates(derivatives: dict, discovery: dict) -> list
             "identity_recovery_research_only": True,
             "identity_recovery_never_actionable": True,
             "derivatives_identity_recovery": True,
-            "current_identity_reactivation_priority": True,
-            "current_identity_reactivation_rank": rank,
+            "current_identity_reactivation_priority": rank <= DERIVATIVES_RECOVERY_PRIORITY_SLOTS,
+            "current_identity_reactivation_rank": (
+                rank if rank <= DERIVATIVES_RECOVERY_PRIORITY_SLOTS else None
+            ),
             "first_watch_score": watch.get("score"),
             "first_watch_coherent_confirmations": watch.get("coherent_confirmations"),
             "first_watch_observed_at": watch.get("observed_at"),
@@ -1025,6 +1032,7 @@ def run(data_dir: Path = DATA) -> dict:
     queue_report["derivatives_recovery_candidate_count"] = len(derivatives_recovery_rows)
     queue_report["derivatives_recovery_symbols"] = [_base_symbol(x.get("symbol")) for x in derivatives_recovery_rows]
     queue_report["derivatives_recovery_priority_slot_cap"] = DERIVATIVES_RECOVERY_PRIORITY_SLOTS
+    queue_report["derivatives_recovery_candidate_limit"] = DERIVATIVES_RECOVERY_CANDIDATE_LIMIT
 
     base = {
         "version": 4,
@@ -1059,6 +1067,7 @@ def run(data_dir: Path = DATA) -> dict:
             "cross_lane_derivatives_precursor_never_satisfies_identity": True,
             "current_derivatives_mover_identity_priority_only": True,
             "current_derivatives_mover_never_satisfies_identity_or_actionability": True,
+            "single_venue_current_mover_may_request_identity_work_only": True,
             "prewave_shadow_identity_priority_only": True,
             "prewave_shadow_never_satisfies_identity": True,
             "persistent_backlog_cap_enforced": True,
