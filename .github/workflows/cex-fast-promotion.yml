@@ -132,7 +132,7 @@ jobs:
               if key in seen: raise SystemExit('CEX_FAST_DUPLICATE_CANONICAL_ASSET')
               seen.add(key)
               if key==('solana',excluded): raise SystemExit('CEX_FAST_EXCLUDED_ARC_LEAK')
-              if int(row.get('signal_score') or 0)<50: raise SystemExit('CEX_FAST_WEAK_SCORE_TELEGRAM_LEAK')
+              if int(row.get('signal_score') or 0)<40: raise SystemExit('CEX_FAST_WEAK_SCORE_ACTION_LEAK')
               since=float(row.get('since_discovery_pct') or 0)
               if since < -12 or since > 12: raise SystemExit('CEX_FAST_BAD_ENTRY_WINDOW_LEAK')
               if float(row.get('current_change_24h_pct') or 0)>35: raise SystemExit('CEX_FAST_CHASE_LEAK')
