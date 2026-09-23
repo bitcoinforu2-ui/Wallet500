@@ -262,6 +262,8 @@ def test_bounded_identity_batch_keeps_priority_semantics_and_fails_closed(monkey
     selected = [
         {"symbol": "TOP", "currency_pair": "TOP_USDT", "discovery_price": 1.0},
         {"symbol": "SKIP", "currency_pair": "SKIP_USDT", "discovery_price": 1.0},
+        {"symbol": "GAINER", "currency_pair": "GAINER_USDT", "discovery_price": 1.0, "live_gainer_identity_priority": True},
+        {"symbol": "NEW", "currency_pair": "NEW_USDT", "discovery_price": 1.0, "recent_listing_priority": True},
         {"symbol": "HOT", "currency_pair": "HOT_USDT", "discovery_price": 1.0, "forced_hot_watch": True},
         {"symbol": "FAIL", "currency_pair": "FORCED_USDT", "discovery_price": 1.0},
     ]
@@ -274,12 +276,14 @@ def test_bounded_identity_batch_keeps_priority_semantics_and_fails_closed(monkey
         max_workers=3,
     )
 
-    assert set(result) == {0, 2, 3}
-    assert set(calls) == {"TOP", "HOT", "FAIL"}
+    assert set(result) == {0, 2, 3, 4, 5}
+    assert set(calls) == {"TOP", "GAINER", "NEW", "HOT", "FAIL"}
     assert result[0]["identity_status"] == "RESOLVED_EXACT"
     assert result[2]["identity_status"] == "RESOLVED_EXACT"
-    assert result[3]["identity_status"] == "UNRESOLVED"
-    assert result[3]["identity_reason"] == "RESOLUTION_EXCEPTION_FAIL_CLOSED"
+    assert result[3]["identity_status"] == "RESOLVED_EXACT"
+    assert result[4]["identity_status"] == "RESOLVED_EXACT"
+    assert result[5]["identity_status"] == "UNRESOLVED"
+    assert result[5]["identity_reason"] == "RESOLUTION_EXCEPTION_FAIL_CLOSED"
 
 
 def test_bulk_discovery_defers_expensive_coingecko_recovery(monkeypatch):
