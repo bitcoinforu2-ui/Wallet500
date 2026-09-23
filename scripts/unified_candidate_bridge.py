@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SPOT = ROOT / "data/spot-market-discovery.json"
 CEX_SPOT_IDENTITY = ROOT / "data/cex-spot-identity-radar.json"
 ALPHA = ROOT / "data/alpha-caller-candidates.json"
+KOL = ROOT / "data/early-kol-candidates.json"
 BUY_REGISTRY = ROOT / "data/buy-zone-close-watch-registry.json"
 BOOTSTRAP = ROOT / "data/new-chain-bootstrap-radar.json"
 OUT = ROOT / "data/unified-dynamic-candidates.json"
@@ -220,6 +221,7 @@ def main():
     spot = load(SPOT, {"candidates": []})
     cex_identity = load(CEX_SPOT_IDENTITY, {"candidates": []})
     alpha = load(ALPHA, {"candidates": []})
+    kol = load(KOL, {"candidates": []})
     buy_registry = load(BUY_REGISTRY, {"entries": {}})
     bootstrap = load(BOOTSTRAP, {"candidates": []})
     event_doc = load(EVENTS, {"version": 3, "events": []})
@@ -560,6 +562,64 @@ def main():
             "gate_special_surface": bool(row.get("gate_special_surface")),
         })
 
+    for row in kol.get("candidates") or []:
+        if not isinstance(row, dict) or row.get("status") != "GATED_RESEARCH_CANDIDATE":
+            continue
+        i = ident(row)
+        if not i:
+            continue
+        deep = bool(row.get("emergency_deep_scan"))
+        kol_evidence = {
+            "signal_state": row.get("signal_state"),
+            "signal_event_id": row.get("signal_event_id"),
+            "independent_groups_15m": row.get("independent_groups_15m"),
+            "independent_groups_30m": row.get("independent_groups_30m"),
+            "independent_groups_60m": row.get("independent_groups_60m"),
+            "independent_groups_under_100k": row.get("independent_groups_under_100k"),
+            "wallet_names": row.get("wallet_names") or [],
+            "market_cap_usd": row.get("market_cap_usd"),
+            "emergency_deep_scan": deep,
+            "automatic_buy": False,
+            "production_promotion_allowed": False,
+        }
+        if i[3] in seen:
+            existing = next((x for x in out if x.get("identity_key") == i[3]), None)
+            if existing is not None:
+                existing["early_kol_convergence"] = kol_evidence
+                existing["deep_investigation"] = bool(existing.get("deep_investigation") or deep)
+                existing["full_intelligence"] = bool(existing.get("full_intelligence") or deep)
+                existing["collector_priority"] = min(int(existing.get("collector_priority") or 9), 1 if deep else 2)
+                if deep:
+                    existing["priority"] = "HIGHEST"
+                    existing["close_watch"] = "HIGHEST"
+            continue
+        seen.add(i[3])
+        out.append({
+            "candidate_type": "EARLY_KOL_CONVERGENCE",
+            "symbol": str(row.get("symbol") or "KOL").upper(),
+            "network": row.get("network"),
+            "contract": row.get("contract"),
+            "pair": row.get("pair"),
+            "dex_url": row.get("dex_url") or "",
+            "source": row.get("source") or "Wallet500 Early KOL Convergence",
+            "source_url": row.get("dex_url") or "",
+            "first_seen_at": row.get("first_seen_at") or row.get("observed_at"),
+            "discovery_price": row.get("price_usd"),
+            "dex_liquidity_usd": row.get("liquidity_usd"),
+            "market_cap_usd": row.get("market_cap_usd"),
+            "identity_key": i[3],
+            "priority": "HIGHEST" if deep else "HIGH",
+            "close_watch": "HIGHEST" if deep else "HIGH",
+            "collector_priority": 1 if deep else 2,
+            "deep_investigation": deep,
+            "full_intelligence": deep,
+            "research_only": True,
+            "automatic_buy": False,
+            "production_promotion_allowed": False,
+            "requires_full_wallet500_gates": True,
+            "early_kol_convergence": kol_evidence,
+        })
+
     for row in bootstrap.get("candidates") or []:
         if not isinstance(row, dict) or row.get("bootstrap_actionable_watch") is not True:
             continue
@@ -627,7 +687,7 @@ def main():
         })
 
     out.sort(key=lambda x: (
-        0 if x["candidate_type"] == "BUY_ZONE" else 1 if x["candidate_type"] == "NEW_CHAIN_BOOTSTRAP" else 2 if x["candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"} else 3,
+        0 if x["candidate_type"] == "BUY_ZONE" else 1 if x["candidate_type"] == "EARLY_KOL_CONVERGENCE" else 2 if x["candidate_type"] == "NEW_CHAIN_BOOTSTRAP" else 3 if x["candidate_type"] in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"} else 4,
         (
             x.get("alpha_age_minutes", 999999)
             if x["candidate_type"] == "PUBLIC_ALPHA"
@@ -650,6 +710,8 @@ def main():
             "cex_market": sum(x["candidate_type"] == "CEX_MARKET_DISCOVERY" for x in out),
             "new_chain_bootstrap": sum(x["candidate_type"] == "NEW_CHAIN_BOOTSTRAP" for x in out),
             "public_alpha": sum(x["candidate_type"] == "PUBLIC_ALPHA" for x in out),
+            "early_kol_convergence": sum(x["candidate_type"] == "EARLY_KOL_CONVERGENCE" for x in out),
+            "early_kol_deep_scan": sum(x["candidate_type"] == "EARLY_KOL_CONVERGENCE" and bool((x.get("early_kol_convergence") or {}).get("emergency_deep_scan")) for x in out),
             "public_alpha_stale_excluded": stale_alpha_excluded,
             "public_alpha_invalid_time_excluded": invalid_time_alpha_excluded,
             "canonical_gate_market_suppressed": canonical_gate_market_suppressed,
@@ -666,40 +728,68 @@ def main():
     events = [e for e in (event_doc.get("events") or []) if isinstance(e, dict)]
     existing = {str(e.get("canonical_event_id") or "") for e in events}
     added = 0
-    for c in out:
-        if c["candidate_type"] not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "NEW_CHAIN_BOOTSTRAP"}:
+    for candidate in out:
+        ctype = candidate["candidate_type"]
+        if ctype not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "NEW_CHAIN_BOOTSTRAP", "EARLY_KOL_CONVERGENCE"}:
             continue
-        is_bootstrap = c["candidate_type"] == "NEW_CHAIN_BOOTSTRAP"
-        cid = ("new-chain-bootstrap:" if is_bootstrap else "cex-spot-discovery:") + c["identity_key"]
+        is_bootstrap = ctype == "NEW_CHAIN_BOOTSTRAP"
+        is_kol = ctype == "EARLY_KOL_CONVERGENCE"
+        if is_kol:
+            kol = candidate.get("early_kol_convergence") or {}
+            cid = "early-kol-convergence:" + str(kol.get("signal_event_id") or candidate["identity_key"])
+        else:
+            cid = ("new-chain-bootstrap:" if is_bootstrap else "cex-spot-discovery:") + candidate["identity_key"]
         if cid in existing:
             continue
-        change = max(0.0, float(c.get("change_24h_pct") or 0))
-        strength = min(85.0, max(25.0, float(c.get("bootstrap_score") or 0))) if is_bootstrap else min(75.0, 20.0 + change * 0.35)
+        change = max(0.0, float(candidate.get("change_24h_pct") or 0))
+        if is_kol:
+            kol = candidate.get("early_kol_convergence") or {}
+            strength = min(95.0, 45.0 + 12.0 * float(kol.get("independent_groups_60m") or 0))
+            confidence = 78 if kol.get("emergency_deep_scan") else 68
+            family = "wallet_flow"
+            kind = "early_kol_deep_scan" if kol.get("emergency_deep_scan") else "early_kol_convergence_watch"
+            subject = (
+                f"independent_60m={kol.get('independent_groups_60m')} "
+                f"under_100k={kol.get('independent_groups_under_100k')} "
+                f"wallets={','.join(kol.get('wallet_names') or [])}"
+            )
+        else:
+            strength = min(85.0, max(25.0, float(candidate.get("bootstrap_score") or 0))) if is_bootstrap else min(75.0, 20.0 + change * 0.35)
+            confidence = 72
+            family = "catalyst_news" if is_bootstrap else "search_discovery"
+            kind = "new_chain_bootstrap" if is_bootstrap else "cex_spot_mover"
+            subject = (
+                f"bootstrap_score={candidate.get('bootstrap_score')} chain={candidate.get('network')}"
+                if is_bootstrap
+                else f"rank={candidate.get('positive_gainer_rank')} change24h={candidate.get('change_24h_pct')}"
+            )
         events.append({
-            "symbol": c["symbol"],
-            "network": c["network"],
-            "contract": c["contract"],
-            "pair": c["pair"],
-            "identity_key": c["identity_key"],
-            "family": "catalyst_news" if is_bootstrap else "search_discovery",
-            "kind": "new_chain_bootstrap" if is_bootstrap else "cex_spot_mover",
+            "symbol": candidate["symbol"],
+            "network": candidate["network"],
+            "contract": candidate["contract"],
+            "pair": candidate["pair"],
+            "identity_key": candidate["identity_key"],
+            "family": family,
+            "kind": kind,
             "direction": 1,
             "strength": round(strength, 1),
-            "confidence": 72,
-            "source": c.get("source") or ("New Chain Bootstrap Radar" if is_bootstrap else "CEX Spot"),
-            "source_url": c.get("source_url") or "",
-            "subject": (f"bootstrap_score={c.get('bootstrap_score')} chain={c.get('network')}" if is_bootstrap else f"rank={c.get('positive_gainer_rank')} change24h={c.get('change_24h_pct')}"),
+            "confidence": confidence,
+            "source": candidate.get("source") or ("Wallet500 Early KOL Convergence" if is_kol else ("New Chain Bootstrap Radar" if is_bootstrap else "CEX Spot")),
+            "source_url": candidate.get("source_url") or "",
+            "subject": subject,
             "canonical_event_id": cid,
-            "event_time": c.get("first_seen_at") or now(),
+            "event_time": candidate.get("first_seen_at") or now(),
             "observed_at": now(),
             "free_source": True,
             "research_only": True,
             "identity_verified": True,
             "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR",
-            "discovery_price": c.get("discovery_price"),
-            "change_24h_pct": c.get("change_24h_pct"),
-            "quote_volume_24h_usd": c.get("quote_volume_24h_usd"),
-            "rank": c.get("positive_gainer_rank"),
+            "discovery_price": candidate.get("discovery_price"),
+            "change_24h_pct": candidate.get("change_24h_pct"),
+            "quote_volume_24h_usd": candidate.get("quote_volume_24h_usd"),
+            "rank": candidate.get("positive_gainer_rank"),
+            "automatic_buy": False if is_kol else None,
+            "requires_full_wallet500_gates": True if is_kol else None,
         })
         existing.add(cid)
         added += 1
