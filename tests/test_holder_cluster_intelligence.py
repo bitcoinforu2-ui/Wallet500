@@ -51,3 +51,16 @@ def test_dangerous_distribution_gets_low_trust():
     assert r["top10_pct"]==67
     assert r["largest_connected_cluster_pct"]==42
     assert r["distribution_level"] in {"CRITICAL","HIGH_RISK"}
+
+
+def test_excludes_verified_role_aware_pool_infrastructure():
+    rows=[
+        {"address":"pool-authority","supply_pct":19.5,"holder_role":"DEX_POOL_AUTHORITY","excluded_from_whale_concentration":True},
+        {"address":"a","supply_pct":6},
+        {"address":"b","supply_pct":5},
+    ]
+    r=analyze_holders(rows)
+    assert r["status"]=="VERIFIED"
+    assert r["holder_count"]==2
+    assert r["top1_pct"]==6
+    assert r["top10_pct"]==11
