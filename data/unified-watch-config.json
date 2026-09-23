@@ -1,5 +1,5 @@
 {
-  "version": 10,
+  "version": 11,
   "mode": "POSITION_WATCH_RESEARCH_ONLY",
   "data_integrity": {
     "max_price_source_spread_pct": 2,
@@ -449,5 +449,30 @@
     "automatic_trade": false,
     "notes": "User-requested Unified Watch sends strict PRE-BUY and FINAL BUY only. PRE-BUY is one warning per opportunity episode; a second PRE-BUY or a late/high FINAL BUY requires a fresh post-alert reset + reclaim. Reset credentials expire after 1h and price drift above 8% from PRE-BUY is treated as chase risk. Generic near-buy/research/watch notifications remain silent. Does not weaken veteran REAL_ALERT policy.",
     "telegram_pre_buy_enabled": true
-  }
+  },
+  "targeted_binance_spot_watches": [
+    {
+      "enabled": true,
+      "symbol": "TAKE",
+      "project_names": [
+        "OVERTAKE"
+      ],
+      "network": "bsc",
+      "contract": "0xe747e54783ba3f77a8e5251a3cba19ebe9c0e197",
+      "pair": "0x46bb9a29bfa5397b30a96a316875496ec2556dd2",
+      "dex_url": "https://www.geckoterminal.com/bsc/pools/0x46bb9a29bfa5397b30a96a316875496ec2556dd2",
+      "spot_symbols": [
+        "TAKEUSDT"
+      ],
+      "priority": "HIGHEST",
+      "user_requested_watch": true,
+      "source_policy": "BINANCE_OFFICIAL_ONLY",
+      "telegram_on": [
+        "OFFICIAL_SPOT_ANNOUNCEMENT",
+        "BINANCE_SPOT_MARKET_PRESENT"
+      ],
+      "automatic_trade": false,
+      "notes": "Explicit user-requested exception: alert only on verified Binance Spot listing evidence for exact OVERTAKE/TAKE identity. Binance Alpha or Futures alone never qualify."
+    }
+  ]
 }

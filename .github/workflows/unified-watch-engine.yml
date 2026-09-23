@@ -27,15 +27,15 @@ jobs:
       - name: Validate unified watcher, collectors and intelligence fusion
         id: validate
         run: |
-          python -m py_compile scripts/resilient_http.py scripts/new_chain_bootstrap_radar.py scripts/test_new_chain_bootstrap_contract.py scripts/resilient_unified_watch_runner.py scripts/hot_candidate_recheck.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/spot_cex_fast_handoff.py scripts/native_asset_intelligence.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/early_kol_convergence.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py scripts/user_watch_final_buy.py scripts/test_user_watch_final_buy_contract.py scripts/chain_context_shadow.py
-          for f in data/unified-watch-config.json data/user-watch-final-buy-state.json data/user-watch-final-buy-report.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/buy-zone-close-watch-registry.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/narrative-dependency-state.json data/http-resilience-state.json data/new-chain-bootstrap-state.json data/new-chain-bootstrap-radar.json data/chain-context-shadow.json data/early-kol-wallets.json data/early-kol-convergence-state.json data/early-kol-convergence.json data/early-kol-candidates.json; do python -m json.tool "$f" >/dev/null; done
+          python -m py_compile scripts/resilient_http.py scripts/new_chain_bootstrap_radar.py scripts/test_new_chain_bootstrap_contract.py scripts/resilient_unified_watch_runner.py scripts/hot_candidate_recheck.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/spot_cex_fast_handoff.py scripts/native_asset_intelligence.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/early_kol_convergence.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py scripts/user_watch_final_buy.py scripts/test_user_watch_final_buy_contract.py scripts/chain_context_shadow.py scripts/targeted_binance_spot_watch.py
+          for f in data/unified-watch-config.json data/targeted-binance-spot-watch-state.json data/targeted-binance-spot-watch-report.json data/user-watch-final-buy-state.json data/user-watch-final-buy-report.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/buy-zone-close-watch-registry.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/narrative-dependency-state.json data/http-resilience-state.json data/new-chain-bootstrap-state.json data/new-chain-bootstrap-radar.json data/chain-context-shadow.json data/early-kol-wallets.json data/early-kol-convergence-state.json data/early-kol-convergence.json data/early-kol-candidates.json; do python -m json.tool "$f" >/dev/null; done
 
       - name: Test exact-identity intelligence fusion contract
         id: contract
         run: |
           python scripts/test_intelligence_fusion_contract.py
           python -m pip install --disable-pip-version-check -q pytest
-          python -m pytest -q tests/test_unified_watch_cex_resilience.py tests/test_hot_candidate_recheck.py tests/test_hot_recheck_publish_workflow_contract.py tests/test_same_run_cex_intelligence.py tests/test_spot_market_discovery_native_identity.py tests/test_chain_context_shadow.py tests/test_protocol_buyback_sensor.py tests/test_early_kol_convergence.py
+          python -m pytest -q tests/test_unified_watch_cex_resilience.py tests/test_hot_candidate_recheck.py tests/test_hot_recheck_publish_workflow_contract.py tests/test_same_run_cex_intelligence.py tests/test_spot_market_discovery_native_identity.py tests/test_chain_context_shadow.py tests/test_targeted_binance_spot_watch.py tests/test_protocol_buyback_sensor.py tests/test_early_kol_convergence.py
 
       - name: Test user-requested FINAL BUY contract
         id: user_buy_contract
@@ -48,6 +48,16 @@ jobs:
           git show origin/main:data/unified-watch-state.json > data/unified-watch-state.json
           python -m json.tool data/unified-watch-state.json >/dev/null
           echo 'UNIFIED_STATE_INITIALIZED_FROM_LATEST_MAIN'
+
+      # Explicit user-requested catalyst exception. This does not loosen the
+      # generic FINAL-BUY-only Telegram policy used by the market watcher.
+      - name: Watch TAKE for verified Binance Spot listing evidence
+        id: targeted_binance_spot_watch
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/targeted_binance_spot_watch.py
 
       - name: Test new-chain bootstrap truth contract
         id: new_chain_bootstrap_contract
@@ -126,6 +136,8 @@ jobs:
             --message 'chore: persist critical CEX decision path [skip ci]' \
             data/unified-watch-state.json \
             data/unified-watch-intelligence-report.json \
+            data/targeted-binance-spot-watch-state.json \
+            data/targeted-binance-spot-watch-report.json \
             data/user-watch-final-buy-state.json \
             data/user-watch-final-buy-report.json \
             data/chain-context-shadow.json \
@@ -258,6 +270,7 @@ jobs:
           ALPHA_INTAKE_OUTCOME: ${{ steps.alpha_intake.outcome }}
           CANDIDATE_BRIDGE_OUTCOME: ${{ steps.candidate_bridge.outcome }}
           CEX_SENSOR_HANDOFF_OUTCOME: ${{ steps.cex_sensor_handoff.outcome }}
+          TARGETED_BINANCE_SPOT_OUTCOME: ${{ steps.targeted_binance_spot_watch.outcome }}
           NATIVE_ASSET_INTELLIGENCE_OUTCOME: ${{ steps.native_asset_intelligence.outcome }}
           CROSS_DOMAIN_OUTCOME: ${{ steps.cross_domain.outcome }}
           NARRATIVE_OUTCOME: ${{ steps.narrative_dependency.outcome }}
@@ -308,6 +321,7 @@ jobs:
           cex_handoff = load('data/cex-sensor-handoff.json')
           native_asset = load('data/native-asset-close-watch.json')
           user_buy = load('data/user-watch-final-buy-report.json')
+          targeted_binance = load('data/targeted-binance-spot-watch-report.json')
           chain_context = load('data/chain-context-shadow.json')
           early_kol = load('data/early-kol-convergence.json')
           outcomes = {
@@ -322,6 +336,7 @@ jobs:
               'alpha_intake': os.getenv('ALPHA_INTAKE_OUTCOME'),
               'candidate_bridge': os.getenv('CANDIDATE_BRIDGE_OUTCOME'),
               'cex_sensor_handoff': os.getenv('CEX_SENSOR_HANDOFF_OUTCOME'),
+              'targeted_binance_spot_watch': os.getenv('TARGETED_BINANCE_SPOT_OUTCOME'),
               'native_asset_intelligence': os.getenv('NATIVE_ASSET_INTELLIGENCE_OUTCOME'),
               'cross_domain': os.getenv('CROSS_DOMAIN_OUTCOME'),
               'narrative_dependency': os.getenv('NARRATIVE_OUTCOME'),
@@ -344,7 +359,7 @@ jobs:
               outcomes['hot_recheck'] = 'not_needed'
               outcomes['hot_recheck_persist'] = 'not_needed'
           manifest = {
-              'version': 7,
+              'version': 8,
               'generated_at': datetime.now(timezone.utc).isoformat(),
               'github_run_id': os.getenv('GH_RUN_ID'),
               'github_run_attempt': os.getenv('GH_RUN_ATTEMPT'),
@@ -393,6 +408,10 @@ jobs:
                   'user_watch_final_buy_zone_count': (user_buy or {}).get('buy_zone_count') if isinstance(user_buy, dict) else None,
                   'user_watch_final_buy_delivered_count': (user_buy or {}).get('delivered_count') if isinstance(user_buy, dict) else None,
                   'user_watch_final_buy_error_count': (user_buy or {}).get('error_count') if isinstance(user_buy, dict) else None,
+                  'targeted_binance_spot_status': (targeted_binance or {}).get('status') if isinstance(targeted_binance, dict) else None,
+                  'targeted_binance_spot_target_count': (targeted_binance or {}).get('target_count') if isinstance(targeted_binance, dict) else None,
+                  'targeted_binance_spot_confirmed_signal_count': (targeted_binance or {}).get('confirmed_signal_count') if isinstance(targeted_binance, dict) else None,
+                  'targeted_binance_spot_delivered_count': (targeted_binance or {}).get('delivered_count') if isinstance(targeted_binance, dict) else None,
                   'chain_context_shadow_generated_at': (chain_context or {}).get('generated_at') if isinstance(chain_context, dict) else None,
                   'chain_context_shadow_target_count': (chain_context or {}).get('target_count') if isinstance(chain_context, dict) else None,
                   'chain_context_shadow_real_alert_sample_size': ((chain_context or {}).get('real_alert_research') or {}).get('sample_size') if isinstance(chain_context, dict) else None,
@@ -417,6 +436,8 @@ jobs:
             --message 'chore: update unified watch intelligence state [skip ci]' \
             data/unified-watch-state.json \
             data/unified-watch-intelligence-report.json \
+            data/targeted-binance-spot-watch-state.json \
+            data/targeted-binance-spot-watch-report.json \
             data/unified-watch-runtime-evidence.json \
             data/user-watch-final-buy-state.json \
             data/user-watch-final-buy-report.json \
