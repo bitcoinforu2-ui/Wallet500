@@ -25,8 +25,10 @@ GATE = "https://api.gateio.ws/api/v4"
 UA = "Wallet500-SpotDiscovery/1.1-EvidenceRecovery"
 COINGECKO = "https://api.coingecko.com/api/v3"
 IDENTITY_RECOVERY_MAX_PRICE_DIVERGENCE_PCT = 20.0
-IDENTITY_RESOLUTION_BUDGET = 30
-IDENTITY_RESOLUTION_WORKERS = 8
+IDENTITY_RESOLUTION_BUDGET = 40
+IDENTITY_RESOLUTION_WORKERS = 10
+LIVE_GAINER_IDENTITY_PRIORITY_RANK = 25
+RECENT_LISTING_PRIORITY_HOURS = 72
 # Discovery is latency-critical. Expensive CoinGecko/platform recovery belongs to
 # the asynchronous CEX identity lane, not the critical discovery -> market-watch path.
 BULK_IDENTITY_EXPENSIVE_RECOVERY = False
@@ -473,6 +475,8 @@ def resolve_identity_targets(
         for idx, row in enumerate(selected)
         if idx < int(resolution_budget)
         or bool(row.get("forced_hot_watch"))
+        or bool(row.get("live_gainer_identity_priority"))
+        or bool(row.get("recent_listing_priority"))
         or str(row.get("currency_pair") or "") in configured_watch
     ]
     if not target_indexes:
@@ -661,6 +665,7 @@ def run() -> dict:
     rank = {r["currency_pair"]: i for i, r in enumerate(positive, 1)}
     ts = now_dt()
     recent_cutoff = int(ts.timestamp()) - 14 * 86400
+    recent_listing_priority_cutoff = int(ts.timestamp()) - RECENT_LISTING_PRIORITY_HOURS * 3600
 
     # Broad discovery is intentionally permissive because it does not alert or trade.
     # Exact identity and the existing fusion/risk gates remain downstream.
@@ -669,12 +674,30 @@ def run() -> dict:
     for row in positive[:100]:
         if float(row.get("discovery_momentum_change_pct") or 0) < 3.0:
             continue
+        row = dict(row)
+        row["positive_gainer_rank"] = rank.get(row["currency_pair"])
+        row["live_gainer_identity_priority"] = bool(
+            row["positive_gainer_rank"] is not None
+            and 1 <= int(row["positive_gainer_rank"]) <= LIVE_GAINER_IDENTITY_PRIORITY_RANK
+        )
+        if row.get("buy_start") and int(row["buy_start"]) >= recent_listing_priority_cutoff:
+            row["recent_listing_priority"] = True
+            row["forced_hot_watch"] = True
         selected.append(row)
         seen.add(row["currency_pair"])
     for row in eligible:
         if row["currency_pair"] in seen:
             continue
         if row.get("buy_start") and int(row["buy_start"]) >= recent_cutoff:
+            row = dict(row)
+            row["positive_gainer_rank"] = rank.get(row["currency_pair"])
+            row["live_gainer_identity_priority"] = bool(
+                row["positive_gainer_rank"] is not None
+                and 1 <= int(row["positive_gainer_rank"]) <= LIVE_GAINER_IDENTITY_PRIORITY_RANK
+            )
+            if int(row["buy_start"]) >= recent_listing_priority_cutoff:
+                row["recent_listing_priority"] = True
+                row["forced_hot_watch"] = True
             selected.append(row)
             seen.add(row["currency_pair"])
 
@@ -752,9 +775,25 @@ def run() -> dict:
         if last_seen_dt is None or last_seen_dt >= retention_cutoff or old.get("forced_cex_watch"):
             new_pairs[pair_id] = dict(old)
 
+    # Protected identity capacity: current top gainers and very recent listings
+    # must never sit behind historical hot/backlog rows. This only controls exact-
+    # identity work; every downstream risk/action gate remains unchanged.
+    for row in selected:
+        pair_id = row["currency_pair"]
+        current_rank = rank.get(pair_id)
+        row["positive_gainer_rank"] = current_rank
+        row["live_gainer_identity_priority"] = bool(
+            current_rank is not None and 1 <= int(current_rank) <= LIVE_GAINER_IDENTITY_PRIORITY_RANK
+        )
+        if row.get("buy_start") and int(row["buy_start"]) >= recent_listing_priority_cutoff:
+            row["recent_listing_priority"] = True
+            row["forced_hot_watch"] = True
+
     selected.sort(
         key=lambda r: (
             0 if r["currency_pair"] in configured_watch else 1,
+            0 if r.get("recent_listing_priority") else 1,
+            0 if r.get("live_gainer_identity_priority") else 1,
             0 if r.get("forced_hot_watch") else 1,
             rank.get(r["currency_pair"], 999999),
             -float(r.get("discovery_momentum_change_pct") or r.get("change_24h_pct") or 0),
@@ -887,6 +926,10 @@ def run() -> dict:
             "identity_resolution_budget": resolution_budget,
             "identity_resolution_workers": min(IDENTITY_RESOLUTION_WORKERS, max(1, len(identity_results))),
             "identity_resolution_concurrent": True,
+            "live_gainer_identity_priority_max_rank": LIVE_GAINER_IDENTITY_PRIORITY_RANK,
+            "live_gainer_identity_priority_bypasses_budget_only": True,
+            "recent_listing_identity_priority_hours": RECENT_LISTING_PRIORITY_HOURS,
+            "recent_listing_identity_priority_bypasses_budget_only": True,
             "configured_cex_research_watch_pairs": sorted(configured_watch),
             "leveraged_products_excluded": True,
             "st_risk_pairs_excluded": True,
@@ -916,6 +959,8 @@ def run() -> dict:
                 if r.get("identity_reason") == "EXACT_IDENTITY_RECOVERED_FROM_COINGECKO_PLATFORM"
             ),
             "configured_cex_watch_present": sum(1 for r in selected if r.get("forced_cex_watch")),
+            "live_gainer_identity_priority": sum(1 for r in selected if r.get("live_gainer_identity_priority")),
+            "recent_listing_identity_priority": sum(1 for r in selected if r.get("recent_listing_priority")),
         },
         "ignored_leveraged_examples": ignored_leveraged[:25],
         "candidates": selected,

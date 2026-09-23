@@ -89,18 +89,29 @@ assert metrics["action_state"] == "BUY_ZONE", metrics
 assert metrics["action_basis"] == "FRESH_SIGNAL", metrics
 assert metrics["signal_freshness"] == "FRESH", metrics
 
-# AKE-like regression: spot lane alone is below action threshold (38), while an
+# TAKE/MET-style regression: a fresh exact-identity signal in the 35-49 range
+# must not be killed by a second hidden 50-point action threshold.
+canonical_mid = row(fresh, (4.0, 3.5))
+canonical_mid["spot_revival_score"] = 44
+canonical_mid["milestones"]["first_alert"]["score"] = 44
+ok, metrics = guard.action_eligibility(canonical_mid)
+assert guard.MIN_ACTION_SCORE == guard.promo.MIN_SIGNAL_SCORE == 35
+assert ok is True, metrics
+assert "ACTION_SCORE_LT_CANONICAL_MIN" not in metrics["blockers"], metrics
+assert metrics["action_policy_version"] == guard.promo.ACTION_POLICY_VERSION, metrics
+
+# AKE-like regression: spot lane score 30 is below the canonical action threshold, while an
 # immutable derivatives FIRST_ALERT scored 79 at the same early spot price.
 # Cross-lane fusion should make the already exact-identity candidate actionable
 # without weakening identity/liquidity/no-chase/freshness gates.
 ake_time = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
 ake = row(ake_time, (8.0, 7.6))
-ake["spot_revival_score"] = 38
+ake["spot_revival_score"] = 30
 ake["milestones"]["first_alert"].update({
     "observed_at": ake_time,
     "reference_price": 0.0143037,
     "reference_change_24h_pct": -3.49,
-    "score": 38,
+    "score": 30,
 })
 for market, price in zip(ake["markets"], (0.01410, 0.01412)):
     market["price"] = price
@@ -127,7 +138,7 @@ without_fusion = dict(ake)
 without_fusion.pop("cross_lane_derivatives_precursor")
 ok, metrics = guard.action_eligibility(without_fusion)
 assert ok is False, metrics
-assert "ACTION_SCORE_LT_50" in metrics["blockers"], metrics
+assert "ACTION_SCORE_LT_CANONICAL_MIN" in metrics["blockers"], metrics
 
 ok, metrics = guard.action_eligibility(ake)
 assert ok is True, metrics

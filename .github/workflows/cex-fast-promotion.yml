@@ -87,17 +87,25 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
+          from wallet500 import cex_fast_promotion as promo
+          from scripts import run_cex_action_guarded as action_guard
           alerts=json.loads(Path('data/cex-fast-real-alerts.json').read_text())
           report=json.loads(Path('data/cex-fast-promotion-report.json').read_text())
           truth=alerts.get('truth_contract') or {}
+          if alerts.get('action_policy_version') != promo.ACTION_POLICY_VERSION: raise SystemExit('CEX_FAST_ALERT_POLICY_VERSION_DRIFT')
+          if report.get('action_policy_version') != promo.ACTION_POLICY_VERSION: raise SystemExit('CEX_FAST_REPORT_POLICY_VERSION_DRIFT')
+          if action_guard.ACTION_POLICY_VERSION != promo.ACTION_POLICY_VERSION: raise SystemExit('CEX_FAST_ACTION_GUARD_POLICY_VERSION_DRIFT')
           if report.get('configured') is not False: raise SystemExit('CEX_FAST_DIRECT_TELEGRAM_MUST_BE_DISABLED')
           if report.get('telegram_delivery_enabled') is not False: raise SystemExit('CEX_FAST_DIRECT_TELEGRAM_POLICY_DRIFT')
           if int(report.get('delivered_count') or 0) != 0: raise SystemExit('CEX_FAST_DIRECT_TELEGRAM_DELIVERY_LEAK')
           if truth.get('research_only_alerts_never_delivered') is not True: raise SystemExit('CEX_FAST_RESEARCH_ALERT_LEAK_GUARD_MISSING')
           if truth.get('exact_chain_contract_pair_required') is not True: raise SystemExit('CEX_FAST_EXACT_IDENTITY_GUARD_MISSING')
           if truth.get('cex_dex_current_price_coherence_required') is not True: raise SystemExit('CEX_FAST_PRICE_COHERENCE_GUARD_MISSING')
-          if float(truth.get('minimum_market_age_days') or 0) != 90.0: raise SystemExit('CEX_FAST_AGE_POLICY_DRIFT')
-          if float(truth.get('minimum_execution_liquidity_usd') or 0) != 15000.0: raise SystemExit('CEX_FAST_LIQUIDITY_POLICY_DRIFT')
+          if float(truth.get('minimum_market_age_days') or 0) != float(promo.MIN_MARKET_AGE_DAYS): raise SystemExit('CEX_FAST_AGE_POLICY_DRIFT')
+          if float(truth.get('minimum_execution_liquidity_usd') or 0) != float(promo.MIN_EXECUTION_LIQUIDITY_USD): raise SystemExit('CEX_FAST_LIQUIDITY_POLICY_DRIFT')
+          if int(truth.get('minimum_signal_score') or -1) != int(action_guard.MIN_ACTION_SCORE): raise SystemExit('CEX_FAST_SCORE_POLICY_DRIFT')
+          if truth.get('action_policy_version') != promo.ACTION_POLICY_VERSION: raise SystemExit('CEX_FAST_TRUTH_POLICY_VERSION_DRIFT')
+          if truth.get('canonical_action_policy_single_source') is not True: raise SystemExit('CEX_FAST_CANONICAL_ACTION_POLICY_GUARD_MISSING')
           health=report.get('usdc_source_health') or {}
           for source in ('binance','bybit','bitget','coinex'):
               h=health.get(source) or {}
@@ -132,15 +140,19 @@ jobs:
               if key in seen: raise SystemExit('CEX_FAST_DUPLICATE_CANONICAL_ASSET')
               seen.add(key)
               if key==('solana',excluded): raise SystemExit('CEX_FAST_EXCLUDED_ARC_LEAK')
-              if int(row.get('signal_score') or 0)<50: raise SystemExit('CEX_FAST_WEAK_SCORE_TELEGRAM_LEAK')
+              if int(row.get('signal_score') or 0) < int(action_guard.MIN_ACTION_SCORE): raise SystemExit('CEX_FAST_WEAK_SCORE_TELEGRAM_LEAK')
               since=float(row.get('since_discovery_pct') or 0)
-              if since < -12 or since > 12: raise SystemExit('CEX_FAST_BAD_ENTRY_WINDOW_LEAK')
-              if float(row.get('current_change_24h_pct') or 0)>35: raise SystemExit('CEX_FAST_CHASE_LEAK')
+              if since < float(action_guard.MAX_LOSS_SINCE_DISCOVERY_PCT) or since > float(action_guard.MAX_GAIN_SINCE_DISCOVERY_PCT): raise SystemExit('CEX_FAST_BAD_ENTRY_WINDOW_LEAK')
+              if float(row.get('current_change_24h_pct') or 0) > float(action_guard.MAX_ACTION_24H_MOVE_PCT): raise SystemExit('CEX_FAST_CHASE_LEAK')
               if 'best_verified_pool_liquidity_usd' in row:
                   if float(row.get('best_verified_pool_liquidity_usd') or 0) < float(row.get('execution_liquidity_usd') or 0):
                       raise SystemExit('CEX_FAST_BEST_POOL_LT_EXECUTION_PAIR')
                   if row.get('best_verified_pool_check_complete') not in {True, False}:
                       raise SystemExit('CEX_FAST_BEST_POOL_COMPLETENESS_MISSING')
+          deprecated={'ACTION_SCORE_LT_50'}
+          for row in report.get('blocked_sample') or []:
+              leaked=deprecated.intersection(set(row.get('blockers') or []))
+              if leaked: raise SystemExit(f'CEX_FAST_DEPRECATED_POLICY_BLOCKER_LEAK={sorted(leaked)}')
           if int(report.get('error_count') or 0)>0: raise SystemExit(f"CEX_FAST_DELIVERY_ERRORS={report.get('error_count')}")
           print('CEX_FAST_ACTION_ONLY_VALID', {
               'eligible':len(alerts.get('alerts') or []),
