@@ -394,3 +394,27 @@ def test_relative_volume_shock_allows_low_absolute_turnover_handoff_before_late_
     assert metrics["relative_volume_turnover_exception"] is True
     assert "CEX_TURNOVER_LT_100K_WITHOUT_RELATIVE_VOLUME_SHOCK" not in metrics["blockers"]
     assert "LATE_MOVE_DO_NOT_CHASE" not in metrics["blockers"]
+
+
+def test_derivatives_score_survives_exact_identity_handoff_but_never_bypasses_identity():
+    row = _row(
+        spot_revival_score=0,
+        cex_revival_score=54,
+        milestones={
+            "first_watch": {
+                "observed_at": "2026-09-23T10:00:00+00:00",
+                "reference_price": 0.010,
+                "reference_change_24h_pct": 8.0,
+                "score": 32,
+            }
+        },
+    )
+    ok, metrics = _eligibility(row)
+    assert ok is True
+    assert metrics["signal_score"] == 54
+
+    row["identity_status"] = "IDENTITY_PENDING"
+    row["identity_verified"] = False
+    ok, metrics = _eligibility(row)
+    assert ok is False
+    assert "EXACT_IDENTITY_NOT_VERIFIED" in metrics["blockers"]
