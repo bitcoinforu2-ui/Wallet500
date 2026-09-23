@@ -1285,10 +1285,14 @@ def targeted_risk_event(
     liquidity = num(market.get("liquidity_usd"), 0.0) or 0.0
     volume_h1 = num(market.get("volume_h1_usd"), 0.0) or 0.0
     ratio = num(market.get("buy_sell_ratio"), 0.0) or 0.0
+    buys = int(num(market.get("buys_h1"), 0.0) or 0)
+    sells = int(num(market.get("sells_h1"), 0.0) or 0)
     prev_price = num(prior.get("last_price"), 0.0) or 0.0
     prev_liquidity = num(prior.get("last_liquidity"), 0.0) or 0.0
     prev_volume_h1 = num(prior.get("last_volume_h1"), 0.0) or 0.0
     prev_ratio = num(prior.get("last_buy_sell_ratio"))
+    prev_buys = int(num(prior.get("last_buys_h1"), 0.0) or 0)
+    prev_sells = int(num(prior.get("last_sells_h1"), 0.0) or 0)
     scan_change = num(market.get("scan_price_gain_pct"))
 
     if price <= 0 or prev_price <= 0:
@@ -1304,6 +1308,21 @@ def targeted_risk_event(
         0.1,
         float(rp.get("flow_warning_ratio", policy.get("min_buy_sell_ratio", 1.2))),
     )
+    flow_deterioration_pct = max(5.0, float(rp.get("flow_deterioration_pct", 15.0)))
+    volume_acceleration_multiple = max(
+        1.05,
+        float(rp.get("volume_acceleration_multiple", target.get("volume_acceleration_multiple", 1.5))),
+    )
+    sell_count_acceleration_multiple = max(
+        1.05, float(rp.get("sell_count_acceleration_multiple", 1.35))
+    )
+    buy_count_deceleration_pct = min(
+        90.0, max(5.0, float(rp.get("buy_count_deceleration_pct", 25.0)))
+    )
+    near_floor_headroom_pct = min(
+        25.0, max(0.5, float(rp.get("liquidity_near_floor_headroom_pct", 5.0)))
+    )
+    min_warning_groups = max(2, int(rp.get("min_warning_evidence_groups", 2)))
     liquidity_drop_threshold = max(
         1.0,
         float(rp.get("liquidity_drop_breakdown_pct", target.get("liquidity_drop_pct", 20.0))),
@@ -1320,7 +1339,9 @@ def targeted_risk_event(
     )
 
     reasons: list[str] = []
+    evidence_groups: set[str] = set()
     severe = False
+    risk_score = 0.0
 
     hard_risks = [str(x) for x in (intel.get("hard_risks") or []) if str(x).strip()]
     if hard_risks:
