@@ -615,21 +615,59 @@ def test_targeted_position_risk_warns_before_breakdown_and_escalates():
     warning = gate.targeted_risk_event(target, decision, prior, policy, now)
     assert warning is not None
     assert warning["severity"] == "RISK_WARNING"
-    assert warning["alert"] is True
+    # Non-severe SELL-RISK is deliberately two-scan confirmed so one noisy
+    # microstructure read cannot trigger Telegram by itself.
+    assert warning["alert"] is False
+    assert warning["confirmation_status"] == "PENDING"
+    assert warning["confirmation_streak"] == 1
     assert any(
         x.startswith("PRICE_WEAKNESS_WITH_FLOW_FAILURE")
         or x.startswith("BUY_FLOW_REVERSAL")
         for x in warning["reasons"]
     )
 
+    confirm_time = now + timedelta(minutes=5)
+    confirm_prior = {
+        **state,
+        "targeted_risk_active": False,
+        "targeted_risk_pending_streak": warning["confirmation_streak"],
+        "targeted_risk_pending_first_at": warning["confirmation_first_at"],
+        "targeted_risk_pending_last_at": warning["confirmation_last_at"],
+        "targeted_risk_pending_groups": warning["evidence_groups"],
+        "targeted_risk_pending_signature": warning["signature"],
+        "targeted_risk_pending_price": warning["price_usd"],
+        "targeted_risk_pending_score": warning["risk_score"],
+    }
+    # Keep price above the first hard down-level while sell pressure persists:
+    # this must confirm RISK_WARNING before the later breakdown.
+    confirm_market = dict(
+        market,
+        price=0.0001835,
+        liquidity=55200.0,
+        volume_h1=4000.0,
+        buys_h1=5,
+        sells_h1=20,
+        observed_at=confirm_time.isoformat(),
+    )
+    confirm_decision, confirm_state = gate.evaluate(
+        target, confirm_market, observed, confirm_prior, policy, now=confirm_time
+    )
+    confirmed_warning = gate.targeted_risk_event(
+        target, confirm_decision, confirm_prior, policy, confirm_time
+    )
+    assert confirmed_warning is not None
+    assert confirmed_warning["severity"] == "RISK_WARNING"
+    assert confirmed_warning["confirmation_status"] == "CONFIRMED"
+    assert confirmed_warning["alert"] is True
+
     later = now + timedelta(minutes=15)
     breakdown_prior = {
-        **state,
+        **confirm_state,
         "targeted_risk_active": True,
-        "last_targeted_risk_alert_at": now.isoformat(),
-        "last_targeted_risk_alert_price": warning["price_usd"],
-        "last_targeted_risk_signature": warning["signature"],
-        "last_targeted_risk_severity": warning["severity"],
+        "last_targeted_risk_alert_at": confirm_time.isoformat(),
+        "last_targeted_risk_alert_price": confirmed_warning["price_usd"],
+        "last_targeted_risk_signature": confirmed_warning["signature"],
+        "last_targeted_risk_severity": confirmed_warning["severity"],
     }
     market2 = dict(
         market,
