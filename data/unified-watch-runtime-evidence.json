@@ -1,15 +1,15 @@
 {
   "version": 7,
-  "generated_at": "2026-09-23T08:27:29.301573+00:00",
-  "github_run_id": "35834340982",
+  "generated_at": "2026-09-23T08:48:49.972352+00:00",
+  "github_run_id": "35836441746",
   "github_run_attempt": "1",
-  "github_sha": "fe1c07ef7510d5540ab71dc043737725d223d60c",
+  "github_sha": "98c56394f1b1fa066f5d11e9d9a68945c518edbb",
   "stage_outcomes": {
     "validate": "success",
     "contract": "success",
     "spot_discovery": "success",
     "new_chain_bootstrap_contract": "success",
-    "new_chain_bootstrap": "success",
+    "new_chain_bootstrap": "failure",
     "free_intel": "success",
     "public_alpha": "success",
     "alpha_intake": "success",
@@ -31,14 +31,14 @@
     "hot_recheck_persist": "success",
     "enriched_fusion": "success"
   },
-  "first_failed_or_skipped_stage": null,
+  "first_failed_or_skipped_stage": "new_chain_bootstrap",
   "evidence": {
     "spot_discovery_exists": true,
-    "spot_discovery_generated_at": "2026-09-23T08:09:40.555677+00:00",
+    "spot_discovery_generated_at": "2026-09-23T08:29:02.392071+00:00",
     "spot_discovery_counts": {
       "eligible_non_leveraged_spot": 1617,
       "ignored_leveraged": 422,
-      "discovered": 219,
+      "discovered": 226,
       "identity_resolved": 93,
       "identity_recovery_attempted": 0,
       "identity_recovered": 4,
@@ -58,35 +58,37 @@
     },
     "dynamic_candidate_counts": {
       "buy_zone": 0,
-      "cex_spot": 35,
+      "cex_spot": 39,
       "gate_spot": 93,
-      "cex_market": 34,
+      "cex_market": 35,
       "new_chain_bootstrap": 24,
       "public_alpha": 22,
       "public_alpha_stale_excluded": 0,
       "public_alpha_invalid_time_excluded": 0,
-      "canonical_gate_market_suppressed": 4,
-      "cex_market_exact_identity_recovered": 11,
-      "multi_pool_watch_candidates": 128,
-      "multi_pool_sibling_candidates": 23,
+      "canonical_gate_market_suppressed": 3,
+      "cex_market_exact_identity_recovered": 12,
+      "multi_pool_watch_candidates": 132,
+      "multi_pool_sibling_candidates": 25,
       "public_alpha_live_window_minutes": 180,
-      "total": 208
+      "total": 213
     },
     "buy_close_watch_active": 0,
-    "cross_domain_updated_at": "2026-09-23T08:23:06.463385+00:00",
+    "cross_domain_updated_at": "2026-09-23T08:44:14.116459+00:00",
     "cross_domain_target_count": 60,
-    "narrative_dependency_updated_at": "2026-09-23T08:27:25.244659+00:00",
+    "narrative_dependency_updated_at": "2026-09-23T08:48:45.878651+00:00",
     "narrative_dependency_reports": [
       {
         "symbol": "ZDOG",
         "identity_key": "solana:EbT2jpoeRJVFNWAFJE97EGfQF3iwHsEY8sh17fGbL5ER:9TRKbpkWfbR6dmFAX1kGx1MReZ48K1j9VPcjUBMM4Toq",
         "events": [],
         "positive_dependencies": [],
-        "negative_dependencies": [],
+        "negative_dependencies": [
+          "ZCAT"
+        ],
         "errors": []
       }
     ],
-    "derivatives_updated_at": "2026-09-23T08:27:26.519681+00:00",
+    "derivatives_updated_at": "2026-09-23T08:48:47.040624+00:00",
     "derivatives_provider_success": {
       "Gate Futures": 0,
       "Hyperliquid": 3,
@@ -114,28 +116,28 @@
     "derivatives_healthy_providers": [
       "Hyperliquid"
     ],
-    "derivatives_not_listed_targets": 46,
+    "derivatives_not_listed_targets": 47,
     "derivatives_provider_lookup_errors": 0,
     "http_resilience_strategy": "STRICT_EXACT_PAIR_PLUS_PROACTIVE_MISSING_EVIDENCE_RECOVERY_BEFORE_FINAL_DECISION",
     "http_resilience_metrics": {
-      "requests": 252,
-      "cache_hits": 3,
-      "retries": 6,
-      "http_429": 12,
-      "http_5xx": 0,
-      "cooldowns": 12,
-      "errors": 16,
+      "requests": 134,
+      "cache_hits": 0,
+      "retries": 18,
+      "http_429": 11,
+      "http_5xx": 2,
+      "cooldowns": 13,
+      "errors": 14,
       "hosts": {
         "api.geckoterminal.com": {
-          "requests": 46,
+          "requests": 23,
           "cache_hits": 0,
           "retries": 0,
-          "http_429": 4,
-          "cooldowns": 4,
-          "errors": 12
+          "http_429": 3,
+          "cooldowns": 3,
+          "errors": 8
         },
         "api.dexscreener.com": {
-          "requests": 42,
+          "requests": 19,
           "cache_hits": 0,
           "retries": 0,
           "http_429": 0,
@@ -151,23 +153,23 @@
           "errors": 2
         },
         "news.google.com": {
-          "requests": 6,
+          "requests": 16,
+          "cache_hits": 0,
+          "retries": 12,
+          "http_429": 0,
+          "cooldowns": 2,
+          "errors": 4
+        },
+        "api.gateio.ws": {
+          "requests": 60,
           "cache_hits": 0,
           "retries": 0,
           "http_429": 0,
           "cooldowns": 0,
           "errors": 0
         },
-        "api.gateio.ws": {
-          "requests": 136,
-          "cache_hits": 3,
-          "retries": 0,
-          "http_429": 0,
-          "cooldowns": 0,
-          "errors": 0
-        },
-        "base.blockscout.com": {
-          "requests": 2,
+        "eth.blockscout.com": {
+          "requests": 4,
           "cache_hits": 0,
           "retries": 0,
           "http_429": 0,
@@ -175,23 +177,7 @@
           "errors": 0
         },
         "api.honeypot.is": {
-          "requests": 4,
-          "cache_hits": 0,
-          "retries": 0,
-          "http_429": 0,
-          "cooldowns": 0,
-          "errors": 0
-        },
-        "bsc.blockscout.com": {
           "requests": 2,
-          "cache_hits": 0,
-          "retries": 0,
-          "http_429": 0,
-          "cooldowns": 0,
-          "errors": 2
-        },
-        "eth.blockscout.com": {
-          "requests": 4,
           "cache_hits": 0,
           "retries": 0,
           "http_429": 0,
@@ -201,28 +187,28 @@
       }
     },
     "close_watch_events_exists": true,
-    "close_watch_event_count": 3751,
+    "close_watch_event_count": 3779,
     "buyback_event_count": 1,
     "buyback_lead_event_count": 0,
     "fusion_snapshot_exists": true,
-    "fusion_token_count": 309,
-    "fusion_generated_at": "2026-09-23T08:27:28.189462+00:00",
-    "unified_state_updated_at": "2026-09-23T08:19:56.418361+00:00",
+    "fusion_token_count": 314,
+    "fusion_generated_at": "2026-09-23T08:48:48.273203+00:00",
+    "unified_state_updated_at": "2026-09-23T08:40:48.187954+00:00",
     "unified_report_exists": true,
-    "unified_report_updated_at": "2026-09-23T08:15:55.748110+00:00",
-    "cex_sensor_handoff_generated_at": "2026-09-23T08:10:50.138988+00:00",
-    "cex_sensor_handoff_escalated": 3,
+    "unified_report_updated_at": "2026-09-23T08:36:49.397590+00:00",
+    "cex_sensor_handoff_generated_at": "2026-09-23T08:31:31.166924+00:00",
+    "cex_sensor_handoff_escalated": 7,
     "native_asset_close_watch_count": 0,
     "native_asset_prebuy_research_count": 0,
-    "dynamic_spot_targets_watched": 250,
+    "dynamic_spot_targets_watched": 255,
     "dynamic_bootstrap_targets_watched": 12,
     "dynamic_alpha_targets_watched": 0,
     "user_watch_final_buy_mode": "USER_REQUESTED_UNIFIED_WATCH_FINAL_BUY_V1",
     "user_watch_final_buy_zone_count": 0,
     "user_watch_final_buy_delivered_count": 0,
     "user_watch_final_buy_error_count": 0,
-    "chain_context_shadow_generated_at": "2026-09-23T08:15:55.982551+00:00",
-    "chain_context_shadow_target_count": 147,
+    "chain_context_shadow_generated_at": "2026-09-23T08:36:50.564690+00:00",
+    "chain_context_shadow_target_count": 150,
     "chain_context_shadow_real_alert_sample_size": 44
   }
 }
