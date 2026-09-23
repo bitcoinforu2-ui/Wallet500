@@ -28,7 +28,7 @@ def analyze_holders(holders: Iterable[dict] | None, total_supply=None) -> dict:
 
     clean=[]
     for x in rows:
-        if x.get("excluded") or x.get("is_lp") or x.get("is_burn"):
+        if x.get("excluded") or x.get("excluded_from_whale_concentration") or x.get("is_lp") or x.get("is_burn"):
             continue
         bal=x.get("balance")
         pct=x.get("supply_pct")
