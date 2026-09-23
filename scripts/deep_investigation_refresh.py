@@ -245,8 +245,25 @@ def _merge_events(fresh):
     EVENTS.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
 
 
-def run_one(engine, policy, t, live, previous_scan, triggers, material_reasons):
-    qualification = positive_investigation_reasons(live, triggers, material_reasons, policy)
+def run_one(
+    engine,
+    policy,
+    t,
+    live,
+    previous_scan,
+    triggers,
+    material_reasons,
+    qualification_override=None,
+):
+    # The resilient runner may qualify a deep refresh for reasons that are not
+    # bullish market triggers (for example stale/missing evidence recovery or a
+    # user-targeted HIGHEST deep watch). Preserve that qualification here rather
+    # than silently recomputing only the positive-trigger subset.
+    qualification = (
+        list(qualification_override)
+        if qualification_override is not None
+        else positive_investigation_reasons(live, triggers, material_reasons, policy)
+    )
     if not qualification:
         return None
 
