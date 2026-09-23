@@ -87,6 +87,23 @@ ok, metrics = guard.action_eligibility(row(fresh, (4.0, 3.5)))
 assert ok is True, metrics
 assert metrics["action_state"] == "BUY_ZONE", metrics
 assert metrics["action_basis"] == "FRESH_SIGNAL", metrics
+
+# Regression: TAKE/MET-like early signals in the 40s must not be discarded by
+# a stale hidden 50-point action threshold once all hard gates pass.
+early_44 = row(fresh, (4.0, 3.5))
+early_44["spot_revival_score"] = 44
+early_44["milestones"]["first_alert"]["score"] = 44
+ok, metrics = guard.action_eligibility(early_44)
+assert ok is True, metrics
+assert metrics["minimum_action_score"] == 40
+assert "ACTION_SCORE_LT_40" not in metrics["blockers"], metrics
+
+early_39 = row(fresh, (4.0, 3.5))
+early_39["spot_revival_score"] = 39
+early_39["milestones"]["first_alert"]["score"] = 39
+ok, metrics = guard.action_eligibility(early_39)
+assert ok is False
+assert "ACTION_SCORE_LT_40" in metrics["blockers"], metrics
 assert metrics["signal_freshness"] == "FRESH", metrics
 
 # AKE-like regression: spot lane alone is below action threshold (38), while an
@@ -127,7 +144,7 @@ without_fusion = dict(ake)
 without_fusion.pop("cross_lane_derivatives_precursor")
 ok, metrics = guard.action_eligibility(without_fusion)
 assert ok is False, metrics
-assert "ACTION_SCORE_LT_50" in metrics["blockers"], metrics
+assert "ACTION_SCORE_LT_40" in metrics["blockers"], metrics
 
 ok, metrics = guard.action_eligibility(ake)
 assert ok is True, metrics
