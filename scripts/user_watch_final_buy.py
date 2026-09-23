@@ -1117,6 +1117,8 @@ def evaluate(
         "last_price": price if price > 0 else prior.get("last_price"),
         "last_liquidity": liquidity,
         "last_volume_h1": volume_h1,
+        "last_buy_sell_ratio": round(ratio, 6),
+        "last_activity_h1": activity,
         "watch_low_price": low if low is not None else prior.get("watch_low_price"),
         "watch_high_price": max(num(prior.get("watch_high_price"), 0.0) or 0.0, price),
         "late_entry_extension_seen": False if alert else extension_seen,
@@ -1152,6 +1154,242 @@ def evaluate(
         next_state["buy_episode_count"] = int(prior.get("buy_episode_count") or 0) + 1
 
     return result, next_state
+
+
+
+def targeted_risk_event(
+    target: dict,
+    decision: dict,
+    prior: dict | None,
+    policy: dict,
+    now: datetime,
+) -> dict | None:
+    """Return a user-requested position-protection event for an exact target."""
+    if target.get("targeted_telegram_watch") is not True:
+        return None
+
+    allowed = {
+        str(x or "").strip().upper()
+        for x in (target.get("targeted_telegram_events") or [])
+        if str(x or "").strip()
+    }
+    if not ({"RISK_WARNING", "BREAKDOWN", "SELL_RISK"} & allowed):
+        return None
+
+    blockers = {str(x) for x in (decision.get("blockers") or [])}
+    integrity_blockers = {
+        "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN",
+        "MARKET_SNAPSHOT_STALE_OR_UNTIMED",
+        "MARKET_IDENTITY_MISMATCH",
+        "PRICE_MISSING",
+    }
+    if blockers & integrity_blockers:
+        return None
+
+    market = decision.get("market") if isinstance(decision.get("market"), dict) else {}
+    intel = decision.get("intelligence") if isinstance(decision.get("intelligence"), dict) else {}
+    prior = dict(prior or {})
+
+    price = num(market.get("price_usd"), 0.0) or 0.0
+    liquidity = num(market.get("liquidity_usd"), 0.0) or 0.0
+    volume_h1 = num(market.get("volume_h1_usd"), 0.0) or 0.0
+    ratio = num(market.get("buy_sell_ratio"), 0.0) or 0.0
+    prev_price = num(prior.get("last_price"), 0.0) or 0.0
+    prev_liquidity = num(prior.get("last_liquidity"), 0.0) or 0.0
+    prev_volume_h1 = num(prior.get("last_volume_h1"), 0.0) or 0.0
+    prev_ratio = num(prior.get("last_buy_sell_ratio"))
+    scan_change = num(market.get("scan_price_gain_pct"))
+
+    if price <= 0 or prev_price <= 0:
+        return None
+    if scan_change is None:
+        scan_change = (price / prev_price - 1.0) * 100.0
+
+    rp = target.get("targeted_risk_policy")
+    rp = rp if isinstance(rp, dict) else {}
+    warning_drop = max(0.5, float(rp.get("price_drop_warning_pct", 3.0)))
+    breakdown_drop = max(warning_drop, float(rp.get("price_drop_breakdown_pct", 8.0)))
+    flow_warning_ratio = max(
+        0.1,
+        float(rp.get("flow_warning_ratio", policy.get("min_buy_sell_ratio", 1.2))),
+    )
+    liquidity_drop_threshold = max(
+        1.0,
+        float(rp.get("liquidity_drop_breakdown_pct", target.get("liquidity_drop_pct", 20.0))),
+    )
+    cooldown_seconds = max(300.0, float(rp.get("cooldown_seconds", 1800.0)))
+    re_alert_drop = max(
+        1.0,
+        float(
+            rp.get(
+                "realert_additional_price_drop_pct",
+                rp.get("relert_additional_price_drop_pct", 8.0),
+            )
+        ),
+    )
+
+    reasons: list[str] = []
+    severe = False
+
+    hard_risks = [str(x) for x in (intel.get("hard_risks") or []) if str(x).strip()]
+    if hard_risks:
+        severe = True
+        reasons.append("HARD_RISK:" + ",".join(sorted(set(hard_risks))))
+
+    crossed_levels: list[float] = []
+    for raw in target.get("down_levels") or []:
+        level = num(raw)
+        if level is None or level <= 0:
+            continue
+        if prev_price > level >= price:
+            crossed_levels.append(level)
+    if crossed_levels:
+        severe = True
+        for level in sorted(set(crossed_levels), reverse=True):
+            reasons.append(f"DOWN_LEVEL_BREACH_{level:.10f}")
+
+    if scan_change <= -breakdown_drop:
+        severe = True
+        reasons.append(f"SCAN_PRICE_DROP_{abs(scan_change):.2f}PCT")
+    elif scan_change <= -warning_drop and ratio < flow_warning_ratio:
+        reasons.append(
+            f"PRICE_WEAKNESS_WITH_FLOW_FAILURE_{abs(scan_change):.2f}PCT_RATIO_{ratio:.2f}"
+        )
+
+    if (
+        prev_ratio is not None
+        and prev_ratio >= flow_warning_ratio
+        and ratio < flow_warning_ratio
+        and scan_change < 0
+    ):
+        reasons.append(f"BUY_FLOW_REVERSAL_{prev_ratio:.2f}_TO_{ratio:.2f}")
+
+    if (
+        prev_volume_h1 > 0
+        and volume_h1 >= prev_volume_h1 * 1.5
+        and ratio < 1.0
+        and scan_change < 0
+    ):
+        reasons.append(f"SELL_VOLUME_ACCELERATION_{volume_h1 / prev_volume_h1:.2f}X")
+
+    liquidity_drop_pct = None
+    if prev_liquidity > 0 and liquidity >= 0:
+        liquidity_drop_pct = (prev_liquidity - liquidity) / prev_liquidity * 100.0
+        if liquidity_drop_pct >= liquidity_drop_threshold:
+            severe = True
+            reasons.append(f"LIQUIDITY_DROP_{liquidity_drop_pct:.2f}PCT")
+
+    final_buy_floor = float(policy.get("min_liquidity_usd", 50000.0))
+    if prev_liquidity >= final_buy_floor and liquidity < final_buy_floor:
+        severe = True
+        reasons.append(f"LIQUIDITY_FLOOR_BREACH_{final_buy_floor:.0f}")
+
+    if not reasons:
+        return None
+
+    severity = "BREAKDOWN" if severe else "RISK_WARNING"
+    event_name = (
+        severity
+        if severity in allowed
+        else ("RISK_WARNING" if "RISK_WARNING" in allowed else "SELL_RISK")
+    )
+    if event_name not in allowed:
+        return None
+
+    signature = "|".join(sorted(set(reasons)))
+    last_alert_at = prior.get("last_targeted_risk_alert_at")
+    alert_age = age_seconds(last_alert_at, now) if last_alert_at else None
+    last_alert_price = num(prior.get("last_targeted_risk_alert_price"), 0.0) or 0.0
+    last_signature = str(prior.get("last_targeted_risk_signature") or "")
+    last_severity = str(prior.get("last_targeted_risk_severity") or "").upper()
+    prior_active = bool(prior.get("targeted_risk_active"))
+
+    severity_rank = {"RISK_WARNING": 1, "BREAKDOWN": 2}
+    escalated = severity_rank.get(severity, 1) > severity_rank.get(last_severity, 0)
+    additional_drop = bool(
+        last_alert_price > 0
+        and price <= last_alert_price * (1.0 - re_alert_drop / 100.0)
+    )
+    new_break_level = bool(crossed_levels and signature != last_signature)
+    cooled_new_signature = bool(
+        alert_age is not None
+        and alert_age >= cooldown_seconds
+        and signature != last_signature
+    )
+    should_alert = bool(
+        not prior_active
+        or not last_alert_at
+        or escalated
+        or additional_drop
+        or new_break_level
+        or cooled_new_signature
+    )
+
+    return {
+        "active": True,
+        "event": event_name,
+        "severity": severity,
+        "alert": should_alert,
+        "signature": signature,
+        "reasons": list(dict.fromkeys(reasons)),
+        "price_usd": price,
+        "scan_price_change_pct": round(scan_change, 4),
+        "liquidity_usd": liquidity,
+        "liquidity_drop_pct": (
+            round(liquidity_drop_pct, 4)
+            if liquidity_drop_pct is not None
+            else None
+        ),
+        "volume_h1_usd": volume_h1,
+        "buy_sell_ratio": round(ratio, 4),
+        "previous_buy_sell_ratio": (
+            round(prev_ratio, 4) if prev_ratio is not None else None
+        ),
+        "crossed_down_levels": sorted(set(crossed_levels), reverse=True),
+        "cooldown_seconds": cooldown_seconds,
+        "manual_decision_only": True,
+    }
+
+
+def targeted_risk_message(target: dict, decision: dict, event: dict) -> str:
+    market = decision.get("market") if isinstance(decision.get("market"), dict) else {}
+    severe = str(event.get("severity") or "").upper() == "BREAKDOWN"
+    title = (
+        f"🔴⚠️ BREAKDOWN / SELL-RISK — {decision['symbol']} — WALLET500"
+        if severe
+        else f"🟠⚠️ אזהרת סיכון / SELL-RISK — {decision['symbol']} — WALLET500"
+    )
+    action = (
+        "הידרדרות מהותית זוהתה. יש לבחון הגנת פוזיציה / צמצום או יציאה מיידית לפי מצבך."
+        if severe
+        else "המומנטום נחלש. יש לבחון צמצום סיכון לפני שהמהלך מחמיר."
+    )
+    lines = [
+        title,
+        action,
+        f"Price: ${float(event.get('price_usd') or 0):.10f}",
+        f"Scan move: {float(event.get('scan_price_change_pct') or 0):+.2f}%",
+        (
+            f"Liquidity: ${float(event.get('liquidity_usd') or 0):,.0f}"
+            + (
+                f" ({-float(event['liquidity_drop_pct']):+.1f}% vs previous scan)"
+                if event.get("liquidity_drop_pct") is not None
+                else ""
+            )
+        ),
+        (
+            f"Buys/Sells 1H: {int(market.get('buys_h1') or 0)}/"
+            f"{int(market.get('sells_h1') or 0)} "
+            f"({float(event.get('buy_sell_ratio') or 0):.2f}x)"
+        ),
+        "Signals: " + " | ".join(event.get("reasons") or []),
+        "התראה זו ייעודית למטבע שביקשת לעקוב אחריו; אינה התראת RESEARCH כללית.",
+        "Manual decision only. No automatic sell.",
+        f"CA: {target.get('contract')}",
+        f"Pair: {target.get('pair')}",
+        str(target.get("dex_url") or ""),
+    ]
+    return "\n".join(lines)
 
 
 def telegram_message(target: dict, decision: dict) -> str:
@@ -1300,6 +1538,7 @@ def main() -> int:
     decisions: list[dict] = []
     delivered: list[str] = []
     pre_buy_delivered: list[str] = []
+    targeted_risk_delivered: list[str] = []
     errors: list[dict] = []
 
     partial_upstream_skipped = 0
@@ -1343,9 +1582,38 @@ def main() -> int:
                 continue
             partial_upstream_evaluated += 1
 
+        prior_state = target_state.get(key) if isinstance(target_state.get(key), dict) else {}
         decision, next_state = evaluate(
-            target, m, rr, target_state.get(key), policy, now=now
+            target, m, rr, prior_state, policy, now=now
         )
+
+        targeted_risk = targeted_risk_event(
+            target, decision, prior_state, policy, now
+        )
+        decision["targeted_risk"] = targeted_risk
+        next_state["targeted_risk_active"] = bool(
+            targeted_risk and targeted_risk.get("active")
+        )
+        if targeted_risk and targeted_risk.get("alert") is True:
+            try:
+                send_telegram(targeted_risk_message(target, decision, targeted_risk))
+                targeted_risk_delivered.append(key)
+                next_state["last_targeted_risk_alert_at"] = now.isoformat()
+                next_state["last_targeted_risk_alert_price"] = targeted_risk.get("price_usd")
+                next_state["last_targeted_risk_signature"] = targeted_risk.get("signature")
+                next_state["last_targeted_risk_severity"] = targeted_risk.get("severity")
+                next_state["last_targeted_risk_delivery_status"] = "DELIVERED"
+                target_state[key] = next_state
+                checkpoint_delivery_state(target_state, now)
+            except Exception as exc:
+                next_state["last_targeted_risk_delivery_status"] = f"ERROR:{type(exc).__name__}"
+                targeted_risk["alert"] = False
+                targeted_risk["delivery_error"] = f"{type(exc).__name__}:{str(exc)[:180]}"
+                errors.append({
+                    "identity_key": key,
+                    "event": str(targeted_risk.get("event") or "RISK_WARNING"),
+                    "error": targeted_risk["delivery_error"],
+                })
 
         if decision.get("pre_buy_alert") is True:
             try:
@@ -1416,6 +1684,8 @@ def main() -> int:
         "pre_buy_count": sum(1 for x in decisions if x.get("pre_buy") is True),
         "pre_buy_delivered_count": len(pre_buy_delivered),
         "pre_buy_delivered": pre_buy_delivered,
+        "targeted_risk_delivered_count": len(targeted_risk_delivered),
+        "targeted_risk_delivered": targeted_risk_delivered,
         "delivered_count": len(delivered),
         "delivered": delivered,
         "error_count": len(errors),
@@ -1438,6 +1708,9 @@ def main() -> int:
             "research_watch_notifications": False,
             "near_buy_notifications": True,
             "generic_near_buy_notifications": False,
+            "targeted_position_protection_notifications": True,
+            "targeted_risk_requires_explicit_per_token_opt_in": True,
+            "targeted_risk_never_uses_stale_or_identity_ambiguous_market_data": True,
             "fail_closed_per_target_on_partial_upstream": True,
             "partial_upstream_max_snapshot_age_seconds": partial_upstream_max_age_seconds,
             "decision_coverage_is_explicit": True,
@@ -1456,6 +1729,7 @@ def main() -> int:
         "buy_zone_count": report["buy_zone_count"],
         "pre_buy_count": report["pre_buy_count"],
         "pre_buy_delivered_count": report["pre_buy_delivered_count"],
+        "targeted_risk_delivered_count": report["targeted_risk_delivered_count"],
         "delivered_count": report["delivered_count"],
         "error_count": report["error_count"],
     }, ensure_ascii=False))
