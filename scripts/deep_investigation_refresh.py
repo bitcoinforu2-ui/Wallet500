@@ -143,7 +143,7 @@ def _market_events(t, engine, live, previous_scan):
     return out
 
 
-def _holder_events(t, engine, hs, previous_holder):
+def _holder_events(t, engine, hs, previous_holder, previous_observed_at=None):
     if not hs:
         return []
     out = [
@@ -167,6 +167,11 @@ def _holder_events(t, engine, hs, previous_holder):
         delta = (float(hc) - float(phc)) / abs(float(phc)) * 100
         if abs(delta) >= 2:
             out.append(_event(t, engine, "holder_network", "holder_growth", 1 if delta > 0 else -1, min(100, abs(delta) * 8), 88, hs.get("provider") or "holder provider", holder_count=hc, change_pct=round(delta, 3), contradicts_bullish=delta < 0))
+        velocity = cross.holder_velocity_metrics(hs, previous_holder or {}, previous_observed_at, now_iso())
+        if velocity.get("qualifies"):
+            direction = 1 if float(velocity.get("change_count") or 0) > 0 else -1
+            strength = min(100, abs(float(velocity.get("pct_per_hour") or 0)) * 25 + min(25, abs(float(velocity.get("change_count") or 0)) / 4))
+            out.append(_event(t, engine, "holder_network", "holder_velocity", direction, strength, 92, hs.get("provider") or "holder provider", **velocity, contradicts_bullish=direction < 0))
     top10 = hs.get("top10_pct")
     ptop10 = (previous_holder or {}).get("top10_pct")
     if top10 is not None and float(top10) >= 70:
@@ -282,8 +287,9 @@ def run_one(
     except Exception as exc:
         hs = None
         providers["holder_wallet"] = f"ERROR:{type(exc).__name__}"
-    previous_holder = ((cross_state.get("tokens") or {}).get(identity_key) or {}).get("holder") or {}
-    fresh += _holder_events(t, engine, hs, previous_holder)
+    previous_cross_token = ((cross_state.get("tokens") or {}).get(identity_key) or {})
+    previous_holder = previous_cross_token.get("holder") or {}
+    fresh += _holder_events(t, engine, hs, previous_holder, previous_cross_token.get("observed_at"))
 
     try:
         ns = cross.news_snapshot(t)

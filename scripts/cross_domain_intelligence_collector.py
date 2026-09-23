@@ -47,6 +47,23 @@ NEWS_POSITIVE = re.compile(r"\b(list(?:ed|ing)|launch(?:ed)?|partnership|integra
 NEWS_NEGATIVE = re.compile(r"\b(hack(?:ed)?|exploit|breach|delist(?:ed|ing)|lawsuit|investigation|attack|drain|rug|scam)\b", re.I)
 CRYPTO_CONTEXT = re.compile(r"\b(crypto|cryptocurrency|blockchain|token|coin|defi|web3|exchange)\b", re.I)
 
+# Holder velocity is asset-level intelligence. Blockscout remains the preferred
+# chain-native source where it exposes holder counts; CoinMarketCap DEX holders
+# is an exact chain+contract keyless fallback for networks/providers that do not.
+CMC_HOLDER_PLATFORMS = {
+    "ethereum": ("ethereum",),
+    "bsc": ("bsc", "bnb-smart-chain"),
+    "base": ("base",),
+    "arbitrum": ("arbitrum",),
+    "optimism": ("optimism",),
+    "polygon": ("polygon",),
+    "avalanche": ("avalanche",),
+    "solana": ("solana",),
+}
+QUOTE_SUFFIXES = ("USDT", "USDC", "FDUSD", "BUSD", "USD", "BTC", "ETH", "BNB", "EUR", "TRY")
+HOLDER_VELOCITY_MIN_PCT = 0.25
+HOLDER_VELOCITY_MAX_WINDOW_MIN = 120.0
+
 
 def now():
     return datetime.now(timezone.utc).isoformat()
@@ -115,6 +132,76 @@ def ident(row):
     t = norm(c, row.get("contract") or row.get("token_address"))
     p = norm(c, row.get("pair") or row.get("pair_address"))
     return (c, t, p, f"{c}:{t}:{p}") if c and t and p else None
+
+
+def asset_ident(row):
+    c = chain_name(row.get("network") or row.get("chain"))
+    t = norm(c, row.get("contract") or row.get("token_address"))
+    return (c, t, f"{c}:{t}") if c and t else None
+
+
+def base_symbol(row):
+    pair = str(row.get("currency_pair") or "").upper().strip()
+    if "_" in pair:
+        base = pair.split("_", 1)[0]
+        if base:
+            return re.sub(r"[^A-Z0-9]", "", base)
+    sym = re.sub(r"[^A-Z0-9]", "", str(row.get("symbol") or "").upper())
+    for quote in QUOTE_SUFFIXES:
+        if sym.endswith(quote) and len(sym) > len(quote) + 1:
+            return sym[:-len(quote)]
+    return sym
+
+
+def _parse_observed_at(value):
+    try:
+        dt = datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def holder_velocity_metrics(current, previous, previous_observed_at, current_observed_at=None):
+    current = current or {}
+    previous = previous or {}
+    try:
+        cur = float(current.get("holders_count"))
+        prev = float(previous.get("holders_count"))
+    except (TypeError, ValueError):
+        return {"status": "BASELINE_LEARNING", "qualifies": False}
+    if prev <= 0 or cur < 0:
+        return {"status": "BASELINE_LEARNING", "qualifies": False}
+    cur_provider = str(current.get("provider") or "")
+    prev_provider = str(previous.get("provider") or "")
+    if cur_provider and prev_provider and cur_provider != prev_provider:
+        return {"status": "PROVIDER_CHANGED_BASELINE", "qualifies": False}
+    end = _parse_observed_at(current_observed_at or now())
+    start = _parse_observed_at(previous_observed_at)
+    if not start or not end:
+        return {"status": "TIME_BASELINE_MISSING", "qualifies": False}
+    elapsed_min = (end - start).total_seconds() / 60.0
+    if elapsed_min <= 0 or elapsed_min > HOLDER_VELOCITY_MAX_WINDOW_MIN:
+        return {"status": "WINDOW_OUT_OF_RANGE", "qualifies": False, "elapsed_minutes": round(elapsed_min, 3)}
+    change_count = cur - prev
+    change_pct = change_count / abs(prev) * 100.0
+    holders_per_hour = change_count * 60.0 / elapsed_min
+    pct_per_hour = change_pct * 60.0 / elapsed_min
+    min_count = max(5, min(25, int(round(abs(prev) * 0.0025))))
+    qualifies = abs(change_pct) >= HOLDER_VELOCITY_MIN_PCT and abs(change_count) >= min_count
+    return {
+        "status": "FAST_HOLDER_VELOCITY" if qualifies else "BELOW_FAST_THRESHOLD",
+        "qualifies": qualifies,
+        "previous_holder_count": int(prev),
+        "holder_count": int(cur),
+        "change_count": int(round(change_count)),
+        "change_pct": round(change_pct, 4),
+        "elapsed_minutes": round(elapsed_min, 3),
+        "holders_per_hour": round(holders_per_hour, 3),
+        "pct_per_hour": round(pct_per_hour, 4),
+        "minimum_change_count": min_count,
+        "minimum_change_pct": HOLDER_VELOCITY_MIN_PCT,
+        "provider": cur_provider or prev_provider or None,
+    }
 
 
 def ev(t, family, kind, direction, strength, confidence, source, **extra):
@@ -318,18 +405,99 @@ def solana_snapshot(t):
     }
 
 
+def cmc_holder_snapshot(t):
+    a = asset_ident(t)
+    if not a:
+        return None
+    chain, contract, _ = a
+    platforms = CMC_HOLDER_PLATFORMS.get(chain) or ()
+    for platform in platforms:
+        url = (
+            "https://pro-api.coinmarketcap.com/public-api/v1/dex/holders/count?"
+            + urllib.parse.urlencode({"platform": platform, "tokenAddress": contract})
+        )
+        payload = get_json(url, timeout=6)
+        if not isinstance(payload, dict):
+            continue
+        obj = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+        if not isinstance(obj, dict):
+            continue
+        try:
+            count = int(obj.get("count"))
+        except (TypeError, ValueError):
+            continue
+        returned = str(obj.get("tokenAddress") or obj.get("token_address") or "").strip()
+        if returned and norm(chain, returned) != contract:
+            continue
+        if count < 0:
+            continue
+        return {
+            "provider": "CoinMarketCap DEX Holder Count",
+            "provider_platform": platform,
+            "holders_count": float(count),
+            "total_supply": None,
+            "top10_pct": None,
+            "top20_pct": None,
+            "gross_top10_pct": None,
+            "gross_top20_pct": None,
+            "concentration_role_adjusted": False,
+            "concentration_semantics": "COUNT_ONLY_EXACT_CHAIN_CONTRACT_NO_CONCENTRATION_INFERENCE",
+            "exchange_top_units": None,
+            "top_rows": 0,
+            "identity_verified": True,
+        }
+    return None
+
+
 def holder_snapshot(t):
     i = ident(t)
     if not i:
         return None
-    return solana_snapshot(t) if i[0] == "solana" else blockscout_snapshot(t)
+    primary = solana_snapshot(t) if i[0] == "solana" else blockscout_snapshot(t)
+    if primary and primary.get("holders_count") is not None:
+        return primary
+    fallback = cmc_holder_snapshot(t)
+    if fallback:
+        if primary:
+            for field in ("total_supply", "gross_top10_pct", "gross_top20_pct", "exchange_top_units", "top_rows"):
+                if primary.get(field) is not None:
+                    fallback[field] = primary.get(field)
+            fallback["diagnostic_provider"] = primary.get("provider")
+        return fallback
+    return primary
+
+
+def exact_pair_token_meta(t):
+    i = ident(t)
+    if not i:
+        return {}
+    chain, contract, pair, _ = i
+    payload = get_json(
+        f"https://api.dexscreener.com/latest/dex/pairs/{urllib.parse.quote(chain)}/{urllib.parse.quote(pair)}",
+        timeout=6,
+    ) or {}
+    pairs = payload.get("pairs") or [] if isinstance(payload, dict) else []
+    exact = next((x for x in pairs if norm(chain, x.get("pairAddress")) == pair), None)
+    if not isinstance(exact, dict):
+        return {}
+    for side in ("baseToken", "quoteToken"):
+        token = exact.get(side) or {}
+        if norm(chain, token.get("address")) == contract:
+            return {"name": str(token.get("name") or "").strip(), "symbol": str(token.get("symbol") or "").upper().strip()}
+    return {}
 
 
 def news_snapshot(t):
-    sym = str(t.get("symbol") or "").upper()
+    sym = base_symbol(t)
     if not sym or len(sym) < 2:
         return None
-    q = urllib.parse.quote(f'"{sym}" (crypto OR blockchain OR token)')
+    meta = exact_pair_token_meta(t)
+    project_name = str(t.get("name") or meta.get("name") or "").strip()
+    terms = [sym]
+    if project_name and project_name.upper() != sym and len(project_name) >= 4:
+        terms.insert(0, project_name)
+    query_terms = " OR ".join(f'"{x}"' for x in terms[:2])
+    q = urllib.parse.quote(f"({query_terms}) (crypto OR blockchain OR token OR web3)")
     xml = get_text(f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en", timeout=6)
     if not xml:
         return None
@@ -348,9 +516,11 @@ def news_snapshot(t):
             age_h = (nowdt - dt).total_seconds() / 3600
             if age_h < 0 or age_h > 24:
                 continue
-            if not re.search(rf"(?<![A-Z0-9]){re.escape(sym)}(?![A-Z0-9])", title.upper()):
+            symbol_match = bool(re.search(rf"(?<![A-Z0-9]){re.escape(sym)}(?![A-Z0-9])", title.upper()))
+            name_match = bool(project_name and project_name.lower() in title.lower())
+            if not (symbol_match or name_match):
                 continue
-            if not CRYPTO_CONTEXT.search(title):
+            if not name_match and not CRYPTO_CONTEXT.search(title):
                 continue
             items.append({"title": title[:180], "link": link, "published_at": dt.isoformat()})
     except Exception:
@@ -360,7 +530,7 @@ def news_snapshot(t):
     pos = sum(bool(NEWS_POSITIVE.search(x["title"])) for x in items)
     neg = sum(bool(NEWS_NEGATIVE.search(x["title"])) for x in items)
     direction = 1 if pos > neg and pos else (-1 if neg > pos and neg else 0)
-    return {"count": len(items), "direction": direction, "positive": pos, "negative": neg, "titles": items[:5]}
+    return {"count": len(items), "direction": direction, "positive": pos, "negative": neg, "titles": items[:5], "query_symbol": sym, "project_name": project_name or None}
 
 
 def main():
@@ -377,15 +547,23 @@ def main():
         "providers": {"geckoterminal_trending": True, "dexscreener_boosts": True},
     }
 
+    # Holder counts are token/asset-level, not pool-level. Deduplicate multi-pool
+    # candidates before calling external providers so one 27-pool token does not
+    # spend 27 requests or manufacture 27 independent holder observations.
+    holder_targets = {}
+    for t in rows:
+        a = asset_ident(t)
+        if a:
+            holder_targets.setdefault(a[2], t)
     holder_results = {}
     with ThreadPoolExecutor(max_workers=8) as ex:
-        futs = {ex.submit(holder_snapshot, t): (ident(t)[3], t) for t in rows if ident(t)}
+        futs = {ex.submit(holder_snapshot, t): (asset_key, t) for asset_key, t in holder_targets.items()}
         for f in as_completed(futs):
-            key, _ = futs[f]
+            asset_key, _ = futs[f]
             try:
-                holder_results[key] = f.result()
+                holder_results[asset_key] = f.result()
             except Exception:
-                holder_results[key] = None
+                holder_results[asset_key] = None
 
     news_results = {}
     news_targets = sorted(
@@ -407,13 +585,16 @@ def main():
             except Exception:
                 news_results[key] = None
 
+    holder_velocity_emitted = set()
     for t in rows:
         i = ident(t)
         if not i:
             continue
         key = i[3]
+        a = asset_ident(t)
+        asset_key = a[2] if a else key
         prev = old_tokens.get(key) or {}
-        hs = holder_results.get(key)
+        hs = holder_results.get(asset_key)
         ns = news_results.get(key)
         token_state = {"observed_at": now(), "holder": hs, "news": ns}
 
@@ -436,6 +617,30 @@ def main():
                         change_pct=round(delta, 3),
                         contradicts_bullish=delta < 0,
                     ))
+                velocity = holder_velocity_metrics(hs, prevh, prev.get("observed_at"), token_state["observed_at"])
+                if velocity.get("qualifies") and asset_key not in holder_velocity_emitted:
+                    direction = 1 if float(velocity.get("change_count") or 0) > 0 else -1
+                    strength = min(
+                        100,
+                        abs(float(velocity.get("pct_per_hour") or 0)) * 25
+                        + min(25, abs(float(velocity.get("change_count") or 0)) / 4),
+                    )
+                    fresh.append(ev(
+                        t,
+                        "holder_network",
+                        "holder_velocity",
+                        direction,
+                        strength,
+                        92,
+                        hs["provider"],
+                        **velocity,
+                        contradicts_bullish=direction < 0,
+                        canonical_event_id=(
+                            f"holder-velocity:{asset_key}:{velocity.get('holder_count')}:"
+                            f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}"
+                        ),
+                    ))
+                    holder_velocity_emitted.add(asset_key)
             top10 = hs.get("top10_pct")
             ptop10 = prevh.get("top10_pct")
             role_adjusted = hs.get("concentration_role_adjusted") is True
