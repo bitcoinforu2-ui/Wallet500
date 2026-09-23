@@ -14,6 +14,7 @@ from typing import Any
 DATA = Path("data")
 
 MODE = "CEX_FAST_PROMOTION_V2_SENSOR_HANDOFF"
+ACTION_POLICY_VERSION = "CEX_FAST_CANONICAL_V3"
 MIN_MARKET_AGE_DAYS = 90.0
 MIN_EXECUTION_LIQUIDITY_USD = 15_000.0
 MIN_SIGNAL_SCORE = 35
@@ -869,6 +870,7 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
         "version": 1,
         "generated_at": now_iso,
         "mode": MODE,
+        "action_policy_version": ACTION_POLICY_VERSION,
         "alerts": alert_rows,
         "count": len(alert_rows),
         "truth_contract": {
@@ -878,6 +880,8 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
             "minimum_market_age_days": MIN_MARKET_AGE_DAYS,
             "minimum_execution_liquidity_usd": MIN_EXECUTION_LIQUIDITY_USD,
             "minimum_signal_score": MIN_SIGNAL_SCORE,
+            "action_policy_version": ACTION_POLICY_VERSION,
+            "canonical_action_policy_single_source": True,
             "relative_volume_handoff_enabled": True,
             "relative_volume_min_turnover_usd": MIN_RELATIVE_VOLUME_TURNOVER_USD,
             "relative_volume_min_multiple": MIN_RELATIVE_VOLUME_MULTIPLE,
@@ -900,6 +904,7 @@ def run(output_dir: str | None = None, now: datetime | None = None) -> dict:
         "version": 1,
         "generated_at": now_iso,
         "mode": MODE,
+        "action_policy_version": ACTION_POLICY_VERSION,
         "configured": configured,
         "telegram_delivery_enabled": False,
         "telegram_delivery_policy": "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE",
