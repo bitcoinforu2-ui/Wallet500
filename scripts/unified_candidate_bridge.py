@@ -18,10 +18,24 @@ ALIASES = {"eth": "ethereum", "bnb": "bsc"}
 PUBLIC_ALPHA_LIVE_WINDOW_MINUTES = 180
 MULTI_POOL_WATCH_MAX_POOLS = 5
 MULTI_POOL_WATCH_MIN_LIQUIDITY_USD = 5000.0
+RECENT_GATE_LISTING_WINDOW_SECONDS = 48 * 3600
 
 
 def now():
     return datetime.now(timezone.utc).isoformat()
+
+
+def recent_gate_listing(row, current=None):
+    """Treat a verified recent Gate buy_start as a discovery trigger, not a BUY signal."""
+    try:
+        buy_start = int(float(row.get("buy_start") or 0))
+    except (TypeError, ValueError):
+        return False
+    if buy_start <= 0:
+        return False
+    current = current or datetime.now(timezone.utc)
+    age = current.timestamp() - buy_start
+    return -300 <= age <= RECENT_GATE_LISTING_WINDOW_SECONDS
 
 
 def chain_name(v):
@@ -451,7 +465,7 @@ def main():
             "contract": row.get("contract"),
             "pair": row.get("pair"),
             "dex_url": row.get("dex_url") or "",
-            "source": "Gate Spot",
+            "source": "Gate New Listing" if new_listing_fast_lane else "Gate Spot",
             "source_url": row.get("source_url") or "",
             "exchange": "gate",
             "currency_pair": row.get("currency_pair"),
@@ -485,6 +499,11 @@ def main():
             "native_asset_proxy": bool(row.get("native_asset_proxy")),
             "native_asset_coingecko_id": row.get("native_asset_coingecko_id"),
             "research_only_identity": bool(row.get("research_only_identity")),
+            "buy_start": row.get("buy_start"),
+            "new_listing_fast_lane": bool(row.get("new_listing_fast_lane") or recent_gate_listing(row)),
+            "gate_pair_type": row.get("gate_pair_type"),
+            "gate_st_tag": bool(row.get("gate_st_tag")),
+            "gate_special_surface": bool(row.get("gate_special_surface")),
         })
 
     # Strong CEX movers that do not expose a supported on-chain contract still
@@ -498,7 +517,8 @@ def main():
         change = float(row.get("discovery_momentum_change_pct") or row.get("change_24h_pct") or 0)
         rank = int(row.get("positive_gainer_rank") or 999999)
         first_change = float(row.get("first_seen_change_24h_pct") or change or 0)
-        if max(change, first_change) < 25.0 and rank > 10:
+        new_listing_fast_lane = bool(row.get("new_listing_fast_lane") or recent_gate_listing(row))
+        if max(change, first_change) < 25.0 and rank > 10 and not new_listing_fast_lane:
             continue
         currency_pair = str(row.get("currency_pair") or "").upper().strip()
         if not currency_pair:
@@ -529,6 +549,11 @@ def main():
             "identity_reason": row.get("identity_reason"),
             "research_only_identity": False,
             "telegram_policy": "FINAL_BUY_ONLY",
+            "buy_start": row.get("buy_start"),
+            "new_listing_fast_lane": new_listing_fast_lane,
+            "gate_pair_type": row.get("gate_pair_type"),
+            "gate_st_tag": bool(row.get("gate_st_tag")),
+            "gate_special_surface": bool(row.get("gate_special_surface")),
         })
 
     for row in bootstrap.get("candidates") or []:
@@ -602,7 +627,11 @@ def main():
         (
             x.get("alpha_age_minutes", 999999)
             if x["candidate_type"] == "PUBLIC_ALPHA"
-            else (x.get("positive_gainer_rank") or 999999)
+            else (
+                -1
+                if x.get("new_listing_fast_lane") is True
+                else (x.get("positive_gainer_rank") or 999999)
+            )
         ),
         -(float(x.get("dex_liquidity_usd") or 0)),
     ))
