@@ -54,6 +54,7 @@ NETWORK_FAST_SCAN_PAGES = max(1, min(8, int(os.getenv("NEW_CHAIN_NETWORK_FAST_SC
 NETWORK_FULL_SCAN_MAX_PAGES = max(3, min(30, int(os.getenv("NEW_CHAIN_NETWORK_FULL_SCAN_MAX_PAGES", "20"))))
 NETWORK_FULL_SCAN_INTERVAL_MINUTES = max(15, int(os.getenv("NEW_CHAIN_NETWORK_FULL_SCAN_INTERVAL_MINUTES", "60")))
 NEW_POOL_SCAN_PAGES = max(1, min(3, int(os.getenv("NEW_CHAIN_NEW_POOL_SCAN_PAGES", "2"))))
+ACTIVE_POOL_SCAN_PAGES = max(1, min(5, int(os.getenv("NEW_CHAIN_ACTIVE_POOL_SCAN_PAGES", "3"))))
 AUTO_ACTIVE_DAYS = max(1, int(os.getenv("NEW_CHAIN_AUTO_ACTIVE_DAYS", "14")))
 MAX_AUTO_NETWORKS = max(1, int(os.getenv("NEW_CHAIN_MAX_AUTO_NETWORKS", "4")))
 MIN_LIQUIDITY = float(os.getenv("NEW_CHAIN_MIN_LIQUIDITY_USD", "5000"))
@@ -167,6 +168,20 @@ def _pool_age_hours(created_at, now: datetime) -> float | None:
     return max(0.0, (now - dt).total_seconds() / 3600.0)
 
 
+def pair_age_limit_hours(row: dict) -> float:
+    """Keep seeded emerging networks observable through their configured bootstrap window.
+
+    This only controls research/watch eligibility. It never bypasses exact identity,
+    execution quality, holder/risk checks, or the Unified FINAL-BUY gate.
+    """
+    network = str(row.get("network") or row.get("chain") or "").lower().strip()
+    cfg = SEED_NETWORKS.get(network) or {}
+    bootstrap_days = num(cfg.get("bootstrap_days"), 0.0)
+    if bootstrap_days > 0:
+        return max(float(MAX_PAIR_AGE_HOURS), bootstrap_days * 24.0)
+    return float(MAX_PAIR_AGE_HOURS)
+
+
 def score_pool(row: dict) -> tuple[float, list[str]]:
     liq = num(row.get("liquidity_usd"))
     vol1 = num(row.get("volume_h1"))
@@ -245,7 +260,7 @@ def score_pool(row: dict) -> tuple[float, list[str]]:
         elif age <= 72:
             score += 7
             reasons.append("PAIR_FIRST_72H")
-        elif age <= MAX_PAIR_AGE_HOURS:
+        elif age <= pair_age_limit_hours(row):
             score += 3
             reasons.append("PAIR_BOOTSTRAP_WINDOW")
 
@@ -256,7 +271,7 @@ def candidate_eligible(row: dict) -> bool:
     if str(row.get("symbol") or "").upper() in STABLE_OR_BASE_SYMBOLS:
         return False
     age = row.get("pair_age_hours")
-    if age is None or age > MAX_PAIR_AGE_HOURS:
+    if age is None or age > pair_age_limit_hours(row):
         return False
     liq = num(row.get("liquidity_usd"))
     vol1 = num(row.get("volume_h1"))
@@ -313,11 +328,13 @@ def parse_pool_payload(network: str, payload: dict, lane: str, now: datetime) ->
             "price_change_h24": num(change.get("h24")),
             "pair_created_at": attrs.get("pool_created_at"),
             "pair_age_hours": round(age, 3) if age is not None else None,
+            "pair_age_limit_hours": None,
             "source": f"geckoterminal:{lane}",
             "sources": [f"geckoterminal:{lane}"],
             "source_confirmations": 1,
             "exact_pair_verified_from_gecko": True,
         }
+        row["pair_age_limit_hours"] = pair_age_limit_hours(row)
         score, reasons = score_pool(row)
         row["bootstrap_score"] = score
         row["bootstrap_reasons"] = reasons
@@ -453,10 +470,11 @@ def collect_network(network: str, now: datetime) -> tuple[list[dict], list[dict]
     rows: list[dict] = []
     errors: list[dict] = []
     requests = [("new_pools", f"new_pools:p{page}", page) for page in range(1, NEW_POOL_SCAN_PAGES + 1)]
-    requests.extend([
-        ("trending_pools", "trending_pools", 1),
-        ("pools", "top_pools", 1),
-    ])
+    requests.append(("trending_pools", "trending_pools", 1))
+    requests.extend(
+        ("pools", f"top_pools:p{page}", page)
+        for page in range(1, ACTIVE_POOL_SCAN_PAGES + 1)
+    )
     for endpoint, lane, page in requests:
         try:
             payload = _get(
@@ -551,6 +569,11 @@ def run(now: datetime | None = None) -> dict:
             "network_full_scan_max_pages": NETWORK_FULL_SCAN_MAX_PAGES,
             "network_full_scan_interval_minutes": NETWORK_FULL_SCAN_INTERVAL_MINUTES,
             "new_pool_scan_pages": NEW_POOL_SCAN_PAGES,
+            "active_pool_scan_pages": ACTIVE_POOL_SCAN_PAGES,
+            "seed_network_pair_age_limit_hours": {
+                network: max(float(MAX_PAIR_AGE_HOURS), num(cfg.get("bootstrap_days"), 0.0) * 24.0)
+                for network, cfg in SEED_NETWORKS.items()
+            },
         },
         "network_catalog": {
             "scan_mode": state.get("last_catalog_scan_mode"),
@@ -571,6 +594,9 @@ def run(now: datetime | None = None) -> dict:
             "initial_provider_catalog_is_full_baseline_not_false_new_chain": True,
             "hourly_full_provider_catalog_detects_networks_outside_fast_pages": True,
             "seeded_arc_is_active_immediately": True,
+            "seeded_network_bootstrap_window_extends_research_pair_age": True,
+            "seeded_network_pair_age_extension_never_bypasses_final_buy": True,
+            "deeper_active_pool_scan_enabled": True,
             "exact_chain_contract_pair_required_before_final_buy": True,
             "research_detection_never_auto_trades": True,
             "telegram_only_after_unified_final_buy_gate": True,
