@@ -139,7 +139,10 @@ def eligible_targets(
         if ctype not in {"CEX_SPOT_DISCOVERY", "GATE_SPOT_DISCOVERY", "CEX_MARKET_DISCOVERY"}:
             continue
         live = market_row(watch_state or {}, key)
-        if not isinstance(live, dict) or live.get("quarter_wave_revalidation_armed") is not True:
+        new_listing_fast_lane = bool(row.get("new_listing_fast_lane"))
+        if not isinstance(live, dict):
+            continue
+        if not new_listing_fast_lane and live.get("quarter_wave_revalidation_armed") is not True:
             continue
 
         target = dict(row)
@@ -149,7 +152,12 @@ def eligible_targets(
             "exact_identity_required": ctype != "CEX_MARKET_DISCOVERY",
             "exact_pair_required": ctype != "CEX_MARKET_DISCOVERY",
             "exact_cex_market_required": ctype == "CEX_MARKET_DISCOVERY",
-            "quarter_wave_revalidation_lane": True,
+            "quarter_wave_revalidation_lane": live.get("quarter_wave_revalidation_armed") is True,
+            "new_listing_fast_lane": new_listing_fast_lane,
+            "new_listing_buy_start": row.get("buy_start"),
+            "gate_st_tag": bool(row.get("gate_st_tag")),
+            "gate_pair_type": row.get("gate_pair_type"),
+            "gate_special_surface": bool(row.get("gate_special_surface")),
             "quarter_wave_anchor_price_usd": live.get("first_verified_price"),
             "quarter_wave_gain_from_anchor_pct": live.get("gain_from_first_verified_pct"),
             "quarter_wave_armed_at": live.get("quarter_wave_revalidation_armed_at"),
@@ -390,6 +398,14 @@ def _policy(config: dict) -> dict:
         "cex_market_only_min_bid_ask_depth_ratio": 1.10,
         "cex_market_only_min_current_evidence": 2,
         "cex_market_only_min_microstructure_score": 5.0,
+        "cex_new_listing_fast_path_enabled": True,
+        "cex_new_listing_max_age_seconds": 172800,
+        "cex_new_listing_min_turnover_usd": 100000.0,
+        "cex_new_listing_min_depth_1pct_usd": 5000.0,
+        "cex_new_listing_max_orderbook_spread_pct": 1.0,
+        "cex_new_listing_min_bid_ask_depth_ratio": 1.10,
+        "cex_new_listing_min_current_evidence": 2,
+        "cex_new_listing_min_microstructure_score": 5.0,
         "cex_breakout_continuation_enabled": True,
         "cex_breakout_min_turnover_usd": 150000.0,
         "cex_breakout_min_relative_volume_multiple": 4.0,
@@ -441,6 +457,18 @@ def evaluate(
     blockers: list[str] = []
     proof: list[str] = []
     quarter_wave_lane = bool(target.get("quarter_wave_revalidation_lane"))
+    new_listing_lane = bool(target.get("new_listing_fast_lane"))
+    new_listing_buy_start = num(target.get("new_listing_buy_start") or target.get("buy_start"))
+    new_listing_age_seconds = (
+        now.timestamp() - new_listing_buy_start
+        if new_listing_buy_start is not None and new_listing_buy_start > 0
+        else None
+    )
+    new_listing_fresh = bool(
+        new_listing_lane
+        and new_listing_age_seconds is not None
+        and -300 <= new_listing_age_seconds <= float(policy["cex_new_listing_max_age_seconds"])
+    )
     quarter_wave_anchor = num(target.get("quarter_wave_anchor_price_usd"), 0.0) or 0.0
     quarter_wave_gain = num(target.get("quarter_wave_gain_from_anchor_pct"))
 
@@ -517,6 +545,13 @@ def evaluate(
         )
     )
 
+    if new_listing_lane and not new_listing_fresh:
+        blockers.append("NEW_LISTING_FAST_LANE_EXPIRED_OR_UNTIMED")
+    if (
+        cex_market_only
+        and target.get("gate_st_tag") is True
+    ):
+        blockers.append("GATE_ST_REQUIRES_EXACT_ONCHAIN_IDENTITY")
     if price <= 0:
         blockers.append("PRICE_MISSING")
     if spread > float(policy["max_source_spread_pct"]):
@@ -663,6 +698,47 @@ def evaluate(
         proof.append(
             f"EXACT_CEX_MARKET_FAST_PATH_VOL_{cex_turnover:.0f}"
             f"_REL_{cex_relative_multiple:.2f}X_RANK_{cex_rank}"
+        )
+        proof.append(
+            f"CEX_DEPTH_{cex_depth_1pct:.0f}_SPREAD_{cex_orderbook_spread:.3f}PCT"
+            f"_BIDASK_{cex_bid_ask_depth_ratio:.2f}X"
+        )
+
+    # Recent Gate listings need a separate fast lane because Gate's app percentage
+    # can use a listing/opening reference that is not represented by the standard
+    # 24h ticker windows. The lane never trusts the headline percentage itself:
+    # it requires exact venue execution, current intelligence, positive
+    # microstructure, no hard risk, tight spread/depth and the normal two-scan gate.
+    cex_new_listing_fast_path = bool(
+        policy.get("cex_new_listing_fast_path_enabled") is True
+        and new_listing_fresh
+        and cex_market_only
+        and report_verified
+        and cex_execution_verified
+        and status == "CURRENT"
+        and intel_age is not None
+        and 0 <= intel_age * 60 <= max_age
+        and evidence >= int(policy["cex_new_listing_min_current_evidence"])
+        and micro >= float(policy["cex_new_listing_min_microstructure_score"])
+        and not hard_risks
+        and target.get("gate_st_tag") is not True
+        and cex_turnover >= float(policy["cex_new_listing_min_turnover_usd"])
+        and cex_depth_1pct >= float(policy["cex_new_listing_min_depth_1pct_usd"])
+        and cex_orderbook_spread <= float(policy["cex_new_listing_max_orderbook_spread_pct"])
+        and cex_bid_ask_depth_ratio >= float(policy["cex_new_listing_min_bid_ask_depth_ratio"])
+    )
+    if cex_new_listing_fast_path:
+        bypass = {
+            "LIQUIDITY_BELOW_FINAL_BUY_FLOOR",
+            "VOLUME_H1_TOO_LOW",
+            "ACTIVITY_H1_TOO_LOW",
+            "BUY_FLOW_NOT_CONFIRMED",
+            "FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET",
+        }
+        blockers = [b for b in blockers if b not in bypass]
+        proof.append(
+            f"CEX_NEW_LISTING_FAST_PATH_VOL_{cex_turnover:.0f}"
+            f"_AGE_{new_listing_age_seconds:.0f}S"
         )
         proof.append(
             f"CEX_DEPTH_{cex_depth_1pct:.0f}_SPREAD_{cex_orderbook_spread:.3f}PCT"
