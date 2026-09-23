@@ -1346,6 +1346,8 @@ def targeted_risk_event(
     hard_risks = [str(x) for x in (intel.get("hard_risks") or []) if str(x).strip()]
     if hard_risks:
         severe = True
+        risk_score += 5.0
+        evidence_groups.add("HARD_RISK")
         reasons.append("HARD_RISK:" + ",".join(sorted(set(hard_risks))))
 
     crossed_levels: list[float] = []
@@ -1357,13 +1359,19 @@ def targeted_risk_event(
             crossed_levels.append(level)
     if crossed_levels:
         severe = True
+        risk_score += 4.0
+        evidence_groups.add("PRICE")
         for level in sorted(set(crossed_levels), reverse=True):
             reasons.append(f"DOWN_LEVEL_BREACH_{level:.10f}")
 
     if scan_change <= -breakdown_drop:
         severe = True
+        risk_score += 4.0
+        evidence_groups.add("PRICE")
         reasons.append(f"SCAN_PRICE_DROP_{abs(scan_change):.2f}PCT")
     elif scan_change <= -warning_drop and ratio < flow_warning_ratio:
+        risk_score += 2.0
+        evidence_groups.update({"PRICE", "FLOW"})
         reasons.append(
             f"PRICE_WEAKNESS_WITH_FLOW_FAILURE_{abs(scan_change):.2f}PCT_RATIO_{ratio:.2f}"
         )
@@ -1374,29 +1382,96 @@ def targeted_risk_event(
         and ratio < flow_warning_ratio
         and scan_change < 0
     ):
+        risk_score += 1.5
+        evidence_groups.add("FLOW")
         reasons.append(f"BUY_FLOW_REVERSAL_{prev_ratio:.2f}_TO_{ratio:.2f}")
 
+    flow_deterioration = None
+    if prev_ratio is not None and prev_ratio > 0:
+        flow_deterioration = max(0.0, (1.0 - ratio / prev_ratio) * 100.0)
+        if (
+            flow_deterioration >= flow_deterioration_pct
+            and ratio < 1.0
+            and scan_change < 0
+        ):
+            risk_score += 1.25
+            evidence_groups.add("FLOW")
+            reasons.append(
+                f"FLOW_DETERIORATION_{flow_deterioration:.1f}PCT_{prev_ratio:.2f}_TO_{ratio:.2f}"
+            )
+
+    total_volume_multiple = volume_h1 / prev_volume_h1 if prev_volume_h1 > 0 else None
     if (
-        prev_volume_h1 > 0
-        and volume_h1 >= prev_volume_h1 * 1.5
+        total_volume_multiple is not None
+        and total_volume_multiple >= volume_acceleration_multiple
         and ratio < 1.0
         and scan_change < 0
     ):
-        reasons.append(f"SELL_VOLUME_ACCELERATION_{volume_h1 / prev_volume_h1:.2f}X")
+        # Exact-pair feed exposes total volume, not side-specific sell notional.
+        risk_score += 1.0
+        evidence_groups.add("VOLUME")
+        reasons.append(f"BEARISH_TOTAL_VOLUME_EXPANSION_{total_volume_multiple:.2f}X")
+
+    sell_count_multiple = sells / prev_sells if prev_sells > 0 else None
+    if (
+        sell_count_multiple is not None
+        and prev_sells >= 5
+        and sell_count_multiple >= sell_count_acceleration_multiple
+        and ratio < 1.0
+        and scan_change < 0
+    ):
+        risk_score += 1.5
+        evidence_groups.update({"FLOW", "SELL_COUNT"})
+        reasons.append(f"SELL_COUNT_ACCELERATION_{sell_count_multiple:.2f}X")
+
+    buy_count_change_pct = None
+    if prev_buys > 0:
+        buy_count_change_pct = (buys / prev_buys - 1.0) * 100.0
+        if (
+            prev_buys >= 5
+            and buy_count_change_pct <= -buy_count_deceleration_pct
+            and ratio < 1.0
+            and scan_change < 0
+        ):
+            risk_score += 0.75
+            evidence_groups.add("FLOW")
+            reasons.append(f"BUY_COUNT_DECELERATION_{abs(buy_count_change_pct):.1f}PCT")
 
     liquidity_drop_pct = None
     if prev_liquidity > 0 and liquidity >= 0:
         liquidity_drop_pct = (prev_liquidity - liquidity) / prev_liquidity * 100.0
         if liquidity_drop_pct >= liquidity_drop_threshold:
             severe = True
+            risk_score += 4.0
+            evidence_groups.add("LIQUIDITY")
             reasons.append(f"LIQUIDITY_DROP_{liquidity_drop_pct:.2f}PCT")
 
     final_buy_floor = float(policy.get("min_liquidity_usd", 50000.0))
+    floor_headroom_pct = (
+        (liquidity / final_buy_floor - 1.0) * 100.0
+        if final_buy_floor > 0 and liquidity > 0
+        else None
+    )
     if prev_liquidity >= final_buy_floor and liquidity < final_buy_floor:
         severe = True
+        risk_score += 4.0
+        evidence_groups.add("LIQUIDITY")
         reasons.append(f"LIQUIDITY_FLOOR_BREACH_{final_buy_floor:.0f}")
+    elif (
+        floor_headroom_pct is not None
+        and 0 <= floor_headroom_pct <= near_floor_headroom_pct
+        and ratio < 1.0
+        and scan_change < 0
+    ):
+        risk_score += 1.0
+        evidence_groups.add("LIQUIDITY")
+        reasons.append(f"LIQUIDITY_NEAR_FLOOR_{floor_headroom_pct:.2f}PCT_HEADROOM")
 
     if not reasons:
+        return None
+
+    # Precision guard: one inferred volume expansion by itself is not enough.
+    if not severe and len(evidence_groups) < min_warning_groups:
         return None
 
     severity = "BREAKDOWN" if severe else "RISK_WARNING"
