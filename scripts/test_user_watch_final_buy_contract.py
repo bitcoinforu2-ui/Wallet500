@@ -145,6 +145,69 @@ def main() -> None:
     assert unverified["recommended_action"] == "WAIT"
     assert "EXACT_PAIR_NOT_VERIFIED_THIS_SCAN" in unverified["blockers"]
 
+    # Publication-lag regression: fresh exact market state + fresh exact close-watch
+    # intelligence may repair a missing/stale report row, but never mismatched/stale data.
+    fallback_market = market(0.00028, t4)
+    fresh_direct_intel = {
+        "identity_key": KEY,
+        "status": "CURRENT",
+        "score": 60,
+        "independent_positive_families": 3,
+        "current_evidence_count": 10,
+        "evidence_age_minutes": 1,
+        "updated_at": t4.isoformat(),
+        "hard_risks": [],
+        "family_scores": {
+            "market_microstructure": 10,
+            "wallet_flow": 5,
+            "holder_network": 1,
+        },
+    }
+    repaired = gate.observed_with_fresh_intelligence_fallback(
+        None,
+        fallback_market,
+        fresh_direct_intel,
+        KEY,
+        now=t4,
+        max_age_seconds=float(POLICY["max_snapshot_age_seconds"]),
+    )
+    assert repaired is not None
+    assert repaired["market_verified"] is True
+    assert repaired["_fresh_state_intelligence_fallback"] is True
+    repaired_decision, _ = gate.evaluate(
+        TARGET,
+        fallback_market,
+        repaired,
+        s2,
+        POLICY,
+        now=t4,
+    )
+    assert "WATCH_REPORT_ROW_MISSING" not in repaired_decision["blockers"]
+    assert "INTELLIGENCE_NOT_CURRENT" not in repaired_decision["blockers"]
+
+    stale_direct_intel = {
+        **fresh_direct_intel,
+        "updated_at": (t4 - timedelta(hours=2)).isoformat(),
+    }
+    assert gate.observed_with_fresh_intelligence_fallback(
+        None,
+        fallback_market,
+        stale_direct_intel,
+        KEY,
+        now=t4,
+        max_age_seconds=float(POLICY["max_snapshot_age_seconds"]),
+    ) is None
+
+    wrong_key_intel = {**fresh_direct_intel, "identity_key": "solana:wrong:wrong"}
+    assert gate.observed_with_fresh_intelligence_fallback(
+        None,
+        fallback_market,
+        wrong_key_intel,
+        KEY,
+        now=t4,
+        max_age_seconds=float(POLICY["max_snapshot_age_seconds"]),
+    ) is None
+
     # MCAT regression: a user-requested targeted Telegram watch must warn on
     # early price weakness + buy-flow deterioration before a larger breakdown.
     targeted = dict(TARGET)

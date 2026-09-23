@@ -595,7 +595,11 @@ def _eligibility(row: object) -> tuple[bool, dict]:
     blockers: list[str] = []
     symbol = _canonical_symbol(row.get("symbol"))
     milestone = _milestone(row)
-    signal_score = max(_i(row.get("spot_revival_score")), _i(milestone.get("score")))
+    signal_score = max(
+        _i(row.get("spot_revival_score")),
+        _i(row.get("cex_revival_score")),
+        _i(milestone.get("score")),
+    )
     signal_change = _f(milestone.get("reference_change_24h_pct"), _current_change(row))
     current_change = _current_change(row)
     current_price = _cex_reference_price(row)

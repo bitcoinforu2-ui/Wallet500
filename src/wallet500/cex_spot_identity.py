@@ -16,6 +16,11 @@ PREWAVE_IDENTITY_PRIORITY_SLOTS = 12
 CURRENT_REACTIVATION_PRIORITY_SLOTS = 12
 LIVE_LEADERBOARD_PRIORITY_SLOTS = 24
 LIVE_LEADERBOARD_MAX_RANK = 10
+DERIVATIVES_RECOVERY_PRIORITY_SLOTS = 12
+DERIVATIVES_RECOVERY_MIN_SCORE = 35
+DERIVATIVES_RECOVERY_MIN_COHERENT_CONFIRMATIONS = 2
+DERIVATIVES_RECOVERY_MIN_TURNOVER_USD = 50_000.0
+DERIVATIVES_LEVERAGED_SUFFIXES = ("2L", "2S", "3L", "3S", "4L", "4S", "5L", "5S", "BULL", "BEAR", "UP", "DOWN")
 # Kept as telemetry for post-mortems only. Price extension must never prevent
 # identity resolution; anti-chase belongs to the downstream action gate.
 LIVE_LEADERBOARD_MAX_PRE_RESOLVE_CHANGE_PCT = 45.0
@@ -383,6 +388,140 @@ def _learning_recovery_candidates(learning: dict, leaderboard: dict, discovery: 
             learned.append(recovery)
             seen.add(symbol)
     return learned
+
+
+def _derivatives_recovery_candidates(derivatives: dict, discovery: dict) -> list[dict]:
+    """Give current multi-CEX derivatives movers bounded exact-identity work.
+
+    This lane fixes a coverage hole where a futures mover could be obvious on several
+    venues but never enter the spot-only identity queue. It is ordering/research only:
+    a derivatives ticker never proves chain, contract, pair, price coherence, age,
+    liquidity, or actionability. When current Gate spot evidence exists it is attached
+    as a real spot market so downstream identity price-coherence can be verified.
+    """
+    spot_by_symbol: dict[str, dict] = {}
+    for item in discovery.get("candidates") or []:
+        if not isinstance(item, dict):
+            continue
+        symbol = _base_symbol(item.get("symbol"))
+        price = _num(item.get("discovery_price"))
+        if symbol and price > 0:
+            old = spot_by_symbol.get(symbol)
+            old_volume = _num((old or {}).get("quote_volume_24h_usd"))
+            if old is None or _num(item.get("quote_volume_24h_usd")) > old_volume:
+                spot_by_symbol[symbol] = item
+
+    by_symbol: dict[str, dict] = {}
+    for bucket in ("alerts", "watchlist"):
+        for row in derivatives.get(bucket) or []:
+            if not isinstance(row, dict):
+                continue
+            symbol = _base_symbol(row.get("symbol"))
+            if not symbol or any(
+                symbol.endswith(suffix) and len(symbol) > len(suffix)
+                for suffix in DERIVATIVES_LEVERAGED_SUFFIXES
+            ):
+                continue
+            score = int(_num(row.get("cex_revival_score")))
+            coherent = int(_num(row.get("coherent_confirmations")))
+            change = _num(row.get("change_24h_max_pct"))
+            markets = [m for m in (row.get("markets") or []) if isinstance(m, dict)]
+            turnover = max((_num(m.get("volume_24h")) for m in markets), default=0.0)
+            mover = bool(row.get("mover_watch")) or bool(
+                change >= _num(derivatives.get("mover_watch_min_change_pct") or 30.0)
+                and turnover >= _num(derivatives.get("mover_watch_min_volume_usd") or DERIVATIVES_RECOVERY_MIN_TURNOVER_USD)
+            )
+            if coherent < DERIVATIVES_RECOVERY_MIN_COHERENT_CONFIRMATIONS:
+                continue
+            if score < DERIVATIVES_RECOVERY_MIN_SCORE and not mover:
+                continue
+            if turnover < DERIVATIVES_RECOVERY_MIN_TURNOVER_USD:
+                continue
+            prior = by_symbol.get(symbol)
+            strength = (mover, score, coherent, change, turnover)
+            prior_strength = (
+                bool((prior or {}).get("mover_watch")),
+                int(_num((prior or {}).get("cex_revival_score"))),
+                int(_num((prior or {}).get("coherent_confirmations"))),
+                _num((prior or {}).get("change_24h_max_pct")),
+                max((_num(m.get("volume_24h")) for m in ((prior or {}).get("markets") or []) if isinstance(m, dict)), default=0.0),
+            )
+            if prior is None or strength > prior_strength:
+                by_symbol[symbol] = dict(row)
+
+    ordered = sorted(
+        by_symbol.items(),
+        key=lambda item: (
+            bool(item[1].get("mover_watch")),
+            int(_num(item[1].get("cex_revival_score"))),
+            int(_num(item[1].get("coherent_confirmations"))),
+            _num(item[1].get("change_24h_max_pct")),
+            max((_num(m.get("volume_24h")) for m in (item[1].get("markets") or []) if isinstance(m, dict)), default=0.0),
+        ),
+        reverse=True,
+    )[:DERIVATIVES_RECOVERY_PRIORITY_SLOTS]
+
+    recovered: list[dict] = []
+    for rank, (symbol, row) in enumerate(ordered, start=1):
+        milestones = row.get("milestones") if isinstance(row.get("milestones"), dict) else {}
+        watch = milestones.get("first_watch") if isinstance(milestones.get("first_watch"), dict) else {}
+        alert = milestones.get("first_alert") if isinstance(milestones.get("first_alert"), dict) else {}
+        first_seen = milestones.get("first_seen") if isinstance(milestones.get("first_seen"), dict) else {}
+
+        markets: list[dict] = []
+        spot = spot_by_symbol.get(symbol)
+        if isinstance(spot, dict) and _num(spot.get("discovery_price")) > 0:
+            markets.append({
+                "exchange": "gate",
+                "market_type": "spot",
+                "symbol": f"{symbol}USDT",
+                "market_id": spot.get("currency_pair") or f"{symbol}_USDT",
+                "quote_symbol": "USDT",
+                "price": _num(spot.get("discovery_price")),
+                "change_24h_pct": _num(spot.get("change_24h_pct")),
+                "volume_24h": _num(spot.get("quote_volume_24h_usd")),
+                "volume_comparable_usd_like": True,
+                "regional_market": False,
+            })
+        for market in row.get("markets") or []:
+            if not isinstance(market, dict) or _num(market.get("price")) <= 0:
+                continue
+            markets.append({
+                **market,
+                "market_type": str(market.get("market_type") or "derivatives").lower(),
+                "quote_symbol": str(market.get("quote_symbol") or "USDT").upper(),
+                "volume_comparable_usd_like": True,
+                "regional_market": False,
+            })
+
+        recovered.append({
+            **row,
+            "symbol": f"{symbol}USDT",
+            "base_symbol": symbol,
+            "persistent_until_exact_identity_resolution": True,
+            "timing_quality": "CURRENT_DERIVATIVES_IDENTITY_RECOVERY",
+            "identity_recovery_source": "CURRENT_MULTI_CEX_DERIVATIVES_MOVER_PLUS_OPTIONAL_CURRENT_SPOT",
+            "identity_recovery_research_only": True,
+            "identity_recovery_never_actionable": True,
+            "derivatives_identity_recovery": True,
+            "current_identity_reactivation_priority": True,
+            "current_identity_reactivation_rank": rank,
+            "first_watch_score": watch.get("score"),
+            "first_watch_coherent_confirmations": watch.get("coherent_confirmations"),
+            "first_watch_observed_at": watch.get("observed_at"),
+            "first_watch_reference_price": watch.get("reference_price"),
+            "first_watch_price_acceleration_max_pct": watch.get("price_acceleration_max_pct"),
+            "first_watch_volume_acceleration_max_pct": watch.get("volume_acceleration_max_pct"),
+            "first_alert_score": alert.get("score"),
+            "first_alert_coherent_confirmations": alert.get("coherent_confirmations"),
+            "first_alert_observed_at": alert.get("observed_at"),
+            "first_alert_reference_price": alert.get("reference_price"),
+            "first_alert_reference_exchange": alert.get("reference_exchange"),
+            "first_seen_at": first_seen.get("observed_at"),
+            "current_change_24h_max_pct": _num(row.get("change_24h_max_pct")),
+            "markets": markets,
+        })
+    return recovered
 
 
 def _last_attempted_symbols(previous_identity: dict) -> set[str]:
@@ -860,25 +999,32 @@ def run(data_dir: Path = DATA) -> dict:
     learning_path = data_dir / "cex-spot-learning.json"
     leaderboard_path = data_dir / "cex-spot-leaderboard.json"
     discovery_path = data_dir / "spot-market-discovery.json"
+    derivatives_path = data_dir / "cex-revival-radar.json"
     out_path = data_dir / "cex-spot-identity-radar.json"
     spot = _load(spot_path, {})
     pending = _load(pending_path, {})
     learning = _load(learning_path, {})
     leaderboard = _load(leaderboard_path, {})
     discovery = _load(discovery_path, {})
+    derivatives = _load(derivatives_path, {})
     previous_identity = _load(out_path, {})
     recovery_rows = _learning_recovery_candidates(learning, leaderboard, discovery)
+    derivatives_recovery_rows = _derivatives_recovery_candidates(derivatives, discovery)
     pending_for_queue = dict(pending) if isinstance(pending, dict) else {}
     # Put fresh recovery evidence first. If an older persistent pending row for the
     # same symbol follows, _build_identity_queue preserves the already-merged recovery
     # fields while retaining immutable pending milestones.
     pending_for_queue["candidates"] = [
+        *derivatives_recovery_rows,
         *recovery_rows,
         *[x for x in (pending.get("candidates") or []) if isinstance(x, dict)],
     ]
     watch, queue_report = _build_identity_queue(spot, pending_for_queue, previous_identity)
     queue_report["learning_recovery_candidate_count"] = len(recovery_rows)
     queue_report["learning_recovery_symbols"] = [_base_symbol(x.get("symbol")) for x in recovery_rows[:30]]
+    queue_report["derivatives_recovery_candidate_count"] = len(derivatives_recovery_rows)
+    queue_report["derivatives_recovery_symbols"] = [_base_symbol(x.get("symbol")) for x in derivatives_recovery_rows]
+    queue_report["derivatives_recovery_priority_slot_cap"] = DERIVATIVES_RECOVERY_PRIORITY_SLOTS
 
     base = {
         "version": 4,
@@ -911,6 +1057,8 @@ def run(data_dir: Path = DATA) -> dict:
             "priority_uses_only_preexisting_evidence": True,
             "cross_lane_derivatives_precursor_identity_priority_only": True,
             "cross_lane_derivatives_precursor_never_satisfies_identity": True,
+            "current_derivatives_mover_identity_priority_only": True,
+            "current_derivatives_mover_never_satisfies_identity_or_actionability": True,
             "prewave_shadow_identity_priority_only": True,
             "prewave_shadow_never_satisfies_identity": True,
             "persistent_backlog_cap_enforced": True,

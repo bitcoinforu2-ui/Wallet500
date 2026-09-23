@@ -117,3 +117,82 @@ def test_current_top10_reactivation_retries_even_when_attempted_previous_run():
     assert report["current_reactivation_never_satisfies_identity_or_actionability"] is True
     assert report["production_effect"] is False
     assert report["no_hindsight"] is True
+
+
+def test_current_derivatives_mover_gets_bounded_identity_priority_without_actionability():
+    derivatives = {
+        "mover_watch_min_change_pct": 30,
+        "mover_watch_min_volume_usd": 50_000,
+        "alerts": [],
+        "watchlist": [{
+            "symbol": "FLORKUSDT",
+            "cex_revival_score": 32,
+            "coherent_confirmations": 3,
+            "change_24h_max_pct": 41.65,
+            "mover_watch": True,
+            "markets": [
+                {"exchange": "gate", "symbol": "FLORKUSDT", "price": 0.00958, "change_24h_pct": 41.6, "volume_24h": 184_770},
+                {"exchange": "mexc", "symbol": "FLORKUSDT", "price": 0.00960, "change_24h_pct": 40.9, "volume_24h": 121_000},
+                {"exchange": "bingx", "symbol": "FLORKUSDT", "price": 0.00957, "change_24h_pct": 40.4, "volume_24h": 95_000},
+            ],
+            "milestones": {
+                "first_watch": {
+                    "observed_at": "2026-09-23T11:20:00+00:00",
+                    "reference_price": 0.0071,
+                    "score": 32,
+                    "coherent_confirmations": 3,
+                }
+            },
+        }],
+    }
+    recovered = mod._derivatives_recovery_candidates(derivatives, {"candidates": []})
+
+    assert len(recovered) == 1
+    row = recovered[0]
+    assert row["base_symbol"] == "FLORK"
+    assert row["derivatives_identity_recovery"] is True
+    assert row["current_identity_reactivation_priority"] is True
+    assert row["identity_recovery_research_only"] is True
+    assert row["identity_recovery_never_actionable"] is True
+
+    selected, report = mod._build_identity_queue(
+        {"watchlist": []},
+        {"candidates": recovered},
+        {"candidates": [], "rejections": []},
+    )
+    assert mod._base_symbol(selected[0]["symbol"]) == "FLORK"
+    assert report["current_reactivation_selected_count"] == 1
+    assert report["current_reactivation_never_satisfies_identity_or_actionability"] is True
+
+
+def test_derivatives_recovery_attaches_real_gate_spot_when_available():
+    derivatives = {
+        "mover_watch_min_change_pct": 30,
+        "mover_watch_min_volume_usd": 50_000,
+        "watchlist": [{
+            "symbol": "FIGHTUSDT",
+            "cex_revival_score": 47,
+            "coherent_confirmations": 4,
+            "change_24h_max_pct": 42,
+            "mover_watch": True,
+            "markets": [
+                {"exchange": "mexc", "symbol": "FIGHTUSDT", "price": 0.0050, "volume_24h": 200_000},
+                {"exchange": "gate", "symbol": "FIGHTUSDT", "price": 0.0050, "volume_24h": 180_000},
+            ],
+        }],
+        "alerts": [],
+    }
+    discovery = {
+        "candidates": [{
+            "symbol": "FIGHT",
+            "currency_pair": "FIGHT_USDT",
+            "discovery_price": 0.00504,
+            "change_24h_pct": 42.7,
+            "quote_volume_24h_usd": 382_740,
+        }]
+    }
+    row = mod._derivatives_recovery_candidates(derivatives, discovery)[0]
+    spot_markets = [m for m in row["markets"] if m.get("market_type") == "spot"]
+    assert len(spot_markets) == 1
+    assert spot_markets[0]["exchange"] == "gate"
+    assert spot_markets[0]["price"] == 0.00504
