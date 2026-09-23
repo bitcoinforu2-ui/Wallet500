@@ -465,7 +465,11 @@ def main():
             "contract": row.get("contract"),
             "pair": row.get("pair"),
             "dex_url": row.get("dex_url") or "",
-            "source": "Gate New Listing" if new_listing_fast_lane else "Gate Spot",
+            "source": (
+                "Gate New Listing"
+                if bool(row.get("new_listing_fast_lane") or recent_gate_listing(row))
+                else "Gate Spot"
+            ),
             "source_url": row.get("source_url") or "",
             "exchange": "gate",
             "currency_pair": row.get("currency_pair"),
@@ -533,7 +537,7 @@ def main():
             "exchange": "gate",
             "currency_pair": currency_pair,
             "execution_identity_scope": "EXACT_CEX_MARKET",
-            "source": "Gate Spot",
+            "source": "Gate New Listing" if new_listing_fast_lane else "Gate Spot",
             "source_url": row.get("source_url") or "",
             "first_seen_at": row.get("first_seen_at"),
             "first_seen_price": row.get("first_seen_price") or row.get("discovery_price"),
