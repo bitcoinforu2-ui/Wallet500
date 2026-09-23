@@ -14,6 +14,7 @@ def main():
     now = datetime(2026, 9, 20, 0, 0, tzinfo=timezone.utc)
 
     row = {
+        "network": "arc",
         "symbol": "ARCUS",
         "liquidity_usd": 64000,
         "volume_h1": 42000,
@@ -30,6 +31,17 @@ def main():
 
     stable = dict(row, symbol="USDC")
     assert_true(radar.candidate_eligible(stable) is False, "stable/base assets must be filtered")
+
+    # Seeded emerging networks stay observable through their configured 30-day
+    # bootstrap period. This is research coverage only and never bypasses FINAL BUY.
+    seeded_older = dict(row, pair_age_hours=24 * 20)
+    assert_true(radar.pair_age_limit_hours(seeded_older) == 30 * 24, "seeded network age window should be 30d")
+    assert_true(radar.candidate_eligible(seeded_older) is True, "20d Arc candidate should remain observable")
+
+    ordinary_older = dict(row, network="brandnew", pair_age_hours=24 * 20)
+    assert_true(radar.pair_age_limit_hours(ordinary_older) == radar.MAX_PAIR_AGE_HOURS, "ordinary network age policy drift")
+    assert_true(radar.candidate_eligible(ordinary_older) is False, "ordinary network must keep bounded default age window")
+    assert_true(radar.ACTIVE_POOL_SCAN_PAGES >= 3, "active pool scan depth regressed")
 
     initial = {"version": 1, "baseline_initialized": False, "known_networks": {}, "auto_active_networks": []}
     baseline, new1 = radar.update_network_state(initial, ["eth", "bsc", "futurex"], now)
