@@ -21,8 +21,9 @@ from pathlib import Path
 from wallet500 import cex_fast_promotion as promo
 from wallet500 import cex_fast_current_bypass as bypass
 
-MIN_ACTION_SCORE = 50
-MAX_ACTION_24H_MOVE_PCT = 35.0
+ACTION_POLICY_VERSION = promo.ACTION_POLICY_VERSION
+MIN_ACTION_SCORE = promo.MIN_SIGNAL_SCORE
+MAX_ACTION_24H_MOVE_PCT = promo.MAX_CURRENT_24H_CHANGE_PCT
 # A BUY label must not chase a move that already ran materially from engine discovery.
 MAX_GAIN_SINCE_DISCOVERY_PCT = 12.0
 MAX_LOSS_SINCE_DISCOVERY_PCT = -12.0
@@ -170,7 +171,7 @@ def action_eligibility(row: object):
     if is_excluded(action_row):
         blockers.append("EXACT_ASSET_EXCLUDED")
     if score < MIN_ACTION_SCORE:
-        blockers.append("ACTION_SCORE_LT_50")
+        blockers.append("ACTION_SCORE_LT_CANONICAL_MIN")
     if current_change > MAX_ACTION_24H_MOVE_PCT:
         blockers.append("ACTION_MOVE_ALREADY_EXTENDED")
     if since > MAX_GAIN_SINCE_DISCOVERY_PCT:
@@ -204,6 +205,9 @@ def action_eligibility(row: object):
     metrics["fresh_reactivation_exchanges"] = reactivation["exchanges"]
     metrics["fresh_reactivation_turnover_usd"] = reactivation["qualifying_turnover_usd"]
     metrics["fresh_reactivation_required_for_stale_signal"] = True
+    metrics["action_policy_version"] = ACTION_POLICY_VERSION
+    metrics["action_min_score"] = MIN_ACTION_SCORE
+    metrics["action_max_24h_move_pct"] = MAX_ACTION_24H_MOVE_PCT
     metrics["cross_lane_action_fusion_used"] = bool(fusion)
     if fusion:
         metrics["cross_lane_action_signal_score"] = fusion.get("action_signal_score")
