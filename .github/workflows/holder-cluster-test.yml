@@ -6,12 +6,14 @@ on:
     branches: [main]
     paths:
       - 'src/wallet500/holder_cluster_gate.py'
+      - 'src/wallet500/holder_cluster_intelligence.py'
       - 'src/wallet500/cluster_corroboration.py'
       - 'src/wallet500/holder_cluster_promotion.py'
       - 'src/wallet500/holder_cluster_production_gate.py'
       - 'src/wallet500/rejected_candidate_learning.py'
       - 'src/wallet500/rejected_outcome_tracker.py'
       - 'tests/test_holder_cluster_gate.py'
+      - 'tests/test_holder_cluster_intelligence.py'
       - 'tests/test_holder_role_aware_concentration.py'
       - 'tests/test_cross_domain_holder_concentration_safety.py'
       - 'scripts/cross_domain_intelligence_collector.py'
@@ -40,7 +42,7 @@ jobs:
       - name: Install
         run: pip install -e . pytest
       - name: Unit-test holder cluster production truth rules
-        run: pytest -q tests/test_holder_cluster_gate.py tests/test_holder_role_aware_concentration.py tests/test_cross_domain_holder_concentration_safety.py tests/test_cluster_corroboration.py tests/test_holder_cluster_promotion.py tests/test_holder_cluster_production_gate.py tests/test_rejected_candidate_learning.py tests/test_rejected_outcome_tracker.py
+        run: pytest -q tests/test_holder_cluster_gate.py tests/test_holder_cluster_intelligence.py tests/test_holder_role_aware_concentration.py tests/test_cross_domain_holder_concentration_safety.py tests/test_cluster_corroboration.py tests/test_holder_cluster_promotion.py tests/test_holder_cluster_production_gate.py tests/test_rejected_candidate_learning.py tests/test_rejected_outcome_tracker.py
       - name: Analyze research qualified cohort
         env:
           HOLDER_CLUSTER_INPUT: qualified-candidates.json
