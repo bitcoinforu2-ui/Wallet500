@@ -127,7 +127,7 @@ def test_current_derivatives_mover_gets_bounded_identity_priority_without_action
         "watchlist": [{
             "symbol": "FLORKUSDT",
             "cex_revival_score": 32,
-            "coherent_confirmations": 3,
+            "coherent_confirmations": 1,
             "change_24h_max_pct": 41.65,
             "mover_watch": True,
             "markets": [
@@ -140,7 +140,7 @@ def test_current_derivatives_mover_gets_bounded_identity_priority_without_action
                     "observed_at": "2026-09-23T11:20:00+00:00",
                     "reference_price": 0.0071,
                     "score": 32,
-                    "coherent_confirmations": 3,
+                    "coherent_confirmations": 1,
                 }
             },
         }],
@@ -196,3 +196,35 @@ def test_derivatives_recovery_attaches_real_gate_spot_when_available():
     assert len(spot_markets) == 1
     assert spot_markets[0]["exchange"] == "gate"
     assert spot_markets[0]["price"] == 0.00504
+
+
+def test_derivatives_recovery_persists_beyond_priority_slots_without_becoming_priority():
+    rows = []
+    for i in range(20):
+        rows.append({
+            "symbol": f"MOVER{i}USDT",
+            "cex_revival_score": 20 + i,
+            "coherent_confirmations": 1,
+            "change_24h_max_pct": 31 + i,
+            "mover_watch": True,
+            "markets": [{
+                "exchange": "gate",
+                "symbol": f"MOVER{i}USDT",
+                "price": 0.001 + i * 0.00001,
+                "change_24h_pct": 31 + i,
+                "volume_24h": 60_000 + i * 1_000,
+            }],
+        })
+    recovered = mod._derivatives_recovery_candidates(
+        {
+            "mover_watch_min_change_pct": 30,
+            "mover_watch_min_volume_usd": 50_000,
+            "alerts": [],
+            "watchlist": rows,
+        },
+        {"candidates": []},
+    )
+    assert len(recovered) == 20
+    assert sum(1 for x in recovered if x["current_identity_reactivation_priority"]) == mod.DERIVATIVES_RECOVERY_PRIORITY_SLOTS
+    assert all(x["persistent_until_exact_identity_resolution"] is True for x in recovered)
+    assert all(x["identity_recovery_never_actionable"] is True for x in recovered)
