@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import unified_watch_engine as engine
 import user_watch_final_buy as gate
 import resilient_unified_watch_runner as runner
+import free_intelligence_collector as free_intel
 
 
 def test_exact_pair_survives_single_provider_429(monkeypatch):
@@ -46,6 +47,51 @@ def test_exact_pair_survives_single_provider_429(monkeypatch):
     assert snap["price"] == 0.00023545
     assert snap["liquidity"] == 1900
 
+
+
+def test_free_intel_recovers_configured_exact_pair_from_direct_dexscreener_endpoint(monkeypatch):
+    token = "241aTYhVXZ4WBVSFpfY37RqoCGBQ73KiRFAKvTtnmoon"
+    pair = "EcFsXQJjVCjCYWHsuhXUnZH4XB2MzF7iZ3dJu48wmoa9"
+    calls = []
+
+    def fake_get_json(url, headers=None, timeout=12):
+        calls.append(url)
+        if "/latest/dex/tokens/" in url:
+            # Simulate the token lookup omitting the configured pool.
+            return {"pairs": []}
+        if "/latest/dex/pairs/solana/" in url:
+            return {
+                "pairs": [{
+                    "chainId": "solana",
+                    "pairAddress": pair,
+                    "baseToken": {"address": token},
+                    "quoteToken": {"address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"},
+                    "priceUsd": "0.000134",
+                    "liquidity": {"usd": 56743.11},
+                    "volume": {"h1": 1476.93},
+                    "txns": {"h1": {"buys": 18, "sells": 21}},
+                    "marketCap": 134000,
+                    "fdv": 134000,
+                    "url": "https://dexscreener.com/solana/" + pair,
+                }]
+            }
+        raise AssertionError(url)
+
+    monkeypatch.setattr(free_intel, "get_json", fake_get_json)
+    events, snap = free_intel.ds_collect(
+        {
+            "symbol": "MCAT",
+            "network": "solana",
+            "contract": token,
+            "pair": pair,
+        },
+        {},
+    )
+
+    assert snap["price"] == 0.000134
+    assert snap["dexscreener_source_mode"] == "DIRECT_EXACT_PAIR_FALLBACK"
+    assert any(e["kind"] == "verified_market_snapshot" for e in events)
+    assert any("/latest/dex/pairs/solana/" in url for url in calls)
 
 
 def test_dexscreener_quote_token_never_uses_base_price_usd(monkeypatch):
@@ -371,8 +417,18 @@ def test_missing_hot_cex_intelligence_triggers_bounded_deep_refresh(monkeypatch)
     runner._DEEP_FAILURES.clear()
     captured = {}
 
-    def fake_run_one(engine_module, policy, t, live, previous_scan, triggers, base_reasons):
+    def fake_run_one(
+        engine_module,
+        policy,
+        t,
+        live,
+        previous_scan,
+        triggers,
+        base_reasons,
+        qualification_override=None,
+    ):
         captured["called"] = True
+        captured["qualification"] = list(qualification_override or [])
         return (
             {"identity_key": key, "qualification": ["TEST"]},
             {"identity_key": key},
@@ -418,6 +474,80 @@ def test_missing_hot_cex_intelligence_triggers_bounded_deep_refresh(monkeypatch)
     assert captured["called"] is True
     assert fusion["status"] == "CURRENT"
     assert fusion["current_evidence_count"] == 5
+
+
+def test_targeted_highest_deep_watch_refreshes_without_positive_trigger(monkeypatch):
+    key = "solana:241aTYhVXZ4WBVSFpfY37RqoCGBQ73KiRFAKvTtnmoon:EcFsXQJjVCjCYWHsuhXUnZH4XB2MzF7iZ3dJu48wmoa9"
+    target = {
+        "symbol": "MCAT",
+        "network": "solana",
+        "contract": "241aTYhVXZ4WBVSFpfY37RqoCGBQ73KiRFAKvTtnmoon",
+        "pair": "EcFsXQJjVCjCYWHsuhXUnZH4XB2MzF7iZ3dJu48wmoa9",
+        "deep_investigation": True,
+        "targeted_telegram_watch": True,
+        "close_watch": "HIGHEST",
+    }
+    runner._TARGETS_BY_IDENTITY = {key: target}
+    runner._PREVIOUS_STATE = {"tokens": {}}
+    runner._DEEP_DONE.clear()
+    runner._DEEP_REPORTS.clear()
+    runner._DEEP_FAILURES.clear()
+    captured = {}
+
+    def fake_run_one(
+        engine_module,
+        policy,
+        t,
+        live,
+        previous_scan,
+        triggers,
+        base_reasons,
+        qualification_override=None,
+    ):
+        captured["qualification"] = list(qualification_override or [])
+        return (
+            {"identity_key": key, "qualification": captured["qualification"]},
+            {"identity_key": key},
+        )
+
+    monkeypatch.setattr(runner.deep_investigation_refresh, "run_one", fake_run_one)
+    monkeypatch.setattr(
+        runner,
+        "identity_aware_fusion_summary",
+        lambda row, notable_min_raw=0.30: {
+            "_identity_key": key,
+            "status": "CURRENT",
+            "score": 0,
+            "families": 0,
+            "current_evidence_count": 3,
+            "hard_risks": [],
+            "family_scores": {"market_microstructure": 0},
+        },
+    )
+
+    fusion = {
+        "_identity_key": key,
+        "status": "CURRENT",
+        "score": 0,
+        "families": 0,
+        "current_evidence_count": 3,
+        "hard_risks": [],
+        "family_scores": {"market_microstructure": 0},
+    }
+    refreshed = runner._refresh_deep_intelligence(
+        {},
+        {"buys_h1": 2, "sells_h1": 10, "price": 0.000134},
+        fusion,
+        [],
+        ["PRICE_CHANGE_-27.0%"],
+        {
+            "deep_investigation_max_targets_per_cycle": 8,
+            "real_alert_min_current_evidence": 2,
+            "real_alert_relaxed_min_positive_families_with_wallet_or_new_intel": 2,
+        },
+    )
+    assert refreshed is True
+    assert "TARGETED_HIGHEST_DEEP_WATCH" in captured["qualification"]
 
 
 def test_market_row_prefers_freshest_duplicate_exact_identity():
