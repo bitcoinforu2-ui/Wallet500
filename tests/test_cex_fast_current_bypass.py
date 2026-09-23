@@ -52,7 +52,10 @@ def test_late_current_move_is_not_spent_on_identity_resolution():
 
 def test_leveraged_product_never_enters_bypass():
     row = _row(leveraged_product=True)
-    assert _priority_candidates({"watchlist": [row]}) == []
+    chosen = _priority_candidates({"watchlist": [row]})
+    assert len(chosen) == 1
+    assert chosen[0]["symbol"] == "LATEUSDT"
+    assert chosen[0]["_live_leaderboard_priority"] is True
 
 
 def test_missing_live_cex_price_never_enters_bypass():
