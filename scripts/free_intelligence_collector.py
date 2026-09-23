@@ -112,10 +112,43 @@ def ds_collect(t, prev):
     chain, contract, pair, identity_key = identity(t)
     data = get_json("https://api.dexscreener.com/latest/dex/tokens/" + contract)
     out = []
-    if not data:
-        return out, {}
-    pairs = data.get("pairs") or []
-    exact = next((p for p in pairs if chain_name(p.get("chainId")) == chain and same_addr(chain, p.get("pairAddress"), pair)), None)
+    pairs = (data or {}).get("pairs") or []
+    exact = next(
+        (
+            p
+            for p in pairs
+            if chain_name(p.get("chainId")) == chain
+            and same_addr(chain, p.get("pairAddress"), pair)
+        ),
+        None,
+    )
+    source_mode = "TOKEN_LOOKUP"
+
+    # The token lookup can omit a valid lower-ranked pool or temporarily return
+    # no rows. For configured exact identities, recover through DexScreener's
+    # direct chain+pair endpoint before treating the pair as missing. This is
+    # especially important for HIGHEST/deep-watch targets where stale market
+    # data would otherwise suppress both deep intelligence and FINAL-BUY checks.
+    if exact is None and chain and pair:
+        direct = get_json(
+            "https://api.dexscreener.com/latest/dex/pairs/" + chain + "/" + pair
+        )
+        if direct is None:
+            # Provider failure is not an identity failure. Fail closed without
+            # manufacturing a hard-risk event and let the next scan retry.
+            return out, {}
+        direct_pairs = direct.get("pairs") or []
+        exact = next(
+            (
+                p
+                for p in direct_pairs
+                if chain_name(p.get("chainId")) == chain
+                and same_addr(chain, p.get("pairAddress"), pair)
+            ),
+            None,
+        )
+        source_mode = "DIRECT_EXACT_PAIR_FALLBACK"
+
     if not exact:
         return [event(t, "market_microstructure", "identity_mismatch", -1, 100, 95, "DexScreener", extra={"hard_risk": True, "identity_verified": False})], {}
 
@@ -139,9 +172,10 @@ def ds_collect(t, prev):
         "sells_h1": sells,
         "market_cap": market_cap,
         "fdv": fdv,
+        "dexscreener_source_mode": source_mode,
     }
 
-    out.append(event(t, "market_microstructure", "verified_market_snapshot", 0, 0, 100, "DexScreener", url=str(exact.get("url") or ""), cid=f"dexsnapshot:{identity_key}:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}", extra={"identity_verified": True, "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR", "price_usd": price, "liquidity_usd": liq, "volume_h1_usd": vol, "buys_h1": buys, "sells_h1": sells}))
+    out.append(event(t, "market_microstructure", "verified_market_snapshot", 0, 0, 100, "DexScreener", url=str(exact.get("url") or ""), cid=f"dexsnapshot:{identity_key}:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}", extra={"identity_verified": True, "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR", "price_usd": price, "liquidity_usd": liq, "volume_h1_usd": vol, "buys_h1": buys, "sells_h1": sells, "dexscreener_source_mode": source_mode}))
 
     if buys is not None and sells is not None and buys + sells >= 20:
         ratio = (buys + 1) / (sells + 1)
