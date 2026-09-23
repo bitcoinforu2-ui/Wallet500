@@ -100,7 +100,7 @@ assert ok is True, metrics
 assert "ACTION_SCORE_LT_CANONICAL_MIN" not in metrics["blockers"], metrics
 assert metrics["action_policy_version"] == guard.promo.ACTION_POLICY_VERSION, metrics
 
-# AKE-like regression: spot lane alone is below the canonical action threshold (30), while an
+# AKE-like regression: spot lane score 30 is below the canonical action threshold, while an
 # immutable derivatives FIRST_ALERT scored 79 at the same early spot price.
 # Cross-lane fusion should make the already exact-identity candidate actionable
 # without weakening identity/liquidity/no-chase/freshness gates.
