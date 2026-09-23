@@ -220,6 +220,12 @@ def main() -> None:
             "price_drop_warning_pct": 3.0,
             "price_drop_breakdown_pct": 8.0,
             "flow_warning_ratio": 1.2,
+            "warning_confirmation_required": True,
+            "warning_required_consecutive_scans": 2,
+            "warning_min_confirmation_spacing_seconds": 180,
+            "warning_max_confirmation_gap_seconds": 900,
+            "warning_min_persistent_evidence_groups": 1,
+            "warning_min_confirmed_risk_score": 2.5,
             "liquidity_drop_breakdown_pct": 20.0,
             "realert_additional_price_drop_pct": 8.0,
             "cooldown_seconds": 1800,
@@ -256,7 +262,9 @@ def main() -> None:
     )
     assert warning is not None
     assert warning["severity"] == "RISK_WARNING"
-    assert warning["alert"] is True
+    assert warning["alert"] is False
+    assert warning["confirmation_status"] == "PENDING"
+    assert warning["confirmation_streak"] == 1
     assert any(
         reason.startswith("PRICE_WEAKNESS_WITH_FLOW_FAILURE")
         or reason.startswith("BUY_FLOW_REVERSAL")
@@ -264,6 +272,86 @@ def main() -> None:
     )
     assert "SELL-RISK" in gate.targeted_risk_message(targeted, warn_decision, warning)
     assert warn_state["last_buy_sell_ratio"] < 1.2
+
+    pending_prior = {
+        **warn_state,
+        "targeted_risk_active": False,
+        "targeted_risk_pending_streak": warning["confirmation_streak"],
+        "targeted_risk_pending_first_at": warning["confirmation_first_at"],
+        "targeted_risk_pending_last_at": warning["confirmation_last_at"],
+        "targeted_risk_pending_groups": warning["evidence_groups"],
+        "targeted_risk_pending_signature": warning["signature"],
+        "targeted_risk_pending_price": warning["price_usd"],
+        "targeted_risk_pending_score": warning["risk_score"],
+    }
+
+    # A duplicate read inside the minimum spacing window cannot manufacture
+    # confirmation.
+    too_soon_time = warn_time + timedelta(minutes=1)
+    too_soon_market = market(
+        0.0001828,
+        too_soon_time,
+        buys=10,
+        sells=14,
+    )
+    too_soon_market.update({
+        "liquidity": 56200.0,
+        "volume_h1": 2200.0,
+    })
+    too_soon_decision, too_soon_state = gate.evaluate(
+        targeted,
+        too_soon_market,
+        observed(),
+        pending_prior,
+        POLICY,
+        now=too_soon_time,
+    )
+    too_soon = gate.targeted_risk_event(
+        targeted, too_soon_decision, pending_prior, POLICY, too_soon_time
+    )
+    assert too_soon is not None
+    assert too_soon["confirmation_status"] == "PENDING"
+    assert too_soon["confirmation_streak"] == 1
+    assert too_soon["alert"] is False
+
+    confirmed_time = warn_time + timedelta(minutes=5)
+    confirmed_market = market(
+        0.0001817,
+        confirmed_time,
+        buys=10,
+        sells=16,
+    )
+    confirmed_market.update({
+        "liquidity": 55500.0,
+        "volume_h1": 2500.0,
+    })
+    confirmed_prior = {
+        **too_soon_state,
+        "targeted_risk_active": False,
+        "targeted_risk_pending_streak": too_soon["confirmation_streak"],
+        "targeted_risk_pending_first_at": too_soon["confirmation_first_at"],
+        "targeted_risk_pending_last_at": too_soon["confirmation_last_at"],
+        "targeted_risk_pending_groups": too_soon["evidence_groups"],
+        "targeted_risk_pending_signature": too_soon["signature"],
+        "targeted_risk_pending_price": too_soon["price_usd"],
+        "targeted_risk_pending_score": too_soon["risk_score"],
+    }
+    confirmed_decision, confirmed_state = gate.evaluate(
+        targeted,
+        confirmed_market,
+        observed(),
+        confirmed_prior,
+        POLICY,
+        now=confirmed_time,
+    )
+    confirmed_warning = gate.targeted_risk_event(
+        targeted, confirmed_decision, confirmed_prior, POLICY, confirmed_time
+    )
+    assert confirmed_warning is not None
+    assert confirmed_warning["severity"] == "RISK_WARNING"
+    assert confirmed_warning["confirmation_status"] == "CONFIRMED"
+    assert confirmed_warning["confirmation_streak"] >= 2
+    assert confirmed_warning["alert"] is True
 
     # Sensor-v2 regression: total-volume expansion is inferred bearish
     # pressure, not direct sell-notional. MCAT's current combination of
@@ -296,6 +384,8 @@ def main() -> None:
     assert quality is not None
     assert quality["severity"] == "RISK_WARNING"
     assert quality["confidence"] == "HIGH"
+    assert quality["confirmation_status"] == "PENDING"
+    assert quality["alert"] is False
     assert quality["evidence_group_count"] >= 3
     assert any(
         x.startswith("BEARISH_TOTAL_VOLUME_EXPANSION_1.96")
@@ -341,7 +431,7 @@ def main() -> None:
 
     # A later MCAT-style flush escalates immediately to BREAKDOWN even if the
     # warning cooldown has not expired.
-    breakdown_time = warn_time + timedelta(minutes=15)
+    breakdown_time = confirmed_time + timedelta(minutes=15)
     breakdown_market = market(
         0.0001349,
         breakdown_time,
@@ -353,11 +443,11 @@ def main() -> None:
         "volume_h1": 9440.09,
     })
     breakdown_prior = {
-        **warn_state,
-        "last_targeted_risk_alert_at": warn_time.isoformat(),
-        "last_targeted_risk_alert_price": warning["price_usd"],
-        "last_targeted_risk_signature": warning["signature"],
-        "last_targeted_risk_severity": warning["severity"],
+        **confirmed_state,
+        "last_targeted_risk_alert_at": confirmed_time.isoformat(),
+        "last_targeted_risk_alert_price": confirmed_warning["price_usd"],
+        "last_targeted_risk_signature": confirmed_warning["signature"],
+        "last_targeted_risk_severity": confirmed_warning["severity"],
         "targeted_risk_active": True,
     }
     breakdown_decision, _ = gate.evaluate(
@@ -373,6 +463,7 @@ def main() -> None:
     )
     assert breakdown is not None
     assert breakdown["severity"] == "BREAKDOWN"
+    assert breakdown["confirmation_status"] == "BYPASSED_SEVERE"
     assert breakdown["alert"] is True
     assert 0.00018 in breakdown["crossed_down_levels"]
     assert any(x.startswith("LIQUIDITY_FLOOR_BREACH") for x in breakdown["reasons"])
