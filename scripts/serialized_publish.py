@@ -70,10 +70,6 @@ def _identity() -> tuple[str, str, str, str]:
     run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1").strip() or "1"
     if not token or not repo or "/" not in repo:
         raise RuntimeError("SERIALIZED_PUBLISH_REQUIRES_GITHUB_CREDENTIAL_AND_REPOSITORY")
-    # The lock layer can recover the checkout credential from git config, but
-    # atomic_publish's GitHub API transports read GITHUB_TOKEN directly.
-    # Export the recovered credential so both layers share one authenticated
-    # identity without requiring every legacy workflow to duplicate env wiring.
     if not os.environ.get("GITHUB_TOKEN", "").strip():
         os.environ["GITHUB_TOKEN"] = token
     return token, repo, run_id, run_attempt
@@ -89,18 +85,9 @@ def _new_lock_commit(token: str, repo: str, run_id: str, run_attempt: str) -> tu
         raise RuntimeError("SERIALIZED_PUBLISH_MAIN_TREE_MISSING")
     created = int(time.time())
     _, lock_commit = atomic_publish.api_request(
-        token,
-        repo,
-        "POST",
-        "/git/commits",
-        {
-            "message": (
-                "WALLET500_PUBLISH_LOCK "
-                f"run_id={run_id} run_attempt={run_attempt} created_epoch={created}"
-            ),
-            "tree": tree_sha,
-            "parents": [parent],
-        },
+        token, repo, "POST", "/git/commits",
+        {"message": "WALLET500_PUBLISH_LOCK " f"run_id={run_id} run_attempt={run_attempt} created_epoch={created}",
+         "tree": tree_sha, "parents": [parent]},
     )
     sha = str(lock_commit.get("sha") or "")
     if not sha:
@@ -109,9 +96,7 @@ def _new_lock_commit(token: str, repo: str, run_id: str, run_attempt: str) -> tu
 
 
 def _current_lock(token: str, repo: str) -> tuple[str, int | None] | None:
-    status, ref = atomic_publish.api_request(
-        token, repo, "GET", LOCK_API_REF, allowed=(200, 404)
-    )
+    status, ref = atomic_publish.api_request(token, repo, "GET", LOCK_API_REF, allowed=(200, 404))
     if status == 404:
         return None
     sha = str((ref.get("object") or {}).get("sha") or "")
@@ -134,14 +119,25 @@ def _delete_if_same(token: str, repo: str, expected_sha: str, label: str) -> boo
         return True
     sha, _ = current
     if sha != expected_sha:
+        print(f"SERIALIZED_PUBLISH_{label}_SKIP expected={expected_sha} actual={sha}", flush=True)
+        return False
+    try:
+        atomic_publish.api_request(
+            token, repo, "DELETE", LOCK_API_DELETE, allowed=(204, 404)
+        )
+    except RuntimeError as exc:
+        # TOCTOU-safe idempotency: another verified stale-lock contender may
+        # delete the exact same ref after our owner check but before DELETE.
+        # GitHub reports this specific missing-ref race as HTTP 422 rather than
+        # 404. Accept only that exact condition; all other 422s remain fatal.
+        text = str(exc)
+        if "status=422" not in text or "Reference does not exist" not in text:
+            raise
         print(
-            f"SERIALIZED_PUBLISH_{label}_SKIP expected={expected_sha} actual={sha}",
+            f"SERIALIZED_PUBLISH_{label}_ALREADY_GONE sha={expected_sha}",
             flush=True,
         )
-        return False
-    atomic_publish.api_request(
-        token, repo, "DELETE", LOCK_API_DELETE, allowed=(204, 404)
-    )
+        return True
     print(f"SERIALIZED_PUBLISH_{label}_OK sha={expected_sha}", flush=True)
     return True
 
@@ -154,21 +150,11 @@ def acquire_lock() -> tuple[str, str, str]:
         attempt += 1
         lock_sha, created = _new_lock_commit(token, repo, run_id, run_attempt)
         status, _ = atomic_publish.api_request(
-            token,
-            repo,
-            "POST",
-            "/git/refs",
-            {"ref": LOCK_REF, "sha": lock_sha},
-            allowed=(201, 422),
+            token, repo, "POST", "/git/refs", {"ref": LOCK_REF, "sha": lock_sha}, allowed=(201, 422)
         )
         if status == 201:
-            print(
-                f"SERIALIZED_PUBLISH_LOCK_ACQUIRED sha={lock_sha} attempt={attempt} "
-                f"created_epoch={created}",
-                flush=True,
-            )
+            print(f"SERIALIZED_PUBLISH_LOCK_ACQUIRED sha={lock_sha} attempt={attempt} created_epoch={created}", flush=True)
             return token, repo, lock_sha
-
         current = _current_lock(token, repo)
         if current is not None:
             current_sha, current_created = current
@@ -176,20 +162,12 @@ def acquire_lock() -> tuple[str, str, str]:
                 raise RuntimeError("SERIALIZED_PUBLISH_LOCK_TIMESTAMP_MISSING")
             age = max(0, int(time.time()) - current_created)
             if age > LOCK_TTL_SECONDS:
-                print(
-                    f"SERIALIZED_PUBLISH_STALE_LOCK age_seconds={age} sha={current_sha}",
-                    flush=True,
-                )
+                print(f"SERIALIZED_PUBLISH_STALE_LOCK age_seconds={age} sha={current_sha}", flush=True)
                 _delete_if_same(token, repo, current_sha, "STALE_LOCK_DELETE")
                 continue
-
         delay = min(2.0, 0.18 + attempt * 0.04) + random.uniform(0.03, 0.20)
-        print(
-            f"SERIALIZED_PUBLISH_LOCK_WAIT attempt={attempt} sleep={delay:.2f}",
-            flush=True,
-        )
+        print(f"SERIALIZED_PUBLISH_LOCK_WAIT attempt={attempt} sleep={delay:.2f}", flush=True)
         time.sleep(delay)
-
     raise RuntimeError(f"SERIALIZED_PUBLISH_LOCK_TIMEOUT wait_seconds={LOCK_WAIT_SECONDS}")
 
 
@@ -223,19 +201,12 @@ def _expand_directory_payloads() -> None:
         if not p.is_dir():
             expanded.append(raw)
             continue
-        files = sorted(
-            str(child.as_posix())
-            for child in p.rglob("*")
-            if child.is_file()
-        )
+        files = sorted(str(child.as_posix()) for child in p.rglob("*") if child.is_file())
         if not files:
             raise RuntimeError(f"SERIALIZED_PUBLISH_EMPTY_DIRECTORY {raw}")
         expanded.extend(files)
         total_expanded += len(files)
-        print(
-            f"SERIALIZED_PUBLISH_DIRECTORY_EXPANDED path={raw} files={len(files)}",
-            flush=True,
-        )
+        print(f"SERIALIZED_PUBLISH_DIRECTORY_EXPANDED path={raw} files={len(files)}", flush=True)
     if total_expanded:
         sys.argv[:] = expanded
 
@@ -252,26 +223,15 @@ def _route_unsafe_large_transports_to_direct_git() -> None:
                     large.append((raw, size))
         except OSError:
             continue
-
     if "--hybrid-cas" in sys.argv:
         sys.argv.remove("--hybrid-cas")
-        print(
-            "SERIALIZED_PUBLISH_TRANSPORT_ROUTE hybrid-cas->direct-git-cas "
-            "reason=staging-ref-workflow-permission-risk",
-            flush=True,
-        )
+        print("SERIALIZED_PUBLISH_TRANSPORT_ROUTE hybrid-cas->direct-git-cas reason=staging-ref-workflow-permission-risk", flush=True)
         return
-
     if "--github-api-cas" not in sys.argv or not large:
         return
-
     sys.argv.remove("--github-api-cas")
     summary = ",".join(f"{path}:{size}" for path, size in large[:8])
-    print(
-        "SERIALIZED_PUBLISH_TRANSPORT_ROUTE "
-        f"github-api-cas->direct-git-cas reason=large-payload files={summary}",
-        flush=True,
-    )
+    print("SERIALIZED_PUBLISH_TRANSPORT_ROUTE " f"github-api-cas->direct-git-cas reason=large-payload files={summary}", flush=True)
 
 
 def main() -> int:
