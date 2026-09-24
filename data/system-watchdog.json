@@ -1,40 +1,29 @@
 {
   "version": 1,
   "mode": "INDEPENDENT_OBSERVABILITY_NO_TRADING_POLICY_EFFECT",
-  "updated_at": "2026-09-24T16:09:53.668273+00:00",
-  "overall": "CRITICAL",
+  "updated_at": "2026-09-24T17:08:30.256671+00:00",
+  "overall": "DEGRADED",
   "incident_count": 3,
-  "critical_count": 1,
-  "high_count": 2,
-  "new_notifications": [
-    {
-      "code": "PUBLIC_REAL_ALERT_FEED_STALE",
-      "severity": "CRITICAL",
-      "detail": "public REAL ALERT feed age=4020.6s"
-    }
-  ],
+  "critical_count": 0,
+  "high_count": 3,
+  "new_notifications": [],
   "recovered_codes": [
-    "REAL_ALERT_FEED_STALE",
-    "SCHEDULER_TELEMETRY_STALE",
-    "SYSTEM_HEALTH_STALE"
+    "PUBLIC_REAL_ALERT_FEED_STALE"
   ],
-  "real_alert_transitions_entered": [],
+  "real_alert_transitions_entered": [
+    "base:0xbaa5cc21fd487b8fcc2f632f3f4e8d37262a0842:0xb5f0b4ae66c14f7efaa9aa1468e8fc536a3e288c"
+  ],
   "buy_only_policy_active": true,
   "final_buy_keys_expected": [],
   "pre_buy_delivery_gaps": [],
   "incidents": [
     {
-      "code": "PUBLIC_REAL_ALERT_FEED_STALE",
-      "severity": "CRITICAL",
-      "detail": "public REAL ALERT feed age=4020.6s"
-    },
-    {
       "code": "GITHUB_ACTIONS_CAPACITY_PRESSURE",
       "severity": "HIGH",
-      "detail": "queued=21, in_progress=13, runs_today=6994",
+      "detail": "queued=21, in_progress=18, runs_today=7443",
       "queued": 21,
-      "in_progress": 13,
-      "runs_today": 6994,
+      "in_progress": 18,
+      "runs_today": 7443,
       "thresholds": {
         "queued": 8,
         "in_progress": 12,
@@ -44,80 +33,88 @@
     {
       "code": "GITHUB_ACTIONS_FAILURE_PRESSURE",
       "severity": "HIGH",
-      "detail": "workflow failures today=1349",
-      "failures_today": 1349,
+      "detail": "workflow failures today=1428",
+      "failures_today": 1428,
       "threshold": 20
+    },
+    {
+      "code": "REVIVAL_NEWER_RUN_FAILED_TO_PUBLISH",
+      "severity": "HIGH",
+      "detail": "latest Revival run failed after the currently published snapshot was generated",
+      "run_id": 36030402609,
+      "run_updated_at": "2026-09-24T16:56:17Z",
+      "published_generated_at": "2026-09-24T16:36:25.406974+00:00"
     }
   ],
   "checks": {
     "real-alerts.json": {
-      "timestamp": "2026-09-24T15:40:12.611759+00:00",
-      "age_seconds": 1781.1,
+      "timestamp": "2026-09-24T16:24:32.841598+00:00",
+      "age_seconds": 2637.4,
       "max_age_seconds": 2700,
       "ok": true
     },
     "system-health.json": {
-      "timestamp": "2026-09-24T15:40:13.213396+00:00",
-      "age_seconds": 1780.5,
+      "timestamp": "2026-09-24T16:24:33.320706+00:00",
+      "age_seconds": 2636.9,
       "max_age_seconds": 2700,
       "ok": true
     },
     "scheduler-health.json": {
-      "timestamp": "2026-09-24T15:40:13.292442+00:00",
-      "age_seconds": 1780.4,
+      "timestamp": "2026-09-24T16:24:33.387823+00:00",
+      "age_seconds": 2636.9,
       "max_age_seconds": 2700,
       "ok": true
     },
     "telegram-alert-report.json": {
-      "timestamp": "2026-09-24T15:32:10.528434+00:00",
-      "age_seconds": 2263.1,
+      "timestamp": "2026-09-24T16:41:30.798227+00:00",
+      "age_seconds": 1619.5,
       "max_age_seconds": 3600,
       "ok": true
     },
     "real-alert-10usd-summary.json": {
-      "timestamp": "2026-09-24T15:53:32.495142+00:00",
-      "age_seconds": 981.2,
+      "timestamp": "2026-09-24T16:55:04.415632+00:00",
+      "age_seconds": 805.8,
       "max_age_seconds": 3600,
       "ok": true
     },
     "github_live_scan": {
-      "latest_status": "completed",
-      "latest_conclusion": "success",
+      "latest_status": "in_progress",
+      "latest_conclusion": null,
       "latest_event": "workflow_dispatch",
-      "latest_created_at": "2026-09-24T16:04:08Z",
-      "latest_updated_at": "2026-09-24T16:08:12Z",
-      "latest_run_id": 36024737566,
-      "last_success_at": "2026-09-24T16:08:12Z",
-      "last_success_run_id": 36024737566,
+      "latest_created_at": "2026-09-24T17:05:25Z",
+      "latest_updated_at": "2026-09-24T17:05:30Z",
+      "latest_run_id": 36031865412,
+      "last_success_at": "2026-09-24T17:03:44Z",
+      "last_success_run_id": 36030781166,
       "cancellations_since_success": 0,
       "latest_cancelled_run_id": null,
       "latest_hard_failure_conclusion": null,
       "latest_hard_failure_run_id": null,
-      "active_run_count": 0,
+      "active_run_count": 1,
       "ignored_non_operational_run_count": 0
     },
     "public_surface": {
       "dashboard_ok": true,
       "real_feed_ok": true,
-      "real_feed_generated_at": "2026-09-24T15:02:53.023646+00:00"
+      "real_feed_generated_at": "2026-09-24T16:24:32.841598+00:00"
     },
     "github_actions_capacity": {
       "queued": 21,
-      "in_progress": 13,
-      "runs_today": 6994,
-      "failures_today": 1349,
+      "in_progress": 18,
+      "runs_today": 7443,
+      "failures_today": 1428,
       "ok": false
     },
     "revival_publish_freshness": {
-      "latest_run_id": 36025024276,
+      "latest_run_id": 36030402609,
       "latest_status": "completed",
-      "latest_conclusion": "success",
-      "latest_updated_at": "2026-09-24T16:09:36Z",
-      "published_generated_at": "2026-09-24T15:20:03.166274+00:00",
-      "ok": true
+      "latest_conclusion": "failure",
+      "latest_updated_at": "2026-09-24T16:56:17Z",
+      "published_generated_at": "2026-09-24T16:36:25.406974+00:00",
+      "ok": false
     },
     "candidate_starvation": {
-      "zero_active_started_at": "2026-09-24T16:09:55.768627+00:00",
+      "zero_active_started_at": "2026-09-24T17:08:31.783064+00:00",
       "zero_active_age_seconds": 0.0,
       "active_qualified": 0,
       "market_scan": 384,
@@ -146,7 +143,7 @@
     "attempted": false,
     "sent": false,
     "reason": "WATCHDOG_USER_TELEGRAM_DISABLED_BY_NEAR_BUY_AND_BUY_ONLY_POLICY",
-    "suppressed_technical_notification_count": 1
+    "suppressed_technical_notification_count": 0
   },
-  "operational_guard_updated_at": "2026-09-24T16:09:55.768627+00:00"
+  "operational_guard_updated_at": "2026-09-24T17:08:31.783064+00:00"
 }
