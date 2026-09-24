@@ -1,7 +1,7 @@
 {
   "version": 1,
   "mode": "MANUAL_REVIEW_TRADE_MANAGEMENT_V1",
-  "generated_at": "2026-09-24T10:15:46.414796+00:00",
+  "generated_at": "2026-09-24T11:03:51.639358+00:00",
   "manual_review_only": true,
   "automatic_trade": false,
   "truth_contract": {
@@ -14,9 +14,10 @@
     "signal_gate_unchanged": true,
     "recommendations_are_execution_timing_support_not_new_signal": true
   },
-  "managed_count": 1,
+  "managed_count": 2,
   "state_counts": {
-    "WAIT_FOR_ENTRY": 1
+    "BUY_ZONE": 1,
+    "WAIT_FOR_RETEST": 1
   },
   "positions": [
     {
@@ -26,62 +27,128 @@
       "pair_address": "0x6af632b8235f1a9d95a816f7a4090736346b763a8ab4e8327017aaae72d0d1d2",
       "dex_url": "https://www.geckoterminal.com/eth/pools/0x6af632b8235f1a9d95a816f7a4090736346b763a8ab4e8327017aaae72d0d1d2",
       "alert_id": null,
-      "signal_price_usd": 0.3966,
-      "signal_liquidity_usd": 655914.29,
+      "signal_price_usd": 0.3863,
+      "signal_liquidity_usd": 653982.02,
       "signal_generated_at": null,
       "readiness": "7/7",
       "manual_review_only": true,
       "automatic_buy": false,
       "automatic_sell": false,
-      "observed_at": "2026-09-24T10:15:46.414578+00:00",
-      "trade_state": "WAIT_FOR_ENTRY",
-      "state_label": "🟡 WAIT FOR ENTRY",
-      "decision_reason": "Signal remains valid but no high-quality support/retest entry is confirmed yet.",
+      "observed_at": "2026-09-24T11:03:50.726790+00:00",
+      "trade_state": "BUY_ZONE",
+      "state_label": "🟢 BUY ZONE",
+      "decision_reason": "Price retested dynamic support while liquidity and transaction balance remain acceptable.",
       "market": {
-        "current_price_usd": 0.3921252186,
-        "liquidity_usd": 655252.6865,
-        "liquidity_change_from_signal_pct": -0.101,
-        "volume_h1_usd": 1106645.85965019,
-        "volume_h24_usd": 3083159.31513149,
-        "volume_vs_12h_median": 12.965,
-        "buys_h1": 230,
-        "sells_h1": 81,
-        "buy_ratio": 0.7395,
-        "move_from_signal_pct": -1.128,
-        "drawdown_from_12h_high_pct": -12.641,
+        "current_price_usd": 0.3837301724,
+        "liquidity_usd": 655134.0055,
+        "liquidity_change_from_signal_pct": 0.176,
+        "volume_h1_usd": 701393.920561726,
+        "volume_h24_usd": 3431919.5693196,
+        "volume_vs_12h_median": 6.147,
+        "buys_h1": 136,
+        "sells_h1": 64,
+        "buy_ratio": 0.68,
+        "move_from_signal_pct": -0.665,
+        "drawdown_from_12h_high_pct": -14.512,
         "source": "GECKOTERMINAL_EXACT_POOL_OHLCV"
       },
       "technicals_1h": {
-        "ema5": 0.3933037761,
-        "ema10": 0.3827001534,
-        "ema20": 0.3647208626,
-        "ema30": 0.3549358062,
-        "atr14": 0.0282513081,
-        "atr14_pct": 7.205,
-        "macd": 0.0203598536,
-        "macd_signal": 0.0153536388,
-        "macd_hist": 0.0050062148,
+        "ema5": 0.3901741352,
+        "ema10": 0.3829480289,
+        "ema20": 0.3665594221,
+        "ema30": 0.356808758,
+        "atr14": 0.0277780167,
+        "atr14_pct": 7.239,
+        "macd": 0.019385769,
+        "macd_signal": 0.0162548944,
+        "macd_hist": 0.0031308746,
         "recent_high_12h": 0.4488688391,
         "prior_high": 0.4488688391,
         "candle_count": 48
       },
       "entry_plan": {
         "zone_1": {
-          "low": 0.3699870647,
-          "high": 0.388350415
+          "low": 0.3704479214,
+          "high": 0.3885036322
         },
         "zone_2": {
-          "low": 0.352007774,
-          "high": 0.3703711243
+          "low": 0.3540593146,
+          "high": 0.3721150254
         },
         "breakout_retest_reference": 0.4488688391,
-        "invalidation_reference": 0.3337473251,
+        "invalidation_reference": 0.3359752455,
         "policy": "MANUAL_REVIEW_ONLY_DYNAMIC_LEVELS_NOT_ORDERS"
       },
       "exit_plan": {
         "target_1_recent_high": 0.4488688391,
-        "target_2_plus_1atr": 0.4771201472,
-        "target_3_plus_2atr": 0.5053714553,
+        "target_2_plus_1atr": 0.4766468558,
+        "target_3_plus_2atr": 0.5044248724,
+        "policy": "PARTIAL_PROFIT_OR_EXIT_REVIEW_ONLY_NO_AUTOMATIC_SELL"
+      }
+    },
+    {
+      "symbol": "TUT",
+      "chain": "bsc",
+      "token_address": "0xcaae2a2f939f51d97cdfa9a86e79e3f085b799f3",
+      "pair_address": "0x6dAfBf0AB4FD72e2a5C0Ad5a1ED277d3bf8a8d1f",
+      "dex_url": "https://dexscreener.com/bsc/0x6dafbf0ab4fd72e2a5c0ad5a1ed277d3bf8a8d1f",
+      "alert_id": null,
+      "signal_price_usd": 0.0295,
+      "signal_liquidity_usd": 3233029.7,
+      "signal_generated_at": null,
+      "readiness": "7/7",
+      "manual_review_only": true,
+      "automatic_buy": false,
+      "automatic_sell": false,
+      "observed_at": "2026-09-24T11:03:51.639161+00:00",
+      "trade_state": "WAIT_FOR_RETEST",
+      "state_label": "🟡 WAIT FOR RETEST",
+      "decision_reason": "The 7/7 signal is valid, but price is extended from dynamic support; do not chase.",
+      "market": {
+        "current_price_usd": 0.029983032,
+        "liquidity_usd": 3251931.843,
+        "liquidity_change_from_signal_pct": 0.585,
+        "volume_h1_usd": 387718.086483855,
+        "volume_h24_usd": 871004.595625964,
+        "volume_vs_12h_median": 26.338,
+        "buys_h1": 564,
+        "sells_h1": 100,
+        "buy_ratio": 0.8494,
+        "move_from_signal_pct": 1.637,
+        "drawdown_from_12h_high_pct": -1.078,
+        "source": "GECKOTERMINAL_EXACT_POOL_OHLCV"
+      },
+      "technicals_1h": {
+        "ema5": 0.0284006898,
+        "ema10": 0.0272775033,
+        "ema20": 0.0263288762,
+        "ema30": 0.0259681797,
+        "atr14": 0.0007905802,
+        "atr14_pct": 2.637,
+        "macd": 0.0009349532,
+        "macd_signal": 0.0003988936,
+        "macd_hist": 0.0005360596,
+        "recent_high_12h": 0.0303097707,
+        "prior_high": 0.0303097707,
+        "candle_count": 48
+      },
+      "entry_plan": {
+        "zone_1": {
+          "low": 0.0269217422,
+          "high": 0.0274356194
+        },
+        "zone_2": {
+          "low": 0.0259731151,
+          "high": 0.0264869922
+        },
+        "breakout_retest_reference": 0.0303097707,
+        "invalidation_reference": 0.0253752446,
+        "policy": "MANUAL_REVIEW_ONLY_DYNAMIC_LEVELS_NOT_ORDERS"
+      },
+      "exit_plan": {
+        "target_1_recent_high": 0.0303097707,
+        "target_2_plus_1atr": 0.0311003509,
+        "target_3_plus_2atr": 0.0318909311,
         "policy": "PARTIAL_PROFIT_OR_EXIT_REVIEW_ONLY_NO_AUTOMATIC_SELL"
       }
     }
