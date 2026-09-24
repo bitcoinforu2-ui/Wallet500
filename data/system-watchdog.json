@@ -1,28 +1,46 @@
 {
   "version": 1,
   "mode": "INDEPENDENT_OBSERVABILITY_NO_TRADING_POLICY_EFFECT",
-  "updated_at": "2026-09-24T22:09:27.231223+00:00",
-  "overall": "DEGRADED",
-  "incident_count": 3,
-  "critical_count": 0,
-  "high_count": 3,
-  "new_notifications": [],
-  "recovered_codes": [],
-  "real_alert_transitions_entered": [
-    "base:0xbaa5cc21fd487b8fcc2f632f3f4e8d37262a0842:0xb5f0b4ae66c14f7efaa9aa1468e8fc536a3e288c",
-    "bsc:0x444045b0ee1ee319a660a5e3d604ca0ffa35acaa:0x94a177b18c83123e6b6202191dcdd092e5638fcb"
+  "updated_at": "2026-09-24T22:38:17.296135+00:00",
+  "overall": "CRITICAL",
+  "incident_count": 5,
+  "critical_count": 1,
+  "high_count": 4,
+  "new_notifications": [
+    {
+      "code": "REAL_ALERT_FEED_STALE",
+      "severity": "CRITICAL",
+      "detail": "real-alerts.json age=3067.3s max=2700s"
+    },
+    {
+      "code": "SCHEDULER_TELEMETRY_STALE",
+      "severity": "HIGH",
+      "detail": "scheduler-health.json age=3066.8s max=2700s"
+    },
+    {
+      "code": "SYSTEM_HEALTH_STALE",
+      "severity": "HIGH",
+      "detail": "system-health.json age=3066.8s max=2700s"
+    }
   ],
+  "recovered_codes": [],
+  "real_alert_transitions_entered": [],
   "buy_only_policy_active": true,
   "final_buy_keys_expected": [],
   "pre_buy_delivery_gaps": [],
   "incidents": [
     {
+      "code": "REAL_ALERT_FEED_STALE",
+      "severity": "CRITICAL",
+      "detail": "real-alerts.json age=3067.3s max=2700s"
+    },
+    {
       "code": "GITHUB_ACTIONS_CAPACITY_PRESSURE",
       "severity": "HIGH",
-      "detail": "queued=21, in_progress=12, runs_today=9770",
+      "detail": "queued=21, in_progress=15, runs_today=9974",
       "queued": 21,
-      "in_progress": 12,
-      "runs_today": 9770,
+      "in_progress": 15,
+      "runs_today": 9974,
       "thresholds": {
         "queued": 8,
         "in_progress": 12,
@@ -32,64 +50,66 @@
     {
       "code": "GITHUB_ACTIONS_FAILURE_PRESSURE",
       "severity": "HIGH",
-      "detail": "workflow failures today=1824",
-      "failures_today": 1824,
+      "detail": "workflow failures today=1837",
+      "failures_today": 1837,
       "threshold": 20
     },
     {
-      "code": "REVIVAL_NEWER_RUN_FAILED_TO_PUBLISH",
+      "code": "SCHEDULER_TELEMETRY_STALE",
       "severity": "HIGH",
-      "detail": "latest Revival run failed after the currently published snapshot was generated",
-      "run_id": 36063847411,
-      "run_updated_at": "2026-09-24T21:54:57Z",
-      "published_generated_at": "2026-09-24T21:35:55.698745+00:00"
+      "detail": "scheduler-health.json age=3066.8s max=2700s"
+    },
+    {
+      "code": "SYSTEM_HEALTH_STALE",
+      "severity": "HIGH",
+      "detail": "system-health.json age=3066.8s max=2700s"
     }
   ],
   "checks": {
     "real-alerts.json": {
       "timestamp": "2026-09-24T21:47:09.998392+00:00",
-      "age_seconds": 1337.2,
+      "age_seconds": 3067.3,
       "max_age_seconds": 2700,
-      "ok": true
+      "ok": false
     },
     "system-health.json": {
       "timestamp": "2026-09-24T21:47:10.459947+00:00",
-      "age_seconds": 1336.8,
+      "age_seconds": 3066.8,
       "max_age_seconds": 2700,
-      "ok": true
+      "ok": false
     },
     "scheduler-health.json": {
       "timestamp": "2026-09-24T21:47:10.523404+00:00",
-      "age_seconds": 1336.7,
+      "age_seconds": 3066.8,
       "max_age_seconds": 2700,
-      "ok": true
+      "ok": false
     },
     "telegram-alert-report.json": {
       "timestamp": "2026-09-24T21:42:32.731726+00:00",
-      "age_seconds": 1614.5,
+      "age_seconds": 3344.6,
       "max_age_seconds": 3600,
       "ok": true
     },
     "real-alert-10usd-summary.json": {
-      "timestamp": "2026-09-24T21:53:03.209798+00:00",
-      "age_seconds": 984.0,
+      "timestamp": "2026-09-24T22:26:05.130573+00:00",
+      "age_seconds": 732.2,
       "max_age_seconds": 3600,
       "ok": true
     },
     "github_live_scan": {
-      "latest_status": "completed",
-      "latest_conclusion": "success",
+      "latest_status": "in_progress",
+      "latest_conclusion": null,
       "latest_event": "workflow_dispatch",
-      "latest_created_at": "2026-09-24T22:03:14Z",
-      "latest_updated_at": "2026-09-24T22:07:31Z",
-      "latest_run_id": 36065207945,
-      "last_success_at": "2026-09-24T22:07:31Z",
-      "last_success_run_id": 36065207945,
+      "latest_created_at": "2026-09-24T22:36:41Z",
+      "latest_updated_at": "2026-09-24T22:36:46Z",
+      "latest_run_id": 36068400770,
+      "last_success_at": "2026-09-24T22:33:29Z",
+      "last_success_run_id": 36067626251,
       "cancellations_since_success": 0,
       "latest_cancelled_run_id": null,
       "latest_hard_failure_conclusion": null,
       "latest_hard_failure_run_id": null,
-      "active_run_count": 0,
+      "active_run_count": 1,
       "ignored_non_operational_run_count": 0
     },
     "public_surface": {
@@ -99,21 +119,21 @@
     },
     "github_actions_capacity": {
       "queued": 21,
-      "in_progress": 12,
-      "runs_today": 9770,
-      "failures_today": 1824,
+      "in_progress": 15,
+      "runs_today": 9974,
+      "failures_today": 1837,
       "ok": false
     },
     "revival_publish_freshness": {
-      "latest_run_id": 36063847411,
+      "latest_run_id": 36067995196,
       "latest_status": "completed",
-      "latest_conclusion": "failure",
-      "latest_updated_at": "2026-09-24T21:54:57Z",
-      "published_generated_at": "2026-09-24T21:35:55.698745+00:00",
-      "ok": false
+      "latest_conclusion": "success",
+      "latest_updated_at": "2026-09-24T22:37:17Z",
+      "published_generated_at": "2026-09-24T22:35:45.697356+00:00",
+      "ok": true
     },
     "candidate_starvation": {
-      "zero_active_started_at": "2026-09-24T22:09:29.504902+00:00",
+      "zero_active_started_at": "2026-09-24T22:38:18.609755+00:00",
       "zero_active_age_seconds": 0.0,
       "active_qualified": 0,
       "market_scan": 384,
@@ -142,7 +162,7 @@
     "attempted": false,
     "sent": false,
     "reason": "WATCHDOG_USER_TELEGRAM_DISABLED_BY_NEAR_BUY_AND_BUY_ONLY_POLICY",
-    "suppressed_technical_notification_count": 0
+    "suppressed_technical_notification_count": 3
   },
-  "operational_guard_updated_at": "2026-09-24T22:09:29.504902+00:00"
+  "operational_guard_updated_at": "2026-09-24T22:38:18.609755+00:00"
 }
