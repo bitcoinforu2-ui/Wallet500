@@ -1,12 +1,33 @@
 {
   "version": 1,
   "mode": "INDEPENDENT_OBSERVABILITY_NO_TRADING_POLICY_EFFECT",
-  "updated_at": "2026-09-25T00:12:59.443372+00:00",
-  "overall": "DEGRADED",
-  "incident_count": 1,
-  "critical_count": 0,
-  "high_count": 1,
-  "new_notifications": [],
+  "updated_at": "2026-09-25T00:43:45.108974+00:00",
+  "overall": "CRITICAL",
+  "incident_count": 6,
+  "critical_count": 1,
+  "high_count": 5,
+  "new_notifications": [
+    {
+      "code": "REAL_ALERT_FEED_STALE",
+      "severity": "CRITICAL",
+      "detail": "real-alerts.json age=2780.7s max=2700s"
+    },
+    {
+      "code": "SCHEDULER_TELEMETRY_STALE",
+      "severity": "HIGH",
+      "detail": "scheduler-health.json age=2780.1s max=2700s"
+    },
+    {
+      "code": "SYSTEM_HEALTH_STALE",
+      "severity": "HIGH",
+      "detail": "system-health.json age=2780.2s max=2700s"
+    },
+    {
+      "code": "TELEGRAM_REPORT_STALE",
+      "severity": "HIGH",
+      "detail": "telegram-alert-report.json age=4746.8s max=3600s"
+    }
+  ],
   "recovered_codes": [],
   "real_alert_transitions_entered": [],
   "buy_only_policy_active": true,
@@ -14,47 +35,74 @@
   "pre_buy_delivery_gaps": [],
   "incidents": [
     {
+      "code": "REAL_ALERT_FEED_STALE",
+      "severity": "CRITICAL",
+      "detail": "real-alerts.json age=2780.7s max=2700s"
+    },
+    {
       "code": "GITHUB_ACTIONS_CAPACITY_PRESSURE",
       "severity": "HIGH",
-      "detail": "queued=21, in_progress=4, runs_today=53",
+      "detail": "queued=21, in_progress=11, runs_today=217",
       "queued": 21,
-      "in_progress": 4,
-      "runs_today": 53,
+      "in_progress": 11,
+      "runs_today": 217,
       "thresholds": {
         "queued": 8,
         "in_progress": 12,
         "runs_today": 1500
       }
+    },
+    {
+      "code": "GITHUB_ACTIONS_FAILURE_PRESSURE",
+      "severity": "HIGH",
+      "detail": "workflow failures today=27",
+      "failures_today": 27,
+      "threshold": 20
+    },
+    {
+      "code": "SCHEDULER_TELEMETRY_STALE",
+      "severity": "HIGH",
+      "detail": "scheduler-health.json age=2780.1s max=2700s"
+    },
+    {
+      "code": "SYSTEM_HEALTH_STALE",
+      "severity": "HIGH",
+      "detail": "system-health.json age=2780.2s max=2700s"
+    },
+    {
+      "code": "TELEGRAM_REPORT_STALE",
+      "severity": "HIGH",
+      "detail": "telegram-alert-report.json age=4746.8s max=3600s"
     }
   ],
   "checks": {
     "real-alerts.json": {
       "timestamp": "2026-09-24T23:57:24.454269+00:00",
-      "age_seconds": 935.0,
+      "age_seconds": 2780.7,
       "max_age_seconds": 2700,
-      "ok": true
+      "ok": false
     },
     "system-health.json": {
       "timestamp": "2026-09-24T23:57:24.949935+00:00",
-      "age_seconds": 934.5,
+      "age_seconds": 2780.2,
       "max_age_seconds": 2700,
-      "ok": true
+      "ok": false
     },
     "scheduler-health.json": {
       "timestamp": "2026-09-24T23:57:25.022420+00:00",
-      "age_seconds": 934.4,
+      "age_seconds": 2780.1,
       "max_age_seconds": 2700,
-      "ok": true
+      "ok": false
     },
     "telegram-alert-report.json": {
       "timestamp": "2026-09-24T23:24:38.323950+00:00",
-      "age_seconds": 2901.1,
+      "age_seconds": 4746.8,
       "max_age_seconds": 3600,
-      "ok": true
+      "ok": false
     },
     "real-alert-10usd-summary.json": {
-      "timestamp": "2026-09-24T23:50:20.070383+00:00",
-      "age_seconds": 1359.4,
+      "timestamp": "2026-09-25T00:34:14.911817+00:00",
+      "age_seconds": 570.2,
       "max_age_seconds": 3600,
       "ok": true
     },
@@ -62,11 +110,11 @@
       "latest_status": "completed",
       "latest_conclusion": "success",
       "latest_event": "workflow_dispatch",
-      "latest_created_at": "2026-09-25T00:08:34Z",
-      "latest_updated_at": "2026-09-25T00:11:44Z",
-      "latest_run_id": 36076152348,
-      "last_success_at": "2026-09-25T00:11:44Z",
-      "last_success_run_id": 36076152348,
+      "latest_created_at": "2026-09-25T00:31:33Z",
+      "latest_updated_at": "2026-09-25T00:35:39Z",
+      "latest_run_id": 36077937257,
+      "last_success_at": "2026-09-25T00:35:39Z",
+      "last_success_run_id": 36077937257,
       "cancellations_since_success": 0,
       "latest_cancelled_run_id": null,
       "latest_hard_failure_conclusion": null,
@@ -77,25 +125,25 @@
     "public_surface": {
       "dashboard_ok": true,
       "real_feed_ok": true,
-      "real_feed_generated_at": "2026-09-24T23:18:32.236006+00:00"
+      "real_feed_generated_at": "2026-09-24T23:57:24.454269+00:00"
     },
     "github_actions_capacity": {
       "queued": 21,
-      "in_progress": 4,
-      "runs_today": 53,
-      "failures_today": 16,
+      "in_progress": 11,
+      "runs_today": 217,
+      "failures_today": 27,
       "ok": false
     },
     "revival_publish_freshness": {
-      "latest_run_id": 36076156099,
-      "latest_status": "completed",
-      "latest_conclusion": "success",
-      "latest_updated_at": "2026-09-25T00:11:45Z",
-      "published_generated_at": "2026-09-25T00:09:41.950507+00:00",
+      "latest_run_id": 36078739851,
+      "latest_status": "in_progress",
+      "latest_conclusion": null,
+      "latest_updated_at": "2026-09-25T00:42:10Z",
+      "published_generated_at": "2026-09-25T00:26:49.052696+00:00",
       "ok": true
     },
     "candidate_starvation": {
-      "zero_active_started_at": "2026-09-25T00:13:01.145521+00:00",
+      "zero_active_started_at": "2026-09-25T00:43:46.952121+00:00",
       "zero_active_age_seconds": 0.0,
       "active_qualified": 0,
       "market_scan": 384,
@@ -124,7 +172,7 @@
     "attempted": false,
     "sent": false,
     "reason": "WATCHDOG_USER_TELEGRAM_DISABLED_BY_NEAR_BUY_AND_BUY_ONLY_POLICY",
-    "suppressed_technical_notification_count": 0
+    "suppressed_technical_notification_count": 4
   },
-  "operational_guard_updated_at": "2026-09-25T00:13:01.145521+00:00"
+  "operational_guard_updated_at": "2026-09-25T00:43:46.952121+00:00"
 }
