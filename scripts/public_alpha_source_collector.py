@@ -19,7 +19,7 @@ INBOX = ROOT / "data/alpha-caller-inbox.json"
 UA = "Wallet500-PublicAlphaCollector/1.2"
 
 SOL_LINK = re.compile(r"(?:/terminal/solana/|/t/)([1-9A-HJ-NP-Za-km-z]{32,44})")
-BOTIFY_LAUNCH = re.compile(r"/launches/([1-9A-HJ-NP-Za-km-z]{32,44})(?:[?#<]|$)")
+BOTIFY_LAUNCH = re.compile(r"/launches/([1-9A-HJ-NP-Za-km-z]{32,44})")
 EVM_LINK = re.compile(
     r"/terminal/(ethereum|eth|base|arbitrum|bsc|optimism|polygon|arc)/(0x[a-fA-F0-9]{40})"
 )
