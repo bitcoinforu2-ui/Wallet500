@@ -19,6 +19,7 @@ INBOX = ROOT / "data/alpha-caller-inbox.json"
 UA = "Wallet500-PublicAlphaCollector/1.2"
 
 SOL_LINK = re.compile(r"(?:/terminal/solana/|/t/)([1-9A-HJ-NP-Za-km-z]{32,44})")
+BOTIFY_LAUNCH = re.compile(r"/launches/([1-9A-HJ-NP-Za-km-z]{32,44})(?:[?#<]|$)")
 EVM_LINK = re.compile(
     r"/terminal/(ethereum|eth|base|arbitrum|bsc|optimism|polygon|arc)/(0x[a-fA-F0-9]{40})"
 )
@@ -66,6 +67,8 @@ def extract_candidates(body: str, source: dict) -> list[tuple[str, str]]:
         rows.append((network, m.group(2)))
     rows.extend(("evm", m.group(1)) for m in EVM_GENERIC_LINK.finditer(body))
     rows.extend(("solana", m.group(1)) for m in SOL_LINK.finditer(body))
+    if source.get("extract_botify_launch_routes"):
+        rows.extend(("solana", m.group(1)) for m in BOTIFY_LAUNCH.finditer(body))
     if source.get("extract_raw_contracts"):
         visible = plain_text(body)
         rows.extend(("evm", m.group(1)) for m in EVM_RAW.finditer(visible))
@@ -136,6 +139,29 @@ def source_metadata(source: dict) -> dict:
         "historical_evidence_grade": str(source.get("historical_evidence_grade") or "UNVERIFIED_FORWARD_LEARNING"),
         "discovery_priority": str(source.get("priority") or "NORMAL"),
     }
+
+
+def select_unseen_pairs(
+    unseen_pairs: list[tuple[str, str]], source: dict
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Select a bounded batch without silently losing a provider backlog."""
+    max_new = max(1, int(source.get("max_new_per_scan") or 250))
+    if str(source.get("selection_order") or "tail").lower() == "head":
+        selected = unseen_pairs[:max_new]
+    else:
+        selected = unseen_pairs[-max_new:]
+    mark_seen = selected if source.get("retain_unselected_backlog") else unseen_pairs
+    return selected, mark_seen
+
+
+def source_url_for_contract(source: dict, contract: str) -> str:
+    template = str(source.get("source_url_template") or "").strip()
+    if template:
+        try:
+            return template.format(contract=contract)
+        except (KeyError, ValueError):
+            pass
+    return str(source.get("url") or "")
 
 
 def telegram_discoveries(body: str, source: dict, observed_at: str) -> tuple[list[dict], dict]:
@@ -295,15 +321,14 @@ def main() -> None:
             for network, contract in candidates
             if f"{sid}:{network}:{contract.lower()}" not in seen
         ]
-        max_new = max(1, int(source.get("max_new_per_scan") or 250))
-        selected_pairs = unseen_pairs[-max_new:]
+        selected_pairs, pairs_to_mark_seen = select_unseen_pairs(unseen_pairs, source)
         selected_keys = {(n, c.lower()) for n, c in selected_pairs}
 
-        for network, contract in unseen_pairs:
+        for network, contract in pairs_to_mark_seen:
             key = f"{sid}:{network}:{contract.lower()}"
             seen[key] = {
                 "first_seen_at": observed,
-                "source_url": source["url"],
+                "source_url": source_url_for_contract(source, contract),
                 "ingested": (network, contract.lower()) in selected_keys,
             }
 
@@ -319,7 +344,7 @@ def main() -> None:
                 "contract": contract,
                 "network": network,
                 "called_at": observed,
-                "source_url": source["url"],
+                "source_url": source_url_for_contract(source, contract),
                 "caller_strength": float(source.get("initial_strength") or 25),
                 "caller_confidence": min(45.0, float(source.get("confidence_cap") or 45)),
                 "timestamp_semantics": "WALLET500_FIRST_SEEN_NOT_ORIGINAL_CALL",
@@ -340,7 +365,8 @@ def main() -> None:
             "raw_candidates": len(candidates),
             "unseen_contracts": len(unseen_pairs),
             "new_discoveries": accepted,
-            "backfill_suppressed": max(0, len(unseen_pairs) - len(selected_pairs)),
+            "backfill_suppressed": 0 if source.get("retain_unselected_backlog") else max(0, len(unseen_pairs) - len(selected_pairs)),
+            "backlog_pending": max(0, len(unseen_pairs) - len(selected_pairs)) if source.get("retain_unselected_backlog") else 0,
             "timestamp_semantics": "wallet500_first_seen",
             "signal_role": role,
             "source_class": metadata["source_class"],
