@@ -191,6 +191,7 @@ def live_exact_pair(t, max_spread):
 
     gt_snapshot = None
     ds_snapshot = None
+    ds_reserve_snapshot = None
     gt_error = None
     ds_error = None
 
@@ -247,9 +248,31 @@ def live_exact_pair(t, max_spread):
             raise RuntimeError("EXACT_PAIR_MISSING_DS")
         base = norm_addr(canonical_chain, (p.get("baseToken") or {}).get("address"))
         quote = norm_addr(canonical_chain, (p.get("quoteToken") or {}).get("address"))
+        liquidity_obj = p.get("liquidity") or {}
+        base_reserve = float(liquidity_obj["base"]) if liquidity_obj.get("base") is not None else None
+        quote_reserve = float(liquidity_obj["quote"]) if liquidity_obj.get("quote") is not None else None
         if ca == base:
+            ds_reserve_snapshot = {
+                "pool_token_reserve": base_reserve,
+                "pool_quote_reserve": quote_reserve,
+                "pool_quote_symbol": (p.get("quoteToken") or {}).get("symbol"),
+                "pool_quote_address": quote,
+                "pool_tracked_token_side": "BASE",
+                "pool_reserve_source": "dexscreener",
+            }
             dp = float(p.get("priceUsd") or 0)
         elif ca == quote:
+            # Reserve composition is still identity-safe here because the tracked
+            # token side is explicit, even though DexScreener priceUsd belongs to
+            # baseToken and therefore cannot be used as the tracked token price.
+            ds_reserve_snapshot = {
+                "pool_token_reserve": quote_reserve,
+                "pool_quote_reserve": base_reserve,
+                "pool_quote_symbol": (p.get("baseToken") or {}).get("symbol"),
+                "pool_quote_address": base,
+                "pool_tracked_token_side": "QUOTE",
+                "pool_reserve_source": "dexscreener",
+            }
             # DexScreener priceUsd is the USD price of baseToken. Treating it as
             # the tracked quote token's price would silently corrupt price identity.
             # Fail this provider closed; GeckoTerminal may still prove the quote
@@ -310,6 +333,7 @@ def live_exact_pair(t, max_spread):
             "price_sources": ["geckoterminal", "dexscreener"],
             "single_source_degraded": False,
             "observed_at": now_iso(),
+            **(ds_reserve_snapshot or {}),
         }
 
     snap = dict(gt_snapshot or ds_snapshot)
@@ -324,6 +348,7 @@ def live_exact_pair(t, max_spread):
         "single_source_degraded": True,
         "single_source_error": ds_error if gt_snapshot else gt_error,
         "observed_at": now_iso(),
+        **(ds_reserve_snapshot or {}),
     }
 
 def money(v):
@@ -763,6 +788,113 @@ def order_flow_ratio(snapshot):
         return 1.0
 
 
+def pool_reserve_flow_sensor(live, previous, policy=None):
+    """Detect directional AMM reserve rotation without confusing LP adds/removals.
+
+    For the tracked token, accumulation pressure means token units leave the exact
+    pool while quote units enter it. Distribution is the mirror image. Changes
+    where both reserves move in the same direction are treated as LP composition
+    changes, not trading direction. All comparisons are exact-pair and fail closed
+    when either reserve side is missing or non-positive.
+    """
+    policy = policy or {}
+    if not bool(policy.get("pool_reserve_flow_sensor_enabled", True)):
+        return {"status": "DISABLED", "direction": "NEUTRAL", "severity": "NONE", "triggers": [], "alert_eligible": False}
+
+    def _v(source, key):
+        try:
+            value = float(source.get(key))
+        except (TypeError, ValueError, AttributeError):
+            return None
+        return value if value > 0 else None
+
+    current_token = _v(live, "pool_token_reserve")
+    current_quote = _v(live, "pool_quote_reserve")
+    previous_token = _v(previous or {}, "pool_token_reserve")
+    previous_quote = _v(previous or {}, "pool_quote_reserve")
+    base = {
+        "status": "BASELINE" if current_token and current_quote else "UNAVAILABLE",
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "triggers": [],
+        "alert_eligible": False,
+        "token_reserve": current_token,
+        "quote_reserve": current_quote,
+        "quote_symbol": live.get("pool_quote_symbol"),
+        "quote_address": live.get("pool_quote_address"),
+        "tracked_token_side": live.get("pool_tracked_token_side"),
+        "source": live.get("pool_reserve_source"),
+        "token_change_pct": None,
+        "quote_change_pct": None,
+        "directional_magnitude_pct": None,
+    }
+    if current_token is None or current_quote is None or previous_token is None or previous_quote is None:
+        return base
+
+    token_change = pct_delta(current_token, previous_token)
+    quote_change = pct_delta(current_quote, previous_quote)
+    if token_change is None or quote_change is None:
+        return base
+
+    base["status"] = "OBSERVED"
+    base["token_change_pct"] = round(token_change, 4)
+    base["quote_change_pct"] = round(quote_change, 4)
+
+    threshold = max(1.0, float(policy.get("pool_reserve_flow_min_directional_pct", 12.0)))
+    strong = max(threshold, float(policy.get("pool_reserve_flow_strong_pct", 25.0)))
+    extreme = max(strong, float(policy.get("pool_reserve_flow_extreme_pct", 50.0)))
+
+    direction = "NEUTRAL"
+    magnitude = 0.0
+    if token_change <= -threshold and quote_change >= threshold:
+        direction = "ACCUMULATION"
+        magnitude = min(abs(token_change), abs(quote_change))
+    elif token_change >= threshold and quote_change <= -threshold:
+        direction = "DISTRIBUTION"
+        magnitude = min(abs(token_change), abs(quote_change))
+    else:
+        # Same-direction moves are normally LP add/remove or provider rebasing,
+        # not directional trading pressure, so never turn them into a BUY/SELL cue.
+        base["status"] = "NON_DIRECTIONAL_RESERVE_SHIFT"
+        return base
+
+    severity = "EXTREME" if magnitude >= extreme else "STRONG" if magnitude >= strong else "ELEVATED"
+    trigger = f"POOL_RESERVE_{direction}_{severity}"
+    telegram_floor = str(policy.get("pool_reserve_flow_telegram_min_severity", "STRONG")).upper()
+    rank = {"NONE": 0, "ELEVATED": 1, "STRONG": 2, "EXTREME": 3}
+    telegram_enabled = bool(policy.get("allow_direct_pool_reserve_anomaly_alerts", False))
+    alert_eligible = telegram_enabled and rank.get(severity, 0) >= rank.get(telegram_floor, 2)
+    base.update({
+        "status": "DIRECTIONAL_FLOW",
+        "direction": direction,
+        "severity": severity,
+        "triggers": [trigger],
+        "alert_eligible": alert_eligible,
+        "directional_magnitude_pct": round(magnitude, 4),
+    })
+    return base
+
+
+def pool_reserve_alert_reason(last_reserve_alert, sensor):
+    if not sensor.get("alert_eligible"):
+        return None
+    current_direction = str(sensor.get("direction") or "NEUTRAL").upper()
+    current_severity = str(sensor.get("severity") or "NONE").upper()
+    if current_direction not in {"ACCUMULATION", "DISTRIBUTION"}:
+        return None
+    previous = last_reserve_alert or {}
+    previous_direction = str(previous.get("direction") or "").upper()
+    previous_severity = str(previous.get("severity") or "NONE").upper()
+    ranks = {"NONE": 0, "ELEVATED": 1, "STRONG": 2, "EXTREME": 3}
+    if not previous_direction:
+        return f"POOL_RESERVE_ANOMALY:{current_direction}:{current_severity}:FIRST"
+    if current_direction != previous_direction:
+        return f"POOL_RESERVE_ANOMALY:{current_direction}:{current_severity}:DIRECTION_FLIP"
+    if ranks.get(current_severity, 0) > ranks.get(previous_severity, 0):
+        return f"POOL_RESERVE_ANOMALY:{current_direction}:{current_severity}:ESCALATION"
+    return None
+
+
 def alpha_telegram_confirmations(live, fusion, triggers, reasons, policy):
     confirmations = []
     score = fusion.get("score")
@@ -1199,6 +1331,7 @@ def main():
     intel_index, intel_doc = load_intelligence()
     intel_rows = []
     sent_alerts = 0
+    reserve_flow_alerts = 0
     internal_spot_escalations = 0
     suppressed_alerts = 0
     suppressed_low_confirmation_alerts = 0
@@ -1281,7 +1414,8 @@ def main():
         pl = float(prev.get("liquidity") or 0)
         pv = float(prev.get("volume_h1") or 0)
         cex_sensor = spot_cex_sensor(t, prev)
-        tr = list(cex_sensor["triggers"])
+        reserve_sensor = pool_reserve_flow_sensor(live, prev, alert_policy)
+        tr = list(cex_sensor["triggers"]) + list(reserve_sensor.get("triggers") or [])
         if pp > 0:
             for lv in t.get("up_levels") or []:
                 if pp < float(lv) <= live["price"]:
@@ -1380,8 +1514,20 @@ def main():
             "cex_scan_volume_multiple": cex_sensor["scan_multiple"],
             "positive_gainer_rank": cex_sensor["current_rank"],
             "cex_led_revival": cex_sensor["cex_led"],
+            "pool_token_reserve": live.get("pool_token_reserve"),
+            "pool_quote_reserve": live.get("pool_quote_reserve"),
+            "pool_quote_symbol": live.get("pool_quote_symbol"),
+            "pool_quote_address": live.get("pool_quote_address"),
+            "pool_tracked_token_side": live.get("pool_tracked_token_side"),
+            "pool_reserve_source": live.get("pool_reserve_source"),
+            "pool_reserve_flow_direction": reserve_sensor.get("direction"),
+            "pool_reserve_flow_severity": reserve_sensor.get("severity"),
+            "pool_reserve_token_change_pct": reserve_sensor.get("token_change_pct"),
+            "pool_reserve_quote_change_pct": reserve_sensor.get("quote_change_pct"),
+            "pool_reserve_directional_magnitude_pct": reserve_sensor.get("directional_magnitude_pct"),
             "intelligence_fusion": fusion,
             "last_alert": last_alert,
+            "last_reserve_alert": prev.get("last_reserve_alert") or {},
             "last_internal_escalation": prev.get("last_internal_escalation") or {},
             **quarter_wave,
         }
@@ -1415,6 +1561,16 @@ def main():
                 "anchor_repaired": current_state.get("quarter_wave_anchor_repaired"),
                 "trigger_price_is_threshold_estimate": current_state.get("quarter_wave_trigger_price_is_threshold_estimate"),
             } if t.get("dynamic_spot_candidate") else None,
+            "pool_reserve_flow": {
+                "direction": reserve_sensor.get("direction"),
+                "severity": reserve_sensor.get("severity"),
+                "alert_eligible": bool(reserve_sensor.get("alert_eligible")),
+                "token_change_pct": reserve_sensor.get("token_change_pct"),
+                "quote_change_pct": reserve_sensor.get("quote_change_pct"),
+                "directional_magnitude_pct": reserve_sensor.get("directional_magnitude_pct"),
+                "quote_symbol": reserve_sensor.get("quote_symbol"),
+                "source": reserve_sensor.get("source"),
+            },
             "market_data_quality": {
                 "price_source_count": current_state.get("price_source_count"),
                 "price_sources": current_state.get("price_sources"),
@@ -1429,6 +1585,9 @@ def main():
         if t.get("dynamic_spot_candidate"):
             comparison_snapshot = prev.get("last_internal_escalation") or last_alert
         reasons = material_change_reasons(comparison_snapshot, live, fusion, tr, alert_policy)
+        reserve_reason = pool_reserve_alert_reason(prev.get("last_reserve_alert"), reserve_sensor)
+        if reserve_reason:
+            reasons = [reserve_reason] + [x for x in reasons if x != reserve_reason]
         print(key, "VERIFIED", current_state, "TRIGGERS", tr, "ALERT_REASONS", reasons)
 
         if not reasons:
@@ -1438,7 +1597,9 @@ def main():
             continue
 
         hard_risk = bool(fusion.get("hard_risks"))
-        risk = hard_risk or any(x.startswith("LOSS_") or "LIQUIDITY_DROP" in x for x in tr)
+        reserve_direct_alert = bool(reserve_reason)
+        reserve_distribution_risk = reserve_direct_alert and reserve_sensor.get("direction") == "DISTRIBUTION"
+        risk = hard_risk or reserve_distribution_risk or any(x.startswith("LOSS_") or "LIQUIDITY_DROP" in x for x in tr)
 
         alpha_confirmations = []
         if t.get("dynamic_alpha_candidate"):
@@ -1465,7 +1626,13 @@ def main():
                 )
                 continue
 
-        if risk:
+        if reserve_direct_alert:
+            label = (
+                "POOL_DISTRIBUTION_ANOMALY"
+                if reserve_sensor.get("direction") == "DISTRIBUTION"
+                else "POOL_ACCUMULATION_ANOMALY"
+            )
+        elif risk:
             label = "RISK"
         elif t.get("dynamic_buy_candidate"):
             label = "BUY_ZONE_CLOSE_WATCH"
@@ -1479,7 +1646,12 @@ def main():
             label = "REVIVAL_BUILDING"
         else:
             label = "INTELLIGENCE_MATERIAL_CHANGE"
-        icon = "⚠️" if risk else "🔥"
+        icon = (
+            "🔴" if reserve_direct_alert and reserve_sensor.get("direction") == "DISTRIBUTION"
+            else "🟢" if reserve_direct_alert and reserve_sensor.get("direction") == "ACCUMULATION"
+            else "⚠️" if risk
+            else "🔥"
+        )
         score_text = "n/a" if fusion.get("score") is None else f"{float(fusion['score']):.1f}/100"
         intel_line = (
             f"Intelligence Fusion: {score_text} · {fusion.get('label')} · "
@@ -1494,6 +1666,17 @@ def main():
         ]
         if t.get("dynamic_alpha_candidate") and alpha_confirmations:
             lines.append("CONFIRMATION: " + " | ".join(alpha_confirmations[:4]))
+        if reserve_direct_alert:
+            lines.append(
+                "POOL RESERVE FLOW: "
+                f"{reserve_sensor.get('direction')} {reserve_sensor.get('severity')} | "
+                f"tracked-token reserve {float(reserve_sensor.get('token_change_pct') or 0):+.1f}% | "
+                f"{reserve_sensor.get('quote_symbol') or 'quote'} reserve {float(reserve_sensor.get('quote_change_pct') or 0):+.1f}%"
+            )
+            lines.append(
+                "POOL FLOW ALERT ONLY — this is an exact-pair accumulation/distribution anomaly, "
+                "not an automatic BUY/SELL instruction."
+            )
         if current_state.get("discovery_price") is not None:
             lines.append(f"DISCOVERY PRICE: ${float(current_state['discovery_price']):.8f}")
         lines.extend([
@@ -1511,7 +1694,7 @@ def main():
             f"Pair: {t['pair']}",
             str(t.get("dex_url") or ""),
         ])
-        if t.get("dynamic_spot_candidate"):
+        if t.get("dynamic_spot_candidate") and not reserve_direct_alert:
             snap = alert_snapshot(live, fusion, tr)
             snap.update({
                 "cex_quote_volume_24h_usd": cex_sensor["current_volume_usd"],
@@ -1531,6 +1714,20 @@ def main():
         send("\n".join(lines))
         st[key].pop("last_suppressed_alert", None)
         st[key]["last_alert"] = alert_snapshot(live, fusion, tr)
+        if reserve_direct_alert:
+            st[key]["last_reserve_alert"] = {
+                "sent_at": live.get("observed_at"),
+                "direction": reserve_sensor.get("direction"),
+                "severity": reserve_sensor.get("severity"),
+                "token_reserve": reserve_sensor.get("token_reserve"),
+                "quote_reserve": reserve_sensor.get("quote_reserve"),
+                "token_change_pct": reserve_sensor.get("token_change_pct"),
+                "quote_change_pct": reserve_sensor.get("quote_change_pct"),
+                "directional_magnitude_pct": reserve_sensor.get("directional_magnitude_pct"),
+                "quote_symbol": reserve_sensor.get("quote_symbol"),
+                "source": reserve_sensor.get("source"),
+            }
+            reserve_flow_alerts += 1
         sent_alerts += 1
 
     state["updated_at"] = now_iso()
@@ -1542,6 +1739,16 @@ def main():
         "alert_policy": alert_policy,
         "fusion_snapshot_generated_at": intel_doc.get("generated_at") if isinstance(intel_doc, dict) else None,
         "sent_alerts": sent_alerts,
+        "reserve_flow_alerts": reserve_flow_alerts,
+        "pool_reserve_flow_policy": {
+            "sensor_enabled": bool(alert_policy.get("pool_reserve_flow_sensor_enabled", True)),
+            "telegram_exception_enabled": bool(alert_policy.get("allow_direct_pool_reserve_anomaly_alerts", False)),
+            "min_directional_pct": float(alert_policy.get("pool_reserve_flow_min_directional_pct", 12.0)),
+            "strong_pct": float(alert_policy.get("pool_reserve_flow_strong_pct", 25.0)),
+            "extreme_pct": float(alert_policy.get("pool_reserve_flow_extreme_pct", 50.0)),
+            "telegram_min_severity": str(alert_policy.get("pool_reserve_flow_telegram_min_severity", "STRONG")),
+            "same_direction_lp_moves_are_directional": False,
+        },
         "internal_spot_escalations": internal_spot_escalations,
         "spot_telegram_policy": "INTERNAL_ONLY_UNTIL_CANONICAL_BUY",
         "suppressed_repeated_alerts": suppressed_alerts,
