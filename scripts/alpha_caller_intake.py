@@ -82,6 +82,33 @@ def liquid_exact_pairs(pairs, contract: str, allowed_chain: str | None = None):
     return exact
 
 
+def signal_role_semantics(role: str) -> dict:
+    """Map source roles to evidence semantics without conflating discovery with conviction."""
+    if role == "confirmation_only":
+        return {
+            "event_kind": "alpha_source_market_confirmation",
+            "direction": 0,
+            "strength_credit": True,
+            "status": "GATED_CONFIRMATION_ONLY",
+            "reason": "CONFIRMATION_ONLY_DOES_NOT_CREATE_BUY_SIGNAL",
+        }
+    if role == "candidate_discovery_no_score":
+        return {
+            "event_kind": "alpha_source_candidate_seed",
+            "direction": 0,
+            "strength_credit": False,
+            "status": "GATED_RESEARCH_CANDIDATE",
+            "reason": "DISCOVERY_SEED_ONLY_NO_SCORE_CREDIT",
+        }
+    return {
+        "event_kind": "verified_alpha_caller_call",
+        "direction": 1,
+        "strength_credit": True,
+        "status": "GATED_RESEARCH_CANDIDATE",
+        "reason": "CALLER_SIGNAL_DOES_NOT_BYPASS_WALLET500_GATES",
+    }
+
+
 def main() -> None:
     inbox = json.loads(INBOX.read_text()) if INBOX.exists() else {"calls": []}
     calls = inbox.get("calls") or []
@@ -172,20 +199,17 @@ def main() -> None:
         liquidity, pair = max(liquid, key=lambda item: item[0])
         pair_address = str(pair.get("pairAddress") or "")
         symbol = str(call.get("symbol") or (pair.get("baseToken") or {}).get("symbol") or "UNKNOWN").upper()
-        event_kind = "alpha_source_market_confirmation" if role == "confirmation_only" else "verified_alpha_caller_call"
-        direction = 0 if role == "confirmation_only" else 1
+        semantics = signal_role_semantics(role)
+        event_kind = semantics["event_kind"]
+        direction = semantics["direction"]
         result.update(
             {
-                "status": "GATED_CONFIRMATION_ONLY" if role == "confirmation_only" else "GATED_RESEARCH_CANDIDATE",
+                "status": semantics["status"],
                 "pair": pair_address,
                 "liquidity_usd": liquidity,
                 "dex_url": pair.get("url"),
                 "symbol": symbol,
-                "reasons": [
-                    "CONFIRMATION_ONLY_DOES_NOT_CREATE_BUY_SIGNAL"
-                    if role == "confirmation_only"
-                    else "CALLER_SIGNAL_DOES_NOT_BYPASS_WALLET500_GATES"
-                ],
+                "reasons": [semantics["reason"]],
             }
         )
 
@@ -202,7 +226,7 @@ def main() -> None:
                     "family": "attention_social",
                     "kind": event_kind,
                     "direction": direction,
-                    "strength": float(call.get("caller_strength") or 25),
+                    "strength": float(call.get("caller_strength") or 25) if semantics["strength_credit"] else 0.0,
                     "confidence": float(call.get("caller_confidence") or 30),
                     "source": source,
                     "subject": caller,
