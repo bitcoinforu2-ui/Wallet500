@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 import urllib.parse
@@ -13,6 +14,7 @@ import unified_watch_engine as engine
 ROOT = Path(__file__).resolve().parents[1]
 HTTP_STATE = ROOT / "data/http-resilience-state.json"
 REPORT = ROOT / "data/unified-watch-intelligence-report.json"
+POOL_RESERVE_OUTBOX = ROOT / "data/pool-reserve-flow-outbox.json"
 
 _ORIGINAL_LOAD_INTELLIGENCE = engine.load_intelligence
 _ORIGINAL_FUSION_SUMMARY = engine.fusion_summary
@@ -25,6 +27,7 @@ _DEEP_FAILURES = []
 _DEEP_DONE = set()
 _TARGETS_BY_IDENTITY = {}
 _PREVIOUS_STATE = {"tokens": {}}
+_POOL_RESERVE_MESSAGES = []
 
 
 class _IdentityAwareIntelIndex(dict):
@@ -424,9 +427,89 @@ def identity_key_in_deep(fusion):
     return str(fusion.get("_identity_key") or "") in _DEEP_DONE
 
 
+def _pool_reserve_event_from_message(msg):
+    text = str(msg or "")
+    lines = text.splitlines()
+    header = lines[0] if lines else ""
+    if "POOL_DISTRIBUTION_ANOMALY" in header:
+        direction = "DISTRIBUTION"
+    elif "POOL_ACCUMULATION_ANOMALY" in header:
+        direction = "ACCUMULATION"
+    else:
+        return None
+
+    fields = {}
+    for line in lines:
+        if line.startswith("CA: "):
+            fields["contract"] = line[4:].strip()
+        elif line.startswith("Pair: "):
+            fields["pair"] = line[6:].strip()
+        elif line.startswith("OBSERVED: "):
+            fields["observed_at"] = line[10:].strip()
+        elif line.startswith("POOL RESERVE FLOW: "):
+            parts = line[len("POOL RESERVE FLOW: "):].split("|", 1)[0].strip().split()
+            if len(parts) >= 2:
+                fields["severity"] = parts[1].upper()
+
+    event_id = hashlib.sha256(text.encode("utf-8")).hexdigest()[:24]
+    return {
+        "event_id": event_id,
+        "queued_at": engine.now_iso(),
+        "direction": direction,
+        "severity": fields.get("severity") or "UNKNOWN",
+        "contract": fields.get("contract"),
+        "pair": fields.get("pair"),
+        "observed_at": fields.get("observed_at"),
+        "message": text,
+    }
+
+
+def _persist_pool_reserve_outbox():
+    try:
+        existing = json.loads(POOL_RESERVE_OUTBOX.read_text()) if POOL_RESERVE_OUTBOX.exists() else {}
+    except Exception:
+        existing = {}
+    rows = [x for x in (existing.get("events") or []) if isinstance(x, dict) and x.get("event_id")]
+    by_id = {str(x["event_id"]): x for x in rows}
+    for event in _POOL_RESERVE_MESSAGES:
+        by_id.setdefault(str(event["event_id"]), event)
+    # Keep a bounded durable queue so failed Telegram delivery can retry on a later run.
+    events = list(by_id.values())[-200:]
+    payload = {
+        "version": 1,
+        "updated_at": engine.now_iso(),
+        "mode": "EXPLICIT_POOL_RESERVE_ANOMALY_OUTBOX",
+        "events": events,
+        "count": len(events),
+    }
+    POOL_RESERVE_OUTBOX.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+    return payload
+
+
 def strict_send(msg):
-    # Defense in depth: this runner has no authority to deliver Telegram.
-    # Even if a future code path reaches send(), fail closed and keep the event internal.
+    # Defense in depth: generic Unified Watch events still have no direct Telegram
+    # authority. The one explicit exception is queued into a durable outbox and is
+    # delivered by a separate exact-purpose dispatcher with its own ledger.
+    event = _pool_reserve_event_from_message(msg)
+    if event:
+        if not any(x.get("event_id") == event["event_id"] for x in _POOL_RESERVE_MESSAGES):
+            _POOL_RESERVE_MESSAGES.append(event)
+        print(
+            "TELEGRAM_POOL_RESERVE_OUTBOX_QUEUED",
+            json.dumps(
+                {
+                    "event_id": event["event_id"],
+                    "direction": event["direction"],
+                    "severity": event["severity"],
+                    "contract": event.get("contract"),
+                    "pair": event.get("pair"),
+                },
+                ensure_ascii=False,
+            ),
+        )
+        _ACTIONABILITY_STATS["pool_reserve_outbox_queued"] += 1
+        return None
+
     header = str(msg).splitlines()[0] if str(msg).splitlines() else "WALLET500"
     print("TELEGRAM_SEND_BLOCKED_FINAL_BUY_ONLY", header)
     _ACTIONABILITY_STATS["send_blocked_final_buy_only"] += 1
@@ -439,11 +522,18 @@ def _write_actionability_report(policy):
     except Exception:
         report = {}
     report["version"] = max(int(report.get("version") or 0), 5)
-    report["mode"] = "ENGINE_ONLY_FINAL_BUY_TELEGRAM_SUPPRESSED"
-    report["telegram_mode"] = "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE"
+    report["mode"] = "ENGINE_FINAL_BUY_PLUS_EXPLICIT_POOL_RESERVE_OUTBOX"
+    report["telegram_mode"] = "FINAL_BUY_PLUS_EXPLICIT_POOL_RESERVE_ANOMALY"
     report["actionable_required"] = False
     report["research_watch_telegram_suppressed"] = True
     report["risk_telegram_suppressed"] = bool(policy.get("telegram_buy_side_only", True))
+    report["pool_reserve_anomaly_telegram_exception"] = {
+        "enabled": bool(policy.get("allow_direct_pool_reserve_anomaly_alerts", False)),
+        "min_severity": str(policy.get("pool_reserve_flow_telegram_min_severity", "STRONG")),
+        "directions": ["ACCUMULATION", "DISTRIBUTION"],
+        "delivery_path": "DURABLE_OUTBOX_SEPARATE_LEDGER",
+        "automatic_trade": False,
+    }
     report["actionability_policy"] = {
         "min_fusion_score": float(policy.get("real_alert_min_fusion_score", 55.0)),
         "min_positive_families": int(policy.get("real_alert_min_positive_families", 3)),
@@ -538,6 +628,8 @@ def main():
         _PREVIOUS_STATE = {"tokens": {}}
 
     rc = engine.main()
+    outbox = _persist_pool_reserve_outbox()
+    _ACTIONABILITY_STATS["pool_reserve_outbox_total"] = int(outbox.get("count") or 0)
     _write_actionability_report(policy)
     HTTP_STATE.write_text(
         json.dumps(
@@ -547,7 +639,8 @@ def main():
                 "component": "unified_watch",
                 "strategy": "STRICT_EXACT_PAIR_PLUS_PROACTIVE_MISSING_EVIDENCE_RECOVERY_BEFORE_FINAL_DECISION",
                 "metrics": resilient_http.metrics(),
-                "telegram_mode": "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE",
+                "telegram_mode": "FINAL_BUY_PLUS_EXPLICIT_POOL_RESERVE_ANOMALY",
+                "pool_reserve_outbox_count": int(outbox.get("count") or 0),
                 "deep_investigation_count": len(_DEEP_REPORTS),
                 "deep_investigation_failures": len(_DEEP_FAILURES),
                 "actionability_stats": dict(_ACTIONABILITY_STATS),
