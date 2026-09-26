@@ -1415,7 +1415,8 @@ def main():
         pv = float(prev.get("volume_h1") or 0)
         cex_sensor = spot_cex_sensor(t, prev)
         reserve_sensor = pool_reserve_flow_sensor(live, prev, alert_policy)
-        tr = list(cex_sensor["triggers"]) + list(reserve_sensor.get("triggers") or [])
+        reserve_triggers = list(reserve_sensor.get("triggers") or []) if reserve_sensor.get("alert_eligible") else []
+        tr = list(cex_sensor["triggers"]) + reserve_triggers
         if pp > 0:
             for lv in t.get("up_levels") or []:
                 if pp < float(lv) <= live["price"]:
@@ -1602,7 +1603,7 @@ def main():
         risk = hard_risk or reserve_distribution_risk or any(x.startswith("LOSS_") or "LIQUIDITY_DROP" in x for x in tr)
 
         alpha_confirmations = []
-        if t.get("dynamic_alpha_candidate"):
+        if t.get("dynamic_alpha_candidate") and not reserve_direct_alert:
             alpha_ok, alpha_confirmations = alpha_telegram_gate(
                 live, fusion, tr, reasons, risk, alert_policy
             )
@@ -1674,14 +1675,18 @@ def main():
                 f"{reserve_sensor.get('quote_symbol') or 'quote'} reserve {float(reserve_sensor.get('quote_change_pct') or 0):+.1f}%"
             )
             lines.append(
+                f"RESERVE SOURCE: {reserve_sensor.get('source') or 'n/a'} exact pair"
+            )
+            lines.append(
                 "POOL FLOW ALERT ONLY — this is an exact-pair accumulation/distribution anomaly, "
                 "not an automatic BUY/SELL instruction."
             )
         if current_state.get("discovery_price") is not None:
             lines.append(f"DISCOVERY PRICE: ${float(current_state['discovery_price']):.8f}")
+        price_sources_text = " + ".join(live.get("price_sources") or []) or "unknown"
         lines.extend([
             f"CURRENT VERIFIED PRICE: ${live['price']:.8f}",
-            f"SOURCE: GeckoTerminal exact pair + DexScreener exact pair | spread {live['spread_pct']:.2f}%",
+            f"SOURCE: {price_sources_text} exact-pair price | spread {live['spread_pct']:.2f}%",
             f"OBSERVED: {live['observed_at']}",
             f"Previous scan: ${pp:.8f}",
             f"1H {live['change_h1']:+.2f}% | 24H {live['change_h24']:+.2f}%",
