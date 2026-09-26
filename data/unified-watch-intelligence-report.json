@@ -1,7 +1,7 @@
 {
   "version": 5,
-  "updated_at": "2026-09-26T14:39:13.374061+00:00",
-  "mode": "ENGINE_ONLY_FINAL_BUY_TELEGRAM_SUPPRESSED",
+  "updated_at": "2026-09-26T18:05:44.990713+00:00",
+  "mode": "ENGINE_FINAL_BUY_PLUS_EXPLICIT_POOL_RESERVE_OUTBOX",
   "alert_policy": {
     "significant_change_only": true,
     "compare_against_last_sent_alert": true,
@@ -21,7 +21,7 @@
     "alpha_min_volume_h1_for_telegram": 5000,
     "alpha_min_buys_h1_for_telegram": 15,
     "alpha_min_buy_sell_ratio_for_telegram": 2,
-    "notes": "Telegram is FINAL BUY ONLY. Research/watch, risk, deterioration, sell-side, NEAR_BUY, PRE-WAVE, re-entry and generic material-change events stay silent inside Unified Watch. User-facing delivery is allowed only after either the canonical Decision Engine BUY gate or the explicit user-requested Unified Watch FINAL BUY gate; raw watch events never send.",
+    "notes": "Telegram remains fail-closed for generic research/watch events. User-facing exceptions are explicit: canonical FINAL BUY / configured PRE-BUY or position-protection lanes, plus exact-pair POOL RESERVE FLOW anomalies at STRONG/EXTREME severity in BOTH directions (ACCUMULATION and DISTRIBUTION). Same-direction reserve moves are treated as LP add/remove and stay silent.",
     "telegram_final_buy_only": true,
     "telegram_real_alert_only": true,
     "telegram_buy_side_only": true,
@@ -34,15 +34,31 @@
     "real_alert_min_positive_families": 3,
     "real_alert_relaxed_min_fusion_score_with_wallet_or_new_intel": 30,
     "real_alert_relaxed_min_positive_families_with_wallet_or_new_intel": 2,
-    "real_alert_require_live_market_confirmation_for_relaxed_path": true
+    "real_alert_require_live_market_confirmation_for_relaxed_path": true,
+    "pool_reserve_flow_sensor_enabled": true,
+    "pool_reserve_flow_min_directional_pct": 12,
+    "pool_reserve_flow_strong_pct": 25,
+    "pool_reserve_flow_extreme_pct": 50,
+    "pool_reserve_flow_telegram_min_severity": "STRONG",
+    "allow_direct_pool_reserve_anomaly_alerts": true
   },
-  "fusion_snapshot_generated_at": "2026-09-26T14:34:07.756717+00:00",
+  "fusion_snapshot_generated_at": "2026-09-26T18:00:40.282169+00:00",
   "sent_alerts": 0,
+  "reserve_flow_alerts": 0,
+  "pool_reserve_flow_policy": {
+    "sensor_enabled": true,
+    "telegram_exception_enabled": true,
+    "min_directional_pct": 12.0,
+    "strong_pct": 25.0,
+    "extreme_pct": 50.0,
+    "telegram_min_severity": "STRONG",
+    "same_direction_lp_moves_are_directional": false
+  },
   "internal_spot_escalations": 0,
   "spot_telegram_policy": "INTERNAL_ONLY_UNTIL_CANONICAL_BUY",
-  "suppressed_repeated_alerts": 9,
+  "suppressed_repeated_alerts": 8,
   "suppressed_low_confirmation_alerts": 0,
-  "configured_targets": 9,
+  "configured_targets": 10,
   "dynamic_buy_targets": 0,
   "dynamic_alpha_targets": 0,
   "dynamic_bootstrap_targets": 12,
@@ -50,9 +66,9 @@
   "critical_spot_targets": 12,
   "critical_spot_unique_groups": 12,
   "noncritical_fair_rotation_enabled": true,
-  "scan_elapsed_seconds": 301.07,
+  "scan_elapsed_seconds": 300.26,
   "noncritical_scan_budget_seconds": 300.0,
-  "noncritical_targets_truncated": 477,
+  "noncritical_targets_truncated": 474,
   "critical_market_lane_completed_before_noncritical": true,
   "targets": [
     {
@@ -71,58 +87,16 @@
         "cex_led_revival": false
       },
       "quarter_wave_revalidation": null,
-      "market_data_quality": {
-        "price_source_count": 2,
-        "price_sources": [
-          "geckoterminal",
-          "dexscreener"
-        ],
-        "single_source_degraded": false,
-        "cex_execution_verified": null,
-        "cex_market_price_spread_pct": null
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "ZEC",
+        "source": "dexscreener"
       },
-      "intelligence": {
-        "status": "CURRENT",
-        "score": 0.0,
-        "label": "WATCH",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 0.0,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [],
-        "updated_at": "2026-09-26T14:34:07.756717+00:00",
-        "freshest_event_at": "2026-09-26T14:30:07.368735+00:00",
-        "evidence_age_minutes": 4.01,
-        "current_evidence_count": 1,
-        "_identity_key": "solana:EbT2jpoeRJVFNWAFJE97EGfQF3iwHsEY8sh17fGbL5ER:9TRKbpkWfbR6dmFAX1kGx1MReZ48K1j9VPcjUBMM4Toq"
-      }
-    },
-    {
-      "symbol": "MCAT",
-      "identity_key": "solana:241aTYhVXZ4WBVSFpfY37RqoCGBQ73KiRFAKvTtnmoon:EcFsXQJjVCjCYWHsuhXUnZH4XB2MzF7iZ3dJu48wmoa9",
-      "candidate_type": "CONFIGURED",
-      "market_verified": true,
-      "discovery_price": 0.000943541896780839,
-      "first_seen_at": "2026-09-20T07:27:47Z",
-      "cex_sensor": {
-        "volume_24h_usd": 0.0,
-        "baseline_volume_usd": 0.0,
-        "relative_volume_multiple": 0.0,
-        "scan_volume_multiple": 0.0,
-        "positive_gainer_rank": null,
-        "cex_led_revival": false
-      },
-      "quarter_wave_revalidation": null,
       "market_data_quality": {
         "price_source_count": 2,
         "price_sources": [
@@ -153,12 +127,76 @@
         },
         "notable_evidence": [
           "market_microstructure:buy_sell_imbalance:1",
-          "market_microstructure:liquidity_change:1",
-          "market_microstructure:price_structure:1"
+          "market_microstructure:volume_acceleration:1"
         ],
-        "updated_at": "2026-09-26T14:35:38.464277+00:00",
-        "freshest_event_at": "2026-09-26T14:34:47.991053+00:00",
-        "evidence_age_minutes": 0.84,
+        "updated_at": "2026-09-26T18:00:40.282169+00:00",
+        "freshest_event_at": "2026-09-26T17:57:44.767122+00:00",
+        "evidence_age_minutes": 2.93,
+        "current_evidence_count": 3,
+        "_identity_key": "solana:EbT2jpoeRJVFNWAFJE97EGfQF3iwHsEY8sh17fGbL5ER:9TRKbpkWfbR6dmFAX1kGx1MReZ48K1j9VPcjUBMM4Toq"
+      }
+    },
+    {
+      "symbol": "MCAT",
+      "identity_key": "solana:241aTYhVXZ4WBVSFpfY37RqoCGBQ73KiRFAKvTtnmoon:EcFsXQJjVCjCYWHsuhXUnZH4XB2MzF7iZ3dJu48wmoa9",
+      "candidate_type": "CONFIGURED",
+      "market_verified": true,
+      "discovery_price": 0.000943541896780839,
+      "first_seen_at": "2026-09-20T07:27:47Z",
+      "cex_sensor": {
+        "volume_24h_usd": 0.0,
+        "baseline_volume_usd": 0.0,
+        "relative_volume_multiple": 0.0,
+        "scan_volume_multiple": 0.0,
+        "positive_gainer_rank": null,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": null,
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "USDC",
+        "source": "dexscreener"
+      },
+      "market_data_quality": {
+        "price_source_count": 1,
+        "price_sources": [
+          "dexscreener"
+        ],
+        "single_source_degraded": true,
+        "cex_execution_verified": null,
+        "cex_market_price_spread_pct": null
+      },
+      "intelligence": {
+        "status": "CURRENT",
+        "score": 0.0,
+        "label": "WATCH",
+        "families": 1,
+        "hard_risks": [],
+        "family_scores": {
+          "market_microstructure": 15.0,
+          "wallet_flow": 0.0,
+          "holder_network": 0.0,
+          "attention_social": 0.0,
+          "search_discovery": 0.0,
+          "catalyst_news": 0.0,
+          "fundamental_usage": 0.0,
+          "supply_tokenomics": 0.0,
+          "developer_project": 0.0,
+          "derivatives": 0.0
+        },
+        "notable_evidence": [
+          "market_microstructure:buy_sell_imbalance:1",
+          "market_microstructure:price_structure:-1",
+          "market_microstructure:volume_acceleration:1"
+        ],
+        "updated_at": "2026-09-26T18:01:40.657390+00:00",
+        "freshest_event_at": "2026-09-26T18:01:20.203974+00:00",
+        "evidence_age_minutes": 0.34,
         "current_evidence_count": 8,
         "_identity_key": "solana:241aTYhVXZ4WBVSFpfY37RqoCGBQ73KiRFAKvTtnmoon:EcFsXQJjVCjCYWHsuhXUnZH4XB2MzF7iZ3dJu48wmoa9"
       }
@@ -171,9 +209,9 @@
       "discovery_price": 3.235e-05,
       "first_seen_at": "2026-09-21T05:30:10.787143+00:00",
       "cex_sensor": {
-        "volume_24h_usd": 48117.14,
+        "volume_24h_usd": 50762.78,
         "baseline_volume_usd": 1198.11,
-        "relative_volume_multiple": 40.1609,
+        "relative_volume_multiple": 42.369,
         "scan_volume_multiple": 1.0,
         "positive_gainer_rank": 1,
         "cex_led_revival": true
@@ -192,6 +230,16 @@
         "anchor_repaired": false,
         "trigger_price_is_threshold_estimate": false
       },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "WETH",
+        "source": "dexscreener"
+      },
       "market_data_quality": {
         "price_source_count": 1,
         "price_sources": [
@@ -199,38 +247,35 @@
         ],
         "single_source_degraded": true,
         "cex_execution_verified": true,
-        "cex_market_price_spread_pct": 66.84113161575598
+        "cex_market_price_spread_pct": 74.56533345713687
       },
       "intelligence": {
         "status": "CURRENT",
         "score": 0.0,
         "label": "WATCH",
-        "families": 2,
+        "families": 0,
         "hard_risks": [
           "honeypot_or_transfer_block"
         ],
         "family_scores": {
-          "market_microstructure": 15.0,
-          "wallet_flow": -15.6,
+          "market_microstructure": 0.0,
+          "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
           "search_discovery": 0.0,
-          "catalyst_news": 3.42,
+          "catalyst_news": 0.0,
           "fundamental_usage": 0.0,
           "supply_tokenomics": -7.6,
           "developer_project": 0.0,
           "derivatives": 0.0
         },
         "notable_evidence": [
-          "market_microstructure:liquidity_change:1",
-          "market_microstructure:price_structure:1",
-          "supply_tokenomics:honeypot_or_transfer_block:-1",
-          "wallet_flow:exchange_netflow:-1"
+          "supply_tokenomics:honeypot_or_transfer_block:-1"
         ],
-        "updated_at": "2026-09-26T14:35:45.315672+00:00",
-        "freshest_event_at": "2026-09-26T14:35:45.283744+00:00",
+        "updated_at": "2026-09-26T18:01:47.567506+00:00",
+        "freshest_event_at": "2026-09-26T18:01:47.544689+00:00",
         "evidence_age_minutes": 0.0,
-        "current_evidence_count": 9,
+        "current_evidence_count": 5,
         "_identity_key": "ethereum:0xb2a25f7d864636e44bc1bf7a316897652bf07463:0x7b04ccd8a5c1aad694c67626892edbdcf7b9b441"
       }
     },
@@ -242,9 +287,9 @@
       "discovery_price": 0.001781,
       "first_seen_at": "2026-09-17T07:34:08.158927+00:00",
       "cex_sensor": {
-        "volume_24h_usd": 1295179.42,
+        "volume_24h_usd": 2056154.42,
         "baseline_volume_usd": 15697.25,
-        "relative_volume_multiple": 82.51,
+        "relative_volume_multiple": 130.9882,
         "scan_volume_multiple": 1.0,
         "positive_gainer_rank": 1,
         "cex_led_revival": true
@@ -254,7 +299,7 @@
         "threshold_pct": 25.0,
         "first_verified_price": 0.0008141,
         "first_verified_at": "2026-09-17T07:34:08.158927+00:00",
-        "gain_from_first_verified_pct": 166.1835,
+        "gain_from_first_verified_pct": 124.6653,
         "armed_at": "2026-09-26T05:33:26.833082+00:00",
         "trigger_price": 0.001883,
         "basis": "GAIN_GE_25PCT_FROM_IMMUTABLE_FIRST_SEEN_PRICE",
@@ -263,6 +308,16 @@
         "anchor_repaired": false,
         "trigger_price_is_threshold_estimate": false
       },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "WETH",
+        "source": "dexscreener"
+      },
       "market_data_quality": {
         "price_source_count": 1,
         "price_sources": [
@@ -270,16 +325,16 @@
         ],
         "single_source_degraded": true,
         "cex_execution_verified": true,
-        "cex_market_price_spread_pct": 4.183548478281352
+        "cex_market_price_spread_pct": 0.38894519159658725
       },
       "intelligence": {
         "status": "CURRENT",
         "score": 0.0,
         "label": "WATCH",
-        "families": 0,
+        "families": 1,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": -14.81,
+          "market_microstructure": 4.51,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
@@ -292,52 +347,63 @@
         },
         "notable_evidence": [
           "market_microstructure:buy_sell_imbalance:-1",
-          "market_microstructure:price_structure:-1"
+          "market_microstructure:cex_relative_volume_execution:1"
         ],
-        "updated_at": "2026-09-26T14:36:00.460056+00:00",
-        "freshest_event_at": "2026-09-26T14:36:00.231174+00:00",
+        "updated_at": "2026-09-26T18:02:03.135176+00:00",
+        "freshest_event_at": "2026-09-26T18:02:02.957635+00:00",
         "evidence_age_minutes": 0.0,
         "current_evidence_count": 5,
         "_identity_key": "ethereum:0x57b946008913b82e4df85f501cbaed910e58d26c:0xccb42aaab2ea1f8012c30418ee3fce550954d827"
       }
     },
     {
-      "symbol": "CVCUSDT",
-      "identity_key": "ethereum:0x41e5560054824ea6b0732e656e3ad64e20e94e45:0x123fca7e8272a8e9c3bb7113c259abc4901e792b",
+      "symbol": "QUSDT",
+      "identity_key": "bsc:0xc07e1300dc138601fa6b0b59f8d0fa477e690589:0x48733d02b557b186b82aa0df743c358842c69da5",
       "candidate_type": "CEX_SPOT_DISCOVERY",
       "market_verified": true,
-      "discovery_price": 0.02652,
-      "first_seen_at": "2026-09-18T10:05:50.559628+00:00",
+      "discovery_price": 0.03827,
+      "first_seen_at": "2026-09-23T09:30:26.875121+00:00",
       "cex_sensor": {
-        "volume_24h_usd": 6697366.953523738,
-        "baseline_volume_usd": 6697366.953523738,
+        "volume_24h_usd": 6817829.020367,
+        "baseline_volume_usd": 6817829.020367,
         "relative_volume_multiple": 1.0,
         "scan_volume_multiple": 1.0,
-        "positive_gainer_rank": 1,
+        "positive_gainer_rank": 2,
         "cex_led_revival": false
       },
       "quarter_wave_revalidation": {
         "armed": false,
         "threshold_pct": 25.0,
-        "first_verified_price": 0.02652,
-        "first_verified_at": "2026-09-18T10:05:50.559628+00:00",
-        "gain_from_first_verified_pct": 16.8929,
+        "first_verified_price": 0.026671,
+        "first_verified_at": "2026-09-23T09:30:26.875121+00:00",
+        "gain_from_first_verified_pct": -19.1149,
         "armed_at": null,
         "trigger_price": null,
         "basis": "WAITING_FOR_25PCT_REVALIDATION",
         "late_discovery": false,
-        "anchor_price": 0.02652,
+        "anchor_price": 0.026671,
         "anchor_repaired": false,
         "trigger_price_is_threshold_estimate": null
       },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "USDT",
+        "source": "dexscreener"
+      },
       "market_data_quality": {
-        "price_source_count": 1,
+        "price_source_count": 2,
         "price_sources": [
+          "geckoterminal",
           "dexscreener"
         ],
-        "single_source_degraded": true,
+        "single_source_degraded": false,
         "cex_execution_verified": true,
-        "cex_market_price_spread_pct": 1.5047222666880045
+        "cex_market_price_spread_pct": 0.43082540141169956
       },
       "intelligence": {
         "status": "CURRENT",
@@ -346,23 +412,27 @@
         "families": 0,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": 0.0,
+          "market_microstructure": -2.03,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
           "search_discovery": 0.0,
           "catalyst_news": 0.0,
           "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
+          "supply_tokenomics": -3.08,
           "developer_project": 0.0,
           "derivatives": 0.0
         },
-        "notable_evidence": [],
-        "updated_at": "2026-09-26T14:36:04.574392+00:00",
-        "freshest_event_at": "2026-09-26T14:36:04.348731+00:00",
+        "notable_evidence": [
+          "market_microstructure:buy_sell_imbalance:-1",
+          "market_microstructure:cex_orderbook_bid_depth_imbalance:1",
+          "supply_tokenomics:honeypot_or_transfer_block_unconfirmed:-1"
+        ],
+        "updated_at": "2026-09-26T18:02:17.778920+00:00",
+        "freshest_event_at": "2026-09-26T18:02:17.755267+00:00",
         "evidence_age_minutes": 0.0,
-        "current_evidence_count": 4,
-        "_identity_key": "ethereum:0x41e5560054824ea6b0732e656e3ad64e20e94e45:0x123fca7e8272a8e9c3bb7113c259abc4901e792b"
+        "current_evidence_count": 5,
+        "_identity_key": "bsc:0xc07e1300dc138601fa6b0b59f8d0fa477e690589:0x48733d02b557b186b82aa0df743c358842c69da5"
       }
     },
     {
@@ -373,11 +443,11 @@
       "discovery_price": 0.07543,
       "first_seen_at": "2026-09-22T20:38:31.185276+00:00",
       "cex_sensor": {
-        "volume_24h_usd": 249298240.0,
+        "volume_24h_usd": 827019740.0,
         "baseline_volume_usd": 249298240.0,
-        "relative_volume_multiple": 1.0,
+        "relative_volume_multiple": 3.3174,
         "scan_volume_multiple": 1.0,
-        "positive_gainer_rank": 1,
+        "positive_gainer_rank": 2,
         "cex_led_revival": false
       },
       "quarter_wave_revalidation": {
@@ -385,7 +455,7 @@
         "threshold_pct": 25.0,
         "first_verified_price": 0.05298,
         "first_verified_at": "2026-09-22T20:38:31.185276+00:00",
-        "gain_from_first_verified_pct": 40.2605,
+        "gain_from_first_verified_pct": 33.7028,
         "armed_at": "2026-09-26T14:30:17.131745+00:00",
         "trigger_price": 0.07404516916472889,
         "basis": "GAIN_GE_25PCT_FROM_IMMUTABLE_FIRST_SEEN_PRICE",
@@ -394,69 +464,15 @@
         "anchor_repaired": false,
         "trigger_price_is_threshold_estimate": false
       },
-      "market_data_quality": {
-        "price_source_count": 1,
-        "price_sources": [
-          "dexscreener"
-        ],
-        "single_source_degraded": true,
-        "cex_execution_verified": true,
-        "cex_market_price_spread_pct": 0.22903334456046276
-      },
-      "intelligence": {
-        "status": "CURRENT",
-        "score": 0.0,
-        "label": "WATCH",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 0.0,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [],
-        "updated_at": "2026-09-26T14:36:39.456055+00:00",
-        "freshest_event_at": "2026-09-26T14:36:39.424327+00:00",
-        "evidence_age_minutes": 0.0,
-        "current_evidence_count": 4,
-        "_identity_key": "solana:J6pQQ3FAcJQeWPPGppWRb4nM8jU3wLyYbRrLh7feMfvd:5Guq7ooZFtNju48kVNRzCVJmE9erW4DPcTQyrAk3z4UE"
-      }
-    },
-    {
-      "symbol": "XPRT",
-      "identity_key": "ethereum:0xd454b59f16d42667be2fa55292d16647e27f40c4:0xb61ea0868c3ea5f516256d393c02d8d9c12402a63c3571622c98805aa3e89705",
-      "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": true,
-      "discovery_price": 0.002359,
-      "first_seen_at": "2026-09-21T00:49:15.355716+00:00",
-      "cex_sensor": {
-        "volume_24h_usd": 22500.41,
-        "baseline_volume_usd": 16297.45,
-        "relative_volume_multiple": 1.3806,
-        "scan_volume_multiple": 1.0,
-        "positive_gainer_rank": 3,
-        "cex_led_revival": false
-      },
-      "quarter_wave_revalidation": {
-        "armed": true,
-        "threshold_pct": 25.0,
-        "first_verified_price": 0.002234,
-        "first_verified_at": "2026-09-21T00:49:15.355716+00:00",
-        "gain_from_first_verified_pct": 102.9302,
-        "armed_at": "2026-09-22T17:58:45.821449+00:00",
-        "trigger_price": 0.003332,
-        "basis": "GAIN_GE_25PCT_FROM_IMMUTABLE_FIRST_SEEN_PRICE",
-        "late_discovery": false,
-        "anchor_price": 0.002234,
-        "anchor_repaired": false,
-        "trigger_price_is_threshold_estimate": false
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "USDC",
+        "source": "dexscreener"
       },
       "market_data_quality": {
         "price_source_count": 2,
@@ -466,7 +482,7 @@
         ],
         "single_source_degraded": false,
         "cex_execution_verified": true,
-        "cex_market_price_spread_pct": 23.402542467058147
+        "cex_market_price_spread_pct": 0.09065638457330617
       },
       "intelligence": {
         "status": "CURRENT",
@@ -487,59 +503,70 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-26T14:36:42.581053+00:00",
-        "freshest_event_at": "2026-09-26T14:36:42.367260+00:00",
+        "updated_at": "2026-09-26T18:02:51.405402+00:00",
+        "freshest_event_at": "2026-09-26T18:02:51.382213+00:00",
         "evidence_age_minutes": 0.0,
         "current_evidence_count": 4,
-        "_identity_key": "ethereum:0xd454b59f16d42667be2fa55292d16647e27f40c4:0xb61ea0868c3ea5f516256d393c02d8d9c12402a63c3571622c98805aa3e89705"
+        "_identity_key": "solana:J6pQQ3FAcJQeWPPGppWRb4nM8jU3wLyYbRrLh7feMfvd:5Guq7ooZFtNju48kVNRzCVJmE9erW4DPcTQyrAk3z4UE"
       }
     },
     {
-      "symbol": "PHAUSDT",
-      "identity_key": "ethereum:0x6c5ba91642f10282b576d91922ae6448c9d52f4e:0x7bc5c9de2dfe90cfe1e01967096915ba8ea1bc53",
-      "candidate_type": "CEX_SPOT_DISCOVERY",
+      "symbol": "MGT",
+      "identity_key": "bsc:0x3c6256f234ba638e5883c46b3fedb00ea2e66b8a:0xdce2e6fe348f8c8a2b08bbff8f447c64224d75fb",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
       "market_verified": true,
-      "discovery_price": 0.04576,
-      "first_seen_at": "2026-09-22T23:15:01.193816+00:00",
+      "discovery_price": 0.00021975,
+      "first_seen_at": "2026-09-20T14:15:55.569824+00:00",
       "cex_sensor": {
-        "volume_24h_usd": 65916522.46793,
-        "baseline_volume_usd": 2864981.04,
-        "relative_volume_multiple": 23.0077,
+        "volume_24h_usd": 565.31,
+        "baseline_volume_usd": 205.05,
+        "relative_volume_multiple": 2.7569,
         "scan_volume_multiple": 1.0,
         "positive_gainer_rank": 3,
-        "cex_led_revival": true
+        "cex_led_revival": false
       },
       "quarter_wave_revalidation": {
         "armed": true,
         "threshold_pct": 25.0,
-        "first_verified_price": 0.04884,
-        "first_verified_at": "2026-09-22T23:15:01.193816+00:00",
-        "gain_from_first_verified_pct": 67.8952,
-        "armed_at": "2026-09-22T07:45:25.207804+00:00",
-        "trigger_price": 0.06105,
-        "basis": "ANCHOR_REPAIRED_FROM_IMMUTABLE_FIRST_SEEN",
+        "first_verified_price": 7.51e-05,
+        "first_verified_at": "2026-09-20T19:47:29.896045+00:00",
+        "gain_from_first_verified_pct": 106.9455,
+        "armed_at": "2026-09-20T20:01:45.215116+00:00",
+        "trigger_price": 0.000309893716396635,
+        "basis": "PERSISTED",
         "late_discovery": false,
-        "anchor_price": 0.04884,
+        "anchor_price": 7.51e-05,
         "anchor_repaired": false,
-        "trigger_price_is_threshold_estimate": true
+        "trigger_price_is_threshold_estimate": false
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "USDT",
+        "source": "dexscreener"
       },
       "market_data_quality": {
-        "price_source_count": 1,
+        "price_source_count": 2,
         "price_sources": [
+          "geckoterminal",
           "dexscreener"
         ],
-        "single_source_degraded": true,
+        "single_source_degraded": false,
         "cex_execution_verified": true,
-        "cex_market_price_spread_pct": 0.43806278899975565
+        "cex_market_price_spread_pct": 1.1031331532867592
       },
       "intelligence": {
         "status": "CURRENT",
-        "score": 13.5,
+        "score": 0.0,
         "label": "WATCH",
-        "families": 1,
+        "families": 0,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": 13.46,
+          "market_microstructure": -3.68,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
@@ -550,14 +577,12 @@
           "developer_project": 0.0,
           "derivatives": 0.0
         },
-        "notable_evidence": [
-          "market_microstructure:cex_relative_volume_execution:1"
-        ],
-        "updated_at": "2026-09-26T14:36:48.819217+00:00",
-        "freshest_event_at": "2026-09-26T14:36:48.591061+00:00",
-        "evidence_age_minutes": 0.0,
-        "current_evidence_count": 4,
-        "_identity_key": "ethereum:0x6c5ba91642f10282b576d91922ae6448c9d52f4e:0x7bc5c9de2dfe90cfe1e01967096915ba8ea1bc53"
+        "notable_evidence": [],
+        "updated_at": "2026-09-26T18:02:55.432399+00:00",
+        "freshest_event_at": "2026-09-26T18:02:54.995828+00:00",
+        "evidence_age_minutes": 0.01,
+        "current_evidence_count": 5,
+        "_identity_key": "bsc:0x3c6256f234ba638e5883c46b3fedb00ea2e66b8a:0xdce2e6fe348f8c8a2b08bbff8f447c64224d75fb"
       }
     },
     {
@@ -580,7 +605,7 @@
         "threshold_pct": 25.0,
         "first_verified_price": 0.354,
         "first_verified_at": "2026-09-14T13:35:13.428784+00:00",
-        "gain_from_first_verified_pct": 54.6045,
+        "gain_from_first_verified_pct": 52.1186,
         "armed_at": "2026-09-24T18:03:37.808134+00:00",
         "trigger_price": 0.4425,
         "basis": "ANCHOR_REPAIRED_FROM_IMMUTABLE_FIRST_SEEN",
@@ -589,6 +614,16 @@
         "anchor_repaired": false,
         "trigger_price_is_threshold_estimate": true
       },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "ETH",
+        "source": "dexscreener"
+      },
       "market_data_quality": {
         "price_source_count": 1,
         "price_sources": [
@@ -596,82 +631,16 @@
         ],
         "single_source_degraded": true,
         "cex_execution_verified": true,
-        "cex_market_price_spread_pct": 0.036549707602335155
+        "cex_market_price_spread_pct": 0.1300752578277495
       },
       "intelligence": {
         "status": "CURRENT",
-        "score": 5.2,
+        "score": 13.5,
         "label": "WATCH",
         "families": 1,
         "hard_risks": [],
         "family_scores": {
-          "market_microstructure": 0.0,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 5.21,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [
-          "catalyst_news:news_velocity:1"
-        ],
-        "updated_at": "2026-09-26T14:36:51.885473+00:00",
-        "freshest_event_at": "2026-09-26T14:36:51.651880+00:00",
-        "evidence_age_minutes": 0.0,
-        "current_evidence_count": 4,
-        "_identity_key": "ethereum:0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3:0x3dedf9153bf7ea7a8d784a41562e7ee061f8330b695f70ff534f9f9d3be2363a"
-      }
-    },
-    {
-      "symbol": "MUBARAKUSDT",
-      "identity_key": "bsc:0x5c85d6c6825ab4032337f11ee92a72df936b46f6:0xf2ac982d1c8ba9d7c014ec61789dadb367c5b06e",
-      "candidate_type": "CEX_SPOT_DISCOVERY",
-      "market_verified": true,
-      "discovery_price": 0.05343360528,
-      "first_seen_at": "2026-09-17T20:27:18.012924+00:00",
-      "cex_sensor": {
-        "volume_24h_usd": 1950514.21,
-        "baseline_volume_usd": 1791839.01,
-        "relative_volume_multiple": 1.0886,
-        "scan_volume_multiple": 1.0,
-        "positive_gainer_rank": 4,
-        "cex_led_revival": false
-      },
-      "quarter_wave_revalidation": {
-        "armed": true,
-        "threshold_pct": 25.0,
-        "first_verified_price": 0.03124,
-        "first_verified_at": "2026-09-17T20:27:18.012924+00:00",
-        "gain_from_first_verified_pct": 91.5985,
-        "armed_at": "2026-09-22T07:45:13.264965+00:00",
-        "trigger_price": 0.03905,
-        "basis": "ANCHOR_REPAIRED_FROM_IMMUTABLE_FIRST_SEEN",
-        "late_discovery": false,
-        "anchor_price": 0.03124,
-        "anchor_repaired": false,
-        "trigger_price_is_threshold_estimate": true
-      },
-      "market_data_quality": {
-        "price_source_count": 1,
-        "price_sources": [
-          "geckoterminal"
-        ],
-        "single_source_degraded": true,
-        "cex_execution_verified": true,
-        "cex_market_price_spread_pct": 0.27964453398234723
-      },
-      "intelligence": {
-        "status": "STALE_ONLY",
-        "score": 0.0,
-        "label": "WATCH",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 0.0,
+          "market_microstructure": 13.5,
           "wallet_flow": 0.0,
           "holder_network": 0.0,
           "attention_social": 0.0,
@@ -682,12 +651,294 @@
           "developer_project": 0.0,
           "derivatives": 0.0
         },
+        "notable_evidence": [
+          "market_microstructure:volume_acceleration:1"
+        ],
+        "updated_at": "2026-09-26T18:02:59.394246+00:00",
+        "freshest_event_at": "2026-09-26T18:02:59.225938+00:00",
+        "evidence_age_minutes": 0.0,
+        "current_evidence_count": 4,
+        "_identity_key": "ethereum:0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3:0x3dedf9153bf7ea7a8d784a41562e7ee061f8330b695f70ff534f9f9d3be2363a"
+      }
+    },
+    {
+      "symbol": "NATIX",
+      "identity_key": "solana:FRySi8LPkuByB7VPSCCggxpewFUeeJiwEGRKKuhwpKcX:EE1i59YUAELZj4qe8sHgsYd7wYuwe2YRoJMmkCjJEiGt",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.00013941,
+      "first_seen_at": "2026-09-14T18:37:16.301976+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 43575.23,
+        "baseline_volume_usd": 35304.96,
+        "relative_volume_multiple": 1.2343,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 4,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": true,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.00013941,
+        "first_verified_at": "2026-09-14T18:37:16.301976+00:00",
+        "gain_from_first_verified_pct": 51.7404,
+        "armed_at": "2026-09-21T06:10:59.135576+00:00",
+        "trigger_price": 0.0001742625,
+        "basis": "ANCHOR_REPAIRED_FROM_IMMUTABLE_FIRST_SEEN",
+        "late_discovery": true,
+        "anchor_price": 0.00013941,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": true
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "USDC",
+        "source": "dexscreener"
+      },
+      "market_data_quality": {
+        "price_source_count": 2,
+        "price_sources": [
+          "geckoterminal",
+          "dexscreener"
+        ],
+        "single_source_degraded": false,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": 1.1695749116370935
+      },
+      "intelligence": {
+        "status": "CURRENT",
+        "score": 15.0,
+        "label": "WATCH",
+        "families": 1,
+        "hard_risks": [],
+        "family_scores": {
+          "market_microstructure": 15.0,
+          "wallet_flow": 0.0,
+          "holder_network": 0.0,
+          "attention_social": 0.0,
+          "search_discovery": 0.0,
+          "catalyst_news": 0.0,
+          "fundamental_usage": 0.0,
+          "supply_tokenomics": 0.0,
+          "developer_project": 0.0,
+          "derivatives": 0.0
+        },
+        "notable_evidence": [
+          "market_microstructure:buy_sell_imbalance:1",
+          "market_microstructure:liquidity_change:1",
+          "market_microstructure:price_structure:1",
+          "market_microstructure:volume_acceleration:1"
+        ],
+        "updated_at": "2026-09-26T18:03:32.688473+00:00",
+        "freshest_event_at": "2026-09-26T18:03:32.663797+00:00",
+        "evidence_age_minutes": 0.0,
+        "current_evidence_count": 9,
+        "_identity_key": "solana:FRySi8LPkuByB7VPSCCggxpewFUeeJiwEGRKKuhwpKcX:EE1i59YUAELZj4qe8sHgsYd7wYuwe2YRoJMmkCjJEiGt"
+      }
+    },
+    {
+      "symbol": "CWS",
+      "identity_key": "cex:gate:CWS_USDT",
+      "candidate_type": "CEX_MARKET_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.007527,
+      "first_seen_at": "2026-09-26T05:28:16.523523+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 8663.6,
+        "baseline_volume_usd": 5103.09,
+        "relative_volume_multiple": 1.6977,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 5,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": true,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.0058,
+        "first_verified_at": "2026-09-26T05:28:16.523523+00:00",
+        "gain_from_first_verified_pct": 27.6207,
+        "armed_at": "2026-09-26T10:10:59.501182+00:00",
+        "trigger_price": 0.007999,
+        "basis": "GAIN_GE_25PCT_FROM_IMMUTABLE_FIRST_SEEN_PRICE",
+        "late_discovery": false,
+        "anchor_price": 0.0058,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": false
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": null,
+        "source": null
+      },
+      "market_data_quality": {
+        "price_source_count": 1,
+        "price_sources": [
+          "gate"
+        ],
+        "single_source_degraded": false,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": null
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
         "notable_evidence": [],
-        "updated_at": "2026-09-26T14:34:07.756717+00:00",
-        "freshest_event_at": "2026-09-26T10:15:39.636595+00:00",
-        "evidence_age_minutes": 258.47,
-        "current_evidence_count": 0,
-        "_identity_key": "bsc:0x5c85d6c6825ab4032337f11ee92a72df936b46f6:0xf2ac982d1c8ba9d7c014ec61789dadb367c5b06e"
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0
+      }
+    },
+    {
+      "symbol": "EDGE",
+      "identity_key": "cex:gate:EDGE_USDT",
+      "candidate_type": "CEX_MARKET_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.10501,
+      "first_seen_at": "2026-09-25T02:35:32.423391+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 591489.41,
+        "baseline_volume_usd": 68150.15,
+        "relative_volume_multiple": 8.6792,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 6,
+        "cex_led_revival": true
+      },
+      "quarter_wave_revalidation": {
+        "armed": true,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.09211,
+        "first_verified_at": "2026-09-25T02:35:32.423391+00:00",
+        "gain_from_first_verified_pct": 62.5339,
+        "armed_at": "2026-09-26T00:43:11.179150+00:00",
+        "trigger_price": 0.12073,
+        "basis": "GAIN_GE_25PCT_FROM_IMMUTABLE_FIRST_SEEN_PRICE",
+        "late_discovery": false,
+        "anchor_price": 0.09211,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": false
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": null,
+        "source": null
+      },
+      "market_data_quality": {
+        "price_source_count": 1,
+        "price_sources": [
+          "gate"
+        ],
+        "single_source_degraded": false,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": null
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0
+      }
+    },
+    {
+      "symbol": "MODE",
+      "identity_key": "optimism:0x084382d1cc4f4dfd1769b1cc1ac2a9b1f8365e90:0x3eb92113c00f476512bde4c46920ef0a3d42eb0f",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.00014579,
+      "first_seen_at": "2026-09-16T00:22:27.636250+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 7617.12,
+        "baseline_volume_usd": 2080.63,
+        "relative_volume_multiple": 3.661,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 7,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": true,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.00014579,
+        "first_verified_at": "2026-09-16T00:22:27.636250+00:00",
+        "gain_from_first_verified_pct": 34.7599,
+        "armed_at": "2026-09-21T12:53:48.300773+00:00",
+        "trigger_price": 0.0001822375,
+        "basis": "ANCHOR_REPAIRED_FROM_IMMUTABLE_FIRST_SEEN",
+        "late_discovery": false,
+        "anchor_price": 0.00014579,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": true
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": null,
+        "source": null
+      },
+      "market_data_quality": {
+        "price_source_count": 1,
+        "price_sources": [
+          "geckoterminal"
+        ],
+        "single_source_degraded": true,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": 51.495995064638336
+      },
+      "intelligence": {
+        "status": "CURRENT",
+        "score": 0.0,
+        "label": "WATCH",
+        "families": 0,
+        "hard_risks": [
+          "identity_mismatch"
+        ],
+        "family_scores": {
+          "market_microstructure": -14.08,
+          "wallet_flow": 0.0,
+          "holder_network": 0.0,
+          "attention_social": 0.0,
+          "search_discovery": 0.0,
+          "catalyst_news": 0.0,
+          "fundamental_usage": 0.0,
+          "supply_tokenomics": 0.0,
+          "developer_project": 0.0,
+          "derivatives": 0.0
+        },
+        "notable_evidence": [
+          "market_microstructure:identity_mismatch:-1"
+        ],
+        "updated_at": "2026-09-26T18:00:40.282169+00:00",
+        "freshest_event_at": "2026-09-26T17:57:30.888641+00:00",
+        "evidence_age_minutes": 3.16,
+        "current_evidence_count": 1,
+        "_identity_key": "optimism:0x084382d1cc4f4dfd1769b1cc1ac2a9b1f8365e90:0x3eb92113c00f476512bde4c46920ef0a3d42eb0f"
       }
     },
     {
@@ -698,11 +949,11 @@
       "discovery_price": 0.015815,
       "first_seen_at": "2026-09-25T15:33:56.702030+00:00",
       "cex_sensor": {
-        "volume_24h_usd": 2263802.12,
+        "volume_24h_usd": 2217969.0,
         "baseline_volume_usd": 155230.92,
-        "relative_volume_multiple": 14.5834,
+        "relative_volume_multiple": 14.2882,
         "scan_volume_multiple": 1.0,
-        "positive_gainer_rank": 4,
+        "positive_gainer_rank": 8,
         "cex_led_revival": true
       },
       "quarter_wave_revalidation": {
@@ -710,7 +961,7 @@
         "threshold_pct": 25.0,
         "first_verified_price": 0.017209,
         "first_verified_at": "2026-09-25T15:33:56.702030+00:00",
-        "gain_from_first_verified_pct": 36.0102,
+        "gain_from_first_verified_pct": 34.5284,
         "armed_at": "2026-09-25T16:21:45.384168+00:00",
         "trigger_price": 0.016965,
         "basis": "FIRST_DISCOVERY_ALREADY_GE_25PCT_24H",
@@ -719,585 +970,15 @@
         "anchor_repaired": false,
         "trigger_price_is_threshold_estimate": false
       },
-      "market_data_quality": {
-        "price_source_count": 1,
-        "price_sources": [
-          "gate"
-        ],
-        "single_source_degraded": false,
-        "cex_execution_verified": true,
-        "cex_market_price_spread_pct": null
-      },
-      "intelligence": {
-        "status": "NOT_AVAILABLE",
-        "score": null,
-        "label": "NOT_AVAILABLE",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {},
-        "notable_evidence": [],
-        "updated_at": null,
-        "evidence_age_minutes": null,
-        "current_evidence_count": 0
-      }
-    },
-    {
-      "symbol": "ZTX",
-      "identity_key": "arbitrum:0x1c43d05be7e5b54d506e3ddb6f0305e8a66cd04e:0x753d81a2d6c61dd7c3510729c9df310659f9003b",
-      "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": true,
-      "discovery_price": 1.8e-05,
-      "first_seen_at": "2026-09-21T03:46:41.598521+00:00",
-      "cex_sensor": {
-        "volume_24h_usd": 759.79,
-        "baseline_volume_usd": 172.42,
-        "relative_volume_multiple": 4.4066,
-        "scan_volume_multiple": 1.0,
-        "positive_gainer_rank": 5,
-        "cex_led_revival": false
-      },
-      "quarter_wave_revalidation": {
-        "armed": true,
-        "threshold_pct": 25.0,
-        "first_verified_price": 1.6e-05,
-        "first_verified_at": "2026-09-21T03:46:41.598521+00:00",
-        "gain_from_first_verified_pct": -53.4688,
-        "armed_at": "2026-09-22T05:30:59.475677+00:00",
-        "trigger_price": 2.162e-05,
-        "basis": "GAIN_GE_25PCT_FROM_IMMUTABLE_FIRST_SEEN_PRICE",
-        "late_discovery": false,
-        "anchor_price": 1.6e-05,
-        "anchor_repaired": false,
-        "trigger_price_is_threshold_estimate": false
-      },
-      "market_data_quality": {
-        "price_source_count": 1,
-        "price_sources": [
-          "dexscreener"
-        ],
-        "single_source_degraded": true,
-        "cex_execution_verified": true,
-        "cex_market_price_spread_pct": 8.427146992602129
-      },
-      "intelligence": {
-        "status": "CURRENT",
-        "score": 0.0,
-        "label": "WATCH",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 0.0,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [],
-        "updated_at": "2026-09-26T14:34:07.756717+00:00",
-        "freshest_event_at": "2026-09-26T14:29:52.695242+00:00",
-        "evidence_age_minutes": 4.25,
-        "current_evidence_count": 1,
-        "_identity_key": "arbitrum:0x1c43d05be7e5b54d506e3ddb6f0305e8a66cd04e:0x753d81a2d6c61dd7c3510729c9df310659f9003b"
-      }
-    },
-    {
-      "symbol": "LOFIUSDT",
-      "identity_key": "sui:0xf22da9a24ad027cccb5f2d496cbe91de953d363513db08a3a734d361c7c17503::LOFI::LOFI:0xd6147f5f50e2f9f593557e497c9ee0f2387652e2a4ad73ee28bd0bdef5e3f51d",
-      "candidate_type": "CEX_SPOT_DISCOVERY",
-      "market_verified": true,
-      "discovery_price": 0.005633,
-      "first_seen_at": "2026-09-19T00:22:43.603036+00:00",
-      "cex_sensor": {
-        "volume_24h_usd": 62273.06,
-        "baseline_volume_usd": 40522.38,
-        "relative_volume_multiple": 1.5368,
-        "scan_volume_multiple": 1.0,
-        "positive_gainer_rank": 5,
-        "cex_led_revival": false
-      },
-      "quarter_wave_revalidation": {
-        "armed": true,
-        "threshold_pct": 25.0,
-        "first_verified_price": 0.00378,
-        "first_verified_at": "2026-09-19T00:22:43.603036+00:00",
-        "gain_from_first_verified_pct": 47.1164,
-        "armed_at": "2026-09-26T00:42:20.368563+00:00",
-        "trigger_price": 0.005496,
-        "basis": "GAIN_GE_25PCT_FROM_IMMUTABLE_FIRST_SEEN_PRICE",
-        "late_discovery": false,
-        "anchor_price": 0.00378,
-        "anchor_repaired": false,
-        "trigger_price_is_threshold_estimate": false
-      },
-      "market_data_quality": {
-        "price_source_count": 1,
-        "price_sources": [
-          "dexscreener"
-        ],
-        "single_source_degraded": true,
-        "cex_execution_verified": true,
-        "cex_market_price_spread_pct": 1.5950697843030708
-      },
-      "intelligence": {
-        "status": "CURRENT",
-        "score": 0.0,
-        "label": "WATCH",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 0.0,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [],
-        "updated_at": "2026-09-26T14:34:07.756717+00:00",
-        "freshest_event_at": "2026-09-26T14:29:52.494381+00:00",
-        "evidence_age_minutes": 4.25,
-        "current_evidence_count": 1,
-        "_identity_key": "sui:0xf22da9a24ad027cccb5f2d496cbe91de953d363513db08a3a734d361c7c17503::LOFI::LOFI:0xd6147f5f50e2f9f593557e497c9ee0f2387652e2a4ad73ee28bd0bdef5e3f51d"
-      }
-    },
-    {
-      "symbol": "ENAUSDT",
-      "identity_key": "ethereum:0x57e114b691db790c35207b2e685d4a43181e6061:0x0598690ad1daffc3ac47fd6adcaeac547c067e26",
-      "candidate_type": "CEX_SPOT_DISCOVERY",
-      "market_verified": false,
-      "intelligence": {
-        "status": "CURRENT",
-        "score": 0.0,
-        "label": "WATCH",
-        "families": 0,
-        "hard_risks": [
-          "price_source_mismatch"
-        ],
-        "family_scores": {
-          "market_microstructure": -14.46,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [
-          "market_microstructure:price_source_mismatch:-1"
-        ],
-        "updated_at": "2026-09-26T14:34:07.756717+00:00",
-        "freshest_event_at": "2026-09-26T14:29:51.982842+00:00",
-        "evidence_age_minutes": 4.26,
-        "current_evidence_count": 1,
-        "_identity_key": "ethereum:0x57e114b691db790c35207b2e685d4a43181e6061:0x0598690ad1daffc3ac47fd6adcaeac547c067e26"
-      },
-      "error": "EXACT_PAIR_ALL_SOURCES_FAILED:GT=HTTPError:HTTP Error 404: Not Found:DS=RuntimeError:DS_TRACKED_TOKEN_IS_QUOTE_PRICEUSD_IS_BASE_FAIL_CLOSED"
-    },
-    {
-      "symbol": "ONDOUSDT",
-      "identity_key": "ethereum:0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3:0x0e471121607979c4b52d54e140527630c1d026be9b4b3087bba7f1c1c667cd16",
-      "candidate_type": "CEX_SPOT_DISCOVERY",
-      "market_verified": false,
-      "intelligence": {
-        "status": "NOT_AVAILABLE",
-        "score": null,
-        "label": "NOT_AVAILABLE",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {},
-        "notable_evidence": [],
-        "updated_at": null,
-        "evidence_age_minutes": null,
-        "current_evidence_count": 0,
-        "_identity_key": "ethereum:0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3:0x0e471121607979c4b52d54e140527630c1d026be9b4b3087bba7f1c1c667cd16"
-      },
-      "error": "EXACT_PAIR_ALL_SOURCES_FAILED:GT=HTTPError:HTTP Error 429: Too Many Requests:DS=RuntimeError:DS_TRACKED_TOKEN_IS_QUOTE_PRICEUSD_IS_BASE_FAIL_CLOSED"
-    },
-    {
-      "symbol": "MUBARAKUSDT",
-      "identity_key": "bsc:0x5c85d6c6825ab4032337f11ee92a72df936b46f6:0x396ec706006dd11566c7a0f14dbfe2aba3a4a296",
-      "candidate_type": "CEX_SPOT_DISCOVERY",
-      "market_verified": false,
-      "intelligence": {
-        "status": "NOT_AVAILABLE",
-        "score": null,
-        "label": "NOT_AVAILABLE",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {},
-        "notable_evidence": [],
-        "updated_at": null,
-        "evidence_age_minutes": null,
-        "current_evidence_count": 0,
-        "_identity_key": "bsc:0x5c85d6c6825ab4032337f11ee92a72df936b46f6:0x396ec706006dd11566c7a0f14dbfe2aba3a4a296"
-      },
-      "error": "EXACT_PAIR_ALL_SOURCES_FAILED:GT=HTTPError:HTTP Error 404: Not Found:DS=RuntimeError:DS_TRACKED_TOKEN_IS_QUOTE_PRICEUSD_IS_BASE_FAIL_CLOSED"
-    },
-    {
-      "symbol": "LOFIUSDT",
-      "identity_key": "sui:0xf22da9a24ad027cccb5f2d496cbe91de953d363513db08a3a734d361c7c17503::LOFI::LOFI:0x1d6b5837ddd1c2b4a8ed7e6ef996185bdc551c609c4454eab522ce8255b7daef",
-      "candidate_type": "CEX_SPOT_DISCOVERY",
-      "market_verified": false,
-      "intelligence": {
-        "status": "NOT_AVAILABLE",
-        "score": null,
-        "label": "NOT_AVAILABLE",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {},
-        "notable_evidence": [],
-        "updated_at": null,
-        "evidence_age_minutes": null,
-        "current_evidence_count": 0,
-        "_identity_key": "sui:0xf22da9a24ad027cccb5f2d496cbe91de953d363513db08a3a734d361c7c17503::LOFI::LOFI:0x1d6b5837ddd1c2b4a8ed7e6ef996185bdc551c609c4454eab522ce8255b7daef"
-      },
-      "error": "EXACT_PAIR_ALL_SOURCES_FAILED:GT=HTTPError:HTTP Error 404: Not Found:DS=RuntimeError:EXACT_PAIR_MISSING_DS"
-    },
-    {
-      "symbol": "ENAUSDT",
-      "identity_key": "ethereum:0x57e114b691db790c35207b2e685d4a43181e6061:0x6bbb0289dfda178555dd1ce4aaa8f1bdbfb1bcde",
-      "candidate_type": "CEX_SPOT_DISCOVERY",
-      "market_verified": false,
-      "intelligence": {
-        "status": "NOT_AVAILABLE",
-        "score": null,
-        "label": "NOT_AVAILABLE",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {},
-        "notable_evidence": [],
-        "updated_at": null,
-        "evidence_age_minutes": null,
-        "current_evidence_count": 0,
-        "_identity_key": "ethereum:0x57e114b691db790c35207b2e685d4a43181e6061:0x6bbb0289dfda178555dd1ce4aaa8f1bdbfb1bcde"
-      },
-      "error": "EXACT_PAIR_ALL_SOURCES_FAILED:GT=HTTPError:HTTP Error 429: Too Many Requests:DS=RuntimeError:DS_TRACKED_TOKEN_IS_QUOTE_PRICEUSD_IS_BASE_FAIL_CLOSED"
-    },
-    {
-      "symbol": "ENAUSDT",
-      "identity_key": "ethereum:0x57e114b691db790c35207b2e685d4a43181e6061:0xe7712e23510ac8c2bc6bd6243fe42fbfaa935c93c626c874bf825c23f03230fb",
-      "candidate_type": "CEX_SPOT_DISCOVERY",
-      "market_verified": false,
-      "intelligence": {
-        "status": "NOT_AVAILABLE",
-        "score": null,
-        "label": "NOT_AVAILABLE",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {},
-        "notable_evidence": [],
-        "updated_at": null,
-        "evidence_age_minutes": null,
-        "current_evidence_count": 0,
-        "_identity_key": "ethereum:0x57e114b691db790c35207b2e685d4a43181e6061:0xe7712e23510ac8c2bc6bd6243fe42fbfaa935c93c626c874bf825c23f03230fb"
-      },
-      "error": "EXACT_PAIR_ALL_SOURCES_FAILED:GT=HTTPError:HTTP Error 404: Not Found:DS=RuntimeError:DS_TRACKED_TOKEN_IS_QUOTE_PRICEUSD_IS_BASE_FAIL_CLOSED"
-    },
-    {
-      "symbol": "AMP",
-      "identity_key": "cex:gate:AMP_USDT",
-      "candidate_type": "CEX_MARKET_DISCOVERY",
-      "market_verified": true,
-      "discovery_price": 0.0006852,
-      "first_seen_at": "2026-09-26T14:28:21.665427+00:00",
-      "cex_sensor": {
-        "volume_24h_usd": 183634.11,
-        "baseline_volume_usd": 183634.11,
-        "relative_volume_multiple": 1.0,
-        "scan_volume_multiple": 1.0,
-        "positive_gainer_rank": 17,
-        "cex_led_revival": false
-      },
-      "quarter_wave_revalidation": {
-        "armed": true,
-        "threshold_pct": 25.0,
-        "first_verified_price": 0.0006852,
-        "first_verified_at": "2026-09-26T14:28:21.665427+00:00",
-        "gain_from_first_verified_pct": -3.3713,
-        "armed_at": "2026-09-26T14:38:01.643987+00:00",
-        "trigger_price": 0.0006621,
-        "basis": "FIRST_DISCOVERY_ALREADY_GE_25PCT_24H",
-        "late_discovery": true,
-        "anchor_price": 0.0006852,
-        "anchor_repaired": false,
-        "trigger_price_is_threshold_estimate": false
-      },
-      "market_data_quality": {
-        "price_source_count": 1,
-        "price_sources": [
-          "gate"
-        ],
-        "single_source_degraded": false,
-        "cex_execution_verified": true,
-        "cex_market_price_spread_pct": null
-      },
-      "intelligence": {
-        "status": "NOT_AVAILABLE",
-        "score": null,
-        "label": "NOT_AVAILABLE",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {},
-        "notable_evidence": [],
-        "updated_at": null,
-        "evidence_age_minutes": null,
-        "current_evidence_count": 0
-      }
-    },
-    {
-      "symbol": "REACT",
-      "identity_key": "cex:gate:REACT_USDT",
-      "candidate_type": "CEX_MARKET_DISCOVERY",
-      "market_verified": true,
-      "discovery_price": 0.005192,
-      "first_seen_at": "2026-09-23T19:11:53.405728+00:00",
-      "cex_sensor": {
-        "volume_24h_usd": 22724.47,
-        "baseline_volume_usd": 7980.33,
-        "relative_volume_multiple": 2.8476,
-        "scan_volume_multiple": 1.0,
-        "positive_gainer_rank": 18,
-        "cex_led_revival": false
-      },
-      "quarter_wave_revalidation": {
-        "armed": false,
-        "threshold_pct": 25.0,
-        "first_verified_price": 0.004362,
-        "first_verified_at": "2026-09-23T19:11:53.405728+00:00",
-        "gain_from_first_verified_pct": 10.1788,
-        "armed_at": null,
-        "trigger_price": null,
-        "basis": "WAITING_FOR_25PCT_REVALIDATION",
-        "late_discovery": false,
-        "anchor_price": 0.004362,
-        "anchor_repaired": false,
-        "trigger_price_is_threshold_estimate": null
-      },
-      "market_data_quality": {
-        "price_source_count": 1,
-        "price_sources": [
-          "gate"
-        ],
-        "single_source_degraded": false,
-        "cex_execution_verified": true,
-        "cex_market_price_spread_pct": null
-      },
-      "intelligence": {
-        "status": "NOT_AVAILABLE",
-        "score": null,
-        "label": "NOT_AVAILABLE",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {},
-        "notable_evidence": [],
-        "updated_at": null,
-        "evidence_age_minutes": null,
-        "current_evidence_count": 0
-      }
-    },
-    {
-      "symbol": "BR",
-      "identity_key": "cex:gate:BR_USDT",
-      "candidate_type": "CEX_MARKET_DISCOVERY",
-      "market_verified": true,
-      "discovery_price": 1.03078,
-      "first_seen_at": "2026-09-21T04:19:42.464331+00:00",
-      "cex_sensor": {
-        "volume_24h_usd": 9948175.3,
-        "baseline_volume_usd": 3214672.15,
-        "relative_volume_multiple": 3.0946,
-        "scan_volume_multiple": 1.0,
-        "positive_gainer_rank": 20,
-        "cex_led_revival": false
-      },
-      "quarter_wave_revalidation": {
-        "armed": false,
-        "threshold_pct": 25.0,
-        "first_verified_price": 1.23013,
-        "first_verified_at": "2026-09-21T04:19:42.464331+00:00",
-        "gain_from_first_verified_pct": -15.2033,
-        "armed_at": null,
-        "trigger_price": null,
-        "basis": "WAITING_FOR_25PCT_REVALIDATION",
-        "late_discovery": false,
-        "anchor_price": 1.23013,
-        "anchor_repaired": false,
-        "trigger_price_is_threshold_estimate": null
-      },
-      "market_data_quality": {
-        "price_source_count": 1,
-        "price_sources": [
-          "gate"
-        ],
-        "single_source_degraded": false,
-        "cex_execution_verified": true,
-        "cex_market_price_spread_pct": null
-      },
-      "intelligence": {
-        "status": "NOT_AVAILABLE",
-        "score": null,
-        "label": "NOT_AVAILABLE",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {},
-        "notable_evidence": [],
-        "updated_at": null,
-        "evidence_age_minutes": null,
-        "current_evidence_count": 0
-      }
-    },
-    {
-      "symbol": "P",
-      "identity_key": "bsc:0x810df4c7daf4ee06ae7c621d0680e73a505c9a06:0xbbec61837d1d613fc8ae5b2704ec178c036de2ca",
-      "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": false,
-      "intelligence": {
-        "status": "STALE_ONLY",
-        "score": 0.0,
-        "label": "WATCH",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {
-          "market_microstructure": 0.0,
-          "wallet_flow": 0.0,
-          "holder_network": 0.0,
-          "attention_social": 0.0,
-          "search_discovery": 0.0,
-          "catalyst_news": 0.0,
-          "fundamental_usage": 0.0,
-          "supply_tokenomics": 0.0,
-          "developer_project": 0.0,
-          "derivatives": 0.0
-        },
-        "notable_evidence": [],
-        "updated_at": "2026-09-26T14:34:07.756717+00:00",
-        "freshest_event_at": "2026-09-26T10:10:23.702945+00:00",
-        "evidence_age_minutes": 263.73,
-        "current_evidence_count": 0,
-        "_identity_key": "bsc:0x810df4c7daf4ee06ae7c621d0680e73a505c9a06:0xbbec61837d1d613fc8ae5b2704ec178c036de2ca"
-      },
-      "error": "SOURCE_DATA_MISMATCH:4.101%"
-    },
-    {
-      "symbol": "4STOCK",
-      "identity_key": "bsc:0xd270d4e1ec6e6e0d28c0ecb8be966ec75997ffff:0x4682c6bf5ac02d8ea553aa9d289bcecdc023fd07",
-      "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": false,
-      "intelligence": {
-        "status": "NOT_AVAILABLE",
-        "score": null,
-        "label": "NOT_AVAILABLE",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {},
-        "notable_evidence": [],
-        "updated_at": null,
-        "evidence_age_minutes": null,
-        "current_evidence_count": 0,
-        "_identity_key": "bsc:0xd270d4e1ec6e6e0d28c0ecb8be966ec75997ffff:0x4682c6bf5ac02d8ea553aa9d289bcecdc023fd07"
-      },
-      "error": "EXACT_PAIR_ALL_SOURCES_FAILED:GT=HTTPError:HTTP Error 429: Too Many Requests:DS=RuntimeError:DS_TRACKED_TOKEN_IS_QUOTE_PRICEUSD_IS_BASE_FAIL_CLOSED"
-    },
-    {
-      "symbol": "RITE",
-      "identity_key": "bsc:0x0808bf94d57c905f1236212654268ef82e1e594e:0x3a07bced97f22d856f1811f7ba32f272337cc084",
-      "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": false,
-      "intelligence": {
-        "status": "NOT_AVAILABLE",
-        "score": null,
-        "label": "NOT_AVAILABLE",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {},
-        "notable_evidence": [],
-        "updated_at": null,
-        "evidence_age_minutes": null,
-        "current_evidence_count": 0,
-        "_identity_key": "bsc:0x0808bf94d57c905f1236212654268ef82e1e594e:0x3a07bced97f22d856f1811f7ba32f272337cc084"
-      },
-      "error": "SOURCE_DATA_MISMATCH:5.749%"
-    },
-    {
-      "symbol": "VOXEL",
-      "identity_key": "polygon:0xd0258a3fd00f38aa8090dfee343f10a9d4d30d3f:0xbf3036c5c55bdb36ae505f96f4c40c92e782e9f6",
-      "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": false,
-      "intelligence": {
-        "status": "NOT_AVAILABLE",
-        "score": null,
-        "label": "NOT_AVAILABLE",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {},
-        "notable_evidence": [],
-        "updated_at": null,
-        "evidence_age_minutes": null,
-        "current_evidence_count": 0,
-        "_identity_key": "polygon:0xd0258a3fd00f38aa8090dfee343f10a9d4d30d3f:0xbf3036c5c55bdb36ae505f96f4c40c92e782e9f6"
-      },
-      "error": "EXACT_PAIR_ALL_SOURCES_FAILED:GT=HTTPError:HTTP Error 404: Not Found:DS=RuntimeError:EXACT_PAIR_MISSING_DS"
-    },
-    {
-      "symbol": "MODE",
-      "identity_key": "optimism:0x084382d1cc4f4dfd1769b1cc1ac2a9b1f8365e90:0x3eb92113c00f476512bde4c46920ef0a3d42eb0f",
-      "candidate_type": "GATE_SPOT_DISCOVERY",
-      "market_verified": false,
-      "intelligence": {
-        "status": "NOT_AVAILABLE",
-        "score": null,
-        "label": "NOT_AVAILABLE",
-        "families": 0,
-        "hard_risks": [],
-        "family_scores": {},
-        "notable_evidence": [],
-        "updated_at": null,
-        "evidence_age_minutes": null,
-        "current_evidence_count": 0,
-        "_identity_key": "optimism:0x084382d1cc4f4dfd1769b1cc1ac2a9b1f8365e90:0x3eb92113c00f476512bde4c46920ef0a3d42eb0f"
-      },
-      "error": "EXACT_PAIR_ALL_SOURCES_FAILED:GT=HTTPError:HTTP Error 429: Too Many Requests:DS=RuntimeError:EXACT_PAIR_MISSING_DS"
-    },
-    {
-      "symbol": "LOE",
-      "identity_key": "cex:gate:LOE_USDT",
-      "candidate_type": "CEX_MARKET_DISCOVERY",
-      "market_verified": true,
-      "discovery_price": 8e-05,
-      "first_seen_at": "2026-09-23T18:59:42.551262+00:00",
-      "cex_sensor": {
-        "volume_24h_usd": 51.14,
-        "baseline_volume_usd": 1166.46,
-        "relative_volume_multiple": 0.0438,
-        "scan_volume_multiple": 1.0,
-        "positive_gainer_rank": 21,
-        "cex_led_revival": false
-      },
-      "quarter_wave_revalidation": {
-        "armed": false,
-        "threshold_pct": 25.0,
-        "first_verified_price": 8e-05,
-        "first_verified_at": "2026-09-23T19:00:58.177880+00:00",
-        "gain_from_first_verified_pct": -35.5875,
-        "armed_at": null,
-        "trigger_price": null,
-        "basis": "WAITING_FOR_25PCT_REVALIDATION",
-        "late_discovery": false,
-        "anchor_price": 8e-05,
-        "anchor_repaired": false,
-        "trigger_price_is_threshold_estimate": null
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": null,
+        "source": null
       },
       "market_data_quality": {
         "price_source_count": 1,
@@ -1329,9 +1010,9 @@
       "discovery_price": 0.03326,
       "first_seen_at": "2026-09-22T06:48:57.535199+00:00",
       "cex_sensor": {
-        "volume_24h_usd": 91.47,
+        "volume_24h_usd": 121.81,
         "baseline_volume_usd": 226.2,
-        "relative_volume_multiple": 0.4044,
+        "relative_volume_multiple": 0.5385,
         "scan_volume_multiple": 1.0,
         "positive_gainer_rank": 9,
         "cex_led_revival": false
@@ -1341,7 +1022,7 @@
         "threshold_pct": 25.0,
         "first_verified_price": 0.038,
         "first_verified_at": "2026-09-22T06:48:57.535199+00:00",
-        "gain_from_first_verified_pct": -16.6536,
+        "gain_from_first_verified_pct": -17.2185,
         "armed_at": null,
         "trigger_price": null,
         "basis": "WAITING_FOR_25PCT_REVALIDATION",
@@ -1349,6 +1030,16 @@
         "anchor_price": 0.038,
         "anchor_repaired": false,
         "trigger_price_is_threshold_estimate": null
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "WETH",
+        "source": "dexscreener"
       },
       "market_data_quality": {
         "price_source_count": 2,
@@ -1358,10 +1049,10 @@
         ],
         "single_source_degraded": false,
         "cex_execution_verified": true,
-        "cex_market_price_spread_pct": 32.583825383030515
+        "cex_market_price_spread_pct": 30.983231250401705
       },
       "intelligence": {
-        "status": "STALE_ONLY",
+        "status": "CURRENT",
         "score": 0.0,
         "label": "WATCH",
         "families": 0,
@@ -1379,50 +1070,204 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-26T14:34:07.756717+00:00",
-        "freshest_event_at": "2026-09-25T16:21:00.181600+00:00",
-        "evidence_age_minutes": 1333.13,
-        "current_evidence_count": 0,
+        "updated_at": "2026-09-26T18:00:40.282169+00:00",
+        "freshest_event_at": "2026-09-26T17:57:31.572062+00:00",
+        "evidence_age_minutes": 3.15,
+        "current_evidence_count": 1,
         "_identity_key": "ethereum:0x65ef703f5594d2573eb71aaf55bc0cb548492df4:0x82917fb0dd65b0e5c85eea66e4f5c1ed484bc629"
       }
     },
     {
-      "symbol": "QNTUSDT",
-      "identity_key": "ethereum:0x4a220e6096b25eadb88358cb44068a3248254675:0x571bea0e99e139cd0b6b7d9352ca872dfe0d72dd-0x2260fac5e5542a773aa44fbcfedf7c193bc2c599-0x4a220e6096b25eadb88358cb44068a3248254675",
-      "candidate_type": "CEX_SPOT_DISCOVERY",
+      "symbol": "UNTXD",
+      "identity_key": "solana:3tzkdxJ1qVCaPAuWmd8FjRFKUbwMYpLUAq5gg4Vopump:B1zosT5SqjsEGRSU1cGbSVJrkVYL9zzFXDa9cmZWRhZt",
+      "candidate_type": "CONFIGURED",
       "market_verified": true,
-      "discovery_price": 83.97,
-      "first_seen_at": "2026-09-19T12:10:56.004754+00:00",
+      "discovery_price": null,
+      "first_seen_at": null,
       "cex_sensor": {
-        "volume_24h_usd": 1766280.1,
-        "baseline_volume_usd": 253260.42,
-        "relative_volume_multiple": 6.9742,
+        "volume_24h_usd": 0.0,
+        "baseline_volume_usd": 0.0,
+        "relative_volume_multiple": 0.0,
+        "scan_volume_multiple": 0.0,
+        "positive_gainer_rank": null,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": null,
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "SOL",
+        "source": "dexscreener"
+      },
+      "market_data_quality": {
+        "price_source_count": 2,
+        "price_sources": [
+          "geckoterminal",
+          "dexscreener"
+        ],
+        "single_source_degraded": false,
+        "cex_execution_verified": null,
+        "cex_market_price_spread_pct": null
+      },
+      "intelligence": {
+        "status": "CURRENT",
+        "score": 0.0,
+        "label": "WATCH",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {
+          "market_microstructure": 0.0,
+          "wallet_flow": 0.0,
+          "holder_network": 0.0,
+          "attention_social": 0.0,
+          "search_discovery": 0.0,
+          "catalyst_news": 0.0,
+          "fundamental_usage": 0.0,
+          "supply_tokenomics": 0.0,
+          "developer_project": 0.0,
+          "derivatives": 0.0
+        },
+        "notable_evidence": [],
+        "updated_at": "2026-09-26T18:00:40.282169+00:00",
+        "freshest_event_at": "2026-09-26T17:57:52.276129+00:00",
+        "evidence_age_minutes": 2.8,
+        "current_evidence_count": 1,
+        "_identity_key": "solana:3tzkdxJ1qVCaPAuWmd8FjRFKUbwMYpLUAq5gg4Vopump:B1zosT5SqjsEGRSU1cGbSVJrkVYL9zzFXDa9cmZWRhZt"
+      }
+    },
+    {
+      "symbol": "ONDOUSDT",
+      "identity_key": "ethereum:0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3:0x0e471121607979c4b52d54e140527630c1d026be9b4b3087bba7f1c1c667cd16",
+      "candidate_type": "CEX_SPOT_DISCOVERY",
+      "market_verified": false,
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0,
+        "_identity_key": "ethereum:0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3:0x0e471121607979c4b52d54e140527630c1d026be9b4b3087bba7f1c1c667cd16"
+      },
+      "error": "EXACT_PAIR_ALL_SOURCES_FAILED:GT=HTTPError:HTTP Error 404: Not Found:DS=RuntimeError:DS_TRACKED_TOKEN_IS_QUOTE_PRICEUSD_IS_BASE_FAIL_CLOSED"
+    },
+    {
+      "symbol": "SUSD",
+      "identity_key": "cex:gate:SUSD_USDT",
+      "candidate_type": "CEX_MARKET_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.2987,
+      "first_seen_at": "2026-09-23T15:51:50.559827+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 230.07,
+        "baseline_volume_usd": 51.32,
+        "relative_volume_multiple": 4.483,
         "scan_volume_multiple": 1.0,
-        "positive_gainer_rank": 5,
-        "cex_led_revival": true
+        "positive_gainer_rank": 12,
+        "cex_led_revival": false
       },
       "quarter_wave_revalidation": {
         "armed": true,
         "threshold_pct": 25.0,
-        "first_verified_price": 65.43,
-        "first_verified_at": "2026-09-19T12:10:56.004754+00:00",
-        "gain_from_first_verified_pct": 63.289,
-        "armed_at": "2026-09-24T18:06:38.195971+00:00",
-        "trigger_price": 81.78750000000001,
-        "basis": "ANCHOR_REPAIRED_FROM_IMMUTABLE_FIRST_SEEN",
+        "first_verified_price": 0.2101,
+        "first_verified_at": "2026-09-23T15:51:50.559827+00:00",
+        "gain_from_first_verified_pct": 42.1704,
+        "armed_at": "2026-09-26T18:03:56.112612+00:00",
+        "trigger_price": 0.2987,
+        "basis": "GAIN_GE_25PCT_FROM_IMMUTABLE_FIRST_SEEN_PRICE",
         "late_discovery": false,
-        "anchor_price": 65.43,
-        "anchor_repaired": true,
-        "trigger_price_is_threshold_estimate": true
+        "anchor_price": 0.2101,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": false
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": null,
+        "source": null
       },
       "market_data_quality": {
         "price_source_count": 1,
         "price_sources": [
+          "gate"
+        ],
+        "single_source_degraded": false,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": null
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0
+      }
+    },
+    {
+      "symbol": "P",
+      "identity_key": "bsc:0x810df4c7daf4ee06ae7c621d0680e73a505c9a06:0xbbec61837d1d613fc8ae5b2704ec178c036de2ca",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.016625,
+      "first_seen_at": "2026-09-21T04:19:42.464331+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 940.49,
+        "baseline_volume_usd": 6680.58,
+        "relative_volume_multiple": 0.1408,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 25,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": false,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.023304,
+        "first_verified_at": "2026-09-21T04:19:42.464331+00:00",
+        "gain_from_first_verified_pct": -33.2319,
+        "armed_at": null,
+        "trigger_price": null,
+        "basis": "WAITING_FOR_25PCT_REVALIDATION",
+        "late_discovery": false,
+        "anchor_price": 0.023304,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": null
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "WBNB",
+        "source": "dexscreener"
+      },
+      "market_data_quality": {
+        "price_source_count": 2,
+        "price_sources": [
+          "geckoterminal",
           "dexscreener"
         ],
-        "single_source_degraded": true,
+        "single_source_degraded": false,
         "cex_execution_verified": true,
-        "cex_market_price_spread_pct": 0.11225444340504241
+        "cex_market_price_spread_pct": 7.213399923900305
       },
       "intelligence": {
         "status": "STALE_ONLY",
@@ -1443,26 +1288,127 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-26T14:34:07.756717+00:00",
-        "freshest_event_at": "2026-09-25T17:21:42.395496+00:00",
-        "evidence_age_minutes": 1272.42,
+        "updated_at": "2026-09-26T18:00:40.282169+00:00",
+        "freshest_event_at": "2026-09-26T10:10:23.702945+00:00",
+        "evidence_age_minutes": 470.28,
         "current_evidence_count": 0,
-        "_identity_key": "ethereum:0x4a220e6096b25eadb88358cb44068a3248254675:0x571bea0e99e139cd0b6b7d9352ca872dfe0d72dd-0x2260fac5e5542a773aa44fbcfedf7c193bc2c599-0x4a220e6096b25eadb88358cb44068a3248254675"
+        "_identity_key": "bsc:0x810df4c7daf4ee06ae7c621d0680e73a505c9a06:0xbbec61837d1d613fc8ae5b2704ec178c036de2ca"
       }
     },
     {
+      "symbol": "PORTALS",
+      "identity_key": "cex:gate:PORTALS_USDT",
+      "candidate_type": "CEX_MARKET_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.003084,
+      "first_seen_at": "2026-09-25T03:20:59.841923+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 33.23,
+        "baseline_volume_usd": 298.9,
+        "relative_volume_multiple": 0.1112,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 26,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": false,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.0034,
+        "first_verified_at": "2026-09-25T03:20:59.841923+00:00",
+        "gain_from_first_verified_pct": -9.2941,
+        "armed_at": null,
+        "trigger_price": null,
+        "basis": "WAITING_FOR_25PCT_REVALIDATION",
+        "late_discovery": false,
+        "anchor_price": 0.0034,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": null
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": null,
+        "source": null
+      },
+      "market_data_quality": {
+        "price_source_count": 1,
+        "price_sources": [
+          "gate"
+        ],
+        "single_source_degraded": false,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": null
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0
+      }
+    },
+    {
+      "symbol": "USUSDT",
+      "identity_key": "sui:0xee962a61432231c2ede6946515beb02290cb516ad087bb06a731e922b2a5f57a::us::US:0xd52f3e770c2d1dd3881fcfb038294115a3c67514d9fb1f1fb1dd864cec4997dd",
+      "candidate_type": "CEX_SPOT_DISCOVERY",
+      "market_verified": false,
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0,
+        "_identity_key": "sui:0xee962a61432231c2ede6946515beb02290cb516ad087bb06a731e922b2a5f57a::us::US:0xd52f3e770c2d1dd3881fcfb038294115a3c67514d9fb1f1fb1dd864cec4997dd"
+      },
+      "error": "EXACT_PAIR_ALL_SOURCES_FAILED:GT=HTTPError:HTTP Error 404: Not Found:DS=RuntimeError:EXACT_PAIR_MISSING_DS"
+    },
+    {
+      "symbol": "QNTUSDT",
+      "identity_key": "ethereum:0x4a220e6096b25eadb88358cb44068a3248254675:0x711af51a937e01fab348fb73a92458cc5f3fa591",
+      "candidate_type": "CEX_SPOT_DISCOVERY",
+      "market_verified": false,
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0,
+        "_identity_key": "ethereum:0x4a220e6096b25eadb88358cb44068a3248254675:0x711af51a937e01fab348fb73a92458cc5f3fa591"
+      },
+      "error": "EXACT_PAIR_ALL_SOURCES_FAILED:GT=HTTPError:HTTP Error 429: Too Many Requests:DS=RuntimeError:EXACT_PAIR_MISSING_DS"
+    },
+    {
       "symbol": "BELONG",
-      "identity_key": "bsc:0x9eca8dedb4882bd694aea786c0cbe770e70d52e3:0x2ae4b929ebf675c0b3cb967ca692f78cdda52d54",
+      "identity_key": "bsc:0x9eca8dedb4882bd694aea786c0cbe770e70d52e3:0x2c44b5fc948510133947995991f8988ba88a3477",
       "candidate_type": "GATE_SPOT_DISCOVERY",
       "market_verified": true,
-      "discovery_price": 0.001998,
+      "discovery_price": 0.0005268,
       "first_seen_at": "2026-09-23T13:00:41.184711+00:00",
       "cex_sensor": {
-        "volume_24h_usd": 41302.21,
+        "volume_24h_usd": 34073.7,
         "baseline_volume_usd": 19740.17,
-        "relative_volume_multiple": 2.0923,
+        "relative_volume_multiple": 1.7261,
         "scan_volume_multiple": 1.0,
-        "positive_gainer_rank": null,
+        "positive_gainer_rank": 95,
         "cex_led_revival": false
       },
       "quarter_wave_revalidation": {
@@ -1470,23 +1416,34 @@
         "threshold_pct": 25.0,
         "first_verified_price": 0.0043992,
         "first_verified_at": "2026-09-23T13:00:41.184711+00:00",
-        "gain_from_first_verified_pct": -77.2231,
-        "armed_at": "2026-09-23T13:25:45.800315+00:00",
-        "trigger_price": 0.001782,
+        "gain_from_first_verified_pct": -88.7721,
+        "armed_at": "2026-09-26T18:04:21.991337+00:00",
+        "trigger_price": 0.0004939361741926665,
         "basis": "FIRST_DISCOVERY_ALREADY_GE_25PCT_24H",
         "late_discovery": true,
         "anchor_price": 0.0043992,
         "anchor_repaired": false,
         "trigger_price_is_threshold_estimate": false
       },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "USDT",
+        "source": "dexscreener"
+      },
       "market_data_quality": {
-        "price_source_count": 1,
+        "price_source_count": 2,
         "price_sources": [
+          "geckoterminal",
           "dexscreener"
         ],
-        "single_source_degraded": true,
+        "single_source_degraded": false,
         "cex_execution_verified": true,
-        "cex_market_price_spread_pct": 72.09775967413441
+        "cex_market_price_spread_pct": 3.028594472894189
       },
       "intelligence": {
         "status": "NOT_AVAILABLE",
@@ -1499,37 +1456,47 @@
         "updated_at": null,
         "evidence_age_minutes": null,
         "current_evidence_count": 0,
-        "_identity_key": "bsc:0x9eca8dedb4882bd694aea786c0cbe770e70d52e3:0x2ae4b929ebf675c0b3cb967ca692f78cdda52d54"
+        "_identity_key": "bsc:0x9eca8dedb4882bd694aea786c0cbe770e70d52e3:0x2c44b5fc948510133947995991f8988ba88a3477"
       }
     },
     {
-      "symbol": "R2",
-      "identity_key": "bsc:0x223a20e1b83aa3832e78d4b7b132df022e739222:0xfdbeffa804bc58e9edd720165f41a62b2ee251b6",
+      "symbol": "BR",
+      "identity_key": "bsc:0xff7d6a96ae471bbcd7713af9cb1feeb16cf56b41:0xe2461367e562df374acf8d8a012729721ad5b486",
       "candidate_type": "GATE_SPOT_DISCOVERY",
       "market_verified": true,
-      "discovery_price": 0.0113732,
-      "first_seen_at": "2026-09-20T13:41:38.215393+00:00",
+      "discovery_price": 0.42135,
+      "first_seen_at": "2026-09-15T07:02:39.469354+00:00",
       "cex_sensor": {
-        "volume_24h_usd": 37580.79,
-        "baseline_volume_usd": 52009.81,
-        "relative_volume_multiple": 0.7226,
+        "volume_24h_usd": 6835830.38,
+        "baseline_volume_usd": 3214672.15,
+        "relative_volume_multiple": 2.1264,
         "scan_volume_multiple": 1.0,
-        "positive_gainer_rank": 67,
+        "positive_gainer_rank": 117,
         "cex_led_revival": false
       },
       "quarter_wave_revalidation": {
         "armed": true,
         "threshold_pct": 25.0,
-        "first_verified_price": 0.0074577,
-        "first_verified_at": "2026-09-20T13:41:38.215393+00:00",
-        "gain_from_first_verified_pct": 14.0846,
-        "armed_at": "2026-09-21T05:10:23.263192+00:00",
-        "trigger_price": 0.009322125,
-        "basis": "ANCHOR_REPAIRED_FROM_IMMUTABLE_FIRST_SEEN",
+        "first_verified_price": 0.42135,
+        "first_verified_at": "2026-09-20T23:49:21.740997+00:00",
+        "gain_from_first_verified_pct": 131.6911,
+        "armed_at": "2026-09-21T00:00:17.792047+00:00",
+        "trigger_price": 1.19050216836135,
+        "basis": "GAIN_GE_25PCT_FROM_IMMUTABLE_FIRST_SEEN_PRICE",
         "late_discovery": false,
-        "anchor_price": 0.0074577,
+        "anchor_price": 0.42135,
         "anchor_repaired": false,
-        "trigger_price_is_threshold_estimate": true
+        "trigger_price_is_threshold_estimate": false
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "USDT",
+        "source": "dexscreener"
       },
       "market_data_quality": {
         "price_source_count": 2,
@@ -1539,7 +1506,814 @@
         ],
         "single_source_degraded": false,
         "cex_execution_verified": true,
-        "cex_market_price_spread_pct": 1.120973034723408
+        "cex_market_price_spread_pct": 0.9096767977313307
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0,
+        "_identity_key": "bsc:0xff7d6a96ae471bbcd7713af9cb1feeb16cf56b41:0xe2461367e562df374acf8d8a012729721ad5b486"
+      }
+    },
+    {
+      "symbol": "MARSCOIN",
+      "identity_key": "bsc:0xfe189e97832da1573e4e4ff034f4ffc3a15c7777:0x94f3ed36706c746ad59fadcaf271b7431ab1d8f1",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.11574,
+      "first_seen_at": "2026-09-21T02:45:43.671454+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 464018.1,
+        "baseline_volume_usd": 1352629.93,
+        "relative_volume_multiple": 0.343,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 39,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": true,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.09608,
+        "first_verified_at": "2026-09-21T02:45:43.671454+00:00",
+        "gain_from_first_verified_pct": 44.7752,
+        "armed_at": "2026-09-23T09:10:26.615664+00:00",
+        "trigger_price": 0.129373938754001,
+        "basis": "GAIN_GE_25PCT_FROM_IMMUTABLE_FIRST_SEEN_PRICE",
+        "late_discovery": false,
+        "anchor_price": 0.09608,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": false
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "SPCXB",
+        "source": "dexscreener"
+      },
+      "market_data_quality": {
+        "price_source_count": 1,
+        "price_sources": [
+          "dexscreener"
+        ],
+        "single_source_degraded": true,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": 1.9999288281555865
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0,
+        "_identity_key": "bsc:0xfe189e97832da1573e4e4ff034f4ffc3a15c7777:0x94f3ed36706c746ad59fadcaf271b7431ab1d8f1"
+      }
+    },
+    {
+      "symbol": "RITE",
+      "identity_key": "bsc:0x0808bf94d57c905f1236212654268ef82e1e594e:0x3a07bced97f22d856f1811f7ba32f272337cc084",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.000253,
+      "first_seen_at": "2026-09-22T05:43:05.812043+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 2211.7,
+        "baseline_volume_usd": 1001.18,
+        "relative_volume_multiple": 2.2091,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 139,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": true,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.0002799,
+        "first_verified_at": "2026-09-22T05:43:05.812043+00:00",
+        "gain_from_first_verified_pct": -16.151,
+        "armed_at": "2026-09-22T08:27:37.260270+00:00",
+        "trigger_price": 0.0002561809755399705,
+        "basis": "FIRST_DISCOVERY_ALREADY_GE_25PCT_24H",
+        "late_discovery": true,
+        "anchor_price": 0.0002799,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": false
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "USDT",
+        "source": "dexscreener"
+      },
+      "market_data_quality": {
+        "price_source_count": 2,
+        "price_sources": [
+          "geckoterminal",
+          "dexscreener"
+        ],
+        "single_source_degraded": false,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": 3.5089517731883277
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0,
+        "_identity_key": "bsc:0x0808bf94d57c905f1236212654268ef82e1e594e:0x3a07bced97f22d856f1811f7ba32f272337cc084"
+      }
+    },
+    {
+      "symbol": "SHDW",
+      "identity_key": "solana:SHDWyBxihqiCj6YekG2GUr7wqKLeLAMK1gHZck9pL6y:25bQ6UzZpgFgnU7MqZdqM9Axi6oJunytRL2LgXruDWZB",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.02014,
+      "first_seen_at": "2026-09-22T13:57:14.287943+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 623.72,
+        "baseline_volume_usd": 651.86,
+        "relative_volume_multiple": 0.9568,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 76,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": true,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.02132,
+        "first_verified_at": "2026-09-22T13:57:14.287943+00:00",
+        "gain_from_first_verified_pct": 37.2889,
+        "armed_at": "2026-09-23T16:56:12.554123+00:00",
+        "trigger_price": 0.03263318356609564,
+        "basis": "GAIN_GE_25PCT_FROM_IMMUTABLE_FIRST_SEEN_PRICE",
+        "late_discovery": false,
+        "anchor_price": 0.02132,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": false
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "USDC",
+        "source": "dexscreener"
+      },
+      "market_data_quality": {
+        "price_source_count": 1,
+        "price_sources": [
+          "dexscreener"
+        ],
+        "single_source_degraded": true,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": 5.385638297872339
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0,
+        "_identity_key": "solana:SHDWyBxihqiCj6YekG2GUr7wqKLeLAMK1gHZck9pL6y:25bQ6UzZpgFgnU7MqZdqM9Axi6oJunytRL2LgXruDWZB"
+      }
+    },
+    {
+      "symbol": "DORA",
+      "identity_key": "cex:gate:DORA_USDT",
+      "candidate_type": "CEX_MARKET_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.003823,
+      "first_seen_at": "2026-09-22T16:11:22.646687+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 420.02,
+        "baseline_volume_usd": 461.83,
+        "relative_volume_multiple": 0.9095,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 104,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": true,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.003823,
+        "first_verified_at": "2026-09-22T16:11:22.646687+00:00",
+        "gain_from_first_verified_pct": -60.79,
+        "armed_at": "2026-09-22T16:21:59.809321+00:00",
+        "trigger_price": 0.004198,
+        "basis": "FIRST_DISCOVERY_ALREADY_GE_25PCT_24H",
+        "late_discovery": true,
+        "anchor_price": 0.003823,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": false
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": null,
+        "source": null
+      },
+      "market_data_quality": {
+        "price_source_count": 1,
+        "price_sources": [
+          "gate"
+        ],
+        "single_source_degraded": false,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": null
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0
+      }
+    },
+    {
+      "symbol": "TAKE",
+      "identity_key": "cex:gate:TAKE_USDT",
+      "candidate_type": "CEX_MARKET_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.085131,
+      "first_seen_at": "2026-09-23T06:01:51.476116+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 542092.57,
+        "baseline_volume_usd": 164662.97,
+        "relative_volume_multiple": 3.2921,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 152,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": true,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.085131,
+        "first_verified_at": "2026-09-23T06:01:51.476116+00:00",
+        "gain_from_first_verified_pct": -28.6417,
+        "armed_at": "2026-09-23T06:05:19.223908+00:00",
+        "trigger_price": 0.089627,
+        "basis": "FIRST_DISCOVERY_ALREADY_GE_25PCT_24H",
+        "late_discovery": true,
+        "anchor_price": 0.085131,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": false
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": null,
+        "source": null
+      },
+      "market_data_quality": {
+        "price_source_count": 1,
+        "price_sources": [
+          "gate"
+        ],
+        "single_source_degraded": false,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": null
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0
+      }
+    },
+    {
+      "symbol": "FIO",
+      "identity_key": "cex:gate:FIO_USDT",
+      "candidate_type": "CEX_MARKET_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.0005717,
+      "first_seen_at": "2026-09-21T03:46:41.598521+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 12105.9,
+        "baseline_volume_usd": 21828.09,
+        "relative_volume_multiple": 0.5546,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 106,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": true,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.000568,
+        "first_verified_at": "2026-09-20T07:37:28.636984+00:00",
+        "gain_from_first_verified_pct": -1.6549,
+        "armed_at": "2026-09-21T00:01:38.662011+00:00",
+        "trigger_price": 0.000575,
+        "basis": "FIRST_DISCOVERY_ALREADY_GE_25PCT_24H",
+        "late_discovery": true,
+        "anchor_price": 0.000568,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": false
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": null,
+        "source": null
+      },
+      "market_data_quality": {
+        "price_source_count": 1,
+        "price_sources": [
+          "gate"
+        ],
+        "single_source_degraded": false,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": null
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0
+      }
+    },
+    {
+      "symbol": "KONET",
+      "identity_key": "cex:gate:KONET_USDT",
+      "candidate_type": "CEX_MARKET_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.01838,
+      "first_seen_at": "2026-09-25T14:42:15.600687+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 81646.3,
+        "baseline_volume_usd": 43735.8,
+        "relative_volume_multiple": 1.8668,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 46,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": true,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.01838,
+        "first_verified_at": "2026-09-25T14:42:15.600687+00:00",
+        "gain_from_first_verified_pct": 6.7519,
+        "armed_at": "2026-09-25T14:46:50.706874+00:00",
+        "trigger_price": 0.018382,
+        "basis": "FIRST_DISCOVERY_ALREADY_GE_25PCT_24H",
+        "late_discovery": true,
+        "anchor_price": 0.01838,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": false
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": null,
+        "source": null
+      },
+      "market_data_quality": {
+        "price_source_count": 1,
+        "price_sources": [
+          "gate"
+        ],
+        "single_source_degraded": false,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": null
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0
+      }
+    },
+    {
+      "symbol": "LIME",
+      "identity_key": "bsc:0x7bc75e291e656e8658d66be1cc8154a3769a35dd:0x2919128aacc9e608a9e629aab6b0189bf7932947",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.001787,
+      "first_seen_at": "2026-09-21T14:49:06.124935+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 3870.43,
+        "baseline_volume_usd": 5492.48,
+        "relative_volume_multiple": 0.7047,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 84,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": false,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.001787,
+        "first_verified_at": "2026-09-21T14:49:06.124935+00:00",
+        "gain_from_first_verified_pct": 10.7796,
+        "armed_at": null,
+        "trigger_price": null,
+        "basis": "WAITING_FOR_25PCT_REVALIDATION",
+        "late_discovery": false,
+        "anchor_price": 0.001787,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": null
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "WBNB",
+        "source": "dexscreener"
+      },
+      "market_data_quality": {
+        "price_source_count": 2,
+        "price_sources": [
+          "geckoterminal",
+          "dexscreener"
+        ],
+        "single_source_degraded": false,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": 0.38628502628522554
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0,
+        "_identity_key": "bsc:0x7bc75e291e656e8658d66be1cc8154a3769a35dd:0x2919128aacc9e608a9e629aab6b0189bf7932947"
+      }
+    },
+    {
+      "symbol": "DSYNC",
+      "identity_key": "ethereum:0xf94e7d0710709388bce3161c32b4eea56d3f91cc:0x1ffec7119e315b15852557f654ae0052f76e6ae1",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.007997,
+      "first_seen_at": "2026-09-21T09:18:01.981959+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 16536.99,
+        "baseline_volume_usd": 5900.61,
+        "relative_volume_multiple": 2.8026,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 86,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": true,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.005387,
+        "first_verified_at": "2026-09-21T09:18:01.981959+00:00",
+        "gain_from_first_verified_pct": 61.4312,
+        "armed_at": "2026-09-24T17:37:52.911511+00:00",
+        "trigger_price": 0.00673375,
+        "basis": "ANCHOR_REPAIRED_FROM_IMMUTABLE_FIRST_SEEN",
+        "late_discovery": false,
+        "anchor_price": 0.005387,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": true
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "WETH",
+        "source": "dexscreener"
+      },
+      "market_data_quality": {
+        "price_source_count": 2,
+        "price_sources": [
+          "geckoterminal",
+          "dexscreener"
+        ],
+        "single_source_degraded": false,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": 0.07244637851153553
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0,
+        "_identity_key": "ethereum:0xf94e7d0710709388bce3161c32b4eea56d3f91cc:0x1ffec7119e315b15852557f654ae0052f76e6ae1"
+      }
+    },
+    {
+      "symbol": "CHAIN",
+      "identity_key": "ethereum:0xc4c2614e694cf534d407ee49f8e44d125e4681c4:0x33906431e44553411b8668543ffc20aaa24f75f9",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.0085,
+      "first_seen_at": "2026-09-24T16:28:22.833994+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 1567.69,
+        "baseline_volume_usd": 15618.32,
+        "relative_volume_multiple": 0.1004,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 114,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": true,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.0225,
+        "first_verified_at": "2026-09-24T16:28:22.833994+00:00",
+        "gain_from_first_verified_pct": -61.4267,
+        "armed_at": "2026-09-24T16:39:34.298451+00:00",
+        "trigger_price": 0.00872946305970247,
+        "basis": "FIRST_DISCOVERY_ALREADY_GE_25PCT_24H",
+        "late_discovery": true,
+        "anchor_price": 0.0225,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": false
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "WETH",
+        "source": "dexscreener"
+      },
+      "market_data_quality": {
+        "price_source_count": 1,
+        "price_sources": [
+          "dexscreener"
+        ],
+        "single_source_degraded": true,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": 0.24167098221992275
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0,
+        "_identity_key": "ethereum:0xc4c2614e694cf534d407ee49f8e44d125e4681c4:0x33906431e44553411b8668543ffc20aaa24f75f9"
+      }
+    },
+    {
+      "symbol": "DBR",
+      "identity_key": "solana:DBRiDgJAMsM95moTzJs7M9LnkGErpbv9v6CUR1DXnUu5:E5H5BXLranyJFHEzvR3R2j6kGDQ3Fnx8sPKSsgYqyya8",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.0199,
+      "first_seen_at": "2026-09-21T13:20:43.552113+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 23146.14,
+        "baseline_volume_usd": 54485.2,
+        "relative_volume_multiple": 0.4248,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 120,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": true,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.0199,
+        "first_verified_at": "2026-09-21T13:20:43.552113+00:00",
+        "gain_from_first_verified_pct": 23.0283,
+        "armed_at": "2026-09-23T17:55:04.395960+00:00",
+        "trigger_price": 0.024875,
+        "basis": "ANCHOR_REPAIRED_FROM_IMMUTABLE_FIRST_SEEN",
+        "late_discovery": false,
+        "anchor_price": 0.0199,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": true
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "USDC",
+        "source": "dexscreener"
+      },
+      "market_data_quality": {
+        "price_source_count": 2,
+        "price_sources": [
+          "geckoterminal",
+          "dexscreener"
+        ],
+        "single_source_degraded": false,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": 0.420092645933187
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0,
+        "_identity_key": "solana:DBRiDgJAMsM95moTzJs7M9LnkGErpbv9v6CUR1DXnUu5:E5H5BXLranyJFHEzvR3R2j6kGDQ3Fnx8sPKSsgYqyya8"
+      }
+    },
+    {
+      "symbol": "FOLD",
+      "identity_key": "ethereum:0xe172e9b6cfbeeb5593bdce3f077356fdb33af904:0x909e4a022a7505d44b19b36fe76ee18567379ee4c9697438acde2e159c006c32",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.07196,
+      "first_seen_at": "2026-09-17T14:39:45.519920+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 120082.56,
+        "baseline_volume_usd": 82973.87,
+        "relative_volume_multiple": 1.4472,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 110,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": false,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.0612,
+        "first_verified_at": "2026-09-17T14:39:45.519920+00:00",
+        "gain_from_first_verified_pct": 3.9683,
+        "armed_at": null,
+        "trigger_price": null,
+        "basis": "WAITING_FOR_25PCT_REVALIDATION",
+        "late_discovery": false,
+        "anchor_price": 0.0612,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": null
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "ETH",
+        "source": "dexscreener"
+      },
+      "market_data_quality": {
+        "price_source_count": 2,
+        "price_sources": [
+          "geckoterminal",
+          "dexscreener"
+        ],
+        "single_source_degraded": false,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": 0.5651340015667553
+      },
+      "intelligence": {
+        "status": "NOT_AVAILABLE",
+        "score": null,
+        "label": "NOT_AVAILABLE",
+        "families": 0,
+        "hard_risks": [],
+        "family_scores": {},
+        "notable_evidence": [],
+        "updated_at": null,
+        "evidence_age_minutes": null,
+        "current_evidence_count": 0,
+        "_identity_key": "ethereum:0xe172e9b6cfbeeb5593bdce3f077356fdb33af904:0x909e4a022a7505d44b19b36fe76ee18567379ee4c9697438acde2e159c006c32"
+      }
+    },
+    {
+      "symbol": "BNKR",
+      "identity_key": "base:0x22af33fe49fd1fa80c7149773dde5890d3c76f3b:0xaec085e5a5ce8d96a7bdd3eb3a62445d4f6ce703",
+      "candidate_type": "GATE_SPOT_DISCOVERY",
+      "market_verified": true,
+      "discovery_price": 0.000375,
+      "first_seen_at": "2026-09-21T05:07:59.542432+00:00",
+      "cex_sensor": {
+        "volume_24h_usd": 230773.43,
+        "baseline_volume_usd": 43224.04,
+        "relative_volume_multiple": 5.339,
+        "scan_volume_multiple": 1.0,
+        "positive_gainer_rank": 73,
+        "cex_led_revival": false
+      },
+      "quarter_wave_revalidation": {
+        "armed": true,
+        "threshold_pct": 25.0,
+        "first_verified_price": 0.0002688,
+        "first_verified_at": "2026-09-21T05:07:59.542432+00:00",
+        "gain_from_first_verified_pct": 73.2887,
+        "armed_at": "2026-09-23T01:36:59.890571+00:00",
+        "trigger_price": 0.0003738551578135165,
+        "basis": "GAIN_GE_25PCT_FROM_IMMUTABLE_FIRST_SEEN_PRICE",
+        "late_discovery": false,
+        "anchor_price": 0.0002688,
+        "anchor_repaired": false,
+        "trigger_price_is_threshold_estimate": false
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": "WETH",
+        "source": "dexscreener"
+      },
+      "market_data_quality": {
+        "price_source_count": 1,
+        "price_sources": [
+          "dexscreener"
+        ],
+        "single_source_degraded": true,
+        "cex_execution_verified": true,
+        "cex_market_price_spread_pct": 0.6677436725901921
       },
       "intelligence": {
         "status": "STALE_ONLY",
@@ -1560,41 +2334,51 @@
           "derivatives": 0.0
         },
         "notable_evidence": [],
-        "updated_at": "2026-09-26T14:34:07.756717+00:00",
-        "freshest_event_at": "2026-09-25T19:12:27.992376+00:00",
-        "evidence_age_minutes": 1161.66,
+        "updated_at": "2026-09-26T18:00:40.282169+00:00",
+        "freshest_event_at": "2026-09-25T18:59:33.383985+00:00",
+        "evidence_age_minutes": 1381.11,
         "current_evidence_count": 0,
-        "_identity_key": "bsc:0x223a20e1b83aa3832e78d4b7b132df022e739222:0xfdbeffa804bc58e9edd720165f41a62b2ee251b6"
+        "_identity_key": "base:0x22af33fe49fd1fa80c7149773dde5890d3c76f3b:0xaec085e5a5ce8d96a7bdd3eb3a62445d4f6ce703"
       }
     },
     {
-      "symbol": "MUSEBOOK",
-      "identity_key": "cex:gate:MUSEBOOK_USDT",
+      "symbol": "AMCLUB",
+      "identity_key": "cex:gate:AMCLUB_USDT",
       "candidate_type": "CEX_MARKET_DISCOVERY",
       "market_verified": true,
-      "discovery_price": 0.0002937,
-      "first_seen_at": "2026-09-23T09:05:37.593487+00:00",
+      "discovery_price": 0.34989,
+      "first_seen_at": "2026-09-21T13:06:11.838130+00:00",
       "cex_sensor": {
-        "volume_24h_usd": 296592.29,
-        "baseline_volume_usd": 5761.16,
-        "relative_volume_multiple": 51.4813,
+        "volume_24h_usd": 5513.59,
+        "baseline_volume_usd": 46465.15,
+        "relative_volume_multiple": 0.1187,
         "scan_volume_multiple": 1.0,
         "positive_gainer_rank": null,
         "cex_led_revival": false
       },
       "quarter_wave_revalidation": {
-        "armed": false,
+        "armed": true,
         "threshold_pct": 25.0,
-        "first_verified_price": 0.0003326,
-        "first_verified_at": "2026-09-23T09:05:37.593487+00:00",
-        "gain_from_first_verified_pct": -71.377,
-        "armed_at": null,
-        "trigger_price": null,
-        "basis": "WAITING_FOR_25PCT_REVALIDATION",
-        "late_discovery": false,
-        "anchor_price": 0.0003326,
+        "first_verified_price": 0.34989,
+        "first_verified_at": "2026-09-21T13:06:11.838130+00:00",
+        "gain_from_first_verified_pct": -78.6647,
+        "armed_at": "2026-09-21T13:14:03.225358+00:00",
+        "trigger_price": 0.3827,
+        "basis": "FIRST_DISCOVERY_ALREADY_GE_25PCT_24H",
+        "late_discovery": true,
+        "anchor_price": 0.34989,
         "anchor_repaired": false,
-        "trigger_price_is_threshold_estimate": null
+        "trigger_price_is_threshold_estimate": false
+      },
+      "pool_reserve_flow": {
+        "direction": "NEUTRAL",
+        "severity": "NONE",
+        "alert_eligible": false,
+        "token_change_pct": null,
+        "quote_change_pct": null,
+        "directional_magnitude_pct": null,
+        "quote_symbol": null,
+        "source": null
       },
       "market_data_quality": {
         "price_source_count": 1,
@@ -1619,10 +2403,20 @@
       }
     }
   ],
-  "telegram_mode": "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE",
+  "telegram_mode": "FINAL_BUY_PLUS_EXPLICIT_POOL_RESERVE_ANOMALY",
   "actionable_required": false,
   "research_watch_telegram_suppressed": true,
   "risk_telegram_suppressed": true,
+  "pool_reserve_anomaly_telegram_exception": {
+    "enabled": true,
+    "min_severity": "STRONG",
+    "directions": [
+      "ACCUMULATION",
+      "DISTRIBUTION"
+    ],
+    "delivery_path": "DURABLE_OUTBOX_SEPARATE_LEDGER",
+    "automatic_trade": false
+  },
   "actionability_policy": {
     "min_fusion_score": 55.0,
     "min_positive_families": 3,
@@ -1647,6 +2441,7 @@
         "identity_key": "solana:241aTYhVXZ4WBVSFpfY37RqoCGBQ73KiRFAKvTtnmoon:EcFsXQJjVCjCYWHsuhXUnZH4XB2MzF7iZ3dJu48wmoa9",
         "candidate_type": "CONFIGURED",
         "qualification": [
+          "BUY_FLOW_IMBALANCE_2.3X",
           "TARGETED_HIGHEST_DEEP_WATCH"
         ],
         "market_triggers": [],
@@ -1662,7 +2457,7 @@
           "derivatives": "PRECOLLECTED_THIS_WORKFLOW_WHEN_IDENTITY_SAFE"
         },
         "fusion_refreshed": true,
-        "generated_at": "2026-09-26T14:35:38.594794+00:00"
+        "generated_at": "2026-09-26T18:01:40.746570+00:00"
       },
       {
         "symbol": "LEGION",
@@ -1674,7 +2469,7 @@
         "market_triggers": [
           "CEX_RELATIVE_VOLUME_SHOCK"
         ],
-        "new_evidence": 8,
+        "new_evidence": 4,
         "providers": {
           "market": "OK_EXACT_PAIR_CONSENSUS",
           "holder_wallet": "OK",
@@ -1686,19 +2481,19 @@
           "derivatives": "PRECOLLECTED_THIS_WORKFLOW_WHEN_IDENTITY_SAFE"
         },
         "fusion_refreshed": true,
-        "generated_at": "2026-09-26T14:35:45.445988+00:00"
+        "generated_at": "2026-09-26T18:01:47.659600+00:00"
       },
       {
         "symbol": "PONDUSDT",
         "identity_key": "ethereum:0x57b946008913b82e4df85f501cbaed910e58d26c:0xccb42aaab2ea1f8012c30418ee3fce550954d827",
         "candidate_type": "CEX_SPOT_DISCOVERY",
         "qualification": [
-          "PROACTIVE_MISSING_EVIDENCE_RECOVERY:STATUS_STALE_ONLY,EVIDENCE_0_LT_2,FAMILIES_0,MICROSTRUCTURE_NONPOSITIVE_OR_MISSING"
+          "PROACTIVE_MISSING_EVIDENCE_RECOVERY:EVIDENCE_1_LT_2,FAMILIES_1"
         ],
         "market_triggers": [
           "CEX_RELATIVE_VOLUME_SHOCK"
         ],
-        "new_evidence": 5,
+        "new_evidence": 4,
         "providers": {
           "market": "OK_EXACT_PAIR_CONSENSUS",
           "holder_wallet": "OK",
@@ -1710,21 +2505,21 @@
           "derivatives": "PRECOLLECTED_THIS_WORKFLOW_WHEN_IDENTITY_SAFE"
         },
         "fusion_refreshed": true,
-        "generated_at": "2026-09-26T14:36:00.588352+00:00"
+        "generated_at": "2026-09-26T18:02:03.226212+00:00"
       },
       {
-        "symbol": "CVCUSDT",
-        "identity_key": "ethereum:0x41e5560054824ea6b0732e656e3ad64e20e94e45:0x123fca7e8272a8e9c3bb7113c259abc4901e792b",
+        "symbol": "QUSDT",
+        "identity_key": "bsc:0xc07e1300dc138601fa6b0b59f8d0fa477e690589:0x48733d02b557b186b82aa0df743c358842c69da5",
         "candidate_type": "CEX_SPOT_DISCOVERY",
         "qualification": [
-          "PROACTIVE_MISSING_EVIDENCE_RECOVERY:EVIDENCE_1_LT_2,FAMILIES_0,MICROSTRUCTURE_NONPOSITIVE_OR_MISSING"
+          "PROACTIVE_MISSING_EVIDENCE_RECOVERY:EVIDENCE_1_LT_2,FAMILIES_1"
         ],
         "market_triggers": [],
-        "new_evidence": 3,
+        "new_evidence": 4,
         "providers": {
           "market": "OK_EXACT_PAIR_CONSENSUS",
           "holder_wallet": "OK",
-          "news": "OK",
+          "news": "NO_DATA",
           "search_social_attention": "NO_MATCH",
           "security_tokenomics": "CHECKED_WITH_CONSECUTIVE_CONFIRMATION",
           "developer": "NOT_MAPPED",
@@ -1732,7 +2527,7 @@
           "derivatives": "PRECOLLECTED_THIS_WORKFLOW_WHEN_IDENTITY_SAFE"
         },
         "fusion_refreshed": true,
-        "generated_at": "2026-09-26T14:36:04.703771+00:00"
+        "generated_at": "2026-09-26T18:02:17.869727+00:00"
       },
       {
         "symbol": "2ZUSDT",
@@ -1754,17 +2549,17 @@
           "derivatives": "PRECOLLECTED_THIS_WORKFLOW_WHEN_IDENTITY_SAFE"
         },
         "fusion_refreshed": true,
-        "generated_at": "2026-09-26T14:36:39.585676+00:00"
+        "generated_at": "2026-09-26T18:02:51.496340+00:00"
       },
       {
-        "symbol": "XPRT",
-        "identity_key": "ethereum:0xd454b59f16d42667be2fa55292d16647e27f40c4:0xb61ea0868c3ea5f516256d393c02d8d9c12402a63c3571622c98805aa3e89705",
+        "symbol": "MGT",
+        "identity_key": "bsc:0x3c6256f234ba638e5883c46b3fedb00ea2e66b8a:0xdce2e6fe348f8c8a2b08bbff8f447c64224d75fb",
         "candidate_type": "GATE_SPOT_DISCOVERY",
         "qualification": [
           "PROACTIVE_MISSING_EVIDENCE_RECOVERY:EVIDENCE_1_LT_2,FAMILIES_0,MICROSTRUCTURE_NONPOSITIVE_OR_MISSING"
         ],
         "market_triggers": [],
-        "new_evidence": 3,
+        "new_evidence": 4,
         "providers": {
           "market": "OK_EXACT_PAIR_CONSENSUS",
           "holder_wallet": "OK",
@@ -1776,38 +2571,14 @@
           "derivatives": "PRECOLLECTED_THIS_WORKFLOW_WHEN_IDENTITY_SAFE"
         },
         "fusion_refreshed": true,
-        "generated_at": "2026-09-26T14:36:42.710914+00:00"
-      },
-      {
-        "symbol": "PHAUSDT",
-        "identity_key": "ethereum:0x6c5ba91642f10282b576d91922ae6448c9d52f4e:0x7bc5c9de2dfe90cfe1e01967096915ba8ea1bc53",
-        "candidate_type": "CEX_SPOT_DISCOVERY",
-        "qualification": [
-          "PROACTIVE_MISSING_EVIDENCE_RECOVERY:EVIDENCE_1_LT_2,FAMILIES_1"
-        ],
-        "market_triggers": [
-          "CEX_RELATIVE_VOLUME_SHOCK"
-        ],
-        "new_evidence": 3,
-        "providers": {
-          "market": "OK_EXACT_PAIR_CONSENSUS",
-          "holder_wallet": "OK",
-          "news": "OK",
-          "search_social_attention": "NO_MATCH",
-          "security_tokenomics": "CHECKED_WITH_CONSECUTIVE_CONFIRMATION",
-          "developer": "NOT_MAPPED",
-          "fundamental": "NOT_MAPPED",
-          "derivatives": "PRECOLLECTED_THIS_WORKFLOW_WHEN_IDENTITY_SAFE"
-        },
-        "fusion_refreshed": true,
-        "generated_at": "2026-09-26T14:36:48.948619+00:00"
+        "generated_at": "2026-09-26T18:02:55.524302+00:00"
       },
       {
         "symbol": "ONDOUSDT",
         "identity_key": "ethereum:0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3:0x3dedf9153bf7ea7a8d784a41562e7ee061f8330b695f70ff534f9f9d3be2363a",
         "candidate_type": "CEX_SPOT_DISCOVERY",
         "qualification": [
-          "BUY_PRESSURE_SHIFT_3.7X",
+          "VOLUME_EXPANSION_6.5X",
           "PROACTIVE_MISSING_EVIDENCE_RECOVERY:STATUS_STALE_ONLY,EVIDENCE_0_LT_2,FAMILIES_0,MICROSTRUCTURE_NONPOSITIVE_OR_MISSING"
         ],
         "market_triggers": [
@@ -1825,13 +2596,43 @@
           "derivatives": "PRECOLLECTED_THIS_WORKFLOW_WHEN_IDENTITY_SAFE"
         },
         "fusion_refreshed": true,
-        "generated_at": "2026-09-26T14:36:52.015255+00:00"
+        "generated_at": "2026-09-26T18:02:59.488031+00:00"
+      },
+      {
+        "symbol": "NATIX",
+        "identity_key": "solana:FRySi8LPkuByB7VPSCCggxpewFUeeJiwEGRKKuhwpKcX:EE1i59YUAELZj4qe8sHgsYd7wYuwe2YRoJMmkCjJEiGt",
+        "candidate_type": "GATE_SPOT_DISCOVERY",
+        "qualification": [
+          "POSITIVE_MARKET_TRIGGER",
+          "BUY_FLOW_IMBALANCE_2.3X",
+          "NEW_TRIGGER:PRICE_PLUS_VOLUME_ACCELERATION",
+          "PRICE_CHANGE_+56.1%",
+          "VOLUME_EXPANSION_2.7X",
+          "PROACTIVE_MISSING_EVIDENCE_RECOVERY:FAMILIES_1"
+        ],
+        "market_triggers": [
+          "PRICE_PLUS_VOLUME_ACCELERATION"
+        ],
+        "new_evidence": 7,
+        "providers": {
+          "market": "OK_EXACT_PAIR_CONSENSUS",
+          "holder_wallet": "OK",
+          "news": "OK",
+          "search_social_attention": "NO_MATCH",
+          "security_tokenomics": "NOT_APPLICABLE",
+          "developer": "NOT_MAPPED",
+          "fundamental": "NOT_MAPPED",
+          "derivatives": "PRECOLLECTED_THIS_WORKFLOW_WHEN_IDENTITY_SAFE"
+        },
+        "fusion_refreshed": true,
+        "generated_at": "2026-09-26T18:03:32.782185+00:00"
       }
     ],
     "failures": []
   },
   "actionability_stats": {
-    "suppressed_final_buy_only": 11
+    "suppressed_final_buy_only": 18,
+    "pool_reserve_outbox_total": 0
   },
   "suppressed_non_actionable_examples": []
 }
