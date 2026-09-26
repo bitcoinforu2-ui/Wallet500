@@ -1,5 +1,5 @@
 {
-  "version": 11,
+  "version": 12,
   "mode": "POSITION_WATCH_RESEARCH_ONLY",
   "data_integrity": {
     "max_price_source_spread_pct": 2,
@@ -27,7 +27,7 @@
     "alpha_min_volume_h1_for_telegram": 5000,
     "alpha_min_buys_h1_for_telegram": 15,
     "alpha_min_buy_sell_ratio_for_telegram": 2,
-    "notes": "Telegram is FINAL BUY ONLY. Research/watch, risk, deterioration, sell-side, NEAR_BUY, PRE-WAVE, re-entry and generic material-change events stay silent inside Unified Watch. User-facing delivery is allowed only after either the canonical Decision Engine BUY gate or the explicit user-requested Unified Watch FINAL BUY gate; raw watch events never send.",
+    "notes": "Telegram remains fail-closed for generic research/watch events. User-facing exceptions are explicit: canonical FINAL BUY / configured PRE-BUY or position-protection lanes, plus exact-pair POOL RESERVE FLOW anomalies at STRONG/EXTREME severity in BOTH directions (ACCUMULATION and DISTRIBUTION). Same-direction reserve moves are treated as LP add/remove and stay silent.",
     "telegram_final_buy_only": true,
     "telegram_real_alert_only": true,
     "telegram_buy_side_only": true,
@@ -40,7 +40,13 @@
     "real_alert_min_positive_families": 3,
     "real_alert_relaxed_min_fusion_score_with_wallet_or_new_intel": 30,
     "real_alert_relaxed_min_positive_families_with_wallet_or_new_intel": 2,
-    "real_alert_require_live_market_confirmation_for_relaxed_path": true
+    "real_alert_require_live_market_confirmation_for_relaxed_path": true,
+    "pool_reserve_flow_sensor_enabled": true,
+    "pool_reserve_flow_min_directional_pct": 12,
+    "pool_reserve_flow_strong_pct": 25,
+    "pool_reserve_flow_extreme_pct": 50,
+    "pool_reserve_flow_telegram_min_severity": "STRONG",
+    "allow_direct_pool_reserve_anomaly_alerts": true
   },
   "experiment": {
     "first_full_collector_asset": "SOPH",
@@ -343,6 +349,34 @@
           "corroboration_min_ratio": 0.7
         }
       }
+    },
+    {
+      "symbol": "UNTXD",
+      "network": "solana",
+      "contract": "3tzkdxJ1qVCaPAuWmd8FjRFKUbwMYpLUAq5gg4Vopump",
+      "pair": "B1zosT5SqjsEGRSU1cGbSVJrkVYL9zzFXDa9cmZWRhZt",
+      "dex_url": "https://www.geckoterminal.com/solana/pools/B1zosT5SqjsEGRSU1cGbSVJrkVYL9zzFXDa9cmZWRhZt",
+      "collector_priority": 1,
+      "close_watch": "HIGHEST",
+      "critical_market_lane": true,
+      "deep_investigation": true,
+      "derivatives_intelligence": false,
+      "wallet_perp_correlation": false,
+      "tracked_perp_wallets": [],
+      "up_levels": [],
+      "down_levels": [],
+      "min_volume_h1_for_momentum": 1000,
+      "volume_acceleration_multiple": 1.5,
+      "liquidity_drop_pct": 20,
+      "exact_identity_required": true,
+      "exact_pair_required": true,
+      "user_requested_watch": true,
+      "force_monitoring": true,
+      "pool_reserve_flow_watch": true,
+      "watch_policy": "BIDIRECTIONAL_EXACT_PAIR_RESERVE_FLOW",
+      "telegram_policy": "POOL_RESERVE_ANOMALY_BOTH_DIRECTIONS",
+      "automatic_trade": false,
+      "notes": "User-requested UNTXD watch. Alert on STRONG/EXTREME exact-pair reserve rotation both directions; never interpret reserve flow alone as an automatic BUY/SELL."
     }
   ],
   "priority_identity_queue": [
