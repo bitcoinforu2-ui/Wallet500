@@ -27,7 +27,7 @@ jobs:
       - name: Validate unified watcher, collectors and intelligence fusion
         id: validate
         run: |
-          python -m py_compile scripts/resilient_http.py scripts/new_chain_bootstrap_radar.py scripts/test_new_chain_bootstrap_contract.py scripts/resilient_unified_watch_runner.py scripts/hot_candidate_recheck.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/spot_cex_fast_handoff.py scripts/native_asset_intelligence.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/early_kol_convergence.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py scripts/user_watch_final_buy.py scripts/test_user_watch_final_buy_contract.py scripts/chain_context_shadow.py scripts/targeted_binance_spot_watch.py
+          python -m py_compile scripts/resilient_http.py scripts/new_chain_bootstrap_radar.py scripts/test_new_chain_bootstrap_contract.py scripts/resilient_unified_watch_runner.py scripts/hot_candidate_recheck.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/partnership_intelligence_collector.py src/wallet500/partnership_intelligence.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/spot_cex_fast_handoff.py scripts/native_asset_intelligence.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/early_kol_convergence.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py scripts/user_watch_final_buy.py scripts/test_user_watch_final_buy_contract.py scripts/chain_context_shadow.py scripts/targeted_binance_spot_watch.py
           for f in data/unified-watch-config.json data/targeted-binance-spot-watch-state.json data/targeted-binance-spot-watch-report.json data/user-watch-final-buy-state.json data/user-watch-final-buy-report.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/buy-zone-close-watch-registry.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/narrative-dependency-state.json data/http-resilience-state.json data/new-chain-bootstrap-state.json data/new-chain-bootstrap-radar.json data/chain-context-shadow.json data/early-kol-wallets.json data/early-kol-convergence-state.json data/early-kol-convergence.json data/early-kol-candidates.json; do python -m json.tool "$f" >/dev/null; done
 
       - name: Test exact-identity intelligence fusion contract
@@ -35,7 +35,7 @@ jobs:
         run: |
           python scripts/test_intelligence_fusion_contract.py
           python -m pip install --disable-pip-version-check -q pytest
-          python -m pytest -q tests/test_unified_watch_cex_resilience.py tests/test_hot_candidate_recheck.py tests/test_hot_recheck_publish_workflow_contract.py tests/test_same_run_cex_intelligence.py tests/test_spot_market_discovery_native_identity.py tests/test_chain_context_shadow.py tests/test_targeted_binance_spot_watch.py tests/test_protocol_buyback_sensor.py tests/test_early_kol_convergence.py
+          python -m pytest -q tests/test_unified_watch_cex_resilience.py tests/test_hot_candidate_recheck.py tests/test_hot_recheck_publish_workflow_contract.py tests/test_same_run_cex_intelligence.py tests/test_spot_market_discovery_native_identity.py tests/test_chain_context_shadow.py tests/test_targeted_binance_spot_watch.py tests/test_protocol_buyback_sensor.py tests/test_early_kol_convergence.py tests/test_partnership_intelligence.py
 
       - name: Test user-requested FINAL BUY contract
         id: user_buy_contract
@@ -243,6 +243,13 @@ jobs:
       - name: Collect verified narrative dependency rotation intelligence
         id: narrative_dependency
         run: python scripts/narrative_dependency_collector.py
+
+      # Research-only evidence lane, scheduled WITH the unified watch engine.
+      # No independent tracker or Telegram sender; runs after critical decisions.
+      - name: Collect exact-contract partnership research
+        id: partnership_research
+        continue-on-error: true
+        run: python scripts/partnership_intelligence_collector.py
 
       - name: Collect Gate-stat plus Hyperliquid failover derivatives intelligence
         id: derivatives
@@ -461,6 +468,8 @@ jobs:
             data/unified-dynamic-candidates.json \
             data/cross-domain-intelligence-state.json \
             data/narrative-dependency-state.json \
+            data/partnership-intelligence-state.json \
+            data/partnership-intelligence-latest.json \
             data/early-kol-convergence-state.json \
             data/early-kol-convergence.json \
             data/early-kol-candidates.json
