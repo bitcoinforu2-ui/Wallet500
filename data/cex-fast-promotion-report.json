@@ -1,14 +1,14 @@
 {
   "version": 1,
-  "generated_at": "2026-09-30T01:39:12.987310+00:00",
+  "generated_at": "2026-10-03T13:15:50.988274+00:00",
   "mode": "CEX_FAST_PROMOTION_V2_SENSOR_HANDOFF",
   "configured": false,
   "telegram_delivery_enabled": false,
   "telegram_delivery_policy": "FINAL_BUY_ONLY_CANONICAL_DECISION_ENGINE",
-  "identity_source_generated_at": "2026-09-30T01:37:52.414754+00:00",
-  "identity_rows_seen": 0,
-  "usdc_markets_seen": 1064,
-  "usdc_groups_seen": 8,
+  "identity_source_generated_at": "2026-10-03T13:14:36.038044+00:00",
+  "identity_rows_seen": 43,
+  "usdc_markets_seen": 1010,
+  "usdc_groups_seen": 1,
   "usdc_source_health": {
     "bybit": {
       "ok": false,
@@ -30,17 +30,9 @@
       "ok": true,
       "markets": 57
     },
-    "mexc": {
-      "ok": true,
-      "markets": 223
-    },
-    "okx": {
-      "ok": true,
-      "markets": 299
-    },
     "coinex": {
       "ok": true,
-      "markets": 53,
+      "markets": 0,
       "endpoint": "https://api.coinex.com/v2/spot/ticker",
       "endpoint_fallback_used": false,
       "endpoint_attempts": [
@@ -66,6 +58,14 @@
       "official_endpoint_only": true,
       "fallback_pool_size": 2
     },
+    "okx": {
+      "ok": true,
+      "markets": 297
+    },
+    "mexc": {
+      "ok": true,
+      "markets": 224
+    },
     "gate": {
       "ok": true,
       "markets": 65
@@ -89,20 +89,26 @@
       "direct_bybit_available": false,
       "coverage_state": "INDEPENDENT_TWO_CEX_REDUNDANCY",
       "compensation_sources": [
+        "binance",
         "bitget",
         "coinex"
       ],
+      "active_independent_compensation_sources": [
+        "binance",
+        "bitget"
+      ],
       "compensation_source_health": {
+        "binance": true,
         "bitget": true,
-        "coinex": true
+        "coinex": false
       },
       "minimum_independent_compensation_sources": 2,
       "geo_restriction_circumvention": false,
       "regional_bybit_endpoints_used_as_proxy": false,
-      "truth_note": "Direct Bybit stays fail-closed; Bitget and CoinEx compensate market-visibility loss without being mislabeled as Bybit."
+      "truth_note": "Direct Bybit stays fail-closed; two independently healthy official Binance/Bitget/CoinEx sources restore partial market visibility, never Bybit-specific asset coverage or exact identity."
     }
   },
-  "evaluated_count": 3,
+  "evaluated_count": 18,
   "eligible_count": 0,
   "delivered_count": 0,
   "error_count": 0,
@@ -110,12 +116,1044 @@
   "errors": [],
   "blocked_sample": [
     {
-      "symbol": "GRASSUSDT",
+      "symbol": "QAITUSDT",
+      "chain": "bsc",
+      "token_address": "0x4d41a5d412f4ef44a35b9f53b06db65ede249493",
+      "pair_address": "0x3b28d5c18b2dcebeae0abc9ca358d96d9b623f7683c46abfdc8e1f0cc5c9ede6",
+      "dex": "Pancakeswap Infinity (CLMM)",
+      "dex_url": "https://www.geckoterminal.com/bsc/pools/0x3b28d5c18b2dcebeae0abc9ca358d96d9b623f7683c46abfdc8e1f0cc5c9ede6",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 0,
+      "signal_change_24h_pct": 3.41,
+      "current_change_24h_pct": 130.46,
+      "signal_price": 0.00212,
+      "signal_at": "2026-09-16T10:45:48.364888+00:00",
+      "signal_milestone": "first_cross_venue_slow_ignition",
+      "current_price": 0.003851,
+      "cex_turnover_usd": 171446.33,
+      "relative_volume_shock": true,
+      "relative_volume_max_multiple": 255.7465,
+      "relative_volume_acceleration_pct": 12.5416,
+      "relative_volume_turnover_exception": true,
+      "market_age_days": 119.0,
+      "execution_liquidity_usd": 912622.65,
+      "exchanges": [
+        "gate"
+      ],
+      "observed_exchanges": [
+        "gate",
+        "kucoin"
+      ],
+      "coherent_confirmations": 2,
+      "leaderboard_best_rank": 1,
+      "leaderboard_exchanges": [
+        "gate",
+        "kucoin"
+      ],
+      "single_exchange_exception": false,
+      "blockers": [
+        "ACTION_MOVE_ALREADY_EXTENDED",
+        "ACTION_SCORE_LT_40",
+        "LATE_MOVE_DO_NOT_CHASE",
+        "SIGNAL_SCORE_LT_35",
+        "STALE_SIGNAL_NO_FRESH_REACTIVATION",
+        "WAIT_FOR_RETEST_ABOVE_DISCOVERY"
+      ],
+      "since_discovery_pct": 81.6509,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 410.501,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 1,
+      "fresh_reactivation_exchanges": [
+        "gate"
+      ],
+      "fresh_reactivation_turnover_usd": 171446.33,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": false,
+      "action_state": "WAIT_FRESH_REACTIVATION",
+      "action_basis": "STALE_HISTORICAL_SIGNAL_ONLY"
+    },
+    {
+      "symbol": "龙虾USDT",
+      "chain": "bsc",
+      "token_address": "0xeccbb861c0dda7efd964010085488b69317e4444",
+      "pair_address": "0x22af7297243c4eEF12E2D5A4f888b92E56BF127C",
+      "dex": "pancakeswap",
+      "dex_url": "https://dexscreener.com/bsc/0x22af7297243c4eef12e2d5a4f888b92e56bf127c",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 44,
+      "signal_change_24h_pct": -43.168,
+      "current_change_24h_pct": 47.63,
+      "signal_price": 0.142649,
+      "signal_at": "2026-09-22T21:54:24.701046+00:00",
+      "signal_milestone": "first_watch",
+      "current_price": 0.048327,
+      "cex_turnover_usd": 35531606.0,
+      "relative_volume_shock": false,
+      "relative_volume_max_multiple": 0.0,
+      "relative_volume_acceleration_pct": 0.4345,
+      "relative_volume_turnover_exception": false,
+      "market_age_days": 217.0,
+      "execution_liquidity_usd": 2140861.28,
+      "exchanges": [
+        "bitget",
+        "gate"
+      ],
+      "observed_exchanges": [
+        "bitget",
+        "gate"
+      ],
+      "coherent_confirmations": 2,
+      "leaderboard_best_rank": null,
+      "leaderboard_exchanges": [],
+      "single_exchange_exception": false,
+      "blockers": [
+        "ACTION_MOVE_ALREADY_EXTENDED",
+        "ACTION_SIGNAL_INVALIDATED_DOWNSIDE",
+        "LATE_MOVE_DO_NOT_CHASE"
+      ],
+      "since_discovery_pct": -66.1217,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 255.358,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 2,
+      "fresh_reactivation_exchanges": [
+        "bitget",
+        "gate"
+      ],
+      "fresh_reactivation_turnover_usd": 97545198.4976,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": false,
+      "action_state": "WAIT_OR_REJECT",
+      "action_basis": "BLOCKED"
+    },
+    {
+      "symbol": "PODUSDT",
+      "chain": "base",
+      "token_address": "0xed664536023d8e4b1640c394777d34abaff1df8f",
+      "pair_address": "0x7c84276e317f128b55bd270dbfba3ef94c84b984c124a1de7c4f72da90bfba45",
+      "dex": "uniswap",
+      "dex_url": "https://dexscreener.com/base/0x7c84276e317f128b55bd270dbfba3ef94c84b984c124a1de7c4f72da90bfba45",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 43,
+      "signal_change_24h_pct": -1.95,
+      "current_change_24h_pct": 34.88,
+      "signal_price": 0.6553,
+      "signal_at": "2026-10-02T12:45:45.089035+00:00",
+      "signal_milestone": "first_alert",
+      "current_price": 0.7221,
+      "cex_turnover_usd": 318946.0,
+      "relative_volume_shock": false,
+      "relative_volume_max_multiple": 0.0,
+      "relative_volume_acceleration_pct": -0.8852,
+      "relative_volume_turnover_exception": false,
+      "market_age_days": 207.0,
+      "execution_liquidity_usd": 6068455.84,
+      "exchanges": [
+        "gate",
+        "mexc"
+      ],
+      "observed_exchanges": [
+        "gate",
+        "mexc"
+      ],
+      "coherent_confirmations": 2,
+      "leaderboard_best_rank": null,
+      "leaderboard_exchanges": [],
+      "single_exchange_exception": false,
+      "blockers": [
+        "CEX_DEX_PRICE_COHERENCE_NOT_VERIFIED",
+        "EXACT_IDENTITY_NOT_VERIFIED"
+      ],
+      "since_discovery_pct": 10.1938,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 24.502,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 2,
+      "fresh_reactivation_exchanges": [
+        "gate",
+        "mexc"
+      ],
+      "fresh_reactivation_turnover_usd": 512267.1916,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": false,
+      "action_state": "WAIT_OR_REJECT",
+      "action_basis": "BLOCKED"
+    },
+    {
+      "symbol": "NAVXUSDT",
+      "chain": "sui",
+      "token_address": "0xa99b8952d4f7d947ea77fe0ecdcc9e5fc0bcab2841d6e2a5aa00c3044e5544b5::navx::NAVX",
+      "pair_address": "0x0254747f5ca059a1972cd7f6016485d51392a3fde608107b93bbaebea550f703",
+      "dex": "cetus",
+      "dex_url": "https://dexscreener.com/sui/0x0254747f5ca059a1972cd7f6016485d51392a3fde608107b93bbaebea550f703",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 28,
+      "signal_change_24h_pct": 0.0293,
+      "current_change_24h_pct": 21.37,
+      "signal_price": 0.008719,
+      "signal_at": "2026-09-17T07:57:18.743586+00:00",
+      "signal_milestone": "first_cross_venue_slow_ignition",
+      "current_price": 0.015213,
+      "cex_turnover_usd": 30741.68,
+      "relative_volume_shock": true,
+      "relative_volume_max_multiple": 18.6877,
+      "relative_volume_acceleration_pct": 304.9134,
+      "relative_volume_turnover_exception": true,
+      "market_age_days": 918.0,
+      "execution_liquidity_usd": 271259.4,
+      "exchanges": [
+        "gate"
+      ],
+      "observed_exchanges": [
+        "bybit"
+      ],
+      "coherent_confirmations": 4,
+      "leaderboard_best_rank": 4,
+      "leaderboard_exchanges": [
+        "bybit"
+      ],
+      "single_exchange_exception": false,
+      "blockers": [
+        "ACTION_SCORE_LT_40",
+        "SIGNAL_SCORE_LT_35",
+        "STALE_SIGNAL_NO_FRESH_REACTIVATION",
+        "WAIT_FOR_RETEST_ABOVE_DISCOVERY"
+      ],
+      "since_discovery_pct": 74.481,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 389.31,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 0,
+      "fresh_reactivation_exchanges": [],
+      "fresh_reactivation_turnover_usd": 0.0,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": false,
+      "action_state": "WAIT_FRESH_REACTIVATION",
+      "action_basis": "STALE_HISTORICAL_SIGNAL_ONLY"
+    },
+    {
+      "symbol": "DMCUSDT",
+      "chain": "sui",
+      "token_address": "0x4c981f3ff786cdb9e514da897ab8a953647dae2ace9679e8358eec1e3e8871ac::dmc::DMC",
+      "pair_address": "0xa288810f820498f7c2bca41cfadea3e99bd152b3dbeb2c282bb4b9c909f71c6d",
+      "dex": "cetus",
+      "dex_url": "https://dexscreener.com/sui/0xa288810f820498f7c2bca41cfadea3e99bd152b3dbeb2c282bb4b9c909f71c6d",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 12,
+      "signal_change_24h_pct": 0.0463,
+      "current_change_24h_pct": 15.06,
+      "signal_price": 0.0003138,
+      "signal_at": "2026-09-14T16:56:20.473554+00:00",
+      "signal_milestone": "first_cross_venue_slow_ignition",
+      "current_price": 0.0003307,
+      "cex_turnover_usd": 143510.96,
+      "relative_volume_shock": true,
+      "relative_volume_max_multiple": 5.4534,
+      "relative_volume_acceleration_pct": 10.2263,
+      "relative_volume_turnover_exception": true,
+      "market_age_days": 459.0,
+      "execution_liquidity_usd": 24740.35,
+      "exchanges": [
+        "gate"
+      ],
+      "observed_exchanges": [
+        "bitget"
+      ],
+      "coherent_confirmations": 3,
+      "leaderboard_best_rank": 6,
+      "leaderboard_exchanges": [
+        "bitget"
+      ],
+      "single_exchange_exception": false,
+      "blockers": [
+        "ACTION_SCORE_LT_40",
+        "SIGNAL_SCORE_LT_35",
+        "STALE_SIGNAL_NO_FRESH_REACTIVATION"
+      ],
+      "since_discovery_pct": 5.3856,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 452.326,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 1,
+      "fresh_reactivation_exchanges": [
+        "gate"
+      ],
+      "fresh_reactivation_turnover_usd": 143510.96,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": false,
+      "action_state": "WAIT_FRESH_REACTIVATION",
+      "action_basis": "STALE_HISTORICAL_SIGNAL_ONLY"
+    },
+    {
+      "symbol": "GLMRUSDT",
+      "chain": "base",
+      "token_address": "0xb3846fd356c2149ee8d30b0449088dc74e265459",
+      "pair_address": "0xe9a696885b38ea2e15ac76bd2d5624ce69aad085a06ba5e92b29d7c1de126848",
+      "dex": "Uniswap V4 (Base)",
+      "dex_url": "https://www.geckoterminal.com/base/pools/0xe9a696885b38ea2e15ac76bd2d5624ce69aad085a06ba5e92b29d7c1de126848",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 53,
+      "signal_change_24h_pct": 8.9,
+      "current_change_24h_pct": 46.66,
+      "signal_price": 0.006164,
+      "signal_at": "2026-09-15T11:01:50.580698+00:00",
+      "signal_milestone": "first_cross_venue_slow_ignition",
+      "current_price": 0.012773,
+      "cex_turnover_usd": 233945.8,
+      "relative_volume_shock": true,
+      "relative_volume_max_multiple": 11.4891,
+      "relative_volume_acceleration_pct": 88.6544,
+      "relative_volume_turnover_exception": true,
+      "market_age_days": 1726.0,
+      "execution_liquidity_usd": 7816.47,
+      "exchanges": [
+        "gate"
+      ],
+      "observed_exchanges": [
+        "gate"
+      ],
+      "coherent_confirmations": 3,
+      "leaderboard_best_rank": 6,
+      "leaderboard_exchanges": [],
+      "single_exchange_exception": false,
+      "blockers": [
+        "ACTION_MOVE_ALREADY_EXTENDED",
+        "CEX_DEX_PRICE_COHERENCE_NOT_VERIFIED",
+        "EXACT_IDENTITY_NOT_VERIFIED",
+        "EXECUTION_LIQUIDITY_LT_15K",
+        "LATE_MOVE_DO_NOT_CHASE",
+        "STALE_SIGNAL_NO_FRESH_REACTIVATION",
+        "WAIT_FOR_RETEST_ABOVE_DISCOVERY"
+      ],
+      "since_discovery_pct": 107.2193,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 434.234,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 1,
+      "fresh_reactivation_exchanges": [
+        "gate"
+      ],
+      "fresh_reactivation_turnover_usd": 233945.8,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": false,
+      "action_state": "WAIT_FRESH_REACTIVATION",
+      "action_basis": "STALE_HISTORICAL_SIGNAL_ONLY"
+    },
+    {
+      "symbol": "VAIUSDT",
+      "chain": "ethereum",
+      "token_address": "0xd13cfd3133239a3c73a9e535a5c4dadee36b395c",
+      "pair_address": "0xaf95d3a7a25f831dc2b9a6704554435957b51ec2",
+      "dex": "Uniswap V2",
+      "dex_url": "https://www.geckoterminal.com/eth/pools/0xaf95d3a7a25f831dc2b9a6704554435957b51ec2",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 0,
+      "signal_change_24h_pct": 3.5,
+      "current_change_24h_pct": 35.64,
+      "signal_price": 0.001005,
+      "signal_at": "2026-09-20T08:17:05.113803+00:00",
+      "signal_milestone": "first_cross_venue_slow_ignition",
+      "current_price": 0.003653,
+      "cex_turnover_usd": 53857.83,
+      "relative_volume_shock": false,
+      "relative_volume_max_multiple": 3.8661,
+      "relative_volume_acceleration_pct": 56.9806,
+      "relative_volume_turnover_exception": false,
+      "market_age_days": 2010.0,
+      "execution_liquidity_usd": 93455.63,
+      "exchanges": [
+        "gate"
+      ],
+      "observed_exchanges": [
+        "gate",
+        "kucoin"
+      ],
+      "coherent_confirmations": 2,
+      "leaderboard_best_rank": 6,
+      "leaderboard_exchanges": [
+        "gate",
+        "kucoin"
+      ],
+      "single_exchange_exception": false,
+      "blockers": [
+        "ACTION_MOVE_ALREADY_EXTENDED",
+        "ACTION_SCORE_LT_40",
+        "CEX_TURNOVER_LT_100K_WITHOUT_RELATIVE_VOLUME_SHOCK",
+        "SIGNAL_SCORE_LT_35",
+        "STALE_SIGNAL_NO_FRESH_REACTIVATION",
+        "WAIT_FOR_RETEST_ABOVE_DISCOVERY"
+      ],
+      "since_discovery_pct": 263.4826,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 316.98,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 1,
+      "fresh_reactivation_exchanges": [
+        "gate"
+      ],
+      "fresh_reactivation_turnover_usd": 53857.83,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": false,
+      "action_state": "WAIT_FRESH_REACTIVATION",
+      "action_basis": "STALE_HISTORICAL_SIGNAL_ONLY"
+    },
+    {
+      "symbol": "ZROUSDT",
+      "chain": "ethereum",
+      "token_address": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+      "pair_address": "0x360acF12e72044ba3eaAA654E51E4725c699DcB1",
+      "dex": "uniswap",
+      "dex_url": "https://dexscreener.com/ethereum/0x360acf12e72044ba3eaaa654e51e4725c699dcb1",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 82,
+      "signal_change_24h_pct": 9.69,
+      "current_change_24h_pct": 10.62,
+      "signal_price": 1.3094,
+      "signal_at": "2026-09-22T16:17:52.098441+00:00",
+      "signal_milestone": "first_watch",
+      "current_price": 2.0678,
+      "cex_turnover_usd": 21076596.0,
+      "relative_volume_shock": false,
+      "relative_volume_max_multiple": 0.0,
+      "relative_volume_acceleration_pct": 15.7565,
+      "relative_volume_turnover_exception": false,
+      "market_age_days": 666.0,
+      "execution_liquidity_usd": 69145.88,
+      "exchanges": [
+        "bingx",
+        "bitget",
+        "coinex",
+        "gate",
+        "kucoin",
+        "mexc",
+        "okx"
+      ],
+      "observed_exchanges": [
+        "bingx",
+        "bitget",
+        "coinex",
+        "gate",
+        "kucoin",
+        "mexc",
+        "okx"
+      ],
+      "coherent_confirmations": 6,
+      "leaderboard_best_rank": null,
+      "leaderboard_exchanges": [],
+      "single_exchange_exception": false,
+      "blockers": [
+        "WAIT_FOR_RETEST_ABOVE_DISCOVERY"
+      ],
+      "since_discovery_pct": 57.9197,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 260.967,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 6,
+      "fresh_reactivation_exchanges": [
+        "bingx",
+        "bitget",
+        "gate",
+        "kucoin",
+        "mexc",
+        "okx"
+      ],
+      "fresh_reactivation_turnover_usd": 76644074.9722,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": false,
+      "action_state": "WAIT_FOR_RETEST",
+      "action_basis": "PRICE_EXTENSION"
+    },
+    {
+      "symbol": "JSTUSDT",
+      "chain": "tron",
+      "token_address": "TCFLL5dx5ZJdKnWuesXxi1VPwjLVmWZZy9",
+      "pair_address": "TW68dBGdy9gtk16BfzmvaCZ9pEti3KFkk2",
+      "dex": "Sunswap V2",
+      "dex_url": "https://www.geckoterminal.com/tron/pools/TW68dBGdy9gtk16BfzmvaCZ9pEti3KFkk2",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 3,
+      "signal_change_24h_pct": 0.0328,
+      "current_change_24h_pct": 7.49,
+      "signal_price": 0.11673,
+      "signal_at": "2026-09-22T08:33:08.124397+00:00",
+      "signal_milestone": "first_cross_venue_slow_ignition",
+      "current_price": 0.13713,
+      "cex_turnover_usd": 144106.71472,
+      "relative_volume_shock": false,
+      "relative_volume_max_multiple": 3.4665,
+      "relative_volume_acceleration_pct": 4.8245,
+      "relative_volume_turnover_exception": false,
+      "market_age_days": 2338.0,
+      "execution_liquidity_usd": 14083760.98,
+      "exchanges": [
+        "bitget",
+        "gate",
+        "kucoin",
+        "mexc"
+      ],
+      "observed_exchanges": [
+        "bitget",
+        "gate",
+        "kucoin",
+        "mexc",
+        "upbit"
+      ],
+      "coherent_confirmations": 0,
+      "leaderboard_best_rank": null,
+      "leaderboard_exchanges": [],
+      "single_exchange_exception": false,
+      "blockers": [
+        "ACTION_SCORE_LT_40",
+        "SIGNAL_SCORE_LT_35",
+        "STALE_SIGNAL_NO_FRESH_REACTIVATION",
+        "WAIT_FOR_RETEST_ABOVE_DISCOVERY"
+      ],
+      "since_discovery_pct": 17.4762,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 268.713,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 2,
+      "fresh_reactivation_exchanges": [
+        "bitget",
+        "kucoin"
+      ],
+      "fresh_reactivation_turnover_usd": 134761.2361,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": true,
+      "cross_lane_action_signal_score": 79,
+      "cross_lane_action_signal_at": "2026-09-04T10:50:55.521230+00:00",
+      "cross_lane_spot_anchor_kind": "first_seen",
+      "cross_lane_spot_anchor_price": 0.1088,
+      "cross_lane_derivatives_score": 79,
+      "cross_lane_derivatives_coherent_confirmations": 5,
+      "action_state": "WAIT_FRESH_REACTIVATION",
+      "action_basis": "STALE_HISTORICAL_SIGNAL_ONLY"
+    },
+    {
+      "symbol": "PUMPUSDT",
       "chain": "solana",
-      "token_address": "Grass7B4RdKfBCjTKgSqnXkqjwiGvQyFbuSCUJr3XXjs",
-      "pair_address": "6ScK5vYV7tbe8rR6Sc8gJwDzKkotNjRFzCe6YCw8Nfkg",
-      "dex": "orca",
-      "dex_url": "https://dexscreener.com/solana/6sck5vyv7tbe8rr6sc8gjwdzkkotnjrfzce6ycw8nfkg",
+      "token_address": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+      "pair_address": "2uF4Xh61rDwxnG9woyxsVQP7zuA6kLFpb3NvnRQeoiSd",
+      "dex": "pumpswap",
+      "dex_url": "https://dexscreener.com/solana/2uf4xh61rdwxng9woyxsvqp7zua6klfpb3nvnrqeoisd",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 36,
+      "signal_change_24h_pct": 0.0451,
+      "current_change_24h_pct": -0.0377,
+      "signal_price": 0.003682,
+      "signal_at": "2026-09-14T22:36:13.818691+00:00",
+      "signal_milestone": "first_cross_venue_slow_ignition",
+      "current_price": 0.005786,
+      "cex_turnover_usd": 30889302.622273,
+      "relative_volume_shock": false,
+      "relative_volume_max_multiple": 2.1221,
+      "relative_volume_acceleration_pct": 3.3753,
+      "relative_volume_turnover_exception": false,
+      "market_age_days": 384.0,
+      "execution_liquidity_usd": 27622569.74,
+      "exchanges": [
+        "bitget",
+        "gate",
+        "kucoin",
+        "mexc",
+        "okx"
+      ],
+      "observed_exchanges": [
+        "bitget",
+        "gate",
+        "kucoin",
+        "mexc",
+        "okx",
+        "upbit"
+      ],
+      "coherent_confirmations": 5,
+      "leaderboard_best_rank": null,
+      "leaderboard_exchanges": [],
+      "single_exchange_exception": false,
+      "blockers": [
+        "ACTION_SCORE_LT_40",
+        "STALE_SIGNAL_NO_FRESH_REACTIVATION",
+        "WAIT_FOR_RETEST_ABOVE_DISCOVERY"
+      ],
+      "since_discovery_pct": 57.1429,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 446.661,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 0,
+      "fresh_reactivation_exchanges": [],
+      "fresh_reactivation_turnover_usd": 0.0,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": true,
+      "cross_lane_action_signal_score": 69,
+      "cross_lane_action_signal_at": "2026-09-04T10:50:55.521230+00:00",
+      "cross_lane_spot_anchor_kind": "first_seen",
+      "cross_lane_spot_anchor_price": 0.004187,
+      "cross_lane_derivatives_score": 69,
+      "cross_lane_derivatives_coherent_confirmations": 5,
+      "action_state": "WAIT_FRESH_REACTIVATION",
+      "action_basis": "STALE_HISTORICAL_SIGNAL_ONLY"
+    },
+    {
+      "symbol": "XAUTUSDT",
+      "chain": "ethereum",
+      "token_address": "0x68749665ff8d2d112fa859aa293f07a622782f38",
+      "pair_address": "0xc756BBA710d45647715079cE50aa16aab36deD42",
+      "dex": "uniswap",
+      "dex_url": "https://dexscreener.com/ethereum/0xc756bba710d45647715079ce50aa16aab36ded42",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 41,
+      "signal_change_24h_pct": 0.832,
+      "current_change_24h_pct": 0.0,
+      "signal_price": 4332.83,
+      "signal_at": "2026-09-16T18:09:56.732765+00:00",
+      "signal_milestone": "first_alert",
+      "current_price": 0.0,
+      "cex_turnover_usd": 0.0,
+      "relative_volume_shock": false,
+      "relative_volume_max_multiple": 0.0,
+      "relative_volume_acceleration_pct": 0.0,
+      "relative_volume_turnover_exception": false,
+      "market_age_days": 2389.0,
+      "execution_liquidity_usd": 5810140.08,
+      "exchanges": [],
+      "observed_exchanges": [],
+      "coherent_confirmations": 0,
+      "leaderboard_best_rank": null,
+      "leaderboard_exchanges": [],
+      "single_exchange_exception": false,
+      "blockers": [
+        "CEX_CONFIRMATION_INSUFFICIENT",
+        "CEX_DEX_PRICE_COHERENCE_NOT_VERIFIED",
+        "CEX_TURNOVER_LT_100K_WITHOUT_RELATIVE_VOLUME_SHOCK",
+        "CURRENT_CEX_PRICE_MISSING",
+        "EXACT_IDENTITY_NOT_VERIFIED",
+        "STALE_SIGNAL_NO_FRESH_REACTIVATION"
+      ],
+      "since_discovery_pct": 0.0,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 403.099,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 0,
+      "fresh_reactivation_exchanges": [],
+      "fresh_reactivation_turnover_usd": 0.0,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": false,
+      "action_state": "WAIT_FRESH_REACTIVATION",
+      "action_basis": "STALE_HISTORICAL_SIGNAL_ONLY"
+    },
+    {
+      "symbol": "HEIUSDT",
+      "chain": "ethereum",
+      "token_address": "0xf8f173e20e15f3b6cb686fb64724d370689de083",
+      "pair_address": "0x97e1eb4f76353c4129981a90fbb4943ee3bc8f544af7616fdc7457e7d4dcac39",
+      "dex": "uniswap",
+      "dex_url": "https://dexscreener.com/ethereum/0x97e1eb4f76353c4129981a90fbb4943ee3bc8f544af7616fdc7457e7d4dcac39",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 66,
+      "signal_change_24h_pct": 4.028,
+      "current_change_24h_pct": 0.0,
+      "signal_price": 0.1188,
+      "signal_at": "2026-09-16T09:45:21.686962+00:00",
+      "signal_milestone": "first_alert",
+      "current_price": 0.0,
+      "cex_turnover_usd": 0.0,
+      "relative_volume_shock": false,
+      "relative_volume_max_multiple": 0.0,
+      "relative_volume_acceleration_pct": 0.0,
+      "relative_volume_turnover_exception": false,
+      "market_age_days": 597.0,
+      "execution_liquidity_usd": 2999.99,
+      "exchanges": [],
+      "observed_exchanges": [],
+      "coherent_confirmations": 0,
+      "leaderboard_best_rank": null,
+      "leaderboard_exchanges": [],
+      "single_exchange_exception": false,
+      "blockers": [
+        "CEX_CONFIRMATION_INSUFFICIENT",
+        "CEX_DEX_PRICE_COHERENCE_NOT_VERIFIED",
+        "CEX_TURNOVER_LT_100K_WITHOUT_RELATIVE_VOLUME_SHOCK",
+        "CURRENT_CEX_PRICE_MISSING",
+        "EXACT_IDENTITY_NOT_VERIFIED",
+        "EXECUTION_LIQUIDITY_LT_15K",
+        "STALE_SIGNAL_NO_FRESH_REACTIVATION"
+      ],
+      "since_discovery_pct": 0.0,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 411.509,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 0,
+      "fresh_reactivation_exchanges": [],
+      "fresh_reactivation_turnover_usd": 0.0,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": false,
+      "action_state": "WAIT_FRESH_REACTIVATION",
+      "action_basis": "STALE_HISTORICAL_SIGNAL_ONLY"
+    },
+    {
+      "symbol": "UMAUSDT",
+      "chain": "ethereum",
+      "token_address": "0x04fa0d235c4abf4bcf4787af4cf447de572ef828",
+      "pair_address": "0x247ad09d986efadc48ae5c8be65ab1dd799cf1ff1c5b2ab8a21a8ee1410f8cbb",
+      "dex": "uniswap",
+      "dex_url": "https://dexscreener.com/ethereum/0x247ad09d986efadc48ae5c8be65ab1dd799cf1ff1c5b2ab8a21a8ee1410f8cbb",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 0,
+      "signal_change_24h_pct": 0.0316,
+      "current_change_24h_pct": 0.0,
+      "signal_price": 0.3618,
+      "signal_at": "2026-09-17T06:38:51.388160+00:00",
+      "signal_milestone": "first_cross_venue_slow_ignition",
+      "current_price": 0.0,
+      "cex_turnover_usd": 0.0,
+      "relative_volume_shock": false,
+      "relative_volume_max_multiple": 0.0,
+      "relative_volume_acceleration_pct": 0.0,
+      "relative_volume_turnover_exception": false,
+      "market_age_days": 2348.0,
+      "execution_liquidity_usd": 148499.14,
+      "exchanges": [],
+      "observed_exchanges": [],
+      "coherent_confirmations": 0,
+      "leaderboard_best_rank": null,
+      "leaderboard_exchanges": [],
+      "single_exchange_exception": false,
+      "blockers": [
+        "ACTION_SCORE_LT_40",
+        "CEX_CONFIRMATION_INSUFFICIENT",
+        "CEX_DEX_PRICE_COHERENCE_NOT_VERIFIED",
+        "CEX_TURNOVER_LT_100K_WITHOUT_RELATIVE_VOLUME_SHOCK",
+        "CURRENT_CEX_PRICE_MISSING",
+        "EXACT_IDENTITY_NOT_VERIFIED",
+        "SIGNAL_SCORE_LT_35",
+        "STALE_SIGNAL_NO_FRESH_REACTIVATION"
+      ],
+      "since_discovery_pct": 0.0,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 390.617,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 0,
+      "fresh_reactivation_exchanges": [],
+      "fresh_reactivation_turnover_usd": 0.0,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": false,
+      "action_state": "WAIT_FRESH_REACTIVATION",
+      "action_basis": "STALE_HISTORICAL_SIGNAL_ONLY"
+    },
+    {
+      "symbol": "CTCUSDT",
+      "chain": "ethereum",
+      "token_address": "0xa3ee21c306a700e682abcdfe9baa6a08f3820419",
+      "pair_address": "0x0aaDa36F6F7265536486dE0055a929347b6d7ada",
+      "dex": "uniswap",
+      "dex_url": "https://dexscreener.com/ethereum/0x0aada36f6f7265536486de0055a929347b6d7ada",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 23,
+      "signal_change_24h_pct": 5.1753,
+      "current_change_24h_pct": 0.0,
+      "signal_price": 0.11401,
+      "signal_at": "2026-09-15T03:42:11.435036+00:00",
+      "signal_milestone": "first_cross_venue_slow_ignition",
+      "current_price": 0.0,
+      "cex_turnover_usd": 0.0,
+      "relative_volume_shock": false,
+      "relative_volume_max_multiple": 0.0,
+      "relative_volume_acceleration_pct": 0.0,
+      "relative_volume_turnover_exception": false,
+      "market_age_days": 2029.0,
+      "execution_liquidity_usd": 16462.22,
+      "exchanges": [],
+      "observed_exchanges": [],
+      "coherent_confirmations": 0,
+      "leaderboard_best_rank": null,
+      "leaderboard_exchanges": [],
+      "single_exchange_exception": false,
+      "blockers": [
+        "ACTION_SCORE_LT_40",
+        "CEX_CONFIRMATION_INSUFFICIENT",
+        "CEX_DEX_PRICE_COHERENCE_NOT_VERIFIED",
+        "CEX_TURNOVER_LT_100K_WITHOUT_RELATIVE_VOLUME_SHOCK",
+        "CURRENT_CEX_PRICE_MISSING",
+        "EXACT_IDENTITY_NOT_VERIFIED",
+        "SIGNAL_SCORE_LT_35",
+        "STALE_SIGNAL_NO_FRESH_REACTIVATION"
+      ],
+      "since_discovery_pct": 0.0,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 441.562,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 0,
+      "fresh_reactivation_exchanges": [],
+      "fresh_reactivation_turnover_usd": 0.0,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": false,
+      "action_state": "WAIT_FRESH_REACTIVATION",
+      "action_basis": "STALE_HISTORICAL_SIGNAL_ONLY"
+    },
+    {
+      "symbol": "ATHUSDT",
+      "chain": "ethereum",
+      "token_address": "0xbe0ed4138121ecfc5c0e56b40517da27e6c5226b",
+      "pair_address": "0xd31d41DfFa3589bB0c0183e46a1eed983a5E5978",
+      "dex": "uniswap",
+      "dex_url": "https://dexscreener.com/ethereum/0xd31d41dffa3589bb0c0183e46a1eed983a5e5978",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 72,
+      "signal_change_24h_pct": 3.1621,
+      "current_change_24h_pct": 14.54,
+      "signal_price": 0.005644,
+      "signal_at": "2026-09-22T18:58:40.506607+00:00",
+      "signal_milestone": "first_watch",
+      "current_price": 0.0072035,
+      "cex_turnover_usd": 1120940300.0,
+      "relative_volume_shock": false,
+      "relative_volume_max_multiple": 0.0,
+      "relative_volume_acceleration_pct": 28.8004,
+      "relative_volume_turnover_exception": false,
+      "market_age_days": 843.0,
+      "execution_liquidity_usd": 416094.49,
+      "exchanges": [
+        "bingx",
+        "bitget",
+        "coinex",
+        "gate",
+        "kucoin",
+        "mexc",
+        "okx"
+      ],
+      "observed_exchanges": [
+        "bingx",
+        "bitget",
+        "coinex",
+        "gate",
+        "kucoin",
+        "mexc",
+        "okx"
+      ],
+      "coherent_confirmations": 6,
+      "leaderboard_best_rank": null,
+      "leaderboard_exchanges": [],
+      "single_exchange_exception": false,
+      "blockers": [
+        "WAIT_FOR_RETEST_ABOVE_DISCOVERY"
+      ],
+      "since_discovery_pct": 27.6311,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 258.287,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 6,
+      "fresh_reactivation_exchanges": [
+        "bingx",
+        "bitget",
+        "gate",
+        "kucoin",
+        "mexc",
+        "okx"
+      ],
+      "fresh_reactivation_turnover_usd": 1140349580.8843,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": false,
+      "action_state": "WAIT_FOR_RETEST",
+      "action_basis": "PRICE_EXTENSION"
+    },
+    {
+      "symbol": "SUPERUSDT",
+      "chain": "ethereum",
+      "token_address": "0xe53ec727dbdeb9e2d5456c3be40cff031ab40a55",
+      "pair_address": "0x25647E01Bd0967C1B9599FA3521939871D1d0888",
+      "dex": "uniswap",
+      "dex_url": "https://dexscreener.com/ethereum/0x25647e01bd0967c1b9599fa3521939871d1d0888",
+      "status": "BLOCKED",
+      "alert_class": "CEX_FAST_BLOCKED",
+      "research_only": true,
+      "actionable": false,
+      "actionable_research_alert": false,
+      "manual_decision_only": true,
+      "automatic_buy": false,
+      "signal_score": 56,
+      "signal_change_24h_pct": 7.02,
+      "current_change_24h_pct": 12.291,
+      "signal_price": 0.1219,
+      "signal_at": "2026-09-18T05:07:19.308669+00:00",
+      "signal_milestone": "first_cross_venue_slow_ignition",
+      "current_price": 0.2548,
+      "cex_turnover_usd": 527173.441784,
+      "relative_volume_shock": false,
+      "relative_volume_max_multiple": 3.471,
+      "relative_volume_acceleration_pct": 22.4785,
+      "relative_volume_turnover_exception": false,
+      "market_age_days": 2012.0,
+      "execution_liquidity_usd": 4166355.18,
+      "exchanges": [
+        "bitget",
+        "gate",
+        "kucoin"
+      ],
+      "observed_exchanges": [
+        "bitget",
+        "gate",
+        "kucoin",
+        "upbit"
+      ],
+      "coherent_confirmations": 3,
+      "leaderboard_best_rank": null,
+      "leaderboard_exchanges": [],
+      "single_exchange_exception": false,
+      "blockers": [
+        "WAIT_FOR_RETEST_ABOVE_DISCOVERY"
+      ],
+      "since_discovery_pct": 109.0238,
+      "max_buy_zone_gain_since_discovery_pct": 12.0,
+      "signal_age_hours": 368.143,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
+      "max_fresh_signal_age_hours": 6.0,
+      "fresh_reactivation_confirmations": 3,
+      "fresh_reactivation_exchanges": [
+        "bitget",
+        "gate",
+        "kucoin"
+      ],
+      "fresh_reactivation_turnover_usd": 908342.5864,
+      "fresh_reactivation_required_for_stale_signal": true,
+      "minimum_action_score": 40,
+      "cross_lane_action_fusion_used": true,
+      "cross_lane_action_signal_score": 85,
+      "cross_lane_action_signal_at": "2026-09-04T10:50:55.521230+00:00",
+      "cross_lane_spot_anchor_kind": "first_seen",
+      "cross_lane_spot_anchor_price": 0.1135,
+      "cross_lane_derivatives_score": 85,
+      "cross_lane_derivatives_coherent_confirmations": 6,
+      "action_state": "WAIT_FOR_RETEST",
+      "action_basis": "PRICE_EXTENSION"
+    },
+    {
+      "symbol": "RAYUSDT",
+      "chain": "solana",
+      "token_address": "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+      "pair_address": "6UmmUiYoBjSrhakAobJw8BvkmJtDVxaeBtbt7rxWo1mg",
+      "dex": "raydium",
+      "dex_url": "https://dexscreener.com/solana/6ummuiyobjsrhakaobjw8bvkmjtdvxaebtbt7rxwo1mg",
       "status": "BLOCKED",
       "alert_class": "CEX_FAST_BLOCKED",
       "research_only": true,
@@ -124,123 +1162,75 @@
       "manual_decision_only": true,
       "automatic_buy": false,
       "signal_score": 31,
-      "signal_change_24h_pct": 31.1806,
-      "current_change_24h_pct": 31.1806,
-      "signal_price": 0.7556,
-      "signal_at": "2026-09-30T01:39:15.498602+00:00",
-      "signal_milestone": "first_alert",
-      "current_price": 0.7556,
-      "cex_turnover_usd": 659674.8826,
+      "signal_change_24h_pct": 10.4922,
+      "current_change_24h_pct": 6.0527,
+      "signal_price": 1.3827,
+      "signal_at": "2026-09-16T23:15:48.815444+00:00",
+      "signal_milestone": "first_cross_venue_slow_ignition",
+      "current_price": 2.0728,
+      "cex_turnover_usd": 2245500.3148380774,
       "relative_volume_shock": false,
-      "relative_volume_max_multiple": 0.0,
-      "relative_volume_acceleration_pct": 0.0,
+      "relative_volume_max_multiple": 2.1361,
+      "relative_volume_acceleration_pct": 9.1209,
       "relative_volume_turnover_exception": false,
-      "market_age_days": 701.0,
-      "execution_liquidity_usd": 281682.57,
+      "market_age_days": 1847.0,
+      "execution_liquidity_usd": 6886216.54,
       "exchanges": [
+        "bitget",
+        "gate",
+        "kucoin",
+        "mexc",
         "okx"
       ],
       "observed_exchanges": [
-        "okx"
+        "bitget",
+        "gate",
+        "kucoin",
+        "mexc",
+        "okx",
+        "upbit"
       ],
       "coherent_confirmations": 1,
-      "leaderboard_best_rank": 1,
-      "leaderboard_exchanges": [
-        "okx"
-      ],
+      "leaderboard_best_rank": null,
+      "leaderboard_exchanges": [],
       "single_exchange_exception": false,
       "blockers": [
         "ACTION_SCORE_LT_40",
-        "CEX_CONFIRMATION_INSUFFICIENT",
-        "SIGNAL_SCORE_LT_35"
+        "SIGNAL_SCORE_LT_35",
+        "WAIT_FOR_RETEST_ABOVE_DISCOVERY"
       ],
-      "since_discovery_pct": 0.0,
+      "since_discovery_pct": 49.9096,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 0.0,
-      "signal_freshness": "FRESH",
+      "signal_age_hours": 398.001,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
-      "fresh_reactivation_confirmations": 1,
+      "fresh_reactivation_confirmations": 4,
       "fresh_reactivation_exchanges": [
+        "bitget",
+        "gate",
+        "kucoin",
         "okx"
       ],
-      "fresh_reactivation_turnover_usd": 659674.8826,
+      "fresh_reactivation_turnover_usd": 3942948.7837,
       "fresh_reactivation_required_for_stale_signal": true,
       "minimum_action_score": 40,
-      "cross_lane_action_fusion_used": false,
+      "cross_lane_action_fusion_used": true,
+      "cross_lane_action_signal_score": 85,
+      "cross_lane_action_signal_at": "2026-09-04T10:50:55.521230+00:00",
+      "cross_lane_spot_anchor_kind": "first_seen",
+      "cross_lane_spot_anchor_price": 0.8421,
+      "cross_lane_derivatives_score": 85,
+      "cross_lane_derivatives_coherent_confirmations": 7,
       "action_state": "WAIT_OR_REJECT",
       "action_basis": "BLOCKED"
     },
     {
-      "symbol": "PUMPUSDT",
-      "chain": "solana",
-      "token_address": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
-      "pair_address": "Dwgaka8QiSkFQ3bGXhZpmncM63DwhjK5zzQRiqt9WA8K",
-      "dex": "raydium",
-      "dex_url": "https://dexscreener.com/solana/dwgaka8qiskfq3bgxhzpmncm63dwhjk5zzqriqt9wa8k",
-      "status": "BLOCKED",
-      "alert_class": "CEX_FAST_BLOCKED",
-      "research_only": true,
-      "actionable": false,
-      "actionable_research_alert": false,
-      "manual_decision_only": true,
-      "automatic_buy": false,
-      "signal_score": 33,
-      "signal_change_24h_pct": 23.518,
-      "current_change_24h_pct": 24.5255,
-      "signal_price": 0.005898,
-      "signal_at": "2026-09-30T01:39:15.498639+00:00",
-      "signal_milestone": "first_alert",
-      "current_price": 0.0059015,
-      "cex_turnover_usd": 7585071.781154,
-      "relative_volume_shock": false,
-      "relative_volume_max_multiple": 0.0,
-      "relative_volume_acceleration_pct": 0.0,
-      "relative_volume_turnover_exception": false,
-      "market_age_days": 442.0,
-      "execution_liquidity_usd": 942310.18,
-      "exchanges": [
-        "binance",
-        "okx"
-      ],
-      "observed_exchanges": [
-        "binance",
-        "okx"
-      ],
-      "coherent_confirmations": 2,
-      "leaderboard_best_rank": 2,
-      "leaderboard_exchanges": [
-        "binance",
-        "okx"
-      ],
-      "single_exchange_exception": false,
-      "blockers": [
-        "ACTION_SCORE_LT_40",
-        "SIGNAL_SCORE_LT_35"
-      ],
-      "since_discovery_pct": 0.0593,
-      "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 0.0,
-      "signal_freshness": "FRESH",
-      "max_fresh_signal_age_hours": 6.0,
-      "fresh_reactivation_confirmations": 2,
-      "fresh_reactivation_exchanges": [
-        "binance",
-        "okx"
-      ],
-      "fresh_reactivation_turnover_usd": 10446336.0224,
-      "fresh_reactivation_required_for_stale_signal": true,
-      "minimum_action_score": 40,
-      "cross_lane_action_fusion_used": false,
-      "action_state": "WAIT_OR_REJECT",
-      "action_basis": "BLOCKED"
-    },
-    {
-      "symbol": "NIGHTUSDT",
+      "symbol": "CROSSUSDT",
       "chain": "bsc",
-      "token_address": "0xFe930c2d63AeD9b82fC4DBC801920dD2c1a3224F",
-      "pair_address": "0x1978193606c6bE8E70be400605D2026b1e128587",
+      "token_address": "0x6bf62ca91e397B5A7d1D6bCe97D9092065d7A510",
+      "pair_address": "0xE6e51Ea572502DBdF8b40834D0619f9a9144d3A5",
       "dex": "pancakeswap",
-      "dex_url": "https://dexscreener.com/bsc/0x1978193606c6be8e70be400605d2026b1e128587",
+      "dex_url": "https://dexscreener.com/bsc/0xe6e51ea572502dbdf8b40834d0619f9a9144d3a5",
       "status": "BLOCKED",
       "alert_class": "CEX_FAST_BLOCKED",
       "research_only": true,
@@ -248,54 +1238,62 @@
       "actionable_research_alert": false,
       "manual_decision_only": true,
       "automatic_buy": false,
-      "signal_score": 21,
-      "signal_change_24h_pct": 18.696,
-      "current_change_24h_pct": 18.696,
-      "signal_price": 0.03276,
-      "signal_at": "2026-09-30T01:39:15.498650+00:00",
-      "signal_milestone": "first_alert",
-      "current_price": 0.0327695,
-      "cex_turnover_usd": 726563.82942,
+      "signal_score": 3,
+      "signal_change_24h_pct": 0.0805,
+      "current_change_24h_pct": 4.29,
+      "signal_price": 0.12346,
+      "signal_at": "2026-09-15T07:02:39.469354+00:00",
+      "signal_milestone": "first_cross_venue_slow_ignition",
+      "current_price": 0.1422995,
+      "cex_turnover_usd": 292574.44,
       "relative_volume_shock": false,
-      "relative_volume_max_multiple": 0.0,
-      "relative_volume_acceleration_pct": 0.0,
+      "relative_volume_max_multiple": 3.725,
+      "relative_volume_acceleration_pct": 5.6945,
       "relative_volume_turnover_exception": false,
-      "market_age_days": 293.0,
-      "execution_liquidity_usd": 13.49,
+      "market_age_days": 459.0,
+      "execution_liquidity_usd": 1244004.71,
       "exchanges": [
-        "binance",
-        "okx"
+        "bitget",
+        "gate",
+        "kucoin",
+        "mexc"
       ],
       "observed_exchanges": [
-        "binance",
-        "okx"
+        "bitget",
+        "gate",
+        "kucoin",
+        "mexc"
       ],
-      "coherent_confirmations": 2,
-      "leaderboard_best_rank": 3,
-      "leaderboard_exchanges": [
-        "binance",
-        "okx"
-      ],
+      "coherent_confirmations": 0,
+      "leaderboard_best_rank": null,
+      "leaderboard_exchanges": [],
       "single_exchange_exception": false,
       "blockers": [
         "ACTION_SCORE_LT_40",
-        "EXECUTION_LIQUIDITY_LT_15K",
-        "SIGNAL_SCORE_LT_35"
+        "SIGNAL_SCORE_LT_35",
+        "WAIT_FOR_RETEST_ABOVE_DISCOVERY"
       ],
-      "since_discovery_pct": 0.029,
+      "since_discovery_pct": 15.2596,
       "max_buy_zone_gain_since_discovery_pct": 12.0,
-      "signal_age_hours": 0.0,
-      "signal_freshness": "FRESH",
+      "signal_age_hours": 438.22,
+      "signal_freshness": "STALE_REQUIRES_REACTIVATION",
       "max_fresh_signal_age_hours": 6.0,
-      "fresh_reactivation_confirmations": 2,
+      "fresh_reactivation_confirmations": 3,
       "fresh_reactivation_exchanges": [
-        "binance",
-        "okx"
+        "bitget",
+        "gate",
+        "kucoin"
       ],
-      "fresh_reactivation_turnover_usd": 829907.2161,
+      "fresh_reactivation_turnover_usd": 700146.5939,
       "fresh_reactivation_required_for_stale_signal": true,
       "minimum_action_score": 40,
-      "cross_lane_action_fusion_used": false,
+      "cross_lane_action_fusion_used": true,
+      "cross_lane_action_signal_score": 64,
+      "cross_lane_action_signal_at": "2026-09-04T10:50:55.521230+00:00",
+      "cross_lane_spot_anchor_kind": "first_seen",
+      "cross_lane_spot_anchor_price": 0.1037,
+      "cross_lane_derivatives_score": 64,
+      "cross_lane_derivatives_coherent_confirmations": 4,
       "action_state": "WAIT_OR_REJECT",
       "action_basis": "BLOCKED"
     }
@@ -348,73 +1346,13 @@
   },
   "current_watch_bypass": {
     "priority_candidates": 36,
-    "strict_resolved": 13,
-    "identity_cache_hits": 0,
+    "strict_resolved": 18,
+    "identity_cache_hits": 8,
     "eligible": 0,
     "delivered": 0,
     "resolve_failures": [
       {
-        "symbol": "TOSHIUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "PONSUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "BONKUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "ZROUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "COMPUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "ASTERUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "BIOUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "BERAUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "KSMUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "LITUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "NEARUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "WLDUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "0GUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "PROSUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "PENGUUSDT",
-        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
-      },
-      {
-        "symbol": "SENTUSDT",
+        "symbol": "SANDUSDT",
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
@@ -422,15 +1360,35 @@
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
-        "symbol": "MOVRUSDT",
+        "symbol": "OPENUSDT",
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
-        "symbol": "SOONUSDT",
+        "symbol": "STXUSDT",
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
-        "symbol": "KIIUSDT",
+        "symbol": "GLMRUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "CUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "OBIUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "HUMAUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "HELLOUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "CTSIUSDT",
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
@@ -438,11 +1396,31 @@
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
-        "symbol": "MARSCOINUSDT",
+        "symbol": "FOLDUSDT",
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       },
       {
-        "symbol": "TRACUSDT",
+        "symbol": "PUMPBTCUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "DEBITUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "ARKUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "BENQIUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "ONEUSDT",
+        "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
+      },
+      {
+        "symbol": "VERTUSDT",
         "reason": "STRICT_EXACT_IDENTITY_NOT_RESOLVED"
       }
     ],
@@ -466,853 +1444,8 @@
   },
   "reactivation_hold_state": {
     "version": 1,
-    "updated_at": "2026-09-30T01:39:16.279005+00:00",
+    "updated_at": "2026-10-03T13:15:53.673055+00:00",
     "assets": {
-      "bsc:0x000ae314e2a2172a039b26378814c252734f556a": {
-        "triggered_at": "2026-09-25T13:55:19.657452+00:00",
-        "pair_address": "0xb040ea24a4Ef35a3ED400B0fF26D8B6F30DEEcaD",
-        "trigger_price_usd": 0.7262,
-        "last_checked_at": "2026-09-25T13:55:19.657452+00:00",
-        "last_pair_price_usd": 0.7262,
-        "last_state": "PENDING_HOLD",
-        "chain": "bsc",
-        "token_address": "0x000ae314e2a2172a039b26378814c252734f556a",
-        "symbol": "ASTERUSDT",
-        "trigger_exchanges": [
-          "bitget",
-          "gate",
-          "kucoin",
-          "okx"
-        ],
-        "last_exchanges": [
-          "bitget",
-          "gate",
-          "kucoin",
-          "okx"
-        ],
-        "last_cex_reference_price_usd": 0.7273499999999999,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 1024856.73
-      },
-      "ethereum:0x6c5ba91642f10282b576d91922ae6448c9d52f4e": {
-        "triggered_at": "2026-09-24T12:42:09.704862+00:00",
-        "pair_address": "0x8867f20c1c63bAcCEc7617626254a060eEb0E61e",
-        "trigger_price_usd": 0.0531,
-        "last_checked_at": "2026-09-24T12:42:09.704862+00:00",
-        "last_pair_price_usd": 0.0531,
-        "last_state": "PENDING_HOLD",
-        "chain": "ethereum",
-        "token_address": "0x6c5ba91642f10282b576d91922ae6448c9d52f4e",
-        "symbol": "PHAUSDT",
-        "trigger_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc"
-        ],
-        "last_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc"
-        ],
-        "last_cex_reference_price_usd": 0.053,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 251668.54
-      },
-      "ethereum:0xaea46a60368a7bd060eec7df8cba43b7ef41ad85": {
-        "triggered_at": "2026-09-24T15:24:04.085230+00:00",
-        "pair_address": "0x948b54A93f5aD1df6B8bFF6Dc249D99CA2EcA052",
-        "trigger_price_usd": 0.2196,
-        "last_checked_at": "2026-09-24T15:24:04.085230+00:00",
-        "last_pair_price_usd": 0.2196,
-        "last_state": "PENDING_HOLD",
-        "chain": "ethereum",
-        "token_address": "0xaea46a60368a7bd060eec7df8cba43b7ef41ad85",
-        "symbol": "FETUSDT",
-        "trigger_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_cex_reference_price_usd": 0.21685,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 1608019.06
-      },
-      "ethereum:0xc20059e0317de91738d13af027dfc4a50781b066": {
-        "triggered_at": "2026-09-25T15:50:00.104945+00:00",
-        "pair_address": "0x39f748f252ffff5f2cb755824bd46bd4c0720ffcec1ed128b38a1049a0e70496",
-        "trigger_price_usd": 0.02363,
-        "last_checked_at": "2026-09-25T15:50:00.104945+00:00",
-        "last_pair_price_usd": 0.02363,
-        "last_state": "PENDING_HOLD",
-        "chain": "ethereum",
-        "token_address": "0xc20059e0317de91738d13af027dfc4a50781b066",
-        "symbol": "SPKUSDT",
-        "trigger_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_cex_reference_price_usd": 0.02359,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 729774.78
-      },
-      "base:0x696f9436b67233384889472cd7cd58a6fb5df4f1": {
-        "triggered_at": "2026-09-26T05:31:45.316015+00:00",
-        "pair_address": "0xe30d5BF485F7476AC15884a28ffb3C9cEA635DCB",
-        "trigger_price_usd": 0.131,
-        "last_checked_at": "2026-09-26T05:31:45.316015+00:00",
-        "last_pair_price_usd": 0.131,
-        "last_state": "PENDING_HOLD",
-        "chain": "base",
-        "token_address": "0x696f9436b67233384889472cd7cd58a6fb5df4f1",
-        "symbol": "AVNTUSDT",
-        "trigger_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_cex_reference_price_usd": 0.131715,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 749582.64
-      },
-      "bsc:0xac23b90a79504865d52b49b327328411a23d4db2": {
-        "triggered_at": "2026-09-24T09:04:11.655324+00:00",
-        "pair_address": "0x9F8f4615Ff5143aeE365fa34f34196fB85Be7650",
-        "trigger_price_usd": 0.1346,
-        "last_checked_at": "2026-09-24T09:04:11.655324+00:00",
-        "last_pair_price_usd": 0.1346,
-        "last_state": "PENDING_HOLD",
-        "chain": "bsc",
-        "token_address": "0xac23b90a79504865d52b49b327328411a23d4db2",
-        "symbol": "FFUSDT",
-        "trigger_exchanges": [
-          "bitget",
-          "gate",
-          "kucoin"
-        ],
-        "last_exchanges": [
-          "bitget",
-          "gate",
-          "kucoin"
-        ],
-        "last_cex_reference_price_usd": 0.135037,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 4289232.58
-      },
-      "bsc:0xd55c9fb62e176a8eb6968f32958fefdd0962727e": {
-        "triggered_at": "2026-09-24T09:04:11.608875+00:00",
-        "pair_address": "0xe4Af4797AFbf733591B6e0C4EA3566Ad3979CA94",
-        "trigger_price_usd": 0.02439,
-        "last_checked_at": "2026-09-24T09:04:11.608875+00:00",
-        "last_pair_price_usd": 0.02439,
-        "last_state": "PENDING_HOLD",
-        "chain": "bsc",
-        "token_address": "0xd55c9fb62e176a8eb6968f32958fefdd0962727e",
-        "symbol": "FHEUSDT",
-        "trigger_exchanges": [
-          "bitget",
-          "gate"
-        ],
-        "last_exchanges": [
-          "bitget",
-          "gate"
-        ],
-        "last_cex_reference_price_usd": 0.02443,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 1015636.44
-      },
-      "ethereum:0x232ce3bd40fcd6f80f3d55a522d03f25df784ee2": {
-        "triggered_at": "2026-09-23T18:17:41.795677+00:00",
-        "pair_address": "0x8366b1dde4de12c8806985fbb599d408d92d01a6faf2e478cc6bb76189cc00f1",
-        "trigger_price_usd": 5.34,
-        "last_checked_at": "2026-09-23T18:22:57.927826+00:00",
-        "last_pair_price_usd": 5.31,
-        "last_state": "FADE_RECLAIM_REQUIRED",
-        "chain": "ethereum",
-        "token_address": "0x232ce3bd40fcd6f80f3d55a522d03f25df784ee2",
-        "symbol": "LITUSDT",
-        "trigger_exchanges": [
-          "bitget",
-          "gate",
-          "kucoin",
-          "okx"
-        ],
-        "last_exchanges": [
-          "bitget",
-          "gate",
-          "kucoin",
-          "okx"
-        ],
-        "last_cex_reference_price_usd": 5.3408,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 949921.19,
-        "hold_age_minutes": 5.269,
-        "change_since_trigger_pct": -0.5618
-      },
-      "solana:Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk": {
-        "triggered_at": "2026-09-23T16:18:43.531583+00:00",
-        "pair_address": "Q2sPHPdUWFMg7M7wwrQKLrn619cAucfRsmhVJffodSp",
-        "trigger_price_usd": 0.3063,
-        "last_checked_at": "2026-09-23T16:20:24.367543+00:00",
-        "last_pair_price_usd": 0.3038,
-        "last_state": "PENDING_HOLD",
-        "chain": "solana",
-        "token_address": "Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk",
-        "symbol": "USELESSUSDT",
-        "trigger_exchanges": [
-          "gate",
-          "kucoin",
-          "mexc"
-        ],
-        "last_exchanges": [
-          "gate",
-          "kucoin",
-          "mexc"
-        ],
-        "last_cex_reference_price_usd": 0.306175,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 5858879.62,
-        "hold_age_minutes": 1.681,
-        "change_since_trigger_pct": -0.8162
-      },
-      "bsc:0x7c8217517ed4711fe2deccdfeffe8d906b9ae11f": {
-        "triggered_at": "2026-09-23T16:18:44.212039+00:00",
-        "pair_address": "0x49986efbeEdEa3Ab962CA95caF86919860ECc9DB",
-        "trigger_price_usd": 0.009656,
-        "last_checked_at": "2026-09-23T16:20:24.876971+00:00",
-        "last_pair_price_usd": 0.009614,
-        "last_state": "PENDING_HOLD",
-        "chain": "bsc",
-        "token_address": "0x7C8217517ed4711fe2DECCdFefFE8d906b9Ae11F",
-        "symbol": "BLESSUSDT",
-        "trigger_exchanges": [
-          "bitget",
-          "gate",
-          "kucoin"
-        ],
-        "last_exchanges": [
-          "bitget",
-          "gate",
-          "kucoin"
-        ],
-        "last_cex_reference_price_usd": 0.009657,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 251634.34,
-        "hold_age_minutes": 1.678,
-        "change_since_trigger_pct": -0.435
-      },
-      "ethereum:0xddb3422497e61e13543bea06989c0789117555c5": {
-        "triggered_at": "2026-09-23T21:00:25.785223+00:00",
-        "pair_address": "0xA2b04F8133fC25887A436812eaE384e32A8A84F2",
-        "trigger_price_usd": 0.01604,
-        "last_checked_at": "2026-09-23T21:03:08.996913+00:00",
-        "last_pair_price_usd": 0.01607,
-        "last_state": "PENDING_HOLD",
-        "chain": "ethereum",
-        "token_address": "0xddb3422497e61e13543bea06989c0789117555c5",
-        "symbol": "COTIUSDT",
-        "trigger_exchanges": [
-          "bitget",
-          "gate",
-          "kucoin"
-        ],
-        "last_exchanges": [
-          "bitget",
-          "gate",
-          "kucoin"
-        ],
-        "last_cex_reference_price_usd": 0.016002,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 204454.38,
-        "hold_age_minutes": 2.72,
-        "change_since_trigger_pct": 0.187
-      },
-      "solana:4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R": {
-        "triggered_at": "2026-09-24T06:02:28.235723+00:00",
-        "pair_address": "6UmmUiYoBjSrhakAobJw8BvkmJtDVxaeBtbt7rxWo1mg",
-        "trigger_price_usd": 2.1,
-        "last_checked_at": "2026-09-24T06:02:28.235723+00:00",
-        "last_pair_price_usd": 2.1,
-        "last_state": "PENDING_HOLD",
-        "chain": "solana",
-        "token_address": "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
-        "symbol": "RAYUSDT",
-        "trigger_exchanges": [
-          "binance",
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_exchanges": [
-          "binance",
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_cex_reference_price_usd": 2.096,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 6908216.82
-      },
-      "ethereum:0xa2cd3d43c775978a96bdbf12d733d5a1ed94fb18": {
-        "triggered_at": "2026-09-23T21:00:25.854491+00:00",
-        "pair_address": "0x859f7092f56c43BB48bb46dE7119d9c799716CDF",
-        "trigger_price_usd": 0.004917,
-        "last_checked_at": "2026-09-23T21:03:09.068914+00:00",
-        "last_pair_price_usd": 0.004902,
-        "last_state": "PENDING_HOLD",
-        "chain": "ethereum",
-        "token_address": "0xa2cd3d43c775978a96bdbf12d733d5a1ed94fb18",
-        "symbol": "XCNUSDT",
-        "trigger_exchanges": [
-          "bingx",
-          "gate",
-          "mexc"
-        ],
-        "last_exchanges": [
-          "bingx",
-          "gate",
-          "mexc"
-        ],
-        "last_cex_reference_price_usd": 0.0049235,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 892800.21,
-        "hold_age_minutes": 2.72,
-        "change_since_trigger_pct": -0.3051
-      },
-      "ethereum:0x6033f7f88332b8db6ad452b7c6d5bb643990ae3f": {
-        "triggered_at": "2026-09-24T22:15:09.885011+00:00",
-        "pair_address": "0x6af632b8235f1a9d95a816f7a4090736346b763a8ab4e8327017aaae72d0d1d2",
-        "trigger_price_usd": 0.4326,
-        "last_checked_at": "2026-09-24T22:18:55.441296+00:00",
-        "last_pair_price_usd": 0.4336,
-        "last_state": "PENDING_HOLD",
-        "chain": "ethereum",
-        "token_address": "0x6033f7f88332b8db6ad452b7c6d5bb643990ae3f",
-        "symbol": "LSKUSDT",
-        "trigger_exchanges": [
-          "gate",
-          "kucoin",
-          "okx"
-        ],
-        "last_exchanges": [
-          "gate",
-          "kucoin",
-          "okx"
-        ],
-        "last_cex_reference_price_usd": 0.43174500000000005,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 656615.41,
-        "hold_age_minutes": 3.759,
-        "change_since_trigger_pct": 0.2312
-      },
-      "bsc:0xfed13d0c40790220fbde712987079eda1ed75c51": {
-        "triggered_at": "2026-09-24T02:35:19.967755+00:00",
-        "pair_address": "0x787ABD73593Bed588852163402d191C302c7f8b6",
-        "trigger_price_usd": 0.05376,
-        "last_checked_at": "2026-09-24T02:35:19.967755+00:00",
-        "last_pair_price_usd": 0.05376,
-        "last_state": "PENDING_HOLD",
-        "chain": "bsc",
-        "token_address": "0xfed13d0c40790220fbde712987079eda1ed75c51",
-        "symbol": "BTRUSDT",
-        "trigger_exchanges": [
-          "gate",
-          "kucoin"
-        ],
-        "last_exchanges": [
-          "gate",
-          "kucoin"
-        ],
-        "last_cex_reference_price_usd": 0.0535615,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 571327.74
-      },
-      "bsc:0x011ebe7d75e2c9d1e0bd0be0bef5c36f0a90075f": {
-        "triggered_at": "2026-09-24T01:36:08.267390+00:00",
-        "pair_address": "0xeAA6C7292eD954CA9Dd72E769568D057B0525c9A",
-        "trigger_price_usd": 0.02681,
-        "last_checked_at": "2026-09-24T01:38:06.333181+00:00",
-        "last_pair_price_usd": 0.02668,
-        "last_state": "PENDING_HOLD",
-        "chain": "bsc",
-        "token_address": "0x011ebe7d75e2c9d1e0bd0be0bef5c36f0a90075f",
-        "symbol": "STABLEUSDT",
-        "trigger_exchanges": [
-          "bitget",
-          "gate",
-          "kucoin"
-        ],
-        "last_exchanges": [
-          "bitget",
-          "gate",
-          "kucoin"
-        ],
-        "last_cex_reference_price_usd": 0.026894,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 867751.4,
-        "hold_age_minutes": 1.968,
-        "change_since_trigger_pct": -0.4849
-      },
-      "bsc:0xe3225e11cab122f1a126a28997788e5230838ab9": {
-        "triggered_at": "2026-09-24T02:18:00.897843+00:00",
-        "pair_address": "0x7cCC3010e52fbca54467ff68eEc4be78420571C5",
-        "trigger_price_usd": 0.006914,
-        "last_checked_at": "2026-09-24T02:22:45.619116+00:00",
-        "last_pair_price_usd": 0.006914,
-        "last_state": "PENDING_HOLD",
-        "chain": "bsc",
-        "token_address": "0xe3225e11cab122f1a126a28997788e5230838ab9",
-        "symbol": "XNYUSDT",
-        "trigger_exchanges": [
-          "gate",
-          "kucoin"
-        ],
-        "last_exchanges": [
-          "gate",
-          "kucoin"
-        ],
-        "last_cex_reference_price_usd": 0.006988,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 704623.47,
-        "hold_age_minutes": 4.745,
-        "change_since_trigger_pct": 0.0
-      },
-      "base:0xbaa5cc21fd487b8fcc2f632f3f4e8d37262a0842": {
-        "triggered_at": "2026-09-24T16:16:05.187940+00:00",
-        "pair_address": "0xB5F0b4aE66C14F7EFaA9aA1468E8FC536A3E288c",
-        "trigger_price_usd": 2.82,
-        "last_checked_at": "2026-09-24T16:21:48.048119+00:00",
-        "last_pair_price_usd": 2.83,
-        "last_state": "CONFIRMED_HOLD",
-        "chain": "base",
-        "token_address": "0xbaa5cc21fd487b8fcc2f632f3f4e8d37262a0842",
-        "symbol": "MORPHOUSDT",
-        "trigger_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_cex_reference_price_usd": 2.8539,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 941521.45,
-        "hold_age_minutes": 5.714,
-        "change_since_trigger_pct": 0.3546,
-        "confirmed_at": "2026-09-24T16:21:48.048119+00:00"
-      },
-      "bsc:0xd82544bf0dfe8385ef8fa34d67e6e4940cc63e16": {
-        "triggered_at": "2026-09-24T14:19:00.148766+00:00",
-        "pair_address": "0x6eC31Af1Bb9a72aaCEc12E4dED508861b05F4503",
-        "trigger_price_usd": 0.08398,
-        "last_checked_at": "2026-09-24T14:20:31.358079+00:00",
-        "last_pair_price_usd": 0.08436,
-        "last_state": "PENDING_HOLD",
-        "chain": "bsc",
-        "token_address": "0xD82544bf0dfe8385eF8FA34D67e6e4940CC63e16",
-        "symbol": "MYXUSDT",
-        "trigger_exchanges": [
-          "bitget",
-          "gate"
-        ],
-        "last_exchanges": [
-          "bitget",
-          "gate"
-        ],
-        "last_cex_reference_price_usd": 0.08431,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 283573.03,
-        "hold_age_minutes": 1.52,
-        "change_since_trigger_pct": 0.4525
-      },
-      "ethereum:0x514910771af9ca656af840dff83e8264ecf986ca": {
-        "triggered_at": "2026-09-24T16:32:35.393305+00:00",
-        "pair_address": "0xb2b5618903d74bbac9e9049a035c3827afc4487cde3b994a1568b050f4c8e2e4",
-        "trigger_price_usd": 12.92,
-        "last_checked_at": "2026-09-24T16:45:11.021527+00:00",
-        "last_pair_price_usd": 12.93,
-        "last_state": "CONFIRMED_HOLD",
-        "chain": "ethereum",
-        "token_address": "0x514910771af9ca656af840dff83e8264ecf986ca",
-        "symbol": "LINKUSDT",
-        "trigger_exchanges": [
-          "bitget",
-          "coinex",
-          "gate",
-          "kucoin",
-          "okx"
-        ],
-        "last_exchanges": [
-          "bitget",
-          "coinex",
-          "gate",
-          "kucoin",
-          "okx"
-        ],
-        "last_cex_reference_price_usd": 12.969750000000001,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 18116963.63,
-        "hold_age_minutes": 12.594,
-        "change_since_trigger_pct": 0.0774,
-        "confirmed_at": "2026-09-24T16:45:10.606938+00:00"
-      },
-      "ethereum:0x163f8c2467924be0ae7b5347228cabf260318753": {
-        "triggered_at": "2026-09-25T10:15:17.605508+00:00",
-        "pair_address": "0x841820459769cd629B10a36FD12E603938cc2679",
-        "trigger_price_usd": 0.4485,
-        "last_checked_at": "2026-09-25T10:19:24.218454+00:00",
-        "last_pair_price_usd": 0.4485,
-        "last_state": "PENDING_HOLD",
-        "chain": "ethereum",
-        "token_address": "0x163f8c2467924be0ae7b5347228cabf260318753",
-        "symbol": "WLDUSDT",
-        "trigger_exchanges": [
-          "bitget",
-          "gate",
-          "kucoin",
-          "okx"
-        ],
-        "last_exchanges": [
-          "bitget",
-          "gate",
-          "kucoin",
-          "okx"
-        ],
-        "last_cex_reference_price_usd": 0.44915,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 193261.63,
-        "hold_age_minutes": 4.11,
-        "change_since_trigger_pct": 0.0
-      },
-      "solana:HgBRWfYxEfvPhtqkaeymCQtHCrKE46qQ43pKe8HCpump": {
-        "triggered_at": "2026-09-24T17:18:56.942774+00:00",
-        "pair_address": "BmsZE6TkZYskyS1PatPKRyyazGdxWFxdia4BuvLg9AgY",
-        "trigger_price_usd": 0.01581,
-        "last_checked_at": "2026-09-24T17:20:00.775623+00:00",
-        "last_pair_price_usd": 0.01581,
-        "last_state": "PENDING_HOLD",
-        "chain": "solana",
-        "token_address": "HgBRWfYxEfvPhtqkaeymCQtHCrKE46qQ43pKe8HCpump",
-        "symbol": "BERTUSDT",
-        "trigger_exchanges": [
-          "gate",
-          "kucoin"
-        ],
-        "last_exchanges": [
-          "gate",
-          "kucoin"
-        ],
-        "last_cex_reference_price_usd": 0.015932,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 1193335.69,
-        "hold_age_minutes": 1.064,
-        "change_since_trigger_pct": 0.0
-      },
-      "bsc:0x8dedf84656fa932157e27c060d8613824e7979e3": {
-        "triggered_at": "2026-09-24T17:18:57.034153+00:00",
-        "pair_address": "0x95a104c16b94CA52B6c9069D82A13ca3F0c57607",
-        "trigger_price_usd": 0.02855,
-        "last_checked_at": "2026-09-24T17:20:00.868764+00:00",
-        "last_pair_price_usd": 0.02855,
-        "last_state": "PENDING_HOLD",
-        "chain": "bsc",
-        "token_address": "0x8dEdf84656fa932157e27C060D8613824e7979e3",
-        "symbol": "STBLUSDT",
-        "trigger_exchanges": [
-          "gate",
-          "kucoin"
-        ],
-        "last_exchanges": [
-          "gate",
-          "kucoin"
-        ],
-        "last_cex_reference_price_usd": 0.02854,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 30377.11,
-        "hold_age_minutes": 1.064,
-        "change_since_trigger_pct": 0.0
-      },
-      "solana:J6pQQ3FAcJQeWPPGppWRb4nM8jU3wLyYbRrLh7feMfvd": {
-        "triggered_at": "2026-09-24T19:15:29.187481+00:00",
-        "pair_address": "5Guq7ooZFtNju48kVNRzCVJmE9erW4DPcTQyrAk3z4UE",
-        "trigger_price_usd": 0.05772,
-        "last_checked_at": "2026-09-24T19:34:55.035781+00:00",
-        "last_pair_price_usd": 0.05774,
-        "last_state": "CONFIRMED_HOLD",
-        "chain": "solana",
-        "token_address": "J6pQQ3FAcJQeWPPGppWRb4nM8jU3wLyYbRrLh7feMfvd",
-        "symbol": "2ZUSDT",
-        "trigger_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_cex_reference_price_usd": 0.057580000000000006,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 1140739.97,
-        "hold_age_minutes": 19.431,
-        "change_since_trigger_pct": 0.0347,
-        "confirmed_at": "2026-09-24T19:23:22.393687+00:00"
-      },
-      "solana:ED5nyyWEzpPPiWimP8vYm7sD7TD3LAt3Q3gRTWHzPJBY": {
-        "triggered_at": "2026-09-25T00:19:43.914343+00:00",
-        "pair_address": "22WrmyTj8x2TRVQen3fxxi2r4Rn6JDHWoMTpsSmn8RUd",
-        "trigger_price_usd": 0.05057,
-        "last_checked_at": "2026-09-25T00:19:43.914343+00:00",
-        "last_pair_price_usd": 0.05057,
-        "last_state": "PENDING_HOLD",
-        "chain": "solana",
-        "token_address": "ED5nyyWEzpPPiWimP8vYm7sD7TD3LAt3Q3gRTWHzPJBY",
-        "symbol": "MOODENGUSDT",
-        "trigger_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_cex_reference_price_usd": 0.05075,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 3157536.24
-      },
-      "arbitrum:0x0c1c1c109fe34733fca54b82d7b46b75cfb71f6e": {
-        "triggered_at": "2026-09-25T14:41:17.664609+00:00",
-        "pair_address": "0x49340Dbb8Fb5ECE2F9B594e77Ab774E65725e9D8",
-        "trigger_price_usd": 0.04952,
-        "last_checked_at": "2026-09-25T14:41:17.664609+00:00",
-        "last_pair_price_usd": 0.04952,
-        "last_state": "PENDING_HOLD",
-        "chain": "arbitrum",
-        "token_address": "0x0c1c1c109fe34733fca54b82d7b46b75cfb71f6e",
-        "symbol": "CHIPUSDT",
-        "trigger_exchanges": [
-          "binance",
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_exchanges": [
-          "binance",
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_cex_reference_price_usd": 0.049714999999999995,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 1018483.73
-      },
-      "base:0x940181a94a35a4569e4529a3cdfb74e38fd98631": {
-        "triggered_at": "2026-09-25T14:41:17.757497+00:00",
-        "pair_address": "0x6cDcb1C4A4D1C3C6d054b27AC5B77e89eAFb971d",
-        "trigger_price_usd": 0.8023,
-        "last_checked_at": "2026-09-25T14:41:17.757497+00:00",
-        "last_pair_price_usd": 0.8023,
-        "last_state": "PENDING_HOLD",
-        "chain": "base",
-        "token_address": "0x940181a94a35a4569e4529a3cdfb74e38fd98631",
-        "symbol": "AEROUSDT",
-        "trigger_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc",
-          "okx"
-        ],
-        "last_cex_reference_price_usd": 0.806,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 38520090.39
-      },
-      "bsc:0xaef0d72a118ce24fee3cd1d43d383897d05b4e99": {
-        "triggered_at": "2026-09-25T22:20:47.895027+00:00",
-        "pair_address": "0x6a445cEB72c8B1751755386c3990055ff92e14A0",
-        "trigger_price_usd": 4.389e-05,
-        "last_checked_at": "2026-09-25T22:20:47.895027+00:00",
-        "last_pair_price_usd": 4.389e-05,
-        "last_state": "PENDING_HOLD",
-        "chain": "bsc",
-        "token_address": "0xaeF0d72a118ce24feE3cD1d43d383897D05B4e99",
-        "symbol": "WINUSDT",
-        "trigger_exchanges": [
-          "gate",
-          "kucoin",
-          "okx"
-        ],
-        "last_exchanges": [
-          "gate",
-          "kucoin",
-          "okx"
-        ],
-        "last_cex_reference_price_usd": 4.404505e-05,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 40112.73
-      },
-      "sui:0x9f854b3ad20f8161ec0886f15f4a1752bf75d22261556f14cc8d3a1c5d50e529::magma::MAGMA": {
-        "triggered_at": "2026-09-26T05:31:45.377511+00:00",
-        "pair_address": "0xe672f3fe0c6c0bee46db41d2fd00916596a2d2384e001d4e1d4a89f98799d94a",
-        "trigger_price_usd": 0.2572,
-        "last_checked_at": "2026-09-26T05:31:45.772471+00:00",
-        "last_pair_price_usd": 0.2572,
-        "last_state": "PENDING_HOLD",
-        "chain": "sui",
-        "token_address": "0x9f854b3ad20f8161ec0886f15f4a1752bf75d22261556f14cc8d3a1c5d50e529::magma::MAGMA",
-        "symbol": "MAGMAUSDT",
-        "trigger_exchanges": [
-          "bitget",
-          "gate"
-        ],
-        "last_exchanges": [
-          "bitget",
-          "gate"
-        ],
-        "last_cex_reference_price_usd": 0.258,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 1614159.4,
-        "hold_age_minutes": 0.007,
-        "change_since_trigger_pct": 0.0
-      },
-      "solana:KENJSUYLASHUMfHyy5o4Hp2FdNqZg1AsUPhfH2kYvEP": {
-        "triggered_at": "2026-09-26T10:08:52.140251+00:00",
-        "pair_address": "CpsMssqi3P9VMvNqxrdWVbSBCwyUHbGgNcrw7MorBq3g",
-        "trigger_price_usd": 0.01765,
-        "last_checked_at": "2026-09-26T10:08:52.140251+00:00",
-        "last_pair_price_usd": 0.01765,
-        "last_state": "PENDING_HOLD",
-        "chain": "solana",
-        "token_address": "KENJSUYLASHUMfHyy5o4Hp2FdNqZg1AsUPhfH2kYvEP",
-        "symbol": "GRIFFAINUSDT",
-        "trigger_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc"
-        ],
-        "last_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc"
-        ],
-        "last_cex_reference_price_usd": 0.017701,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 2222181.45
-      },
-      "bsc:0x5b73a93b4e5e4f1fd27d8b3f8c97d69908b5e284": {
-        "triggered_at": "2026-09-26T10:08:52.172089+00:00",
-        "pair_address": "0x7Cb113B487e025b3a69537fcA579559433240cb5",
-        "trigger_price_usd": 0.3204,
-        "last_checked_at": "2026-09-26T10:08:52.172089+00:00",
-        "last_pair_price_usd": 0.3204,
-        "last_state": "PENDING_HOLD",
-        "chain": "bsc",
-        "token_address": "0x5b73a93b4e5e4f1fd27d8b3f8c97d69908b5e284",
-        "symbol": "FORMUSDT",
-        "trigger_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc"
-        ],
-        "last_exchanges": [
-          "bingx",
-          "bitget",
-          "gate",
-          "kucoin",
-          "mexc"
-        ],
-        "last_cex_reference_price_usd": 0.31915,
-        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
-        "last_exact_pair_liquidity_usd": 662858.15
-      },
       "base:0x11030f79109269d796fd0fb956d6244e502757f7": {
         "triggered_at": "2026-09-27T01:27:31.070232+00:00",
         "pair_address": "0x0ab02e160f0df68dc049B012c514857306960Eae",
@@ -1368,14 +1501,36 @@
         "last_cex_reference_price_usd": 0.06868,
         "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
         "last_exact_pair_liquidity_usd": 315076.22
+      },
+      "sui:0x4c981f3ff786cdb9e514da897ab8a953647dae2ace9679e8358eec1e3e8871ac::dmc::DMC": {
+        "triggered_at": "2026-10-03T13:15:53.667563+00:00",
+        "pair_address": "0xa288810f820498f7c2bca41cfadea3e99bd152b3dbeb2c282bb4b9c909f71c6d",
+        "trigger_price_usd": 0.00033,
+        "last_checked_at": "2026-10-03T13:15:53.667563+00:00",
+        "last_pair_price_usd": 0.00033,
+        "last_state": "PENDING_HOLD",
+        "chain": "sui",
+        "token_address": "0x4c981f3ff786cdb9e514da897ab8a953647dae2ace9679e8358eec1e3e8871ac::dmc::DMC",
+        "symbol": "DMCUSDT",
+        "trigger_exchanges": [
+          "bitget",
+          "gate"
+        ],
+        "last_exchanges": [
+          "bitget",
+          "gate"
+        ],
+        "last_cex_reference_price_usd": 0.0003295,
+        "last_exact_pair_source": "DEXSCREENER_EXACT_PAIR_FRESH_VALIDATION",
+        "last_exact_pair_liquidity_usd": 24740.35
       }
     }
   },
   "reactivation_hold_summary": {
-    "tracked_assets": 33,
-    "pending": 29,
-    "fade_reclaim_required": 1,
-    "confirmed": 3
+    "tracked_assets": 3,
+    "pending": 3,
+    "fade_reclaim_required": 0,
+    "confirmed": 0
   },
   "reactivation_event_ledger_summary": {
     "confirmed_events": 9,
