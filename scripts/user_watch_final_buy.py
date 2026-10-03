@@ -1827,7 +1827,11 @@ def telegram_message(target: dict, decision: dict) -> str:
     if decision.get("pre_buy_alert") is True:
         return "\n".join([
             f"🟠⚡ רגע לפני קנייה / PRE-BUY — {decision['symbol']} — WALLET500",
-            "כל השערים הנוכחיים עברו ✅",
+            (
+                "תנאי מסלול האימות החלופי עברו ✅; יחס קניות/מכירות ב-DEX אינו אישור לחץ קנייה."
+                if intel.get("execution_path") == "HYBRID_CEX_DEX_BREAKOUT"
+                else "כל שערי האישור הרגילים עברו ✅"
+            ),
             "חסרה רק סריקת אישור רצופה אחת לפני FINAL BUY.",
             f"Price USD: {m['price_usd']:.10f}",
             f"Liquidity USD: {m['liquidity_usd']:,.0f} | Vol 1H USD: {m['volume_h1_usd']:,.0f}",
@@ -1859,6 +1863,11 @@ def telegram_message(target: dict, decision: dict) -> str:
     return "\n".join([
         f"🟢🔥 קנייה / BUY — {decision['symbol']} — WALLET500",
         "Unified Watch FINAL BUY ✅",
+        (
+            "HYBRID CEX/DEX: alternative approval path; DEX buy-pressure and wallet accumulation are not independently verified."
+            if intel.get("execution_path") == "HYBRID_CEX_DEX_BREAKOUT"
+            else "Standard or separately verified alternative approval path."
+        ),
         f"Price: ${m['price_usd']:.10f}",
         f"Liquidity: ${m['liquidity_usd']:,.0f} | Vol 1H: ${m['volume_h1_usd']:,.0f}",
         f"Buys/Sells 1H: {m['buys_h1']}/{m['sells_h1']} ({m['buy_sell_ratio']:.2f}x)",
