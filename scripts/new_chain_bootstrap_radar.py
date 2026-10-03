@@ -147,7 +147,7 @@ def _get(url: str, timeout: int = 20, attempts: int = 3):
                     "User-Agent": UA,
                 },
             )
-            with urlopen(req, timeout=min(timeout, max(1, int(deadline_remaining() - 1)))) as response:
+            with urlopen(req, timeout=timeout if _run_deadline is None else min(timeout, max(1, int(deadline_remaining() - 1)))) as response:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             last_error = exc
@@ -453,6 +453,12 @@ def update_network_state(state: dict, supported: list[str], now: datetime, basel
         "baseline_initialized": baseline_initialized or (baseline_complete and bool(supported)),
         "known_networks": known,
         "auto_active_networks": list(state.get("auto_active_networks") or []),
+        # Persist sweep and rotation between runs; rebuilding state used to
+        # reset the cursor on every invocation and starve later networks.
+        "catalog_sweep_in_progress": bool(state.get("catalog_sweep_in_progress")),
+        "catalog_next_page": integer(state.get("catalog_next_page"), 1),
+        "network_scan_cursor": integer(state.get("network_scan_cursor"), 0),
+        "last_full_network_scan_at": state.get("last_full_network_scan_at"),
     }
 
     active_auto = []
@@ -646,6 +652,7 @@ def run(now: datetime | None = None) -> dict:
     }
     write(STATE, state)
     write(OUT, report)
+    _run_deadline = None
     return report
 
 
