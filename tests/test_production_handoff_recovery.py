@@ -26,17 +26,18 @@ def test_successful_scan_handoff_dispatches_exact_publisher_even_with_fresh_data
     files(tmp_path)
     request, calls = fake_api()
     rows = recover("owner/repo", data_dir=tmp_path, source_run_id="123", now=NOW, request=request)
-    assert rows[0]["status"] == "DISPATCHED"
+    assert rows[0]["status"] == "SOURCE_SCAN_ACTIVE"
+    assert rows[1]["status"] == "DISPATCHED"
     assert calls[-1][1] == {"ref": "main", "inputs": {"source_run_id": "123"}}
-    assert rows[1]["status"] == "CURRENT"
+    assert rows[2]["status"] == "CURRENT"
 
 
 def test_stale_consumers_recover_even_without_a_new_primary_scan(tmp_path):
     files(tmp_path, 7200)
     request, calls = fake_api()
     rows = recover("owner/repo", data_dir=tmp_path, now=NOW, request=request)
-    assert [x["status"] for x in rows] == ["DISPATCHED", "DISPATCHED"]
-    assert sum(body is not None for _, body in calls) == 2
+    assert [x["status"] for x in rows] == ["DISPATCHED", "DISPATCHED", "DISPATCHED"]
+    assert sum(body is not None for _, body in calls) == 3
 
 
 def test_active_consumers_are_never_dispatched_twice(tmp_path):
