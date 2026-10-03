@@ -1257,6 +1257,16 @@ def prioritize_scan_targets(targets):
     # sorted() is stable, so ordering inside each tier is preserved.
     return sorted(list(targets), key=scan_priority)
 
+
+def noncritical_budget_exhausted(noncritical_started, now, budget_seconds):
+    """Give the fair-rotation tail its own fixed budget after critical work.
+
+    Counting critical API time toward the tail budget meant the remainder was
+    skipped on every cycle whenever critical scans consumed that time first.
+    """
+    return noncritical_started is not None and now - noncritical_started >= budget_seconds
+
+
 def main():
     cfg = json.loads(CONFIG.read_text())
     state = json.loads(STATE.read_text()) if STATE.exists() else {"version": 3, "tokens": {}}
@@ -1337,8 +1347,11 @@ def main():
     suppressed_low_confirmation_alerts = 0
     scan_started_monotonic = time.monotonic()
     noncritical_budget_seconds = bounded_env_float(
-        "WALLET500_NONCRITICAL_SCAN_BUDGET_SECONDS", 420.0, 60.0, 600.0
+        "WALLET500_NONCRITICAL_SCAN_BUDGET_SECONDS", 120.0, 60.0, 600.0
     )
+    noncritical_started_monotonic = None
+    noncritical_attempts = 0
+    critical_attempts = 0
     noncritical_truncated = 0
 
     for token_index, t in enumerate(tokens):
@@ -1346,8 +1359,19 @@ def main():
         # skipped by this budget. Once they are complete, do not let ordinary
         # static/research targets consume the time needed by FINAL BUY evaluation.
         is_critical_market_lane = scan_priority(t) < 3
-        elapsed = time.monotonic() - scan_started_monotonic
-        if not is_critical_market_lane and elapsed >= noncritical_budget_seconds:
+        now_monotonic = time.monotonic()
+        if is_critical_market_lane:
+            critical_attempts += 1
+        else:
+            if noncritical_started_monotonic is None:
+                noncritical_started_monotonic = now_monotonic
+        elapsed = (
+            now_monotonic - noncritical_started_monotonic
+            if noncritical_started_monotonic is not None else 0.0
+        )
+        if not is_critical_market_lane and noncritical_budget_exhausted(
+            noncritical_started_monotonic, now_monotonic, noncritical_budget_seconds
+        ):
             # Never terminate the whole loop here. Even though critical targets
             # are explicitly sorted first, continue is the fail-safe that keeps
             # a future ordering regression from starving a later FINAL-BUY watch.
@@ -1364,6 +1388,8 @@ def main():
                     },
                 )
             continue
+        if not is_critical_market_lane:
+            noncritical_attempts += 1
         sym = t["symbol"].upper()
         identity_key = candidate_identity_key(t)
         chain_identity_key = exact_identity_key(t)
@@ -1772,6 +1798,12 @@ def main():
         "noncritical_fair_rotation_enabled": True,
         "scan_elapsed_seconds": round(time.monotonic() - scan_started_monotonic, 2),
         "noncritical_scan_budget_seconds": noncritical_budget_seconds,
+        "noncritical_scan_started_after_critical": True,
+        "critical_market_targets_attempted": critical_attempts,
+        "noncritical_targets_attempted": noncritical_attempts,
+        "noncritical_scan_elapsed_seconds": round(
+            max(0.0, time.monotonic() - noncritical_started_monotonic), 2
+        ) if noncritical_started_monotonic is not None else 0.0,
         "noncritical_targets_truncated": noncritical_truncated,
         "critical_market_lane_completed_before_noncritical": True,
         "targets": intel_rows,
