@@ -1167,3 +1167,14 @@ def test_final_buy_user_watch_is_never_stranded_behind_budgeted_research():
     assert engine.scan_priority(ordered[1]) == 1
     assert engine.scan_priority(ordered[2]) == 2
     assert all(engine.scan_priority(row) == 3 for row in ordered[3:])
+
+
+def test_noncritical_budget_begins_only_after_critical_lane_completes():
+    # A long critical CEX lane consumes none of the fair-rotation tail budget.
+    critical_start = 100.0
+    critical_finished = critical_start + 350.0
+    assert engine.noncritical_budget_exhausted(None, critical_finished, 120.0) is False
+    noncritical_started = critical_finished
+    assert engine.noncritical_budget_exhausted(noncritical_started, critical_finished + 119.0, 120.0) is False
+    assert engine.noncritical_budget_exhausted(noncritical_started, critical_finished + 120.0, 120.0) is True
+    assert engine.noncritical_budget_exhausted(noncritical_started, critical_finished + 130.0, 120.0) is True
