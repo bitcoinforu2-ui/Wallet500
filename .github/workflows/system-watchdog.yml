@@ -65,11 +65,15 @@ jobs:
           now=datetime.now(timezone.utc)
           generation=json.loads(Path('data/decision-generation.json').read_text())
           gdt=parse(generation.get('created_at'))
+          # The independent observer must still run during a stale producer
+          # incident. The operational guard below records a HIGH incident and
+          # the downstream BUY gate independently rejects stale generations.
           if generation.get('status')!='COHERENT_READY' or not gdt:
-              raise SystemExit('DECISION_GENERATION_NOT_COHERENT')
-          gage=(now-gdt.astimezone(timezone.utc)).total_seconds()
-          if gage > 45*60:
-              raise SystemExit(f'DECISION_GENERATION_STALE age={gage:.0f}s')
+              print('::warning::DECISION_GENERATION_NOT_COHERENT')
+          else:
+              gage=(now-gdt.astimezone(timezone.utc)).total_seconds()
+              if gage < -120 or gage > 45*60:
+                  print(f'::warning::DECISION_GENERATION_STALE age={gage:.0f}s')
 
           for filename, field, max_age in (
               ('data/doge1-whale-current.json','observed_at',2*3600),
@@ -124,6 +128,7 @@ jobs:
               'GLOBAL_ACTIONS_QUEUE_AND_RUN_PRESSURE_IS_MEASURED',
               'NEWER_FAILED_REVIVAL_PUBLICATION_IS_NOT_HEALTHY',
               'STALE_CEX_SPOT_IDENTITY_OR_FAILED_PRODUCER_IS_OPERATIONAL_INCIDENT',
+              'STALE_DECISION_GENERATION_DOES_NOT_DISABLE_INDEPENDENT_WATCHDOG',
               'SUSTAINED_ZERO_ACTIVE_WITH_QUALIFIED_SCAN_INPUT_IS_STARVATION',
               'OPERATIONAL_GUARD_NEVER_CHANGES_TRADING_POLICY',
           }
@@ -131,6 +136,7 @@ jobs:
               raise SystemExit('WATCHDOG_TRUTH_CONTRACT_INCOMPLETE')
           checks=r.get('checks') or {}
           if 'cex_spot_identity_freshness' not in checks: raise SystemExit('WATCHDOG_CEX_SOURCE_FRESHNESS_MISSING')
+          if 'decision_generation_freshness' not in checks: raise SystemExit('WATCHDOG_DECISION_GENERATION_MONITOR_MISSING')
           if 'github_actions_capacity' not in checks or 'revival_publish_freshness' not in checks or 'candidate_starvation' not in checks:
               raise SystemExit('WATCHDOG_OPERATIONAL_CHECKS_MISSING')
           print('WATCHDOG_VALID', {'overall':r.get('overall'),'incidents':r.get('incident_count'),'critical':r.get('critical_count'),'high':r.get('high_count')})

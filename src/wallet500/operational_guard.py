@@ -23,6 +23,7 @@ MANAGED_CODES = {
     "GITHUB_ACTIONS_FAILURE_PRESSURE",
     "REVIVAL_NEWER_RUN_FAILED_TO_PUBLISH",
     "CEX_SPOT_IDENTITY_STALE_OR_FAILED",
+    "DECISION_GENERATION_STALE_OR_INVALID",
     "CANDIDATE_STARVATION_SUSTAINED",
 }
 
@@ -222,6 +223,26 @@ def run(now: datetime | None = None) -> dict[str, Any]:
             last_published_at=cex_identity.get("generated_at") if isinstance(cex_identity, dict) else None,
         ))
 
+    # Health reporting must never depend on the decision generation being
+    # healthy: a stale decision producer is precisely when the watchdog matters.
+    generation = _load(DATA / "decision-generation.json", {})
+    generation_time = _parse(generation.get("created_at") if isinstance(generation, dict) else None)
+    generation_age = (now - generation_time).total_seconds() if generation_time else None
+    generation_ok = bool(
+        isinstance(generation, dict)
+        and generation.get("status") == "COHERENT_READY"
+        and generation_age is not None
+        and -120 <= generation_age <= 45 * 60
+    )
+    if not generation_ok:
+        incidents.append(_incident(
+            "DECISION_GENERATION_STALE_OR_INVALID", "HIGH",
+            "No current coherent decision generation; BUY/publishing gates remain fail closed",
+            age_seconds=round(generation_age, 1) if generation_age is not None else None,
+            reported_status=generation.get("status") if isinstance(generation, dict) else None,
+            max_age_seconds=45 * 60,
+        ))
+
     starvation_state, starvation = _starvation_state(now, state)
     if starvation:
         incidents.append(starvation)
@@ -250,6 +271,13 @@ def run(now: datetime | None = None) -> dict[str, Any]:
         "latest_producer_conclusion": latest_cex.get("conclusion"),
         "source_generated_at": cex_identity.get("generated_at") if isinstance(cex_identity, dict) else None,
         "fail_closed_when_stale": True,
+    }
+    checks["decision_generation_freshness"] = {
+        "ok": generation_ok,
+        "age_seconds": round(generation_age, 1) if generation_age is not None else None,
+        "max_age_seconds": 45 * 60,
+        "status": generation.get("status") if isinstance(generation, dict) else None,
+        "stale_never_authorizes_buy": True,
     }
     checks["candidate_starvation"] = {
         **starvation_state,
@@ -287,6 +315,7 @@ def run(now: datetime | None = None) -> dict[str, Any]:
         "GLOBAL_ACTIONS_QUEUE_AND_RUN_PRESSURE_IS_MEASURED",
         "NEWER_FAILED_REVIVAL_PUBLICATION_IS_NOT_HEALTHY",
         "STALE_CEX_SPOT_IDENTITY_OR_FAILED_PRODUCER_IS_OPERATIONAL_INCIDENT",
+        "STALE_DECISION_GENERATION_DOES_NOT_DISABLE_INDEPENDENT_WATCHDOG",
         "SUSTAINED_ZERO_ACTIVE_WITH_QUALIFIED_SCAN_INPUT_IS_STARVATION",
         "OPERATIONAL_GUARD_NEVER_CHANGES_TRADING_POLICY",
     ):
