@@ -35,8 +35,14 @@ def test_user_watch_delivery_checkpoints_dedupe_before_later_work_can_fail():
     source = _text(USER_WATCH_FINAL_BUY)
     workflow = _text(UNIFIED_WATCH)
     assert source.count("checkpoint_delivery_state(target_state, now)") >= 2
-    assert 'next_state["last_delivery_status"] = "DELIVERED"' in source
-    assert 'next_state["last_pre_buy_delivery_status"] = "DELIVERED"' in source
+    assert source.count("send_event_with_lease(") >= 3
+    assert 'next_state["last_delivery_status"] = receipt["status"]' in source
+    assert 'next_state["last_pre_buy_delivery_status"] = receipt["status"]' in source
+    assert "except telegram_lease.LeaseAlreadyExists" in source
+    lease = _text(ROOT / "scripts" / "durable_telegram_lease.py")
+    assert lease.index("ticket = claim(identity, kind, episode)") < lease.index("message_id = sender(text)")
+    assert "uncertain" in lease.lower()
+    assert "GITHUB_TOKEN: ${{ github.token }}" in workflow
     assert "id: critical_persist" in workflow
     assert "if: always()" in workflow
     assert "data/user-watch-final-buy-state.json" in workflow

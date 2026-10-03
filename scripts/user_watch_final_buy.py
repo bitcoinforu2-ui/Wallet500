@@ -9,6 +9,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    import durable_telegram_lease as telegram_lease
+except ModuleNotFoundError:
+    from scripts import durable_telegram_lease as telegram_lease
+
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "data/unified-watch-config.json"
 WATCH_STATE = ROOT / "data/unified-watch-state.json"
@@ -1905,7 +1910,7 @@ def telegram_message(target: dict, decision: dict) -> str:
     ])
 
 
-def send_telegram(text: str) -> None:
+def send_telegram(text: str) -> int | None:
     bot = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
     if not bot or not chat:
@@ -1924,6 +1929,12 @@ def send_telegram(text: str) -> None:
         body = json.loads(response.read().decode("utf-8"))
     if not body.get("ok"):
         raise RuntimeError("TELEGRAM_SEND_FAILED")
+    return (body.get("result") or {}).get("message_id")
+
+
+def send_event_with_lease(key: str, kind: str, episode: object, message: str) -> dict:
+    """Durable at-most-once delivery shared by normal and hot rechecks."""
+    return telegram_lease.send_once(key, kind, episode, message, send_telegram)
 
 
 def coverage_observability(decisions: list[dict], configured_targets: int) -> dict:
@@ -1995,6 +2006,7 @@ def main() -> int:
     pre_buy_delivered: list[str] = []
     targeted_risk_delivered: list[str] = []
     errors: list[dict] = []
+    delivery_ledger_warnings: list[dict] = []
 
     partial_upstream_skipped = 0
     partial_upstream_evaluated = 0
@@ -2094,15 +2106,30 @@ def main() -> int:
 
         if targeted_risk and targeted_risk.get("alert") is True:
             try:
-                send_telegram(targeted_risk_message(target, decision, targeted_risk))
+                receipt = send_event_with_lease(
+                    key, "TARGETED_RISK", targeted_risk.get("signature"),
+                    targeted_risk_message(target, decision, targeted_risk),
+                )
                 targeted_risk_delivered.append(key)
+                if receipt["status"] != "DELIVERED_LEDGER_CONFIRMED":
+                    delivery_ledger_warnings.append({"identity_key": key, "event": "TARGETED_RISK", "status": receipt["status"]})
                 next_state["last_targeted_risk_alert_at"] = now.isoformat()
                 next_state["last_targeted_risk_alert_price"] = targeted_risk.get("price_usd")
                 next_state["last_targeted_risk_signature"] = targeted_risk.get("signature")
                 next_state["last_targeted_risk_severity"] = targeted_risk.get("severity")
-                next_state["last_targeted_risk_delivery_status"] = "DELIVERED"
+                next_state["last_targeted_risk_delivery_status"] = receipt["status"]
+                next_state["last_targeted_risk_telegram_message_id"] = receipt["message_id"]
                 target_state[key] = next_state
                 checkpoint_delivery_state(target_state, now)
+            except telegram_lease.LeaseAlreadyExists as exc:
+                # Another runner may have sent this exact episode already.
+                next_state["last_targeted_risk_signature"] = targeted_risk.get("signature")
+                next_state["last_targeted_risk_delivery_status"] = (
+                    "PRIOR_SEND_CONFIRMED" if exc.delivered else "SEND_UNCERTAIN_OPERATOR_RECONCILIATION"
+                )
+                targeted_risk["alert"] = False
+                if not exc.delivered:
+                    errors.append({"identity_key": key, "event": "TARGETED_RISK", "error": "UNRESOLVED_DURABLE_SEND_LEASE"})
             except Exception as exc:
                 next_state["last_targeted_risk_delivery_status"] = f"ERROR:{type(exc).__name__}"
                 targeted_risk["alert"] = False
@@ -2115,11 +2142,25 @@ def main() -> int:
 
         if decision.get("pre_buy_alert") is True:
             try:
-                send_telegram(telegram_message(target, decision))
+                receipt = send_event_with_lease(
+                    key, "PRE_BUY", next_state.get("pre_buy_episode_count"),
+                    telegram_message(target, decision),
+                )
                 pre_buy_delivered.append(key)
-                next_state["last_pre_buy_delivery_status"] = "DELIVERED"
+                next_state["last_pre_buy_delivery_status"] = receipt["status"]
+                next_state["last_pre_buy_telegram_message_id"] = receipt["message_id"]
+                if receipt["status"] != "DELIVERED_LEDGER_CONFIRMED":
+                    delivery_ledger_warnings.append({"identity_key": key, "event": "PRE_BUY", "status": receipt["status"]})
                 target_state[key] = next_state
                 checkpoint_delivery_state(target_state, now)
+            except telegram_lease.LeaseAlreadyExists as exc:
+                next_state["pre_buy_armed"] = False
+                next_state["last_pre_buy_delivery_status"] = (
+                    "PRIOR_SEND_CONFIRMED" if exc.delivered else "SEND_UNCERTAIN_OPERATOR_RECONCILIATION"
+                )
+                decision["pre_buy_alert"] = False
+                if not exc.delivered:
+                    errors.append({"identity_key": key, "event": "PRE_BUY", "error": "UNRESOLVED_DURABLE_SEND_LEASE"})
             except Exception as exc:
                 next_state["pre_buy_armed"] = True
                 next_state.pop("last_pre_buy_alert_at", None)
@@ -2132,11 +2173,25 @@ def main() -> int:
 
         if decision.get("alert") is True:
             try:
-                send_telegram(telegram_message(target, decision))
+                receipt = send_event_with_lease(
+                    key, "FINAL_BUY", next_state.get("buy_episode_count"),
+                    telegram_message(target, decision),
+                )
                 delivered.append(key)
-                next_state["last_delivery_status"] = "DELIVERED"
+                next_state["last_delivery_status"] = receipt["status"]
+                next_state["last_telegram_message_id"] = receipt["message_id"]
+                if receipt["status"] != "DELIVERED_LEDGER_CONFIRMED":
+                    delivery_ledger_warnings.append({"identity_key": key, "event": "FINAL_BUY", "status": receipt["status"]})
                 target_state[key] = next_state
                 checkpoint_delivery_state(target_state, now)
+            except telegram_lease.LeaseAlreadyExists as exc:
+                next_state["armed"] = False
+                next_state["last_delivery_status"] = (
+                    "PRIOR_SEND_CONFIRMED" if exc.delivered else "SEND_UNCERTAIN_OPERATOR_RECONCILIATION"
+                )
+                decision["alert"] = False
+                if not exc.delivered:
+                    errors.append({"identity_key": key, "event": "FINAL_BUY", "error": "UNRESOLVED_DURABLE_SEND_LEASE"})
             except Exception as exc:
                 next_state["armed"] = True
                 next_state.pop("last_alert_at", None)
@@ -2196,6 +2251,8 @@ def main() -> int:
         "delivered": delivered,
         "error_count": len(errors),
         "errors": errors,
+        "delivery_ledger_warning_count": len(delivery_ledger_warnings),
+        "delivery_ledger_warnings": delivery_ledger_warnings,
         "decisions": decisions,
         "truth_contract": {
             "source": "Unified Watch exact-pair state + current intelligence report; fresh exact-state + close-watch-intelligence fallback on publication lag",
@@ -2229,6 +2286,8 @@ def main() -> int:
             "decision_coverage_is_explicit": True,
             "zero_current_coverage_never_counts_as_healthy": True,
             "automatic_trade": False,
+            "canonical_telegram_requires_durable_pre_send_lease": True,
+            "uncertain_lease_requires_operator_reconciliation_not_auto_resend": True,
             "veteran_production_real_alert_policy_unchanged": True,
         },
     }
