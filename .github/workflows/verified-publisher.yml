@@ -257,6 +257,15 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             base="$(git rev-parse HEAD)"
+            published_run="$(python -c 'import json; from pathlib import Path; print(int(json.loads(Path("data/publish-evidence.json").read_text()).get("run_id") or 0))')"
+            if [ "$published_run" -lt "$LIVE_SOURCE_RUN" ]; then
+              echo '::error::SOURCE_SNAPSHOT_NOT_PUBLISHED; refusing to relabel old data as a new generation'
+              exit 1
+            fi
+            if [ "$published_run" -gt "$LIVE_SOURCE_RUN" ]; then
+              echo 'NEWER_SNAPSHOT_ALREADY_PUBLISHED; retaining its generation provenance'
+              exit 0
+            fi
             export SOURCE_SHA="$LIVE_SOURCE_SHA"
             export GITHUB_RUN_ID="$LIVE_SOURCE_RUN"
             python -m wallet500.truth_input_preflight
