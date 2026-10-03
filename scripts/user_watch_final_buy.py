@@ -1917,6 +1917,24 @@ def send_telegram(text: str) -> None:
         raise RuntimeError("TELEGRAM_SEND_FAILED")
 
 
+def coverage_observability(decisions: list[dict], configured_targets: int) -> dict:
+    """Distinguish attempted decisions from independently current observations.
+
+    WATCH decisions made with missing/stale exact-pair inputs are evaluations,
+    not market coverage. Never count a skipped or stale row as observable.
+    """
+    evaluated = sum(1 for row in decisions if "UPSTREAM_PARTIAL_SNAPSHOT_NOT_FRESH" not in (row.get("blockers") or []))
+    observable = sum(1 for row in decisions if row.get("observable") is True)
+    denominator = max(0, int(configured_targets))
+    return {
+        "evaluated_target_count": evaluated,
+        "decision_coverage_pct": round(evaluated / denominator * 100.0, 2) if denominator else 100.0,
+        "observable_target_count": observable,
+        "unobservable_target_count": max(0, denominator - observable),
+        "observable_coverage_pct": round(observable / denominator * 100.0, 2) if denominator else 100.0,
+    }
+
+
 def checkpoint_delivery_state(target_state: dict, now: datetime) -> None:
     """Stage dedupe state immediately after a successful Telegram delivery.
 
@@ -2132,12 +2150,9 @@ def main() -> int:
     write(STATE, persistent)
 
     configured_target_count = len(eligible_targets(config, dynamic, watch_state))
-    evaluated_target_count = max(0, len(decisions) - partial_upstream_skipped)
-    decision_coverage_pct = (
-        round((evaluated_target_count / configured_target_count) * 100.0, 2)
-        if configured_target_count
-        else 100.0
-    )
+    coverage = coverage_observability(decisions, configured_target_count)
+    evaluated_target_count = coverage["evaluated_target_count"]
+    decision_coverage_pct = coverage["decision_coverage_pct"]
 
     report = {
         "version": 1,
@@ -2151,6 +2166,10 @@ def main() -> int:
         "configured_targets": configured_target_count,
         "evaluated_target_count": evaluated_target_count,
         "decision_coverage_pct": decision_coverage_pct,
+        "observable_target_count": coverage["observable_target_count"],
+        "unobservable_target_count": coverage["unobservable_target_count"],
+        "observable_coverage_pct": coverage["observable_coverage_pct"],
+        "coverage_semantics": "DECISION_COVERAGE_IS_ATTEMPTED; OBSERVABLE_COVERAGE_REQUIRES_FRESH_EXACT_MARKET_AND_INTELLIGENCE",
         "fresh_state_intelligence_fallback_count": fresh_state_intelligence_fallback_count,
         "buy_zone_count": sum(1 for x in decisions if x.get("state") == "BUY_ZONE"),
         "pre_buy_count": sum(1 for x in decisions if x.get("pre_buy") is True),
