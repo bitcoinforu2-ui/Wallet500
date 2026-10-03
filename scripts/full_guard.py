@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 CRITICAL_TESTS = (
+    "tests/test_production_handoff_recovery.py",
     "tests/test_decision_generation.py",
     "tests/test_accuracy_contracts.py",
     "tests/test_social_precursor.py",

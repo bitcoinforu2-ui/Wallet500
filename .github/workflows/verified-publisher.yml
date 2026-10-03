@@ -5,6 +5,11 @@ on:
     workflows: ["Wallet500 Multi-Chain Live Scan"]
     types: [completed]
   workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'Exact Live Scan handoff run; empty selects newest successful canonical run'
+        required: false
+        type: string
   schedule:
     - cron: '2,17,32,47 * * * *'
 permissions:
@@ -42,10 +47,29 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
           EVENT_SHA: ${{ github.event.workflow_run.head_sha }}
+          HANDOFF_RUN_ID: ${{ inputs.source_run_id }}
         run: |
           set -euo pipefail
           canonical_tip="$(git rev-parse HEAD)"
-          if [ "$EVENT_NAME" = "workflow_run" ] && [ -n "${EVENT_RUN_ID:-}" ]; then
+          if [ -n "${HANDOFF_RUN_ID:-}" ]; then
+            [[ "$HANDOFF_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'INVALID_HANDOFF_RUN_ID'; exit 1; }
+            run_id="$HANDOFF_RUN_ID"
+            # The final Live Scan step dispatches us after upload. Wait briefly
+            # for its job to finish, then require actual success before publishing.
+            source_ready=false
+            for check in {1..12}; do
+              run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+              run_status="$(printf '%s' "$run_json" | jq -r '.status')"
+              if [ "$run_status" = completed ]; then
+                printf '%s' "$run_json" | jq -e '.conclusion == "success" and .path == ".github/workflows/live-scan.yml" and .head_branch == "main"' >/dev/null
+                event_sha="$(printf '%s' "$run_json" | jq -r '.head_sha')"
+                source_ready=true
+                break
+              fi
+              sleep 5
+            done
+            [ "$source_ready" = true ] || { echo 'HANDOFF_SOURCE_NOT_SUCCESSFUL'; exit 1; }
+          elif [ "$EVENT_NAME" = "workflow_run" ] && [ -n "${EVENT_RUN_ID:-}" ]; then
             run_id="$EVENT_RUN_ID"
             event_sha="${EVENT_SHA:-}"
           else

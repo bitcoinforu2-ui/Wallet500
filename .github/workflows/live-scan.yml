@@ -6,6 +6,7 @@ on:
     - cron: '7,22,37,52 * * * *'
 permissions:
   contents: write
+  actions: write
 
 # Production collection and validation run only on schedule/manual dispatch.
 # Code pushes are validated by Wallet500 Tests/Full Guard and must never replace
@@ -315,3 +316,8 @@ jobs:
           if-no-files-found: error
           retention-days: 2
           include-hidden-files: true
+
+      - name: Dispatch verified publication and recover stale unified watch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/recover_production_handoffs.py --source-run-id "${{ github.run_id }}"
