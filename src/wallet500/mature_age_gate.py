@@ -162,9 +162,9 @@ def _load_cache() -> dict:
 def _save_cache(cache: dict) -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     payload = {
-        "version": 1,
+        "version": 2,
         "updated_at": now_utc().isoformat(),
-        "rule": "ONLY_POSITIVE_EXACT_ID_60D_PLUS_EVIDENCE_IS_CACHED; CACHE_NEVER_CREATES_AGE_PROOF",
+        "rule": "ONLY_POSITIVE_90D_PLUS_PROOF_BOUND_TO_EXACT_ID_AND_TOKEN; CACHE_NEVER_CREATES_CURRENT_MARKET_EVIDENCE",
         "coins": cache.get("coins", {}),
     }
     CACHE_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -192,9 +192,31 @@ def _verified_meta_from_market(row: dict, source: str) -> dict | None:
     }
 
 
-def _cached_exact_meta(coin_id: str, cache: dict) -> dict | None:
+def _cached_exact_meta(
+    coin_id: str,
+    cache: dict,
+    expected_token: str | None = None,
+    expected_network: str | None = None,
+) -> dict | None:
     row = (cache.get("coins") or {}).get(coin_id)
     if not isinstance(row, dict) or row.get("market_age_verified") is not True:
+        return None
+    # A historic age proof is immutable, but it must never transfer from a
+    # cached CoinGecko ID to another mint or chain. Legacy unbound cache
+    # records are not trusted when the current candidate has an exact mint.
+    if not expected_token or not expected_network:
+        return None
+    if str(row.get("coingecko_id") or "") != coin_id:
+        return None
+    if str(row.get("token_address") or "") != expected_token:
+        return None
+    if str(row.get("network") or "").lower() != expected_network.lower():
+        return None
+    source = str(row.get("market_age_evidence_source") or "")
+    if source not in {
+        "COINGECKO_ATH_OR_ATL_HISTORICAL_EVIDENCE_EXACT_ID",
+        "CACHED_COINGECKO_ATH_OR_ATL_HISTORICAL_EVIDENCE_EXACT_ID",
+    }:
         return None
     days = age_days_from_evidence(row.get("market_age_evidence_at"), now_utc())
     if days is None or days < MIN_MARKET_AGE_DAYS:
@@ -269,7 +291,20 @@ def enforce_revival(path: Path = DATA / "revival-1000-latest.json") -> dict:
     cache = _load_cache()
     cache.setdefault("coins", {})
     exact_ids = list(dict.fromkeys(str(x.get("id") or "").strip() for x in raw if x.get("source") != "revival_discovery_state+dexscreener_absorption_expansion" and str(x.get("id") or "").strip() and not str(x.get("id") or "").startswith("discovery:")))
-    cached_ids = {coin_id for coin_id in exact_ids if _cached_exact_meta(coin_id, cache)}
+    # Validate cached proof against the exact token on *every* candidate,
+    # including during the prefetch decision. A symbol/ID alone is insufficient.
+    exact_rows = {
+        str(row.get("id") or "").strip(): row for row in raw
+        if str(row.get("id") or "").strip() in exact_ids
+    }
+    cached_ids = {
+        coin_id for coin_id in exact_ids
+        if _cached_exact_meta(
+            coin_id, cache,
+            str(exact_rows[coin_id].get("token_address") or "") or None,
+            str(exact_rows[coin_id].get("network") or "") or None,
+        )
+    }
     missing_ids = [coin_id for coin_id in exact_ids if coin_id not in cached_ids]
     market_by_id: dict[str, dict] = {}
     provider_error = None
@@ -291,10 +326,18 @@ def enforce_revival(path: Path = DATA / "revival-1000-latest.json") -> dict:
             if market:
                 meta = _verified_meta_from_market(market, "COINGECKO_ATH_OR_ATL_HISTORICAL_EVIDENCE_EXACT_ID")
                 if meta:
-                    cache["coins"][coin_id] = meta
+                    cache["coins"][coin_id] = {
+                        **meta,
+                        "network": coin.get("network"),
+                        "token_address": coin.get("token_address"),
+                    }
                     cache_changed = True
             if meta is None:
-                meta = _cached_exact_meta(coin_id, cache)
+                meta = _cached_exact_meta(
+                    coin_id, cache,
+                    str(coin.get("token_address") or "") or None,
+                    str(coin.get("network") or "") or None,
+                )
                 if meta:
                     cache_hits += 1
         if not meta:

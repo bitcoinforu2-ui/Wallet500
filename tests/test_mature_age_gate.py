@@ -152,3 +152,88 @@ def test_validate_file_fails_closed_on_unverified_row(tmp_path):
         assert "MATURE_AGE_GATE_VIOLATION" in str(exc)
     else:
         raise AssertionError("validate_file must fail closed")
+
+
+def test_revival_uses_mint_bound_historical_age_proof_when_provider_is_down(tmp_path, monkeypatch):
+    """Previously verified age may survive an outage, never current market data."""
+    monkeypatch.setattr(g, "CACHE_PATH", tmp_path / "cache.json")
+    monkeypatch.setattr(g, "DATA", tmp_path)
+    (tmp_path / "cache.json").write_text(json.dumps({
+        "version": 2, "coins": {
+            "old": {
+                "coingecko_id": "old", "network": "solana", "token_address": "MintA",
+                "market_age_verified": True,
+                "market_age_evidence_at": old_date(400),
+                "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_HISTORICAL_EVIDENCE_EXACT_ID",
+            }
+        },
+    }))
+    path = tmp_path / "revival.json"
+    path.write_text(json.dumps({
+        "coins": [
+            {"id": "old", "network": "solana", "token_address": "MintA", "source": "coingecko"},
+            {"id": "new", "network": "solana", "token_address": "MintB", "source": "coingecko"},
+        ],
+        "counts": {},
+    }))
+    def unavailable(_ids):
+        raise RuntimeError("upstream HTTP 403")
+    monkeypatch.setattr(g, "fetch_by_ids", unavailable)
+    report = g.enforce_revival(path)
+    coins = json.loads(path.read_text())["coins"]
+    assert report["provider_degraded"] is True
+    assert report["verified_cache_hits"] == 1
+    assert report["accepted"] == 1
+    assert [coin["token_address"] for coin in coins] == ["MintA"]
+    assert coins[0]["market_age_evidence_source"].startswith("CACHED_")
+    assert "price_usd" not in coins[0]
+
+
+def test_revival_does_not_transfer_cached_age_to_another_mint_or_chain(tmp_path, monkeypatch):
+    """Never turn a correct ID's prior token-age proof into another token's."""
+    monkeypatch.setattr(g, "CACHE_PATH", tmp_path / "cache.json")
+    monkeypatch.setattr(g, "DATA", tmp_path)
+    (tmp_path / "cache.json").write_text(json.dumps({
+        "version": 2, "coins": {
+            "old": {
+                "coingecko_id": "old", "network": "solana", "token_address": "MintA",
+                "market_age_verified": True,
+                "market_age_evidence_at": old_date(400),
+                "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_HISTORICAL_EVIDENCE_EXACT_ID",
+            },
+        },
+    }))
+    path = tmp_path / "revival.json"
+    path.write_text(json.dumps({
+        "coins": [
+            {"id": "old", "network": "solana", "token_address": "DifferentMint", "source": "coingecko"},
+            {"id": "old", "network": "ethereum", "token_address": "MintA", "source": "coingecko"},
+        ], "counts": {},
+    }))
+    monkeypatch.setattr(g, "fetch_by_ids", lambda _ids: (_ for _ in ()).throw(RuntimeError("HTTP 403")))
+    report = g.enforce_revival(path)
+    assert report["accepted"] == 0
+    assert report["rejected"] == 2
+    assert json.loads(path.read_text())["coins"] == []
+
+
+def test_revival_rejects_unbound_legacy_cache_for_exact_mint(tmp_path, monkeypatch):
+    """Old cache rows with no mint are insufficient to confirm a current token."""
+    monkeypatch.setattr(g, "CACHE_PATH", tmp_path / "cache.json")
+    monkeypatch.setattr(g, "DATA", tmp_path)
+    (tmp_path / "cache.json").write_text(json.dumps({
+        "version": 1, "coins": {
+            "old": {
+                "coingecko_id": "old", "market_age_verified": True,
+                "market_age_evidence_at": old_date(500),
+                "market_age_evidence_source": "COINGECKO_ATH_OR_ATL_HISTORICAL_EVIDENCE_EXACT_ID",
+            }
+        },
+    }))
+    path = tmp_path / "revival.json"
+    path.write_text(json.dumps({
+        "coins": [{"id": "old", "network": "solana", "token_address": "MintA", "source": "coingecko"}],
+        "counts": {},
+    }))
+    monkeypatch.setattr(g, "fetch_by_ids", lambda _ids: (_ for _ in ()).throw(RuntimeError("HTTP 403")))
+    assert g.enforce_revival(path)["accepted"] == 0

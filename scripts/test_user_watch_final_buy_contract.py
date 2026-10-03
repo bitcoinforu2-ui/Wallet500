@@ -93,6 +93,13 @@ def main() -> None:
     assert qualifying["pre_buy_alert"] is True
     assert qualifying["alert"] is False
     assert "רגע לפני קנייה / PRE-BUY" in gate.telegram_message(TARGET, qualifying)
+    # A CEX-led hybrid alert must never claim independent DEX buy pressure.
+    hybrid_preview = {**qualifying, "intelligence": {
+        **qualifying["intelligence"],
+        "execution_path": "HYBRID_CEX_DEX_BREAKOUT",
+        "fusion_gate_bypassed": True,
+    }}
+    assert "יחס קניות/מכירות ב-DEX אינו אישור" in gate.telegram_message(TARGET, hybrid_preview)
     assert s2["pre_buy_armed"] is False
 
     t3 = t2 + timedelta(minutes=15)
@@ -106,6 +113,12 @@ def main() -> None:
     )
     assert buy["state"] == "BUY_ZONE"
     assert buy["recommended_action"] == "BUY"
+    hybrid_final_preview = {**buy, "intelligence": {
+        **buy["intelligence"],
+        "execution_path": "HYBRID_CEX_DEX_BREAKOUT",
+        "fusion_gate_bypassed": True,
+    }}
+    assert "wallet accumulation are not independently verified" in gate.telegram_message(TARGET, hybrid_final_preview)
     assert buy["pre_buy"] is False
     assert buy["pre_buy_alert"] is False
     assert buy["alert"] is True
