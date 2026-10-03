@@ -14,6 +14,7 @@ from pathlib import Path
 
 ACTIVE = {"queued", "in_progress", "pending", "waiting", "requested"}
 LANES = (
+    ("live-scan.yml", "run-summary.json", 20 * 60),
     ("verified-publisher.yml", "publish-evidence.json", 30 * 60),
     ("unified-watch-engine.yml", "unified-watch-intelligence-report.json", 20 * 60),
 )
@@ -49,6 +50,9 @@ def recover(repository: str, *, data_dir: Path = Path("data"), source_run_id: st
     now = now or datetime.now(timezone.utc)
     results = []
     for workflow, filename, max_age in LANES:
+        if workflow == "live-scan.yml" and source_run_id is not None:
+            results.append({"workflow": workflow, "status": "SOURCE_SCAN_ACTIVE"})
+            continue
         # Every validated scan needs its exact artifact published. The watch lane
         # is dispatched only when stale so a code change cannot replace fresh work.
         required = (workflow == "verified-publisher.yml" and source_run_id is not None) or stale(data_dir / filename, max_age, now)
