@@ -204,11 +204,13 @@ def _cached_exact_meta(
     # A historic age proof is immutable, but it must never transfer from a
     # cached CoinGecko ID to another mint or chain. Legacy unbound cache
     # records are not trusted when the current candidate has an exact mint.
+    if not expected_token or not expected_network:
+        return None
     if str(row.get("coingecko_id") or "") != coin_id:
         return None
-    if expected_token and str(row.get("token_address") or "") != expected_token:
+    if str(row.get("token_address") or "") != expected_token:
         return None
-    if expected_network and str(row.get("network") or "").lower() != expected_network.lower():
+    if str(row.get("network") or "").lower() != expected_network.lower():
         return None
     source = str(row.get("market_age_evidence_source") or "")
     if source not in {
