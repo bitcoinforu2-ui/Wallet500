@@ -74,3 +74,8 @@ jobs:
 
           echo "WATCHDOG_STALE_DISPATCH_FULL_PRIMARY age=${{ steps.freshness.outputs.age_minutes }}m"
           gh workflow run live-scan.yml --repo "$GITHUB_REPOSITORY" --ref main
+
+      - name: Recover stale publication and unified decision path independently
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/recover_production_handoffs.py
