@@ -132,7 +132,8 @@ def test_bybit_direct_failure_is_compensated_by_two_independent_official_cex_fee
     assert coverage["ok"] is True
     assert coverage["direct_bybit_available"] is False
     assert coverage["coverage_state"] == "INDEPENDENT_TWO_CEX_REDUNDANCY"
-    assert coverage["compensation_source_health"] == {"bitget": True, "coinex": True}
+    assert coverage["compensation_source_health"] == {"binance": True, "bitget": True, "coinex": True}
+    assert coverage["active_independent_compensation_sources"] == ["binance", "bitget", "coinex"]
     assert coverage["geo_restriction_circumvention"] is False
     assert coverage["regional_bybit_endpoints_used_as_proxy"] is False
     assert sorted({x["exchange"] for x in rows}) == ["binance", "bitget", "coinex"]
@@ -163,3 +164,48 @@ def test_all_official_endpoints_failed_is_reported_not_silently_accepted(monkeyp
     assert health["coinex"]["fallback_pool_size"] == 1
     assert health["bybit_gap_coverage"]["ok"] is False
     assert health["bybit_gap_coverage"]["coverage_state"] == "GAP_OPEN"
+
+
+def test_bybit_and_coinex_unavailable_still_have_two_official_independent_feeds(monkeypatch):
+    monkeypatch.setattr(fallback, "BINANCE_SPOT_TICKER_ENDPOINTS", ("https://binance.test",))
+    monkeypatch.setattr(fallback, "BYBIT_SPOT_TICKER_ENDPOINTS", ("https://bybit.test",))
+    monkeypatch.setattr(fallback, "BITGET_SPOT_TICKER_ENDPOINTS", ("https://bitget.test",))
+    monkeypatch.setattr(fallback, "COINEX_SPOT_TICKER_ENDPOINTS", ("https://coinex.test",))
+    def getter(url):
+        if "bybit" in url or "coinex" in url:
+            raise PermissionError("blocked")
+        if "binance" in url:
+            return [{"symbol": "ABCUSDC", "lastPrice": "1", "priceChangePercent": "5", "quoteVolume": "500000"}]
+        if "bitget" in url:
+            return {"code": "00000", "data": [
+                {"symbol": "ABCUSDC", "lastPr": "1", "change24h": "0.05", "quoteVolume": "300000"}
+            ]}
+        raise AssertionError(url)
+    fake = _fake_promo(getter)
+    fallback.install(fake)
+    rows, health = fake.collect_usdc_markets()
+    c = health["bybit_gap_coverage"]
+    assert c["ok"] is True
+    assert c["direct_bybit_available"] is False
+    assert c["coverage_state"] == "INDEPENDENT_TWO_CEX_REDUNDANCY"
+    assert c["active_independent_compensation_sources"] == ["binance", "bitget"]
+    assert c["compensation_source_health"]["coinex"] is False
+    assert sorted(x["exchange"] for x in rows) == ["binance", "bitget"]
+
+
+def test_one_remaining_cex_is_explicit_gap_not_redundancy(monkeypatch):
+    monkeypatch.setattr(fallback, "BINANCE_SPOT_TICKER_ENDPOINTS", ("https://binance.test",))
+    monkeypatch.setattr(fallback, "BYBIT_SPOT_TICKER_ENDPOINTS", ("https://bybit.test",))
+    monkeypatch.setattr(fallback, "BITGET_SPOT_TICKER_ENDPOINTS", ("https://bitget.test",))
+    monkeypatch.setattr(fallback, "COINEX_SPOT_TICKER_ENDPOINTS", ("https://coinex.test",))
+    def getter(url):
+        if "binance" in url:
+            return [{"symbol": "ABCUSDC", "lastPrice": "1", "priceChangePercent": "5", "quoteVolume": "500000"}]
+        raise PermissionError("blocked")
+    fake = _fake_promo(getter)
+    fallback.install(fake)
+    _, health = fake.collect_usdc_markets()
+    c = health["bybit_gap_coverage"]
+    assert c["ok"] is False
+    assert c["coverage_state"] == "GAP_OPEN"
+    assert c["active_independent_compensation_sources"] == ["binance"]
