@@ -6,7 +6,7 @@ The GitHub-hosted runner can receive geo/WAF responses from some primary CEX
 hosts. We only use documented official endpoints for the named exchange and do
 not try to bypass geographic restrictions. If direct Bybit remains unavailable,
 the blind spot is compensated by two additional independent official CEX feeds
-(Bitget + CoinEx) while Bybit itself stays visibly fail-closed in health data.
+(any two of Binance, Bitget and CoinEx) while Bybit itself stays visibly fail-closed in health data.
 """
 
 import threading
@@ -36,7 +36,7 @@ COINEX_SPOT_TICKER_ENDPOINTS = (
     "https://api.coinex.com/v2/spot/ticker",
 )
 
-BYBIT_GAP_COMPENSATION_SOURCES = ("bitget", "coinex")
+BYBIT_GAP_COMPENSATION_SOURCES = ("binance", "bitget", "coinex")
 
 _LOCK = threading.Lock()
 _LAST_ENDPOINT_HEALTH: dict[str, dict] = {}
@@ -268,7 +268,8 @@ def install(promo) -> None:
             name: bool((health.get(name) or {}).get("ok") and (health.get(name) or {}).get("markets", 0) > 0)
             for name in BYBIT_GAP_COMPENSATION_SOURCES
         }
-        two_source_compensation_ok = all(replacement_health.values())
+        active_compensation = [name for name, ok in replacement_health.items() if ok]
+        two_source_compensation_ok = len(active_compensation) >= 2
         coverage_ok = bybit_direct_ok or two_source_compensation_ok
         health["bybit_gap_coverage"] = {
             "ok": coverage_ok,
@@ -281,11 +282,12 @@ def install(promo) -> None:
                 else "GAP_OPEN"
             ),
             "compensation_sources": list(BYBIT_GAP_COMPENSATION_SOURCES),
+            "active_independent_compensation_sources": active_compensation,
             "compensation_source_health": replacement_health,
             "minimum_independent_compensation_sources": 2,
             "geo_restriction_circumvention": False,
             "regional_bybit_endpoints_used_as_proxy": False,
-            "truth_note": "Direct Bybit stays fail-closed; Bitget and CoinEx compensate market-visibility loss without being mislabeled as Bybit.",
+            "truth_note": "Direct Bybit stays fail-closed; two independently healthy official Binance/Bitget/CoinEx sources restore partial market visibility, never Bybit-specific asset coverage or exact identity.",
         }
         return rows, health
 
