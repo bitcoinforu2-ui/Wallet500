@@ -59,6 +59,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Deploy the current published generation, including on delayed reruns.
+          ref: main
       - name: Build live-first Wallet500 site
         run: |
           set -euo pipefail
