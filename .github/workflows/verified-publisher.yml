@@ -13,7 +13,7 @@ on:
   schedule:
     - cron: '2,17,32,47 * * * *'
 permissions:
-  actions: read
+  actions: write
   contents: write
 
 # This is the sole production-authoritative main writer for a complete Live Scan
@@ -302,3 +302,11 @@ jobs:
           done
           echo '::error::GENERATION_BIND_RETRIES_EXHAUSTED'
           exit 1
+
+      - name: Dispatch dashboard from published main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Explicit dispatch also works when workflow_run nesting is exhausted.
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/pages.yml/dispatches" -f ref=main
