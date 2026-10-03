@@ -128,6 +128,7 @@ jobs:
               'GLOBAL_ACTIONS_QUEUE_AND_RUN_PRESSURE_IS_MEASURED',
               'NEWER_FAILED_REVIVAL_PUBLICATION_IS_NOT_HEALTHY',
               'STALE_CEX_SPOT_IDENTITY_OR_FAILED_PRODUCER_IS_OPERATIONAL_INCIDENT',
+              'STALE_DECISION_GENERATION_DOES_NOT_DISABLE_INDEPENDENT_WATCHDOG',
               'SUSTAINED_ZERO_ACTIVE_WITH_QUALIFIED_SCAN_INPUT_IS_STARVATION',
               'OPERATIONAL_GUARD_NEVER_CHANGES_TRADING_POLICY',
           }
@@ -135,6 +136,7 @@ jobs:
               raise SystemExit('WATCHDOG_TRUTH_CONTRACT_INCOMPLETE')
           checks=r.get('checks') or {}
           if 'cex_spot_identity_freshness' not in checks: raise SystemExit('WATCHDOG_CEX_SOURCE_FRESHNESS_MISSING')
+          if 'decision_generation_freshness' not in checks: raise SystemExit('WATCHDOG_DECISION_GENERATION_MONITOR_MISSING')
           if 'github_actions_capacity' not in checks or 'revival_publish_freshness' not in checks or 'candidate_starvation' not in checks:
               raise SystemExit('WATCHDOG_OPERATIONAL_CHECKS_MISSING')
           print('WATCHDOG_VALID', {'overall':r.get('overall'),'incidents':r.get('incident_count'),'critical':r.get('critical_count'),'high':r.get('high_count')})
