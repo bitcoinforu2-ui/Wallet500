@@ -424,9 +424,21 @@ def execute_plan(plan: dict) -> dict:
 
             if decision.get("pre_buy_alert") is True:
                 try:
-                    gate.send_telegram(gate.telegram_message(target, decision))
+                    receipt = gate.send_event_with_lease(
+                        key, "PRE_BUY", next_state.get("pre_buy_episode_count"),
+                        gate.telegram_message(target, decision),
+                    )
                     pre_buy_delivered.append(key)
-                    next_state["last_pre_buy_delivery_status"] = "DELIVERED"
+                    next_state["last_pre_buy_delivery_status"] = receipt["status"]
+                    next_state["last_pre_buy_telegram_message_id"] = receipt["message_id"]
+                except gate.telegram_lease.LeaseAlreadyExists as exc:
+                    next_state["pre_buy_armed"] = False
+                    next_state["last_pre_buy_delivery_status"] = (
+                        "PRIOR_SEND_CONFIRMED" if exc.delivered else "SEND_UNCERTAIN_OPERATOR_RECONCILIATION"
+                    )
+                    decision["pre_buy_alert"] = False
+                    if not exc.delivered:
+                        errors.append({"identity_key": key, "event": "PRE_BUY", "error": "UNRESOLVED_DURABLE_SEND_LEASE"})
                 except Exception as exc:
                     next_state["pre_buy_armed"] = True
                     next_state.pop("last_pre_buy_alert_at", None)
@@ -439,9 +451,21 @@ def execute_plan(plan: dict) -> dict:
 
             if decision.get("alert") is True:
                 try:
-                    gate.send_telegram(gate.telegram_message(target, decision))
+                    receipt = gate.send_event_with_lease(
+                        key, "FINAL_BUY", next_state.get("buy_episode_count"),
+                        gate.telegram_message(target, decision),
+                    )
                     delivered.append(key)
-                    next_state["last_delivery_status"] = "DELIVERED"
+                    next_state["last_delivery_status"] = receipt["status"]
+                    next_state["last_telegram_message_id"] = receipt["message_id"]
+                except gate.telegram_lease.LeaseAlreadyExists as exc:
+                    next_state["armed"] = False
+                    next_state["last_delivery_status"] = (
+                        "PRIOR_SEND_CONFIRMED" if exc.delivered else "SEND_UNCERTAIN_OPERATOR_RECONCILIATION"
+                    )
+                    decision["alert"] = False
+                    if not exc.delivered:
+                        errors.append({"identity_key": key, "event": "FINAL_BUY", "error": "UNRESOLVED_DURABLE_SEND_LEASE"})
                 except Exception as exc:
                     next_state["armed"] = True
                     next_state.pop("last_alert_at", None)
