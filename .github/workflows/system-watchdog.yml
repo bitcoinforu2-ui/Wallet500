@@ -65,11 +65,15 @@ jobs:
           now=datetime.now(timezone.utc)
           generation=json.loads(Path('data/decision-generation.json').read_text())
           gdt=parse(generation.get('created_at'))
+          # The independent observer must still run during a stale producer
+          # incident. The operational guard below records a HIGH incident and
+          # the downstream BUY gate independently rejects stale generations.
           if generation.get('status')!='COHERENT_READY' or not gdt:
-              raise SystemExit('DECISION_GENERATION_NOT_COHERENT')
-          gage=(now-gdt.astimezone(timezone.utc)).total_seconds()
-          if gage > 45*60:
-              raise SystemExit(f'DECISION_GENERATION_STALE age={gage:.0f}s')
+              print('::warning::DECISION_GENERATION_NOT_COHERENT')
+          else:
+              gage=(now-gdt.astimezone(timezone.utc)).total_seconds()
+              if gage < -120 or gage > 45*60:
+                  print(f'::warning::DECISION_GENERATION_STALE age={gage:.0f}s')
 
           for filename, field, max_age in (
               ('data/doge1-whale-current.json','observed_at',2*3600),
