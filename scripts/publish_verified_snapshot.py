@@ -31,6 +31,7 @@ from wallet500.policy import (
     CANONICAL_MIN_EXECUTION_LIQUIDITY_USD,
     CANONICAL_MIN_MARKET_AGE_DAYS,
 )
+from wallet500.decision_generation import CANONICAL_FILES
 
 DECISION_PROOF = "data/decision-publish-evidence.json"
 DECISION_HASH_PATHS = {
@@ -334,6 +335,46 @@ def verified_decision_snapshot(parent: str) -> dict | None:
     return out
 
 
+def previous_generation_paths(parent: str, incoming_run: int) -> set[str]:
+    """Recognize older publisher-owned bytes, including its post-publish guard.
+
+    A derived guard can change REAL ALERT bytes after a newer scan checked out.
+    Such older, hash-bound bytes must not permanently veto the newer validated
+    full snapshot. Unbound changes still retain the original conflict protection.
+    """
+    raw = _parent_bytes(parent, "data/decision-generation.json")
+    try:
+        generation = json.loads(raw.decode("utf-8")) if raw is not None else {}
+        run = int(generation["workflow_run_id"])
+        sha = str(generation["source_sha"])
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return set()
+    if (generation.get("version") != 3
+            or generation.get("status") != "COHERENT_READY"
+            or generation.get("automatic_buy") is not False
+            or run >= incoming_run
+            or len(sha) != 40
+            or generation.get("generation_id") != f"wallet500:{run}:{sha}"):
+        return set()
+    hashes = generation.get("hashes")
+    if not isinstance(hashes, dict) or set(hashes) != set(CANONICAL_FILES):
+        return set()
+    matched = set()
+    for path, expected in hashes.items():
+        body = _parent_bytes(parent, path)
+        if body is not None and hashlib.sha256(body).hexdigest() == expected:
+            matched.add(path)
+    # Never use a stale manifest to authorize replacing an independently changed
+    # REAL ALERT surface. Its current bytes must be bound and policy-strict.
+    real_path = DECISION_HASH_PATHS["real_alerts"]
+    if real_path not in matched or not _bound_real_alerts_passes_production_contract(_parent_bytes(parent, real_path)):
+        return set()
+    production_path = DECISION_HASH_PATHS["production_status"]
+    if production_path not in matched or not _production_status_bytes_passes_contract(_parent_bytes(parent, production_path)):
+        return set()
+    return matched
+
+
 def _proof_blob(
     *,
     source_run: int,
@@ -420,6 +461,7 @@ def main() -> int:
         )
         preserve_decision = decision if decision_changed and decision is not None else None
         preserved_paths = set((preserve_decision or {}).get("_verified_paths") or [])
+        older_bound_paths = previous_generation_paths(parent, source_run)
 
         index_path = Path(tempfile.gettempdir()) / f"wallet500-verified-{os.getpid()}-{attempt}.index"
         skipped: list[str] = []
@@ -436,7 +478,7 @@ def main() -> int:
                 if preserve_decision is not None and rel in preserved_paths:
                     skipped.append(rel)
                     continue
-                if changed_since(source_sha, parent, rel):
+                if changed_since(source_sha, parent, rel) and rel not in older_bound_paths:
                     skipped.append(rel)
                     continue
                 if item["kind"] == "file":
