@@ -258,3 +258,74 @@ def test_snapshot_production_status_fails_closed_on_subthreshold_contract(tmp_pa
 def test_snapshot_production_status_rejects_legacy_90d_15k_policy(tmp_path):
     _write_status(tmp_path, 90, 15000.0)
     assert mod._snapshot_production_status_passes_contract(tmp_path) is False
+
+
+def _bound_generation(monkeypatch, run=123):
+    bodies = {p: json.dumps({"path": p}).encode() for p in mod.CANONICAL_FILES}
+    bodies["data/real-alerts.json"] = json.dumps(_strict_real_alert()).encode()
+    bodies["data/production-status.json"] = json.dumps(_strict_production_status()).encode()
+    sha = "a" * 40
+    generation = {
+        "version": 3, "status": "COHERENT_READY", "automatic_buy": False,
+        "workflow_run_id": str(run), "source_sha": sha,
+        "generation_id": f"wallet500:{run}:{sha}",
+        "hashes": {p: hashlib.sha256(b).hexdigest() for p, b in bodies.items()},
+    }
+    def reader(parent, path):
+        return json.dumps(generation).encode() if path == "data/decision-generation.json" else bodies.get(path)
+    monkeypatch.setattr(mod, "_parent_bytes", reader)
+    return generation, bodies
+
+
+def test_new_scan_can_replace_older_hash_bound_post_publish_guard(monkeypatch):
+    _bound_generation(monkeypatch)
+    paths = mod.previous_generation_paths("main", 124)
+    assert paths == set(mod.CANONICAL_FILES)
+    assert "data/real-alerts.json" in paths
+
+
+def test_independently_changed_real_alerts_still_block_overwrite(monkeypatch):
+    _, bodies = _bound_generation(monkeypatch)
+    bodies["data/real-alerts.json"] += b"\n"
+    assert mod.previous_generation_paths("main", 124) == set()
+
+
+def test_unbound_non_decision_state_never_gets_conflict_override(monkeypatch):
+    _, bodies = _bound_generation(monkeypatch)
+    bodies["data/unified-watch-state.json"] = b"{}"
+    assert "data/unified-watch-state.json" not in mod.previous_generation_paths("main", 124)
+
+
+def test_changed_canonical_file_does_not_inherit_its_old_hash_proof(monkeypatch):
+    _, bodies = _bound_generation(monkeypatch)
+    bodies["data/system-health.json"] += b"\n"
+    paths = mod.previous_generation_paths("main", 124)
+    assert "data/system-health.json" not in paths
+    assert "data/real-alerts.json" in paths
+
+
+def test_equal_or_newer_generation_never_gets_overwritten(monkeypatch):
+    _bound_generation(monkeypatch, run=124)
+    assert mod.previous_generation_paths("main", 124) == set()
+    assert mod.previous_generation_paths("main", 123) == set()
+
+
+def test_complete_hashes_do_not_authorize_weak_production_policy(monkeypatch):
+    generation, bodies = _bound_generation(monkeypatch)
+    path = "data/production-status.json"
+    bodies[path] = json.dumps(_strict_production_status(90, 15000)).encode()
+    generation["hashes"][path] = hashlib.sha256(bodies[path]).hexdigest()
+    assert mod.previous_generation_paths("main", 124) == set()
+
+
+def test_missing_canonical_hash_fails_closed(monkeypatch):
+    generation, _ = _bound_generation(monkeypatch)
+    generation["hashes"].pop("data/system-health.json")
+    assert mod.previous_generation_paths("main", 124) == set()
+
+
+def test_workflow_cannot_rebind_source_if_snapshot_was_not_published():
+    workflow = Path(".github/workflows/verified-publisher.yml").read_text()
+    assert 'if [ "$published_run" -lt "$LIVE_SOURCE_RUN" ]' in workflow
+    assert "SOURCE_SNAPSHOT_NOT_PUBLISHED" in workflow
+    assert workflow.index("SOURCE_SNAPSHOT_NOT_PUBLISHED") < workflow.index("python -m wallet500.decision_generation")
