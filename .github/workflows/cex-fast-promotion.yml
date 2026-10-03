@@ -78,6 +78,7 @@ jobs:
           print('CEX_FAST_IDENTITY_SOURCE_FRESH', {'age_seconds':round(age,1)})
           PY
       - name: Promote only action-worthy exact assets and send Telegram
+        id: promote
         env:
           TELEGRAM_BOT_TOKEN: ''
           TELEGRAM_CHAT_ID: ''
@@ -152,6 +153,19 @@ jobs:
               'bybit_gap_coverage':coverage.get('coverage_state'),
           })
           PY
+      # Do not publish any alerts when source-coverage validation fails.
+      # Still persist the diagnostic report so observability never points to
+      # an older successful run after a failed Bybit/compensation check.
+      - name: Persist fail-closed CEX source failure diagnostics only
+        if: failure() && steps.promote.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python scripts/serialized_publish.py --github-api-cas --attempts 20 \
+            --message 'health: persist failed CEX provider coverage diagnostics only' \
+            data/cex-fast-promotion-report.json
+
       - name: Persist fast-promotion alert, canonical dedupe state and report
         env:
           GITHUB_TOKEN: ${{ github.token }}
