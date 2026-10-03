@@ -25,7 +25,10 @@ def _age_seconds(ts, now):
         dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        return max(0.0, (now - dt.astimezone(timezone.utc)).total_seconds())
+        delta = (now - dt.astimezone(timezone.utc)).total_seconds()
+        # Allow brief clock skew only. A source timestamp far in the future is
+        # not fresh evidence, and must never turn a stale pipeline HEALTHY.
+        return None if delta < -120.0 else max(0.0, delta)
     except Exception:
         return None
 

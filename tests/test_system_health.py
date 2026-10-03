@@ -2,7 +2,7 @@ import json
 import pytest
 from datetime import datetime, timedelta, timezone
 
-from wallet500.system_health import build_health
+from wallet500.system_health import build_health, _age_seconds
 
 
 def _write(path, payload):
@@ -223,3 +223,28 @@ def test_health_degrades_when_unified_buy_path_has_zero_current_coverage(tmp_pat
     assert check["partial_upstream_skipped"] == 114
     assert out["pipeline_health"] == "DEGRADED"
     assert out["overall"] == "DEGRADED"
+
+
+def test_health_rejects_source_timestamps_far_in_future(tmp_path, monkeypatch):
+    """A clock/date error must not make stale publication and scan look healthy."""
+    now = datetime(2026, 8, 30, tzinfo=timezone.utc)
+    future = (now + timedelta(days=1)).isoformat()
+    assert _age_seconds(future, now) is None
+    assert _age_seconds((now + timedelta(seconds=90)).isoformat(), now) == 0
+    assert _age_seconds((now - timedelta(seconds=90)).isoformat(), now) == 90
+    monkeypatch.setenv("WALLET500_WORKFLOW_DEGRADED_SECONDS", "600")
+    _write(tmp_path / "run-summary.json", _policy_summary(future))
+    _write(tmp_path / "holder-cluster-production-report.json", {
+        "mode": "PRODUCTION_FAIL_CLOSED", "input_count": 0, "promoted_count": 0,
+        "quarantine_count": 0, "blocked_count": 0,
+    })
+    _write(tmp_path / "wallet-forensics-summary.json", {
+        "updated_at": now.isoformat(), "source": "active-qualified-candidates.json",
+        "active_candidates_seen": 0,
+    })
+    _heartbeat(tmp_path, created_at=future)
+    report = build_health(str(tmp_path), now)
+    assert report["checks"]["primary_scan"]["status"] == "DEGRADED"
+    assert report["checks"]["primary_scan"]["age_seconds"] is None
+    assert report["checks"]["publish_pipeline"]["status"] == "DEGRADED"
+    assert report["pipeline_health"] == "DEGRADED"
