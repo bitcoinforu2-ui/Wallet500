@@ -64,7 +64,20 @@ MIN_SCORE = float(os.getenv("NEW_CHAIN_MIN_BOOTSTRAP_SCORE", "45"))
 MAX_PAIR_AGE_HOURS = float(os.getenv("NEW_CHAIN_MAX_PAIR_AGE_HOURS", "168"))
 HTTP_MIN_INTERVAL_SECONDS = float(os.getenv("NEW_CHAIN_HTTP_MIN_INTERVAL_SECONDS", "6.2"))
 
+
+CATALOG_PAGES_PER_RUN = max(1, min(3, int(os.getenv("NEW_CHAIN_CATALOG_PAGES_PER_RUN", "2"))))
+NETWORKS_PER_RUN = max(1, min(3, int(os.getenv("NEW_CHAIN_NETWORKS_PER_RUN", "2"))))
+RUN_DEADLINE_SECONDS = max(30, min(110, int(os.getenv("NEW_CHAIN_RUN_DEADLINE_SECONDS", "95"))))
+
 _last_http_at = 0.0
+_run_deadline = None
+_catalog_ended = False
+_catalog_pages_visited = 0
+
+
+def deadline_remaining():
+    return float("inf") if _run_deadline is None else _run_deadline - time.monotonic()
+
 
 
 def now_utc() -> datetime:
@@ -121,6 +134,8 @@ def _get(url: str, timeout: int = 20, attempts: int = 3):
     global _last_http_at
     last_error = None
     for attempt in range(max(1, attempts)):
+        if deadline_remaining() <= HTTP_MIN_INTERVAL_SECONDS + 2:
+            raise TimeoutError("BOOTSTRAP_RUN_DEADLINE_EXHAUSTED")
         wait = HTTP_MIN_INTERVAL_SECONDS - (time.monotonic() - _last_http_at)
         if wait > 0:
             time.sleep(wait)
@@ -132,7 +147,7 @@ def _get(url: str, timeout: int = 20, attempts: int = 3):
                     "User-Agent": UA,
                 },
             )
-            with urlopen(req, timeout=timeout) as response:
+            with urlopen(req, timeout=min(timeout, max(1, int(deadline_remaining() - 1)))) as response:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             last_error = exc
@@ -143,6 +158,8 @@ def _get(url: str, timeout: int = 20, attempts: int = 3):
                 delay = max(8.0, float(retry_after or 0))
             except Exception:
                 delay = 8.0 * (attempt + 1)
+            if deadline_remaining() <= delay + HTTP_MIN_INTERVAL_SECONDS + 2:
+                raise TimeoutError("BOOTSTRAP_RETRY_EXCEEDS_DEADLINE") from exc
             time.sleep(delay)
         finally:
             _last_http_at = time.monotonic()
@@ -362,10 +379,15 @@ def merge_candidates(rows: list[dict]) -> list[dict]:
     )
 
 
-def discover_supported_networks(max_pages: int) -> tuple[list[str], list[dict]]:
+def discover_supported_networks(max_pages: int, start_page: int = 1) -> tuple[list[str], list[dict]]:
+    global _catalog_ended, _catalog_pages_visited
+    _catalog_ended, _catalog_pages_visited = False, 0
     found: list[str] = []
     errors: list[dict] = []
-    for page in range(1, max(1, int(max_pages)) + 1):
+    for page in range(max(1, start_page), max(1, start_page) + max(1, int(max_pages))):
+        if deadline_remaining() <= HTTP_MIN_INTERVAL_SECONDS + 2:
+            errors.append({"stage": "network_index", "page": page, "error": "BOOTSTRAP_RUN_DEADLINE_EXHAUSTED"})
+            break
         try:
             payload = _get(f"{GECKO}/networks?{urlencode({'page': page})}")
         except HTTPError as exc:
@@ -373,7 +395,8 @@ def discover_supported_networks(max_pages: int) -> tuple[list[str], list[dict]]:
             # current network catalog. Treat that as end-of-catalog, not as an
             # error; continuing only creates a rate-limit storm that can starve
             # the actual Arc/new-pool scan.
-            if exc.code == 400 and found:
+            if exc.code == 400 and (found or start_page > 1):
+                _catalog_ended = True
                 break
             errors.append({"stage": "network_index", "page": page, "error": f"HTTPError:{exc.code}"})
             break
@@ -381,7 +404,9 @@ def discover_supported_networks(max_pages: int) -> tuple[list[str], list[dict]]:
             errors.append({"stage": "network_index", "page": page, "error": f"{type(exc).__name__}:{str(exc)[:180]}"})
             break
         data = payload.get("data") if isinstance(payload, dict) else []
+        _catalog_pages_visited += 1
         if not isinstance(data, list) or not data:
+            _catalog_ended = True
             break
         for item in data:
             nid = str((item or {}).get("id") or "").strip().lower()
@@ -397,7 +422,7 @@ def _is_auto_candidate(network: str) -> bool:
     return not any(part in n for part in IGNORE_NETWORK_PARTS)
 
 
-def update_network_state(state: dict, supported: list[str], now: datetime) -> tuple[dict, list[str]]:
+def update_network_state(state: dict, supported: list[str], now: datetime, baseline_complete: bool = True) -> tuple[dict, list[str]]:
     known = state.get("known_networks") if isinstance(state.get("known_networks"), dict) else {}
     known = dict(known)
     baseline_initialized = bool(state.get("baseline_initialized"))
@@ -425,7 +450,7 @@ def update_network_state(state: dict, supported: list[str], now: datetime) -> tu
     next_state = {
         "version": 1,
         "updated_at": now.isoformat(),
-        "baseline_initialized": baseline_initialized or bool(supported),
+        "baseline_initialized": baseline_initialized or (baseline_complete and bool(supported)),
         "known_networks": known,
         "auto_active_networks": list(state.get("auto_active_networks") or []),
     }
@@ -474,6 +499,8 @@ def collect_network(network: str, now: datetime) -> tuple[list[dict], list[dict]
 
 
 def run(now: datetime | None = None) -> dict:
+    global _run_deadline
+    _run_deadline = time.monotonic() + RUN_DEADLINE_SECONDS
     now = (now or now_utc()).astimezone(timezone.utc)
     state = load(STATE, {"version": 1, "baseline_initialized": False, "known_networks": {}, "auto_active_networks": []})
 
