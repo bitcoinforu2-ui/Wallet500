@@ -34,14 +34,36 @@ ADVISORY_FILES = (
     "data/liquidity-recovery-shadow.json",
 )
 OUT = Path("data/decision-generation.json")
+MAX_SOURCE_AGE_SECONDS = 2 * 3600
+MAX_SOURCE_FUTURE_SKEW_SECONDS = 5 * 60
 
 
-def build(*, source_sha: str | None = None, run_id: str | None = None) -> dict:
+def _source_freshness(stamp: object, now: datetime) -> tuple[str, float | None]:
+    try:
+        observed = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+        if observed.tzinfo is None:
+            return "SOURCE_TIMESTAMP_INVALID", None
+        age = (now - observed.astimezone(timezone.utc)).total_seconds()
+    except (TypeError, ValueError, OverflowError):
+        return "SOURCE_TIMESTAMP_INVALID", None
+    if age < -MAX_SOURCE_FUTURE_SKEW_SECONDS:
+        return "SOURCE_TIMESTAMP_IN_FUTURE", age
+    if age > MAX_SOURCE_AGE_SECONDS:
+        return "SOURCE_STALE", age
+    return "CURRENT", age
+
+
+def build(*, source_sha: str | None = None, run_id: str | None = None, now: datetime | None = None) -> dict:
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        raise ValueError("DECISION_GENERATION_NOW_MUST_BE_TIMEZONE_AWARE")
+    now = now.astimezone(timezone.utc)
     source_sha = str(source_sha or os.getenv("SOURCE_SHA") or os.getenv("GITHUB_SHA") or "LOCAL").strip()
     run_id = str(run_id or os.getenv("GITHUB_RUN_ID") or "LOCAL").strip()
     states = {}
     hashes = {}
     generated = {}
+    freshness = {}
     unhealthy = []
     for name in CANONICAL_FILES:
         r = load_json_state(name)
@@ -53,6 +75,12 @@ def build(*, source_sha: str | None = None, run_id: str | None = None) -> dict:
         hashes[name] = hashlib.sha256(raw).hexdigest()
         if isinstance(r.value, dict):
             generated[name] = r.value.get("generated_at") or r.value.get("updated_at") or r.value.get("created_at")
+            status, age = _source_freshness(generated[name], now)
+            freshness[name] = {"status": status, "age_seconds": age}
+            if status != "CURRENT":
+                unhealthy.append({"path": name, "state": status, "age_seconds": age})
+        elif name != "data/active-qualified-candidates.json" or not isinstance(r.value, list):
+            unhealthy.append({"path": name, "state": "SOURCE_SHAPE_INVALID"})
 
     advisory_states = {}
     for name in ADVISORY_FILES:
@@ -61,11 +89,11 @@ def build(*, source_sha: str | None = None, run_id: str | None = None) -> dict:
 
     generation_id = f"wallet500:{run_id}:{source_sha}"
     payload = {
-        "version": 2,
+        "version": 3,
         "generation_id": generation_id,
         "source_sha": source_sha,
         "workflow_run_id": run_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": now.isoformat(),
         "policy_id": POLICY_ID,
         "policy": policy_snapshot(),
         "status": "COHERENT_READY" if not unhealthy else "INCOMPLETE_FAIL_CLOSED",
@@ -74,6 +102,9 @@ def build(*, source_sha: str | None = None, run_id: str | None = None) -> dict:
         "source_states": states,
         "advisory_states": advisory_states,
         "source_timestamps": generated,
+        "source_freshness": freshness,
+        "max_source_age_seconds": MAX_SOURCE_AGE_SECONDS,
+        "max_source_future_skew_seconds": MAX_SOURCE_FUTURE_SKEW_SECONDS,
         "hashes": hashes,
         "unhealthy_sources": unhealthy,
         "dashboard_rule": "DASHBOARD_MUST_NOT_MIX_CANONICAL_DECISION_FILES_FROM_DIFFERENT_GENERATIONS",
