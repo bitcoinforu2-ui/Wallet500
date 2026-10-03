@@ -483,6 +483,9 @@ def collect_network(network: str, now: datetime) -> tuple[list[dict], list[dict]
         ("pools", "top_pools", 1),
     ])
     for endpoint, lane, page in requests:
+        if deadline_remaining() <= HTTP_MIN_INTERVAL_SECONDS + 2:
+            errors.append({"stage": lane, "network": network, "page": page, "error": "BOOTSTRAP_RUN_DEADLINE_EXHAUSTED"})
+            break
         try:
             payload = _get(
                 f"{GECKO}/networks/{network}/{endpoint}?{urlencode({'page': page, 'include': 'base_token'})}"
@@ -510,19 +513,44 @@ def run(now: datetime | None = None) -> dict:
         or last_full is None
         or (now - last_full).total_seconds() >= NETWORK_FULL_SCAN_INTERVAL_MINUTES * 60
     )
-    catalog_pages = NETWORK_FULL_SCAN_MAX_PAGES if full_scan_due else NETWORK_FAST_SCAN_PAGES
-    supported, errors = discover_supported_networks(catalog_pages)
-    state, newly_seen = update_network_state(state, supported, now)
-    if full_scan_due and supported:
-        state["last_full_network_scan_at"] = now.isoformat()
+    # Perform bounded full-catalog sweeps across successive unified runs.
+    # The provider's 6.2s pacing makes a synchronous 20-page scan too slow.
+    full_scan_due = full_scan_due or bool(state.get("catalog_sweep_in_progress"))
+    catalog_start = max(1, integer(state.get("catalog_next_page"), 1)) if state.get("catalog_sweep_in_progress") else 1
+    if catalog_start > NETWORK_FULL_SCAN_MAX_PAGES:
+        catalog_start = 1
+    remaining_pages = max(1, NETWORK_FULL_SCAN_MAX_PAGES - catalog_start + 1)
+    catalog_pages = min(CATALOG_PAGES_PER_RUN, remaining_pages if full_scan_due else NETWORK_FAST_SCAN_PAGES)
+    supported, errors = discover_supported_networks(catalog_pages, catalog_start if full_scan_due else 1)
+    catalog_ok = not any(err.get("stage") == "network_index" for err in errors)
+    catalog_next = catalog_start + _catalog_pages_visited
+    sweep_finished = bool(catalog_ok and (_catalog_ended or catalog_next > NETWORK_FULL_SCAN_MAX_PAGES))
+    state, newly_seen = update_network_state(
+        state, supported, now,
+        baseline_complete=(sweep_finished if not state.get("baseline_initialized") else True),
+    )
+    if full_scan_due:
+        state["catalog_sweep_in_progress"] = not sweep_finished
+        state["catalog_next_page"] = 1 if sweep_finished else catalog_next
+        if sweep_finished:
+            state["last_full_network_scan_at"] = now.isoformat()
     state["last_catalog_scan_at"] = now.isoformat()
-    state["last_catalog_scan_mode"] = "FULL" if full_scan_due else "FAST"
+    state["last_catalog_scan_mode"] = "FULL_INCREMENTAL" if full_scan_due else "FAST"
     state["last_catalog_pages_requested"] = catalog_pages
-    networks = active_networks(state)
 
+    all_networks = active_networks(state)
+    cursor = integer(state.get("network_scan_cursor"), 0) % max(1, len(all_networks))
+    count = min(len(all_networks), NETWORKS_PER_RUN)
+    networks = [all_networks[(cursor + i) % len(all_networks)] for i in range(count)]
+    state["network_scan_cursor"] = (cursor + count) % max(1, len(all_networks))
+    deferred_networks = [n for n in all_networks if n not in networks]
     rows: list[dict] = []
     chain_reports: list[dict] = []
     for network in networks:
+        if deadline_remaining() <= HTTP_MIN_INTERVAL_SECONDS + 2:
+            errors.append({"stage": "network_scan", "network": network, "error": "BOOTSTRAP_RUN_DEADLINE_EXHAUSTED"})
+            deferred_networks.append(network)
+            continue
         network_rows, network_errors = collect_network(network, now)
         errors.extend(network_errors)
         merged = merge_candidates(network_rows)
@@ -559,7 +587,8 @@ def run(now: datetime | None = None) -> dict:
         "version": 1,
         "generated_at": now.isoformat(),
         "mode": "NEW_CHAIN_BOOTSTRAP_RADAR_V1",
-        "status": "LIVE" if networks else "DEGRADED_NO_ACTIVE_NETWORKS",
+        "status": "DEGRADED_NO_ACTIVE_NETWORKS" if not networks else ("DEGRADED_PARTIAL" if errors else "LIVE"),
+        "coverage_status": "ROTATING_PARTIAL" if deferred_networks or state.get("catalog_sweep_in_progress") else "FULL_THIS_RUN",
         "automatic_trade": False,
         "telegram_policy": "FINAL_BUY_ONLY_AFTER_UNIFIED_GATE",
         "seed_networks": list(SEED_NETWORKS),
@@ -578,25 +607,37 @@ def run(now: datetime | None = None) -> dict:
             "network_full_scan_max_pages": NETWORK_FULL_SCAN_MAX_PAGES,
             "network_full_scan_interval_minutes": NETWORK_FULL_SCAN_INTERVAL_MINUTES,
             "new_pool_scan_pages": NEW_POOL_SCAN_PAGES,
+            "catalog_pages_per_run": CATALOG_PAGES_PER_RUN,
+            "networks_per_run": NETWORKS_PER_RUN,
+            "run_deadline_seconds": RUN_DEADLINE_SECONDS,
         },
         "network_catalog": {
             "scan_mode": state.get("last_catalog_scan_mode"),
             "pages_requested": state.get("last_catalog_pages_requested"),
             "last_full_scan_at": state.get("last_full_network_scan_at"),
+            "sweep_in_progress": bool(state.get("catalog_sweep_in_progress")),
+            "next_page": state.get("catalog_next_page", 1),
+            "pages_visited_this_run": _catalog_pages_visited,
         },
         "counts": {
-            "active_networks": len(networks),
+            "active_networks": len(all_networks),
+            "networks_scanned_this_run": sum(1 for n in networks if n not in deferred_networks),
+            "networks_rotating_deferred": len(set(deferred_networks)),
             "pairs_seen": len(ranked),
             "bootstrap_candidates": len(candidates),
             "errors": len(errors),
         },
         "chains": chain_reports,
+        "deferred_networks": list(dict.fromkeys(deferred_networks)),
         "candidates": candidates,
         "errors": errors[-30:],
         "truth_contract": {
             "provider_network_index_bootstraps_future_networks": True,
             "initial_provider_catalog_is_full_baseline_not_false_new_chain": True,
-            "hourly_full_provider_catalog_detects_networks_outside_fast_pages": True,
+            "bounded_multi_scan_full_catalog_sweep_detects_networks_outside_fast_pages": True,
+            "no_false_new_network_until_baseline_catalog_complete": True,
+            "network_scans_rotated_to_prevent_starvation": True,
+            "run_deadline_prevents_bootstrap_from_blocking_unified_watch": True,
             "seeded_arc_is_active_immediately": True,
             "exact_chain_contract_pair_required_before_final_buy": True,
             "research_detection_never_auto_trades": True,
