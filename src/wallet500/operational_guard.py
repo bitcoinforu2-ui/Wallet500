@@ -22,6 +22,7 @@ MANAGED_CODES = {
     "GITHUB_ACTIONS_CAPACITY_PRESSURE",
     "GITHUB_ACTIONS_FAILURE_PRESSURE",
     "REVIVAL_NEWER_RUN_FAILED_TO_PUBLISH",
+    "CEX_SPOT_IDENTITY_STALE_OR_FAILED",
     "CANDIDATE_STARVATION_SUSTAINED",
 }
 
@@ -193,6 +194,34 @@ def run(now: datetime | None = None) -> dict[str, Any]:
             )
         )
 
+    # The action lane must not silently disappear when scheduled producer runs
+    # are skipped under GitHub Actions queue pressure. Never use stale identity.
+    cex_identity = _load(DATA / "cex-spot-identity-radar.json", {})
+    cex_generated = _parse(cex_identity.get("generated_at") if isinstance(cex_identity, dict) else None)
+    cex_age = (now - cex_generated).total_seconds() if cex_generated is not None else None
+    cex_runs = _workflow_runs(token, "cex-spot-revival-fast.yml", 5)
+    latest_cex = cex_runs[0] if cex_runs else {}
+    cex_last_run_at = _parse(latest_cex.get("updated_at") or latest_cex.get("created_at"))
+    cex_failed_newer = bool(
+        latest_cex.get("status") == "completed"
+        and latest_cex.get("conclusion") == "failure"
+        and cex_last_run_at is not None
+        and (cex_generated is None or cex_last_run_at > cex_generated)
+    )
+    cex_stale = cex_age is None or cex_age < -120 or cex_age > 45 * 60
+    if cex_stale or cex_failed_newer:
+        incidents.append(_incident(
+            "CEX_SPOT_IDENTITY_STALE_OR_FAILED",
+            "HIGH",
+            "CEX fast promotion lacks fresh exact-identity source; remain fail closed",
+            age_seconds=round(cex_age, 1) if cex_age is not None else None,
+            max_age_seconds=45 * 60,
+            latest_producer_run_id=latest_cex.get("id"),
+            latest_producer_conclusion=latest_cex.get("conclusion"),
+            latest_producer_at=latest_cex.get("updated_at"),
+            last_published_at=cex_identity.get("generated_at") if isinstance(cex_identity, dict) else None,
+        ))
+
     starvation_state, starvation = _starvation_state(now, state)
     if starvation:
         incidents.append(starvation)
@@ -212,6 +241,15 @@ def run(now: datetime | None = None) -> dict[str, Any]:
         "latest_updated_at": latest_revival.get("updated_at"),
         "published_generated_at": revival_data.get("generated_at") if isinstance(revival_data, dict) else None,
         "ok": not any(i["code"] == "REVIVAL_NEWER_RUN_FAILED_TO_PUBLISH" for i in incidents),
+    }
+    checks["cex_spot_identity_freshness"] = {
+        "ok": not (cex_stale or cex_failed_newer),
+        "age_seconds": round(cex_age, 1) if cex_age is not None else None,
+        "max_age_seconds": 45 * 60,
+        "latest_producer_run_id": latest_cex.get("id"),
+        "latest_producer_conclusion": latest_cex.get("conclusion"),
+        "source_generated_at": cex_identity.get("generated_at") if isinstance(cex_identity, dict) else None,
+        "fail_closed_when_stale": True,
     }
     checks["candidate_starvation"] = {
         **starvation_state,
@@ -248,6 +286,7 @@ def run(now: datetime | None = None) -> dict[str, Any]:
     for rule in (
         "GLOBAL_ACTIONS_QUEUE_AND_RUN_PRESSURE_IS_MEASURED",
         "NEWER_FAILED_REVIVAL_PUBLICATION_IS_NOT_HEALTHY",
+        "STALE_CEX_SPOT_IDENTITY_OR_FAILED_PRODUCER_IS_OPERATIONAL_INCIDENT",
         "SUSTAINED_ZERO_ACTIVE_WITH_QUALIFIED_SCAN_INPUT_IS_STARVATION",
         "OPERATIONAL_GUARD_NEVER_CHANGES_TRADING_POLICY",
     ):
