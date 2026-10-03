@@ -40,3 +40,22 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -e . pytest
       - run: pytest -q
+
+  recover-stale-consumers:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      # A validated deployment can recover stale consumers immediately. The
+      # dispatcher checks active work and never cancels/replaces a production run.
+      - name: Recover stale consumers after successful main validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/recover_production_handoffs.py
