@@ -119,8 +119,14 @@ jobs:
               if coverage.get('coverage_state') != 'INDEPENDENT_TWO_CEX_REDUNDANCY':
                   raise SystemExit('CEX_FAST_BYBIT_COMPENSATION_STATE_INVALID')
               source_health=coverage.get('compensation_source_health') or {}
-              if source_health.get('bitget') is not True or source_health.get('coinex') is not True:
+              independent=('binance','bitget','coinex')
+              active=set(coverage.get('active_independent_compensation_sources') or [])
+              if not active.issubset(set(independent)) or len(active)<2:
                   raise SystemExit('CEX_FAST_BYBIT_TWO_SOURCE_COMPENSATION_INCOMPLETE')
+              if sum(source_health.get(name) is True for name in independent)<2:
+                  raise SystemExit('CEX_FAST_BYBIT_TWO_SOURCE_COMPENSATION_INCOMPLETE')
+              if any(source_health.get(name) is not True for name in active):
+                  raise SystemExit('CEX_FAST_COMPENSATION_ACTIVE_SOURCE_NOT_HEALTHY')
               if int(coverage.get('minimum_independent_compensation_sources') or 0) != 2:
                   raise SystemExit('CEX_FAST_BYBIT_COMPENSATION_POLICY_DRIFT')
           seen=set(); excluded='61v8vbaqagmpgdqi4jcawo1dmbghsyhzodcpqnevpump'
