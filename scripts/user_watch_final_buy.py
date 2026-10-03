@@ -9,6 +9,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    import durable_telegram_lease as telegram_lease
+except ModuleNotFoundError:
+    from scripts import durable_telegram_lease as telegram_lease
+
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "data/unified-watch-config.json"
 WATCH_STATE = ROOT / "data/unified-watch-state.json"
@@ -1905,7 +1910,7 @@ def telegram_message(target: dict, decision: dict) -> str:
     ])
 
 
-def send_telegram(text: str) -> None:
+def send_telegram(text: str) -> int | None:
     bot = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
     if not bot or not chat:
@@ -1924,6 +1929,12 @@ def send_telegram(text: str) -> None:
         body = json.loads(response.read().decode("utf-8"))
     if not body.get("ok"):
         raise RuntimeError("TELEGRAM_SEND_FAILED")
+    return (body.get("result") or {}).get("message_id")
+
+
+def send_event_with_lease(key: str, kind: str, episode: object, message: str) -> dict:
+    """Durable at-most-once delivery shared by normal and hot rechecks."""
+    return telegram_lease.send_once(key, kind, episode, message, send_telegram)
 
 
 def coverage_observability(decisions: list[dict], configured_targets: int) -> dict:
@@ -1995,6 +2006,7 @@ def main() -> int:
     pre_buy_delivered: list[str] = []
     targeted_risk_delivered: list[str] = []
     errors: list[dict] = []
+    delivery_ledger_warnings: list[dict] = []
 
     partial_upstream_skipped = 0
     partial_upstream_evaluated = 0
