@@ -271,6 +271,9 @@ jobs:
             python -m wallet500.truth_input_preflight
             python -m wallet500.decision_snapshot_guard
             python scripts/pipeline_integrity_audit.py
+            # Health must describe the published main snapshot and the current
+            # unified watch, rather than its pre-publication scan-time view.
+            python -m wallet500.system_health
             python -m wallet500.decision_generation
             set +e
             python scripts/atomic_publish.py \
@@ -281,6 +284,7 @@ jobs:
               data/decision-snapshot-integrity.json \
               data/truth-input-health.json \
               data/pipeline-integrity-audit.json \
+              data/system-health.json \
               data/decision-generation.json
             rc=$?
             set -e
