@@ -116,6 +116,7 @@ jobs:
         if: always()
         env:
           WALLET500_MARKET_WATCH_OUTCOME: ${{ steps.market_watch.outcome }}
+          GITHUB_TOKEN: ${{ github.token }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scripts/user_watch_final_buy.py
@@ -176,6 +177,7 @@ jobs:
         id: hot_recheck
         if: ${{ steps.hot_recheck_plan.outputs.count != '' && steps.hot_recheck_plan.outputs.count != '0' }}
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scripts/hot_candidate_recheck.py execute --plan-path /tmp/wallet500-hot-recheck-plan.json
