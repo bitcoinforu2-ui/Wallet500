@@ -6,7 +6,9 @@ on:
     workflows: ["Wallet500 CEX Spot Revival Fast Lane"]
     types: [completed]
   schedule:
-    - cron: '7,17,27,37,47,57 * * * *'
+    # Producer completion is the primary trigger; keep one hourly safety run,
+    # not six scheduled consumers racing stale source snapshots.
+    - cron: '27 * * * *'
   push:
     branches: [main]
     paths:
