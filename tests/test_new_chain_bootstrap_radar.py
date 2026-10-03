@@ -94,3 +94,81 @@ def test_cirbtc_is_filtered_from_bootstrap_candidates():
         "sells_h1": 300,
     }
     assert radar.candidate_eligible(row) is False
+
+
+def test_full_catalog_advances_across_runs_without_starving_seed_networks(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    monkeypatch.setattr(radar, "STATE", tmp_path / "state.json")
+    monkeypatch.setattr(radar, "OUT", tmp_path / "report.json")
+    monkeypatch.setattr(radar, "NETWORK_FULL_SCAN_MAX_PAGES", 4)
+    monkeypatch.setattr(radar, "CATALOG_PAGES_PER_RUN", 2)
+    monkeypatch.setattr(radar, "NETWORKS_PER_RUN", 2)
+    seen, scanned = [], []
+
+    def discovery(max_pages, start_page=1):
+        seen.append((max_pages, start_page))
+        radar._catalog_pages_visited = max_pages
+        radar._catalog_ended = False
+        return ["eth"], []
+
+    monkeypatch.setattr(radar, "discover_supported_networks", discovery)
+    monkeypatch.setattr(radar, "collect_network", lambda network, now: (scanned.append(network) or [], []))
+    now = datetime(2026, 10, 3, tzinfo=timezone.utc)
+    first = radar.run(now)
+    assert seen == [(2, 1)]
+    assert first["network_catalog"]["sweep_in_progress"] is True
+    assert first["network_catalog"]["next_page"] == 3
+    assert scanned == ["arc", "robinhood"]
+    second = radar.run(now + timedelta(minutes=10))
+    assert seen == [(2, 1), (2, 3)]
+    assert second["network_catalog"]["sweep_in_progress"] is False
+    assert second["network_catalog"]["next_page"] == 1
+    assert json.loads((tmp_path / "state.json").read_text())["last_full_network_scan_at"]
+
+
+def test_round_robin_deferred_networks_are_reported(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    now = datetime(2026, 10, 3, tzinfo=timezone.utc)
+    monkeypatch.setattr(radar, "STATE", tmp_path / "state.json")
+    monkeypatch.setattr(radar, "OUT", tmp_path / "report.json")
+    monkeypatch.setattr(radar, "NETWORKS_PER_RUN", 2)
+    (tmp_path / "state.json").write_text(json.dumps({
+        "baseline_initialized": True, "known_networks": {"xphere": {"first_seen_at": now.isoformat()}},
+        "auto_active_networks": ["xphere"],
+        "last_full_network_scan_at": now.isoformat(),
+    }))
+    def discovery(max_pages, start_page=1):
+        radar._catalog_pages_visited = 1
+        radar._catalog_ended = False
+        return [], []
+    monkeypatch.setattr(radar, "discover_supported_networks", discovery)
+    scanned = []
+    monkeypatch.setattr(radar, "collect_network", lambda network, t: (scanned.append(network) or [], []))
+    a = radar.run(now)
+    b = radar.run(now + timedelta(minutes=10))
+    assert a["counts"]["networks_rotating_deferred"] == 1
+    assert a["deferred_networks"] == ["xphere"]
+    assert b["deferred_networks"] == ["robinhood"]
+    assert scanned == ["arc", "robinhood", "xphere", "arc"]
+    assert a["coverage_status"] == "ROTATING_PARTIAL"
+
+
+def test_initial_catalog_never_announces_incomplete_baseline_as_new(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    now = datetime(2026, 10, 3, tzinfo=timezone.utc)
+    monkeypatch.setattr(radar, "STATE", tmp_path / "state.json")
+    monkeypatch.setattr(radar, "OUT", tmp_path / "report.json")
+    monkeypatch.setattr(radar, "NETWORKS_PER_RUN", 2)
+    monkeypatch.setattr(radar, "NETWORK_FULL_SCAN_MAX_PAGES", 4)
+    monkeypatch.setattr(radar, "CATALOG_PAGES_PER_RUN", 2)
+    def discovery(max_pages, start_page=1):
+        radar._catalog_pages_visited = 2
+        radar._catalog_ended = False
+        return ["brandnew"] if start_page == 3 else ["oldnet"], []
+    monkeypatch.setattr(radar, "discover_supported_networks", discovery)
+    monkeypatch.setattr(radar, "collect_network", lambda network, t: ([], []))
+    first = radar.run(now)
+    second = radar.run(now + timedelta(minutes=10))
+    assert first["auto_detected_new_networks_this_run"] == []
+    assert second["auto_detected_new_networks_this_run"] == []
+    assert json.loads((tmp_path / "state.json").read_text())["baseline_initialized"] is True
