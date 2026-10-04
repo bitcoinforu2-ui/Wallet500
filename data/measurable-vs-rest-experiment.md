@@ -1,7 +1,7 @@
 # Wallet500 — Measurable vs Rest Experiment
 
 {
-  "generated_at": "2026-10-04T12:58:43.713036+00:00",
+  "generated_at": "2026-10-04T17:17:42.870641+00:00",
   "method": "MEASURABLE_VS_REST_BIAS_EXPERIMENT_V1",
   "production_change": false,
   "truth_rule": "Do not interpret measurability as alpha until technical/data-coverage bias is separated from market-feature differences.",
@@ -53,10 +53,10 @@
     "measured": {
       "comparable_n": 338,
       "liquidity_usd_median": 6.525,
-      "volume_h1_median": 701.12,
+      "volume_h1_median": 693.825,
       "turnover_h1_median": 0.041125,
-      "buy_sell_ratio_median": 1.102632,
-      "txns_h1_median": 18.5
+      "buy_sell_ratio_median": 1.095454,
+      "txns_h1_median": 18.0
     },
     "rest": {
       "comparable_n": 22524,
@@ -68,10 +68,10 @@
     },
     "measured_to_rest_ratios": {
       "liquidity_median_ratio_measured_to_rest": null,
-      "volume_median_ratio_measured_to_rest": 0.532519,
+      "volume_median_ratio_measured_to_rest": 0.526978,
       "turnover_median_ratio_measured_to_rest": 0.008036,
-      "buy_sell_ratio_median_ratio_measured_to_rest": 0.906609,
-      "txns_median_ratio_measured_to_rest": 0.637931
+      "buy_sell_ratio_median_ratio_measured_to_rest": 0.900707,
+      "txns_median_ratio_measured_to_rest": 0.62069
     }
   },
   "interpretation_guard": "Market medians use only each token earliest stored historical observation. Missing-history tokens remain in coverage diagnostics.",
