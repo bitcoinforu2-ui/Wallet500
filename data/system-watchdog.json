@@ -1,18 +1,14 @@
 {
   "version": 1,
   "mode": "INDEPENDENT_OBSERVABILITY_NO_TRADING_POLICY_EFFECT",
-  "updated_at": "2026-10-04T18:31:21.908646+00:00",
-  "overall": "CRITICAL",
-  "incident_count": 4,
-  "critical_count": 1,
-  "high_count": 3,
+  "updated_at": "2026-10-05T00:25:29.118882+00:00",
+  "overall": "DEGRADED",
+  "incident_count": 2,
+  "critical_count": 0,
+  "high_count": 2,
   "new_notifications": [],
   "recovered_codes": [
-    "LIVE_SCAN_LAST_SUCCESS_STALE",
-    "PAPER_TRACKER_STALE",
-    "PUBLIC_REAL_ALERT_FEED_STALE",
-    "REAL_ALERT_FEED_STALE",
-    "SCHEDULER_TELEMETRY_STALE"
+    "SYSTEM_HEALTH_PRODUCTION_BLOCKER"
   ],
   "real_alert_transitions_entered": [],
   "buy_only_policy_active": true,
@@ -20,78 +16,12 @@
   "pre_buy_delivery_gaps": [],
   "incidents": [
     {
-      "code": "SYSTEM_HEALTH_PRODUCTION_BLOCKER",
-      "severity": "CRITICAL",
-      "detail": "system_health reports 1 production blocker(s)",
-      "failures": [
-        {
-          "component": "primary_scan",
-          "status": "DEGRADED",
-          "age_seconds": 2202.2,
-          "max_age_seconds": 600,
-          "failure_code": "SCAN_STALE_OR_TIMESTAMP_MISSING",
-          "severity": "HIGH",
-          "blocks_production": true,
-          "expected": {
-            "max_age_seconds": 600
-          },
-          "actual": {
-            "age_seconds": 2202.2
-          },
-          "recommended_action": "CHECK_LIVE_SCAN_WORKFLOW_AND_RUN_SUMMARY_TIMESTAMP",
-          "diagnosed_at": "2026-10-04T18:24:11.894086+00:00"
-        },
-        {
-          "component": "publish_pipeline",
-          "status": "DEGRADED",
-          "phase": "PRE_CURRENT_RUN_PUBLISH_STEP_PREVIOUS_COMMIT_EVIDENCE",
-          "age_seconds": 1840.5,
-          "max_age_seconds": 1800,
-          "evidence_status": "VERIFIED_PUBLISHED_SNAPSHOT",
-          "strict_validation": "PASS",
-          "source_sha": "fc91c9d73fe80475c8b1578a5f4e7c19330e17bb",
-          "run_id": 37221727588,
-          "proof_rule": "IF_THIS_FILE_IS_VISIBLE_ON_MAIN_THE_VALIDATED_DATA_COMMIT_WAS_PUSHED_SUCCESSFULLY",
-          "interpretation": "This checks the previous published commit only; current-run publication happens after health and strict validation.",
-          "failure_code": "PREVIOUS_PUBLISH_EVIDENCE_STALE_OR_MISSING",
-          "severity": "MEDIUM",
-          "blocks_production": false,
-          "expected": {
-            "max_age_seconds": 1800,
-            "status": [
-              "READY_TO_PUBLISH",
-              "VERIFIED_PUBLISHED_SNAPSHOT"
-            ]
-          },
-          "actual": {
-            "age_seconds": 1840.5,
-            "status": "VERIFIED_PUBLISHED_SNAPSHOT",
-            "source_sha": "fc91c9d73fe80475c8b1578a5f4e7c19330e17bb",
-            "run_id": 37221727588
-          },
-          "recommended_action": "CHECK_PREVIOUS_PUBLISH_HISTORY; CURRENT_RUN_HAS_NOT_REACHED_PUBLISH_STEP_YET",
-          "diagnosed_at": "2026-10-04T18:24:11.894086+00:00"
-        }
-      ]
-    },
-    {
-      "code": "CEX_SPOT_IDENTITY_STALE_OR_FAILED",
-      "severity": "HIGH",
-      "detail": "CEX fast promotion lacks fresh exact-identity source; remain fail closed",
-      "age_seconds": 10591.0,
-      "max_age_seconds": 2700,
-      "latest_producer_run_id": 37213289994,
-      "latest_producer_conclusion": "success",
-      "latest_producer_at": "2026-10-04T15:35:21Z",
-      "last_published_at": "2026-10-04T15:34:52.829859+00:00"
-    },
-    {
       "code": "GITHUB_ACTIONS_CAPACITY_PRESSURE",
       "severity": "HIGH",
-      "detail": "queued=21, in_progress=3, runs_today=588",
+      "detail": "queued=21, in_progress=2, runs_today=26",
       "queued": 21,
-      "in_progress": 3,
-      "runs_today": 588,
+      "in_progress": 2,
+      "runs_today": 26,
       "thresholds": {
         "queued": 8,
         "in_progress": 12,
@@ -101,37 +31,37 @@
     {
       "code": "TELEGRAM_REPORT_STALE",
       "severity": "HIGH",
-      "detail": "telegram-alert-report.json age=4510.9s max=3600s"
+      "detail": "telegram-alert-report.json age=4355.0s max=3600s"
     }
   ],
   "checks": {
     "real-alerts.json": {
-      "timestamp": "2026-10-04T17:48:41.760535+00:00",
-      "age_seconds": 2560.1,
+      "timestamp": "2026-10-05T00:10:38.231909+00:00",
+      "age_seconds": 890.9,
       "max_age_seconds": 2700,
       "ok": true
     },
     "system-health.json": {
-      "timestamp": "2026-10-04T18:24:11.894086+00:00",
-      "age_seconds": 430.0,
+      "timestamp": "2026-10-05T00:12:25.460217+00:00",
+      "age_seconds": 783.7,
       "max_age_seconds": 2700,
       "ok": true
     },
     "scheduler-health.json": {
-      "timestamp": "2026-10-04T17:48:42.232905+00:00",
-      "age_seconds": 2559.7,
+      "timestamp": "2026-10-05T00:10:38.822973+00:00",
+      "age_seconds": 890.3,
       "max_age_seconds": 2700,
       "ok": true
     },
     "telegram-alert-report.json": {
-      "timestamp": "2026-10-04T17:16:11.028420+00:00",
-      "age_seconds": 4510.9,
+      "timestamp": "2026-10-04T23:12:54.081240+00:00",
+      "age_seconds": 4355.0,
       "max_age_seconds": 3600,
       "ok": false
     },
     "real-alert-10usd-summary.json": {
-      "timestamp": "2026-10-04T17:34:31.244519+00:00",
-      "age_seconds": 3410.7,
+      "timestamp": "2026-10-04T23:36:22.212471+00:00",
+      "age_seconds": 2946.9,
       "max_age_seconds": 3600,
       "ok": true
     },
@@ -139,11 +69,11 @@
       "latest_status": "completed",
       "latest_conclusion": "success",
       "latest_event": "workflow_dispatch",
-      "latest_created_at": "2026-10-04T17:45:29Z",
-      "latest_updated_at": "2026-10-04T17:48:59Z",
-      "latest_run_id": 37221727588,
-      "last_success_at": "2026-10-04T17:48:59Z",
-      "last_success_run_id": 37221727588,
+      "latest_created_at": "2026-10-05T00:06:50Z",
+      "latest_updated_at": "2026-10-05T00:10:51Z",
+      "latest_run_id": 37246197515,
+      "last_success_at": "2026-10-05T00:10:51Z",
+      "last_success_run_id": 37246197515,
       "cancellations_since_success": 0,
       "latest_cancelled_run_id": null,
       "latest_hard_failure_conclusion": null,
@@ -154,34 +84,34 @@
     "public_surface": {
       "dashboard_ok": true,
       "real_feed_ok": true,
-      "real_feed_generated_at": "2026-10-04T17:48:41.760535+00:00"
+      "real_feed_generated_at": "2026-10-05T00:10:38.231909+00:00"
     },
     "github_actions_capacity": {
       "queued": 21,
-      "in_progress": 3,
-      "runs_today": 588,
-      "failures_today": 16,
+      "in_progress": 2,
+      "runs_today": 26,
+      "failures_today": 0,
       "ok": false
     },
     "revival_publish_freshness": {
-      "latest_run_id": 37221730731,
+      "latest_run_id": 37244382980,
       "latest_status": "completed",
       "latest_conclusion": "success",
-      "latest_updated_at": "2026-10-04T17:48:06Z",
-      "published_generated_at": "2026-10-04T17:46:32.242879+00:00",
+      "latest_updated_at": "2026-10-04T23:39:07Z",
+      "published_generated_at": "2026-10-04T23:37:31.197637+00:00",
       "ok": true
     },
     "cex_spot_identity_freshness": {
-      "ok": false,
-      "age_seconds": 10591.0,
+      "ok": true,
+      "age_seconds": 641.5,
       "max_age_seconds": 2700,
-      "latest_producer_run_id": 37213289994,
+      "latest_producer_run_id": 37238224304,
       "latest_producer_conclusion": "success",
-      "source_generated_at": "2026-10-04T15:34:52.829859+00:00",
+      "source_generated_at": "2026-10-05T00:14:49.449583+00:00",
       "fail_closed_when_stale": true
     },
     "candidate_starvation": {
-      "zero_active_started_at": "2026-10-04T18:31:23.872116+00:00",
+      "zero_active_started_at": "2026-10-05T00:25:30.967564+00:00",
       "zero_active_age_seconds": 0.0,
       "active_qualified": 0,
       "market_scan": 384,
@@ -213,5 +143,5 @@
     "reason": "WATCHDOG_USER_TELEGRAM_DISABLED_BY_NEAR_BUY_AND_BUY_ONLY_POLICY",
     "suppressed_technical_notification_count": 0
   },
-  "operational_guard_updated_at": "2026-10-04T18:31:23.872116+00:00"
+  "operational_guard_updated_at": "2026-10-05T00:25:30.967564+00:00"
 }
