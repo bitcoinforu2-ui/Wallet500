@@ -34,11 +34,15 @@ jobs:
       # API. On this high-churn repository that endpoint can return 422 while
       # generating a large diff even when both commits are valid. A bounded local
       # history lets git answer the ancestry question directly and fail closed.
+      # Keep the initial checkout deliberately shallow on this high-churn repository.
+      # The provenance steps below already deepen/fetch exact SHAs on demand and still
+      # fail closed when ancestry cannot be proven, so prefetching 1,000 commits on
+      # every publisher run only amplifies repository/state pressure.
       - name: Checkout canonical history for source resolution
         uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 1000
+          fetch-depth: 100
 
       - name: Resolve immutable successful Live Scan source run
         id: source
