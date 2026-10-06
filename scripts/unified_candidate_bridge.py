@@ -530,7 +530,7 @@ def main():
             "first_seen_at": merged_first_seen_at,
             "first_seen_price": merged_first_seen_price,
             "first_seen_change_24h_pct": merged_first_seen_change,
-            "first_seen_quote_volume_24h_usd": row.get("first_seen_quote_volume_24h_usd"),
+            "first_seen_quote_volume_24h_usd": (futures_signal.get("first_seen_quote_volume_24h_usd") if futures_signal else row.get("first_seen_quote_volume_24h_usd")),
             "discovery_price": row.get("discovery_price"),
             "change_24h_pct": row.get("change_24h_pct"),
             "discovery_momentum_change_pct": max(spot_momentum, futures_momentum),
@@ -879,6 +879,20 @@ def main():
                 f"independent_60m={kol.get('independent_groups_60m')} "
                 f"under_100k={kol.get('independent_groups_under_100k')} "
                 f"wallets={','.join(kol.get('wallet_names') or [])}"
+            )
+        elif candidate.get("futures_early_radar"):
+            volume_multiple = float(candidate.get("futures_volume_baseline_multiple") or 0)
+            oi_delta = float(candidate.get("futures_total_size_change_pct") or 0)
+            strength = min(92.0, 30.0 + change * 0.45 + min(20.0, volume_multiple * 2.5) + min(12.0, max(0.0, oi_delta) * 0.25))
+            confidence = 82
+            family = "derivatives"
+            kind = "futures_leaderboard_ignition"
+            subject = (
+                f"rank={candidate.get('positive_gainer_rank')} "
+                f"change24h={candidate.get('futures_change_24h_pct')} "
+                f"volx={candidate.get('futures_volume_baseline_multiple')} "
+                f"oi_proxy_delta={candidate.get('futures_total_size_change_pct')} "
+                f"funding_pct={candidate.get('futures_funding_rate_pct')}"
             )
         else:
             strength = min(85.0, max(25.0, float(candidate.get("bootstrap_score") or 0))) if is_bootstrap else min(75.0, 20.0 + change * 0.35)
