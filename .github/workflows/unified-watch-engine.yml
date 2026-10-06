@@ -27,15 +27,15 @@ jobs:
       - name: Validate unified watcher, collectors and intelligence fusion
         id: validate
         run: |
-          python -m py_compile scripts/resilient_http.py scripts/new_chain_bootstrap_radar.py scripts/test_new_chain_bootstrap_contract.py scripts/resilient_unified_watch_runner.py scripts/hot_candidate_recheck.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/partnership_intelligence_collector.py src/wallet500/partnership_intelligence.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/spot_cex_fast_handoff.py scripts/native_asset_intelligence.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/early_kol_convergence.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py scripts/user_watch_final_buy.py scripts/test_user_watch_final_buy_contract.py scripts/chain_context_shadow.py scripts/targeted_binance_spot_watch.py
-          for f in data/unified-watch-config.json data/targeted-binance-spot-watch-state.json data/targeted-binance-spot-watch-report.json data/user-watch-final-buy-state.json data/user-watch-final-buy-report.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/buy-zone-close-watch-registry.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/narrative-dependency-state.json data/http-resilience-state.json data/new-chain-bootstrap-state.json data/new-chain-bootstrap-radar.json data/chain-context-shadow.json data/early-kol-wallets.json data/early-kol-convergence-state.json data/early-kol-convergence.json data/early-kol-candidates.json; do python -m json.tool "$f" >/dev/null; done
+          python -m py_compile scripts/resilient_http.py scripts/new_chain_bootstrap_radar.py scripts/test_new_chain_bootstrap_contract.py scripts/resilient_unified_watch_runner.py scripts/hot_candidate_recheck.py scripts/deep_investigation_refresh.py scripts/narrative_dependency_collector.py scripts/partnership_intelligence_collector.py src/wallet500/partnership_intelligence.py scripts/unified_watch_engine.py scripts/spot_market_discovery_collector.py scripts/futures_market_discovery_collector.py scripts/unified_candidate_bridge.py scripts/spot_cex_fast_handoff.py scripts/native_asset_intelligence.py scripts/cross_domain_intelligence_collector.py scripts/free_intelligence_collector.py scripts/derivatives_intelligence_collector.py scripts/public_alpha_source_collector.py scripts/early_kol_convergence.py scripts/alpha_caller_intake.py scripts/alpha_caller_reputation.py scripts/intelligence_fusion.py scripts/test_intelligence_fusion_contract.py scripts/user_watch_final_buy.py scripts/test_user_watch_final_buy_contract.py scripts/chain_context_shadow.py scripts/targeted_binance_spot_watch.py
+          for f in data/unified-watch-config.json data/targeted-binance-spot-watch-state.json data/targeted-binance-spot-watch-report.json data/user-watch-final-buy-state.json data/user-watch-final-buy-report.json data/unified-watch-state.json data/derivatives-intelligence-state.json data/alpha-caller-sources.json data/alpha-caller-source-state.json data/alpha-caller-inbox.json data/alpha-caller-candidates.json data/alpha-caller-reputation.json data/alpha-caller-call-history.json data/close-watch-intelligence-policy.json data/close-watch-events.json data/free-intelligence-collector-state.json data/buy-zone-close-watch-registry.json data/unified-dynamic-candidates.json data/cross-domain-intelligence-state.json data/narrative-dependency-state.json data/http-resilience-state.json data/new-chain-bootstrap-state.json data/new-chain-bootstrap-radar.json data/futures-market-discovery.json data/futures-market-discovery-state.json data/chain-context-shadow.json data/early-kol-wallets.json data/early-kol-convergence-state.json data/early-kol-convergence.json data/early-kol-candidates.json; do python -m json.tool "$f" >/dev/null; done
 
       - name: Test exact-identity intelligence fusion contract
         id: contract
         run: |
           python scripts/test_intelligence_fusion_contract.py
           python -m pip install --disable-pip-version-check -q pytest
-          python -m pytest -q tests/test_unified_watch_cex_resilience.py tests/test_hot_candidate_recheck.py tests/test_hot_recheck_publish_workflow_contract.py tests/test_same_run_cex_intelligence.py tests/test_spot_market_discovery_native_identity.py tests/test_chain_context_shadow.py tests/test_targeted_binance_spot_watch.py tests/test_protocol_buyback_sensor.py tests/test_early_kol_convergence.py tests/test_partnership_intelligence.py
+          python -m pytest -q tests/test_unified_watch_cex_resilience.py tests/test_hot_candidate_recheck.py tests/test_hot_recheck_publish_workflow_contract.py tests/test_same_run_cex_intelligence.py tests/test_spot_market_discovery_native_identity.py tests/test_chain_context_shadow.py tests/test_targeted_binance_spot_watch.py tests/test_protocol_buyback_sensor.py tests/test_early_kol_convergence.py tests/test_partnership_intelligence.py tests/test_futures_market_discovery.py tests/test_unified_candidate_bridge_futures.py tests/test_derivatives_gate_futures_contract.py
 
       - name: Test user-requested FINAL BUY contract
         id: user_buy_contract
@@ -71,6 +71,15 @@ jobs:
         run: |
           set -o pipefail
           timeout --signal=TERM --kill-after=10s 3m python scripts/spot_market_discovery_collector.py
+
+      - name: Discover Gate USDT futures movers before the wave becomes obvious
+        id: futures_discovery
+        continue-on-error: true
+        env:
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: |
+          set -o pipefail
+          timeout --signal=TERM --kill-after=10s 3m python scripts/futures_market_discovery_collector.py
 
       # Build current-scan exact identities before intelligence collection.
       # This removes the one-cycle lag where a mover was discovered now but its
@@ -273,6 +282,7 @@ jobs:
           VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
           CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
           SPOT_DISCOVERY_OUTCOME: ${{ steps.spot_discovery.outcome }}
+          FUTURES_DISCOVERY_OUTCOME: ${{ steps.futures_discovery.outcome }}
           NEW_CHAIN_BOOTSTRAP_CONTRACT_OUTCOME: ${{ steps.new_chain_bootstrap_contract.outcome }}
           NEW_CHAIN_BOOTSTRAP_OUTCOME: ${{ steps.new_chain_bootstrap.outcome }}
           FREE_INTEL_OUTCOME: ${{ steps.free_intel.outcome }}
@@ -322,6 +332,7 @@ jobs:
           state = load('data/unified-watch-state.json')
           report = load('data/unified-watch-intelligence-report.json')
           spot = load('data/spot-market-discovery.json')
+          futures_radar = load('data/futures-market-discovery.json')
           bootstrap = load('data/new-chain-bootstrap-radar.json')
           dynamic = load('data/unified-dynamic-candidates.json')
           buy_registry = load('data/buy-zone-close-watch-registry.json')
@@ -339,6 +350,7 @@ jobs:
               'validate': os.getenv('VALIDATE_OUTCOME'),
               'contract': os.getenv('CONTRACT_OUTCOME'),
               'spot_discovery': os.getenv('SPOT_DISCOVERY_OUTCOME'),
+              'futures_discovery': os.getenv('FUTURES_DISCOVERY_OUTCOME'),
               'new_chain_bootstrap_contract': os.getenv('NEW_CHAIN_BOOTSTRAP_CONTRACT_OUTCOME'),
               'new_chain_bootstrap': os.getenv('NEW_CHAIN_BOOTSTRAP_OUTCOME'),
               'free_intel': os.getenv('FREE_INTEL_OUTCOME'),
@@ -381,6 +393,19 @@ jobs:
                   'spot_discovery_exists': spot is not None,
                   'spot_discovery_generated_at': (spot or {}).get('generated_at') if isinstance(spot, dict) else None,
                   'spot_discovery_counts': (spot or {}).get('market_counts') if isinstance(spot, dict) else None,
+                  'futures_radar_exists': futures_radar is not None,
+                  'futures_radar_generated_at': (futures_radar or {}).get('generated_at') if isinstance(futures_radar, dict) else None,
+                  'futures_radar_counts': (futures_radar or {}).get('counts') if isinstance(futures_radar, dict) else None,
+                  'futures_radar_top': [
+                      {
+                          'symbol': x.get('symbol'),
+                          'change_24h_pct': x.get('change_24h_pct'),
+                          'rank': x.get('positive_gainer_rank'),
+                          'identity_status': x.get('identity_status'),
+                      }
+                      for x in ((futures_radar or {}).get('candidates') or [])[:12]
+                      if isinstance(x, dict)
+                  ] if isinstance(futures_radar, dict) else None,
                   'new_chain_bootstrap_status': (bootstrap or {}).get('status') if isinstance(bootstrap, dict) else None,
                   'new_chain_bootstrap_active_networks': (bootstrap or {}).get('active_networks') if isinstance(bootstrap, dict) else None,
                   'new_chain_bootstrap_counts': (bootstrap or {}).get('counts') if isinstance(bootstrap, dict) else None,
@@ -467,6 +492,8 @@ jobs:
             data/alpha-caller-call-history.json \
             data/spot-market-discovery.json \
             data/spot-market-discovery-state.json \
+            data/futures-market-discovery.json \
+            data/futures-market-discovery-state.json \
             data/new-chain-bootstrap-state.json \
             data/new-chain-bootstrap-radar.json \
             data/unified-dynamic-candidates.json \
