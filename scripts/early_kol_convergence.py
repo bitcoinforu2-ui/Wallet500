@@ -4,6 +4,8 @@ import json
 import os
 import time
 import urllib.request
+
+from resilient_http import request_json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -52,13 +54,19 @@ def write_json(path: Path, payload: Any) -> None:
 
 
 def http_json(url: str, *, payload: Any = None, timeout: int = 15) -> Any:
-    body = None if payload is None else json.dumps(payload).encode("utf-8")
-    headers = {"User-Agent": "Wallet500-EarlyKOL/1.0", "Accept": "application/json"}
-    if body is not None:
-        headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(url, data=body, headers=headers, method="POST" if body else "GET")
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+    # Route Early-KOL through the same host-aware pacing, cooldown and retry
+    # layer as the rest of Wallet500. This lane previously used raw urlopen,
+    # causing independent Solana RPC bursts and avoidable HTTP 429 coverage
+    # gaps. POST responses are intentionally not cached.
+    return request_json(
+        url,
+        method="POST" if payload is not None else "GET",
+        payload=payload,
+        timeout=timeout,
+        attempts=4,
+        cache_ttl=20 if payload is None else 0,
+        user_agent="Wallet500-EarlyKOL/2.0",
+    )
 
 
 def rpc_call(rpc_url: str, method: str, params: list[Any]) -> Any:
@@ -81,7 +89,7 @@ def transaction(rpc_url: str, signature: str) -> dict[str, Any] | None:
     return rpc_call(
         rpc_url,
         "getTransaction",
-        [signature, {"encoding": "jsonParsed", "commitment": "confirmed", "maxSupportedTransactionVersion": 0}],
+        [signature, {"encoding": "jsonParsed", "commitment": "confirmed", "maxSupportedTransactionVersion": 1}],
     )
 
 
