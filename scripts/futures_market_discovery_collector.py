@@ -261,9 +261,24 @@ def run() -> dict:
         row["futures_discovery_reasons"] = reasons
 
         selected_now = bool(reasons)
+        prior_selected = bool(old.get("selected_last_scan"))
+        episode_seq = int(old.get("episode_seq") or 0)
+        episode_started_at = old.get("episode_started_at")
+        if selected_now and not prior_selected:
+            episode_seq += 1
+            episode_started_at = current.isoformat()
+        if (selected_now or retain_hot) and not episode_started_at:
+            # Migration/recovery path for a previously hot state that predates
+            # episode tracking. This creates one deterministic ongoing episode.
+            episode_seq = max(1, episode_seq)
+            episode_started_at = old.get("first_seen_at") or current.isoformat()
+
         if selected_now or retain_hot:
             row["hot_until"] = (current + timedelta(hours=HOT_RETENTION_HOURS)).isoformat() if selected_now else previous_hot_until
             row["retained_hot"] = bool(retain_hot and not selected_now)
+            row["futures_episode_seq"] = episode_seq
+            row["futures_episode_started_at"] = episode_started_at
+            row["futures_episode_id"] = f"{contract}:{episode_seq}"
             selected.append(row)
 
         old_markets[contract] = {
@@ -280,6 +295,9 @@ def run() -> dict:
             "peak_change_24h_pct": max(float(old.get("peak_change_24h_pct") or -999999), float(row.get("change_24h_pct") or 0)),
             "peak_gain_from_first_seen_pct": max(float(old.get("peak_gain_from_first_seen_pct") or -999999), float(row.get("gain_from_first_seen_pct") or 0)),
             "hot_until": row.get("hot_until") or previous_hot_until or None,
+            "selected_last_scan": selected_now,
+            "episode_seq": episode_seq,
+            "episode_started_at": episode_started_at,
         }
 
     selected.sort(key=priority_key)
