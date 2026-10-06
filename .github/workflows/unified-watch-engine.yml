@@ -144,12 +144,13 @@ jobs:
             data/user-watch-final-buy-report.json \
             data/chain-context-shadow.json \
             data/cex-sensor-handoff.json \
-            data/http-resilience-state.json \
-            data/close-watch-intelligence.json \
-            data/close-watch-events.json \
-            data/spot-market-discovery.json \
-            data/spot-market-discovery-state.json \
-            data/unified-dynamic-candidates.json
+            data/http-resilience-state.json
+          # Discovery/event/dynamic-candidate snapshots are intentionally omitted
+          # from this latency-critical checkpoint. They are derived/enrichment
+          # payloads and are published once by the final coherent-state step below.
+          # Keeping them out of the mid-run commit avoids versioning the same large
+          # JSON payload twice per scan while preserving FINAL-BUY, exact-identity,
+          # first-seen/state and hot-recheck recovery semantics.
           echo 'CRITICAL_CEX_DECISION_PERSIST_OK'
 
       # A PRE-BUY / hot quarter-wave candidate no longer has to wait for the next
