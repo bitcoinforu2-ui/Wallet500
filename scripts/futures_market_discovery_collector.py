@@ -19,6 +19,7 @@ except ImportError:
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data/futures-market-discovery.json"
 STATE = ROOT / "data/futures-market-discovery-state.json"
+SPOT_DISCOVERY = ROOT / "data/spot-market-discovery.json"
 GATE = "https://api.gateio.ws/api/v4"
 UA = "Wallet500-FuturesEarlyRadar/1.0"
 
@@ -32,9 +33,12 @@ VOLUME_ACCELERATION_MULTIPLE = 2.5
 VOLUME_SHOCK_MULTIPLE = 4.0
 TOP_RANK_EARLY = 20
 MAX_SELECTED = 120
-IDENTITY_RESOLUTION_BUDGET = 70
-EXPENSIVE_RECOVERY_BUDGET = 18
-IDENTITY_WORKERS = 10
+# Identity is a bounded enrichment step. The raw futures leaderboard must never
+# wait for dozens of duplicate network lookups; same-run Spot exact identities
+# are reused first and only the hottest unresolved symbols hit network recovery.
+IDENTITY_RESOLUTION_BUDGET = 24
+EXPENSIVE_RECOVERY_BUDGET = 0
+IDENTITY_WORKERS = 12
 HOT_RETENTION_HOURS = 36
 
 
@@ -122,6 +126,56 @@ def priority_key(row: dict):
     return (forced, rank, -max(change, gain), -vol_mult, -volume)
 
 
+def load_same_run_spot_identities(path: Path = SPOT_DISCOVERY) -> dict[str, dict]:
+    """Reuse exact Spot identities instead of resolving the same symbol twice.
+
+    Only a symbol with one unambiguous exact chain+contract+pair is reused. If the
+    Spot snapshot contains multiple distinct exact identities for a ticker, fail
+    closed and leave it for bounded network resolution.
+    """
+    doc = load(path, {"candidates": []})
+    grouped: dict[str, list[dict]] = {}
+    for row in doc.get("candidates") or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("identity_status") != "RESOLVED_EXACT":
+            continue
+        symbol = str(row.get("symbol") or "").upper().strip()
+        network = str(row.get("network") or "").strip()
+        contract = str(row.get("contract") or "").strip()
+        pair = str(row.get("pair") or "").strip()
+        if not symbol or not network or not contract or not pair:
+            continue
+        grouped.setdefault(symbol, []).append(row)
+
+    out = {}
+    for symbol, rows in grouped.items():
+        uniq = {
+            (
+                str(x.get("network") or "").lower(),
+                str(x.get("contract") or ""),
+                str(x.get("pair") or ""),
+            )
+            for x in rows
+        }
+        if len(uniq) != 1:
+            continue
+        best = max(rows, key=lambda x: float(x.get("dex_liquidity_usd") or 0))
+        out[symbol] = {
+            "identity_status": "RESOLVED_EXACT",
+            "identity_reason": "REUSED_SAME_RUN_GATE_SPOT_EXACT_IDENTITY",
+            "network": best.get("network"),
+            "contract": best.get("contract"),
+            "pair": best.get("pair"),
+            "dex_url": best.get("dex_url") or "",
+            "dex_liquidity_usd": best.get("dex_liquidity_usd"),
+            "identity_source": "same-run Gate Spot exact identity",
+            "identity_reused_from_spot": True,
+            "research_only_identity": bool(best.get("research_only_identity")),
+        }
+    return out
+
+
 def _identity_task(index: int, row: dict, native_registry: dict, expensive: bool):
     result = spot_identity.resolve_identity(
         row.get("symbol") or "",
@@ -134,16 +188,38 @@ def _identity_task(index: int, row: dict, native_registry: dict, expensive: bool
 
 def resolve_identities(selected: list[dict]) -> dict[int, dict]:
     native_registry = spot_identity.load_native_discovery_registry()
-    ordered = sorted(range(len(selected)), key=lambda i: priority_key(selected[i]))
-    target_indexes = ordered[:IDENTITY_RESOLUTION_BUDGET]
-    for i in ordered:
-        if selected[i].get("forced_hot_watch") and i not in target_indexes:
-            target_indexes.append(i)
-    expensive_set = set(ordered[:EXPENSIVE_RECOVERY_BUDGET])
-    results = {}
-    with ThreadPoolExecutor(max_workers=IDENTITY_WORKERS) as pool:
+    reused = load_same_run_spot_identities()
+    results: dict[int, dict] = {}
+
+    # First consume zero-cost exact identities from the Spot discovery that ran
+    # immediately before this sensor in the same Unified Watch job.
+    unresolved = []
+    for i, row in enumerate(selected):
+        exact = reused.get(str(row.get("symbol") or "").upper().strip())
+        if exact:
+            results[i] = exact
+        else:
+            unresolved.append(i)
+
+    # Never let identity enrichment hold the futures leaderboard hostage. Resolve
+    # only the hottest unresolved slice; the remainder persists as PENDING and is
+    # retried on later cycles.
+    unresolved.sort(key=lambda i: priority_key(selected[i]))
+    target_indexes = unresolved[:IDENTITY_RESOLUTION_BUDGET]
+    expensive_set: set[int] = set()
+
+    if not target_indexes:
+        return results
+
+    with ThreadPoolExecutor(max_workers=min(IDENTITY_WORKERS, len(target_indexes))) as pool:
         pending = {
-            pool.submit(_identity_task, i, selected[i], native_registry, i in expensive_set): i
+            pool.submit(
+                _identity_task,
+                i,
+                selected[i],
+                native_registry,
+                i in expensive_set,
+            ): i
             for i in target_indexes
         }
         for fut in as_completed(pending):
@@ -302,6 +378,48 @@ def run() -> dict:
 
     selected.sort(key=priority_key)
     selected = selected[:MAX_SELECTED]
+
+    # Publish the raw leaderboard checkpoint BEFORE any external identity calls.
+    # Even if an identity provider stalls, Unified Watch still receives fresh
+    # futures movers and immutable first-seen anchors instead of a null snapshot.
+    checkpoint_rows = []
+    for row in selected:
+        pending_row = dict(row)
+        pending_row.update({
+            "status": "FUTURES_SIGNAL_IDENTITY_PENDING",
+            "identity_status": "PENDING",
+            "identity_reason": "IDENTITY_ENRICHMENT_IN_PROGRESS",
+            "futures_signal_verified": True,
+            "research_only_identity": True,
+        })
+        checkpoint_rows.append(pending_row)
+
+    checkpoint = {
+        "version": 1,
+        "generated_at": current.isoformat(),
+        "mode": "UNIFIED_WATCH_GATE_FUTURES_EARLY_RADAR_V1",
+        "checkpoint": "RAW_FUTURES_LEADERBOARD_BEFORE_IDENTITY",
+        "truth_contract": {
+            "sensor_only_never_direct_buy": True,
+            "exact_identity_required_before_actionable_watch": True,
+            "futures_signal_never_bypasses_final_buy_gates": True,
+            "automatic_trade": False,
+        },
+        "counts": {
+            "active_usdt_contracts": len(active_contracts),
+            "ticker_rows": len(rows),
+            "positive_movers": len(positive),
+            "selected": len(selected),
+            "identity_resolved": 0,
+            "identity_pending": len(selected),
+            "forced_hot_watch": sum(bool(x.get("forced_hot_watch")) for x in selected),
+            "top10_selected": sum(int(x.get("positive_gainer_rank") or 999999) <= 10 for x in selected),
+        },
+        "candidates": checkpoint_rows,
+    }
+    write(OUTPUT, checkpoint)
+    write(STATE, {"version": 1, "updated_at": current.isoformat(), "markets": old_markets})
+
     identity_results = resolve_identities(selected)
 
     resolved = 0
@@ -349,6 +467,7 @@ def run() -> dict:
             "selected": len(selected),
             "identity_resolved": resolved,
             "identity_pending": len(selected) - resolved,
+            "identity_reused_from_spot": sum(bool(x.get("identity_reused_from_spot")) for x in selected),
             "forced_hot_watch": sum(bool(x.get("forced_hot_watch")) for x in selected),
             "top10_selected": sum(int(x.get("positive_gainer_rank") or 999999) <= 10 for x in selected),
         },
