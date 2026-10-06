@@ -571,6 +571,8 @@ def main():
             "futures_total_size_change_pct": futures_signal.get("futures_total_size_change_pct") if futures_signal else None,
             "futures_funding_rate_pct": futures_signal.get("futures_funding_rate_pct") if futures_signal else None,
             "futures_discovery_reasons": futures_signal.get("futures_discovery_reasons") or [] if futures_signal else [],
+            "futures_episode_id": futures_signal.get("futures_episode_id") if futures_signal else None,
+            "futures_episode_started_at": futures_signal.get("futures_episode_started_at") if futures_signal else None,
             "derivatives_intelligence": bool(futures_signal),
             "derivatives_symbol": symbol if futures_signal else None,
         })
@@ -632,6 +634,8 @@ def main():
             "futures_total_size_change_pct": row.get("futures_total_size_change_pct"),
             "futures_funding_rate_pct": row.get("futures_funding_rate_pct"),
             "futures_discovery_reasons": row.get("futures_discovery_reasons") or [],
+            "futures_episode_id": row.get("futures_episode_id"),
+            "futures_episode_started_at": row.get("futures_episode_started_at"),
             "derivatives_intelligence": True,
             "derivatives_symbol": symbol,
         })
@@ -861,9 +865,13 @@ def main():
             continue
         is_bootstrap = ctype == "NEW_CHAIN_BOOTSTRAP"
         is_kol = ctype == "EARLY_KOL_CONVERGENCE"
+        is_futures = bool(candidate.get("futures_early_radar"))
         if is_kol:
             kol = candidate.get("early_kol_convergence") or {}
             cid = "early-kol-convergence:" + str(kol.get("signal_event_id") or candidate["identity_key"])
+        elif is_futures:
+            episode = str(candidate.get("futures_episode_id") or candidate.get("futures_episode_started_at") or "legacy")
+            cid = "futures-leaderboard-ignition:" + candidate["identity_key"] + ":" + episode
         else:
             cid = ("new-chain-bootstrap:" if is_bootstrap else "cex-spot-discovery:") + candidate["identity_key"]
         if cid in existing:
