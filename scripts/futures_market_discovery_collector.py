@@ -383,15 +383,27 @@ def run() -> dict:
     # Even if an identity provider stalls, Unified Watch still receives fresh
     # futures movers and immutable first-seen anchors instead of a null snapshot.
     checkpoint_rows = []
+    checkpoint_reused = load_same_run_spot_identities()
+    checkpoint_resolved = 0
     for row in selected:
         pending_row = dict(row)
-        pending_row.update({
-            "status": "FUTURES_SIGNAL_IDENTITY_PENDING",
-            "identity_status": "PENDING",
-            "identity_reason": "IDENTITY_ENRICHMENT_IN_PROGRESS",
-            "futures_signal_verified": True,
-            "research_only_identity": True,
-        })
+        exact = checkpoint_reused.get(str(row.get("symbol") or "").upper().strip())
+        if exact:
+            pending_row.update(exact)
+            pending_row.update({
+                "status": "IDENTITY_RESOLVED",
+                "execution_identity_scope": "EXACT_CHAIN_CONTRACT_PAIR_WITH_FUTURES_TRIGGER",
+                "futures_signal_verified": True,
+            })
+            checkpoint_resolved += 1
+        else:
+            pending_row.update({
+                "status": "FUTURES_SIGNAL_IDENTITY_PENDING",
+                "identity_status": "PENDING",
+                "identity_reason": "IDENTITY_ENRICHMENT_IN_PROGRESS",
+                "futures_signal_verified": True,
+                "research_only_identity": True,
+            })
         checkpoint_rows.append(pending_row)
 
     checkpoint = {
@@ -410,8 +422,9 @@ def run() -> dict:
             "ticker_rows": len(rows),
             "positive_movers": len(positive),
             "selected": len(selected),
-            "identity_resolved": 0,
-            "identity_pending": len(selected),
+            "identity_resolved": checkpoint_resolved,
+            "identity_pending": len(selected) - checkpoint_resolved,
+            "identity_reused_from_spot": checkpoint_resolved,
             "forced_hot_watch": sum(bool(x.get("forced_hot_watch")) for x in selected),
             "top10_selected": sum(int(x.get("positive_gainer_rank") or 999999) <= 10 for x in selected),
         },
