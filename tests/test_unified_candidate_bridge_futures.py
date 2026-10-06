@@ -46,8 +46,8 @@ def test_futures_only_exact_identity_enters_unified_watch(tmp_path, monkeypatch)
         "futures_contract": "FAST_USDT",
         "futures_volume_baseline_multiple": 6.0,
         "futures_volume_scan_multiple": 2.7,
-        "futures_total_size_change_pct": 21.0,
-        "futures_funding_rate_pct": 0.01,
+        "futures_total_size_change_pct": -15.0,
+        "futures_funding_rate_pct": 0.06,
         "futures_discovery_reasons": ["FUTURES_TOP20_EARLY_MOVER"],
     }]})
     dump(paths["cex.json"], {"candidates": []})
@@ -72,3 +72,9 @@ def test_futures_only_exact_identity_enters_unified_watch(tmp_path, monkeypatch)
     futures_events = [e for e in events if e.get("kind") == "futures_leaderboard_ignition"]
     assert len(futures_events) == 1
     assert futures_events[0]["family"] == "derivatives"
+    funding_events = [e for e in events if e.get("kind") == "funding_extreme"]
+    divergence_events = [e for e in events if e.get("kind") == "open_interest_proxy_divergence"]
+    assert len(funding_events) == 1
+    assert funding_events[0]["direction"] == -1
+    assert len(divergence_events) == 1
+    assert divergence_events[0]["direction"] == -1
