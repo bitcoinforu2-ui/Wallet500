@@ -55,7 +55,7 @@ def test_futures_only_exact_identity_enters_unified_watch(tmp_path, monkeypatch)
     dump(paths["kol.json"], {"candidates": []})
     dump(paths["buy.json"], {"entries": {}})
     dump(paths["bootstrap.json"], {"candidates": []})
-    dump(paths["events.json"], {"version": 3, "events": []})
+    dump(paths["events.json"], {"version": 3, "events": [{"canonical_event_id": "cex-spot-discovery:solana:TokenFast:PairFast"}]})
 
     bridge.main()
     doc = json.loads(paths["out.json"].read_text())
@@ -68,3 +68,7 @@ def test_futures_only_exact_identity_enters_unified_watch(tmp_path, monkeypatch)
     assert row["derivatives_intelligence"] is True
     assert row["execution_identity_scope"] == "EXACT_CHAIN_CONTRACT_PAIR_WITH_FUTURES_TRIGGER"
     assert doc["counts"]["futures_radar_only_exact"] == 1
+    events = json.loads(paths["events.json"].read_text())["events"]
+    futures_events = [e for e in events if e.get("kind") == "futures_leaderboard_ignition"]
+    assert len(futures_events) == 1
+    assert futures_events[0]["family"] == "derivatives"
