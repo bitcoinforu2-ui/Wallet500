@@ -129,7 +129,7 @@ def jpost(url, payload, cache_ttl=45, attempts=4):
 def gate_contract_catalog():
     # Contract metadata does NOT contain the OI field we need. It is used only
     # for existence/mark/funding; OI comes from /contract_stats below.
-    rows = jget("https://api.gateio.ws/api/v4/futures/usdt/contracts?limit=1000&offset=0", 60)
+    rows = jget("https://api.gateio.ws/api/v4/futures/usdt/contracts", 60)
     if not isinstance(rows, list):
         raise RuntimeError("GATE_CONTRACT_LIST_NOT_ARRAY")
     out = {}
@@ -224,6 +224,13 @@ def restricted_provider_health():
     }
 
 
+def target_is_futures_radar(target: dict) -> bool:
+    return bool(
+        target.get("futures_early_radar")
+        or str(target.get("source") or "").startswith("Gate Futures Early Radar")
+    )
+
+
 def main():
     doc = load(EVENTS, {"version": 3, "events": []})
     state = load(STATE, {"version": 4, "tokens": {}})
@@ -272,7 +279,9 @@ def main():
                 snap = gate_snapshot(sym, gate_meta[sym])
                 if snap:
                     snap["mapping"] = (
-                        "GATE_SPOT_CONTRACT_RESOLUTION_TO_SAME_GATE_SYMBOL_PERP"
+                        "GATE_FUTURES_RADAR_EXACT_IDENTITY_TO_SAME_GATE_PERP"
+                        if target_is_futures_radar(t)
+                        else "GATE_SPOT_CONTRACT_RESOLUTION_TO_SAME_GATE_SYMBOL_PERP"
                         if ctype == "GATE_SPOT_DISCOVERY"
                         else "EXPLICIT_BUY_ZONE_DERIVATIVES_SYMBOL_TO_GATE_PERP"
                         if ctype == "BUY_ZONE"
