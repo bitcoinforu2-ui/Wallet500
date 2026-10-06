@@ -35,8 +35,11 @@ def test_run_resolves_exact_identity_and_preserves_immutable_anchor(tmp_path, mo
         }
     }))
 
+    spot = tmp_path / "spot.json"
+    spot.write_text(json.dumps({"candidates": []}))
     monkeypatch.setattr(radar, "OUTPUT", output)
     monkeypatch.setattr(radar, "STATE", state)
+    monkeypatch.setattr(radar, "SPOT_DISCOVERY", spot)
     monkeypatch.setattr(radar, "now_dt", lambda: datetime(2026, 10, 6, 12, 0, tzinfo=timezone.utc))
 
     def fake_get(url, timeout=15):
@@ -84,8 +87,11 @@ def test_run_resolves_exact_identity_and_preserves_immutable_anchor(tmp_path, mo
 def test_futures_episode_rearms_only_after_signal_goes_cold(tmp_path, monkeypatch):
     output = tmp_path / "out.json"
     state = tmp_path / "state.json"
+    spot = tmp_path / "spot.json"
+    spot.write_text(json.dumps({"candidates": []}))
     monkeypatch.setattr(radar, "OUTPUT", output)
     monkeypatch.setattr(radar, "STATE", state)
+    monkeypatch.setattr(radar, "SPOT_DISCOVERY", spot)
 
     moments = iter([
         datetime(2026, 10, 6, 10, 0, tzinfo=timezone.utc),
@@ -124,3 +130,42 @@ def test_futures_episode_rearms_only_after_signal_goes_cold(tmp_path, monkeypatc
     assert second["candidates"][0]["futures_episode_seq"] == 1
     assert fourth["candidates"][0]["futures_episode_seq"] == 2
     assert fourth["candidates"][0]["futures_episode_id"] == "TEST_USDT:2"
+
+
+def test_same_run_spot_identity_reuse_is_unambiguous_and_zero_cost(tmp_path, monkeypatch):
+    spot = tmp_path / "spot.json"
+    spot.write_text(json.dumps({
+        "candidates": [
+            {
+                "symbol": "FAST",
+                "identity_status": "RESOLVED_EXACT",
+                "network": "solana",
+                "contract": "TokenFast",
+                "pair": "PairFast",
+                "dex_url": "https://dex.example/fast",
+                "dex_liquidity_usd": 123456,
+            },
+            {
+                "symbol": "AMB",
+                "identity_status": "RESOLVED_EXACT",
+                "network": "ethereum",
+                "contract": "0xaaa",
+                "pair": "0x111",
+                "dex_liquidity_usd": 50000,
+            },
+            {
+                "symbol": "AMB",
+                "identity_status": "RESOLVED_EXACT",
+                "network": "bsc",
+                "contract": "0xbbb",
+                "pair": "0x222",
+                "dex_liquidity_usd": 90000,
+            },
+        ]
+    }))
+    monkeypatch.setattr(radar, "SPOT_DISCOVERY", spot)
+    identities = radar.load_same_run_spot_identities()
+    assert identities["FAST"]["identity_status"] == "RESOLVED_EXACT"
+    assert identities["FAST"]["contract"] == "TokenFast"
+    assert identities["FAST"]["identity_reused_from_spot"] is True
+    assert "AMB" not in identities
