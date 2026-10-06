@@ -943,6 +943,84 @@ def main():
         existing.add(cid)
         added += 1
 
+        # Futures ignition is useful only if same-run crowding/divergence risk is
+        # visible to fusion too. These are evidence events, never direct trade
+        # instructions, and they share the same exact chain+contract+pair identity.
+        if is_futures:
+            episode = str(candidate.get("futures_episode_id") or candidate.get("futures_episode_started_at") or "legacy")
+            funding = float(candidate.get("futures_funding_rate_pct") or 0)
+            if abs(funding) >= 0.05:
+                funding_cid = (
+                    "futures-funding-extreme:"
+                    + candidate["identity_key"]
+                    + ":"
+                    + episode
+                )
+                if funding_cid not in existing:
+                    events.append({
+                        "symbol": candidate["symbol"],
+                        "network": candidate["network"],
+                        "contract": candidate["contract"],
+                        "pair": candidate["pair"],
+                        "identity_key": candidate["identity_key"],
+                        "family": "derivatives",
+                        "kind": "funding_extreme",
+                        "direction": -1,
+                        "strength": round(min(100.0, abs(funding) * 1000.0), 1),
+                        "confidence": 84,
+                        "source": "Gate Futures Early Radar",
+                        "source_url": candidate.get("source_url") or "",
+                        "subject": f"funding {funding:+.4f}% during futures ignition",
+                        "canonical_event_id": funding_cid,
+                        "event_time": candidate.get("futures_episode_started_at") or now(),
+                        "observed_at": now(),
+                        "free_source": True,
+                        "research_only": True,
+                        "identity_verified": True,
+                        "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR_WITH_FUTURES_TRIGGER",
+                        "contradicts_bullish": funding > 0,
+                    })
+                    existing.add(funding_cid)
+                    added += 1
+
+            oi_proxy_delta = float(candidate.get("futures_total_size_change_pct") or 0)
+            if change >= 5.0 and oi_proxy_delta <= -10.0:
+                divergence_cid = (
+                    "futures-oi-proxy-divergence:"
+                    + candidate["identity_key"]
+                    + ":"
+                    + episode
+                )
+                if divergence_cid not in existing:
+                    events.append({
+                        "symbol": candidate["symbol"],
+                        "network": candidate["network"],
+                        "contract": candidate["contract"],
+                        "pair": candidate["pair"],
+                        "identity_key": candidate["identity_key"],
+                        "family": "derivatives",
+                        "kind": "open_interest_proxy_divergence",
+                        "direction": -1,
+                        "strength": round(min(95.0, 45.0 + abs(oi_proxy_delta)), 1),
+                        "confidence": 76,
+                        "source": "Gate Futures Early Radar",
+                        "source_url": candidate.get("source_url") or "",
+                        "subject": (
+                            f"price change={change:+.2f}% while Gate total_size "
+                            f"changed {oi_proxy_delta:+.2f}%"
+                        ),
+                        "canonical_event_id": divergence_cid,
+                        "event_time": candidate.get("futures_episode_started_at") or now(),
+                        "observed_at": now(),
+                        "free_source": True,
+                        "research_only": True,
+                        "identity_verified": True,
+                        "identity_scope": "EXACT_CHAIN_CONTRACT_PAIR_WITH_FUTURES_TRIGGER",
+                        "contradicts_bullish": True,
+                    })
+                    existing.add(divergence_cid)
+                    added += 1
+
     event_doc["version"] = max(3, int(event_doc.get("version") or 0))
     event_doc["generated_at"] = now()
     event_doc["events"] = events[-5000:]
