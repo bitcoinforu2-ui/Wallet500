@@ -79,3 +79,48 @@ def test_run_resolves_exact_identity_and_preserves_immutable_anchor(tmp_path, mo
     assert round(row["gain_from_first_seen_pct"], 2) == 12.0
     assert row["futures_volume_baseline_multiple"] == 3.0
     assert row["futures_total_size_change_pct"] == 25.0
+
+
+def test_futures_episode_rearms_only_after_signal_goes_cold(tmp_path, monkeypatch):
+    output = tmp_path / "out.json"
+    state = tmp_path / "state.json"
+    monkeypatch.setattr(radar, "OUTPUT", output)
+    monkeypatch.setattr(radar, "STATE", state)
+
+    moments = iter([
+        datetime(2026, 10, 6, 10, 0, tzinfo=timezone.utc),
+        datetime(2026, 10, 6, 10, 10, tzinfo=timezone.utc),
+        datetime(2026, 10, 8, 0, 0, tzinfo=timezone.utc),
+        datetime(2026, 10, 8, 0, 10, tzinfo=timezone.utc),
+    ])
+    monkeypatch.setattr(radar, "now_dt", lambda: next(moments))
+    monkeypatch.setattr(radar, "resolve_identities", lambda rows: {})
+
+    calls = {"n": 0}
+    def fake_get(url, timeout=15):
+        if url.endswith("/contracts"):
+            return [{"name": "TEST_USDT", "in_delisting": False}]
+        if url.endswith("/tickers"):
+            calls["n"] += 1
+            changes = [10.0, 11.0, -2.0, 9.0]
+            ch = changes[calls["n"] - 1]
+            return [{
+                "contract": "TEST_USDT",
+                "last": "1.1",
+                "change_percentage": str(ch),
+                "volume_24h_quote": "30000",
+                "total_size": "1000",
+                "funding_rate": "0.0001",
+            }]
+        raise AssertionError(url)
+    monkeypatch.setattr(radar, "get_json", fake_get)
+
+    first = radar.run()
+    second = radar.run()
+    radar.run()
+    fourth = radar.run()
+
+    assert first["candidates"][0]["futures_episode_seq"] == 1
+    assert second["candidates"][0]["futures_episode_seq"] == 1
+    assert fourth["candidates"][0]["futures_episode_seq"] == 2
+    assert fourth["candidates"][0]["futures_episode_id"] == "TEST_USDT:2"
