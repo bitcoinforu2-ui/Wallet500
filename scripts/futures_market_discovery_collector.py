@@ -126,13 +126,14 @@ def priority_key(row: dict):
     return (forced, rank, -max(change, gain), -vol_mult, -volume)
 
 
-def load_same_run_spot_identities(path: Path = SPOT_DISCOVERY) -> dict[str, dict]:
+def load_same_run_spot_identities(path: Path | None = None) -> dict[str, dict]:
     """Reuse exact Spot identities instead of resolving the same symbol twice.
 
     Only a symbol with one unambiguous exact chain+contract+pair is reused. If the
     Spot snapshot contains multiple distinct exact identities for a ticker, fail
     closed and leave it for bounded network resolution.
     """
+    path = path or SPOT_DISCOVERY
     doc = load(path, {"candidates": []})
     grouped: dict[str, list[dict]] = {}
     for row in doc.get("candidates") or []:
