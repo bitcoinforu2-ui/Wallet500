@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SPOT = ROOT / "data/spot-market-discovery.json"
+FUTURES = ROOT / "data/futures-market-discovery.json"
 CEX_SPOT_IDENTITY = ROOT / "data/cex-spot-identity-radar.json"
 ALPHA = ROOT / "data/alpha-caller-candidates.json"
 KOL = ROOT / "data/early-kol-candidates.json"
@@ -219,6 +220,7 @@ def proven_gate_market(row, expected_market):
 
 def main():
     spot = load(SPOT, {"candidates": []})
+    futures = load(FUTURES, {"candidates": []})
     cex_identity = load(CEX_SPOT_IDENTITY, {"candidates": []})
     alpha = load(ALPHA, {"candidates": []})
     kol = load(KOL, {"candidates": []})
@@ -236,6 +238,30 @@ def main():
     gate_spot_by_identity = {}
     gate_spot_by_market = {}
     gate_spot_by_base = {}
+    futures_by_base = {}
+    for futures_row in futures.get("candidates") or []:
+        if not isinstance(futures_row, dict):
+            continue
+        base = str(futures_row.get("symbol") or "").upper().strip()
+        if not base:
+            continue
+        previous = futures_by_base.get(base)
+        if previous is None:
+            futures_by_base[base] = futures_row
+            continue
+        # Prefer the hotter/ranked row if Gate ever exposes more than one USDT
+        # futures contract representation for the same base symbol.
+        current_key = (
+            int(futures_row.get("positive_gainer_rank") or 999999),
+            -float(futures_row.get("change_24h_pct") or 0),
+        )
+        previous_key = (
+            int(previous.get("positive_gainer_rank") or 999999),
+            -float(previous.get("change_24h_pct") or 0),
+        )
+        if current_key < previous_key:
+            futures_by_base[base] = futures_row
+
     for gate_row in spot.get("candidates") or []:
         if not isinstance(gate_row, dict):
             continue
@@ -446,7 +472,9 @@ def main():
         if not i or i[3] in seen:
             continue
 
-        cex_hist = cex_identity_by_base.get(str(row.get("symbol") or "").upper()) or {}
+        symbol = str(row.get("symbol") or "").upper()
+        futures_signal = futures_by_base.get(symbol) or {}
+        cex_hist = cex_identity_by_base.get(symbol) or {}
         milestone = cex_signal_milestone(cex_hist) if cex_hist else {}
         gate_first_at = parse_ts(row.get("first_seen_at"))
         cex_first_at = parse_ts(milestone.get("observed_at"))
@@ -458,6 +486,27 @@ def main():
         merged_first_seen_at = milestone.get("observed_at") if use_cex_anchor else row.get("first_seen_at")
         merged_first_seen_price = milestone.get("reference_price") if use_cex_anchor else row.get("first_seen_price")
         merged_first_seen_change = milestone.get("reference_change_24h_pct") if use_cex_anchor else row.get("first_seen_change_24h_pct")
+        futures_first_at = parse_ts(futures_signal.get("first_seen_at")) if futures_signal else None
+        merged_first_at = parse_ts(merged_first_seen_at)
+        use_futures_anchor = bool(
+            futures_signal
+            and futures_first_at is not None
+            and (merged_first_at is None or futures_first_at < merged_first_at)
+            and futures_signal.get("first_seen_price") is not None
+        )
+        if use_futures_anchor:
+            merged_first_seen_at = futures_signal.get("first_seen_at")
+            merged_first_seen_price = futures_signal.get("first_seen_price")
+            merged_first_seen_change = futures_signal.get("first_seen_change_24h_pct")
+
+        spot_momentum = float(row.get("discovery_momentum_change_pct") or row.get("change_24h_pct") or 0)
+        futures_momentum = float(futures_signal.get("change_24h_pct") or 0) if futures_signal else 0.0
+        spot_turnover = float(row.get("quote_volume_24h_usd") or 0)
+        futures_turnover = float(futures_signal.get("quote_volume_24h_usd") or 0) if futures_signal else 0.0
+        ranks = [
+            int(x) for x in (row.get("positive_gainer_rank"), futures_signal.get("positive_gainer_rank") if futures_signal else None)
+            if x is not None
+        ]
 
         seen.add(i[3])
         out.append({
@@ -468,7 +517,9 @@ def main():
             "pair": row.get("pair"),
             "dex_url": row.get("dex_url") or "",
             "source": (
-                "Gate New Listing"
+                "Gate Spot + Futures Early Radar"
+                if futures_signal
+                else "Gate New Listing"
                 if bool(row.get("new_listing_fast_lane") or recent_gate_listing(row))
                 else "Gate Spot"
             ),
@@ -482,10 +533,10 @@ def main():
             "first_seen_quote_volume_24h_usd": row.get("first_seen_quote_volume_24h_usd"),
             "discovery_price": row.get("discovery_price"),
             "change_24h_pct": row.get("change_24h_pct"),
-            "discovery_momentum_change_pct": row.get("discovery_momentum_change_pct"),
-            "gain_from_first_seen_pct": row.get("gain_from_first_seen_pct"),
-            "quote_volume_24h_usd": row.get("quote_volume_24h_usd"),
-            "positive_gainer_rank": row.get("positive_gainer_rank"),
+            "discovery_momentum_change_pct": max(spot_momentum, futures_momentum),
+            "gain_from_first_seen_pct": max(float(row.get("gain_from_first_seen_pct") or 0), float(futures_signal.get("gain_from_first_seen_pct") or 0) if futures_signal else 0.0),
+            "quote_volume_24h_usd": max(spot_turnover, futures_turnover),
+            "positive_gainer_rank": min(ranks) if ranks else None,
             "dex_liquidity_usd": row.get("dex_liquidity_usd"),
             "identity_key": i[3],
             "asset_identity_key": asset_ident(row),
@@ -510,6 +561,79 @@ def main():
             "gate_pair_type": row.get("gate_pair_type"),
             "gate_st_tag": bool(row.get("gate_st_tag")),
             "gate_special_surface": bool(row.get("gate_special_surface")),
+            "futures_early_radar": bool(futures_signal),
+            "futures_only_origin": False,
+            "futures_contract": futures_signal.get("futures_contract") if futures_signal else None,
+            "futures_change_24h_pct": futures_signal.get("change_24h_pct") if futures_signal else None,
+            "futures_quote_volume_24h_usd": futures_signal.get("quote_volume_24h_usd") if futures_signal else None,
+            "futures_volume_baseline_multiple": futures_signal.get("futures_volume_baseline_multiple") if futures_signal else None,
+            "futures_volume_scan_multiple": futures_signal.get("futures_volume_scan_multiple") if futures_signal else None,
+            "futures_total_size_change_pct": futures_signal.get("futures_total_size_change_pct") if futures_signal else None,
+            "futures_funding_rate_pct": futures_signal.get("futures_funding_rate_pct") if futures_signal else None,
+            "futures_discovery_reasons": futures_signal.get("futures_discovery_reasons") or [] if futures_signal else [],
+            "derivatives_intelligence": bool(futures_signal),
+            "derivatives_symbol": symbol if futures_signal else None,
+        })
+
+    # Futures-only movers get an exact on-chain candidate as soon as identity is
+    # resolved. The futures move is a sensor/priority trigger only: execution and
+    # FINAL BUY still run through exact-pair market, intelligence and risk gates.
+    for row in futures.get("candidates") or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("status") != "IDENTITY_RESOLVED" or row.get("identity_status") != "RESOLVED_EXACT":
+            continue
+        if float(row.get("dex_liquidity_usd") or 0) <= 0:
+            continue
+        i = ident(row)
+        if not i or i[3] in seen:
+            continue
+        seen.add(i[3])
+        symbol = str(row.get("symbol") or "").upper()
+        out.append({
+            "candidate_type": "GATE_SPOT_DISCOVERY",
+            "symbol": symbol,
+            "network": row.get("network"),
+            "contract": row.get("contract"),
+            "pair": row.get("pair"),
+            "dex_url": row.get("dex_url") or "",
+            "source": "Gate Futures Early Radar",
+            "source_url": row.get("source_url") or "",
+            "exchange": None,
+            "currency_pair": None,
+            "execution_identity_scope": "EXACT_CHAIN_CONTRACT_PAIR_WITH_FUTURES_TRIGGER",
+            "first_seen_at": row.get("first_seen_at"),
+            "first_seen_price": row.get("first_seen_price") or row.get("discovery_price"),
+            "first_seen_change_24h_pct": row.get("first_seen_change_24h_pct"),
+            "first_seen_quote_volume_24h_usd": row.get("first_seen_quote_volume_24h_usd"),
+            "discovery_price": row.get("discovery_price"),
+            "change_24h_pct": row.get("change_24h_pct"),
+            "discovery_momentum_change_pct": row.get("discovery_momentum_change_pct"),
+            "gain_from_first_seen_pct": row.get("gain_from_first_seen_pct"),
+            "quote_volume_24h_usd": row.get("quote_volume_24h_usd"),
+            "positive_gainer_rank": row.get("positive_gainer_rank"),
+            "dex_liquidity_usd": row.get("dex_liquidity_usd"),
+            "identity_key": i[3],
+            "asset_identity_key": asset_ident(row),
+            "multi_pool_watch": True,
+            "asset_pool_role": "CANONICAL_EXECUTION",
+            "asset_pool_rank": 1,
+            "asset_pool_count": 1,
+            "identity_source": row.get("identity_source"),
+            "identity_reason": row.get("identity_reason"),
+            "research_only_identity": bool(row.get("research_only_identity")),
+            "futures_early_radar": True,
+            "futures_only_origin": True,
+            "futures_contract": row.get("futures_contract"),
+            "futures_change_24h_pct": row.get("change_24h_pct"),
+            "futures_quote_volume_24h_usd": row.get("quote_volume_24h_usd"),
+            "futures_volume_baseline_multiple": row.get("futures_volume_baseline_multiple"),
+            "futures_volume_scan_multiple": row.get("futures_volume_scan_multiple"),
+            "futures_total_size_change_pct": row.get("futures_total_size_change_pct"),
+            "futures_funding_rate_pct": row.get("futures_funding_rate_pct"),
+            "futures_discovery_reasons": row.get("futures_discovery_reasons") or [],
+            "derivatives_intelligence": True,
+            "derivatives_symbol": symbol,
         })
 
     # Strong CEX movers that do not expose a supported on-chain contract still
@@ -716,6 +840,9 @@ def main():
             "public_alpha_invalid_time_excluded": invalid_time_alpha_excluded,
             "canonical_gate_market_suppressed": canonical_gate_market_suppressed,
             "cex_market_exact_identity_recovered": cex_market_exact_identity_recovered,
+            "futures_radar_selected": len(futures.get("candidates") or []),
+            "futures_radar_exact": sum(bool(x.get("futures_early_radar")) for x in out),
+            "futures_radar_only_exact": sum(bool(x.get("futures_only_origin")) for x in out),
             "multi_pool_watch_candidates": sum(bool(x.get("multi_pool_watch")) for x in out),
             "multi_pool_sibling_candidates": sum(x.get("asset_pool_role") == "SIBLING" for x in out),
             "public_alpha_live_window_minutes": PUBLIC_ALPHA_LIVE_WINDOW_MINUTES,
