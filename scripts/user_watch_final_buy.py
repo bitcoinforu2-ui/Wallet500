@@ -602,12 +602,24 @@ def evaluate(
     if micro <= 0:
         blockers.append("MARKET_MICROSTRUCTURE_NOT_POSITIVE")
 
-    strong = (
-        score >= float(policy["strong_min_fusion_score"])
+    # Confluence is meaningful only when the intelligence input itself is
+    # current, timed and sufficiently evidenced. Missing/stale intelligence is
+    # already fail-closed above; labelling it as a confluence failure as well
+    # hides the actual upstream coverage problem and makes gate telemetry lie.
+    intelligence_gate_observable = bool(
+        status == "CURRENT"
+        and intel_age is not None
+        and 0 <= intel_age * 60 <= max_age
+        and evidence >= int(policy["min_current_evidence"])
+    )
+    strong = bool(
+        intelligence_gate_observable
+        and score >= float(policy["strong_min_fusion_score"])
         and families >= int(policy["strong_min_positive_families"])
     )
-    relaxed = (
-        score >= float(policy["relaxed_min_fusion_score"])
+    relaxed = bool(
+        intelligence_gate_observable
+        and score >= float(policy["relaxed_min_fusion_score"])
         and families >= int(policy["relaxed_min_positive_families"])
         and max(wallet, holder) >= float(policy["relaxed_min_wallet_or_holder_score"])
     )
@@ -615,7 +627,7 @@ def evaluate(
         proof.append(f"STRONG_FUSION_{score:.1f}_{families}F")
     elif relaxed:
         proof.append(f"FUSION_PLUS_WALLET_HOLDER_{score:.1f}_{families}F")
-    else:
+    elif intelligence_gate_observable:
         blockers.append("FINAL_BUY_INTELLIGENCE_CONFLUENCE_NOT_MET")
 
     cex_momentum_confirmed = bool(
@@ -779,7 +791,12 @@ def evaluate(
         blockers.append("NEED_SECOND_VERIFIED_SCAN")
     if rebound is None or rebound < float(policy["min_rebound_from_watch_low_pct"]):
         blockers.append("REBOUND_FROM_WATCH_LOW_NOT_CONFIRMED")
-    if scan_gain is None or scan_gain < float(policy["min_scan_price_gain_pct"]):
+    # A reclaim requires two comparable, time-ordered verified observations.
+    # Do not report a reclaim failure when there is no valid prior observation;
+    # NEED_SECOND_VERIFIED_SCAN is the precise fail-closed reason in that case.
+    if previous_price is not None and (
+        scan_gain is None or scan_gain < float(policy["min_scan_price_gain_pct"])
+    ):
         blockers.append("SHORT_TERM_PRICE_RECLAIM_NOT_CONFIRMED")
     if scan_gain is not None and scan_gain > float(policy["max_scan_price_gain_pct"]):
         blockers.append("SHORT_TERM_CHASE_RISK")
