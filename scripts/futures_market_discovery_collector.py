@@ -38,9 +38,9 @@ MAX_SELECTED = 120
 # are reused first and only the hottest unresolved symbols hit network recovery.
 IDENTITY_RESOLUTION_BUDGET = 24
 # CoinGecko/platform recovery is slower, so keep it bounded but never disable it
-# for the hottest early movers. Eight escalations fit comfortably inside the
-# 3-minute discovery budget while covering the visible top-mover cohort.
-EXPENSIVE_RECOVERY_BUDGET = 8
+# for the hottest early movers. Ten slots cover the top-12 cohort plus volume/OI
+# shocks; CoinGecko market lookup is batched so this does not multiply API calls.
+EXPENSIVE_RECOVERY_BUDGET = 10
 EXPENSIVE_RECOVERY_TOP_RANK = 12
 EXPENSIVE_RECOVERY_MIN_CHANGE_PCT = 5.0
 PRIOR_IDENTITY_REUSE_MINUTES = 30
@@ -261,17 +261,24 @@ def load_same_run_spot_identities(path: Path | None = None) -> dict[str, dict]:
     return out
 
 
-def _identity_task(index: int, row: dict, native_registry: dict, expensive: bool):
+def _identity_task(
+    index: int,
+    row: dict,
+    native_registry: dict,
+    expensive: bool,
+    coingecko_market_matches: list[dict] | None = None,
+):
     result = spot_identity.resolve_identity(
         row.get("symbol") or "",
         native_registry=native_registry,
         cex_price=row.get("discovery_price"),
         allow_expensive_recovery=expensive,
+        coingecko_market_matches=coingecko_market_matches,
     )
     return index, result
 
 
-def resolve_identities(selected: list[dict]) -> dict[int, dict]:
+def resolve_identities(selected: list[dict], on_result=None) -> dict[int, dict]:
     native_registry = spot_identity.load_native_discovery_registry()
     reused = load_same_run_spot_identities()
     prior_futures = load_prior_futures_identities()
@@ -305,8 +312,22 @@ def resolve_identities(selected: list[dict]) -> dict[int, dict]:
         selected[i]["identity_expensive_recovery_eligible"] = i in expensive_candidates
         selected[i]["identity_expensive_recovery_selected"] = i in expensive_set
 
+    # Reuse/cached results are immediately publishable too. The callback lets the
+    # caller checkpoint progress after each completed identity so an outer workflow
+    # timeout cannot erase already-proven exact identities.
+    if on_result:
+        for i, result in sorted(results.items()):
+            on_result(i, result)
+
     if not target_indexes:
         return results
+
+    expensive_symbols = [
+        str(selected[i].get("symbol") or "").upper().strip()
+        for i in target_indexes
+        if i in expensive_set
+    ]
+    prefetched = spot_identity.prefetch_coingecko_market_matches(expensive_symbols)
 
     with ThreadPoolExecutor(max_workers=min(IDENTITY_WORKERS, len(target_indexes))) as pool:
         pending = {
@@ -316,6 +337,11 @@ def resolve_identities(selected: list[dict]) -> dict[int, dict]:
                 selected[i],
                 native_registry,
                 i in expensive_set,
+                (
+                    prefetched.get(str(selected[i].get("symbol") or "").upper().strip(), [])
+                    if i in expensive_set and prefetched is not None
+                    else None
+                ),
             ): i
             for i in target_indexes
         }
@@ -329,6 +355,8 @@ def resolve_identities(selected: list[dict]) -> dict[int, dict]:
                     "identity_reason": f"FUTURES_IDENTITY_EXCEPTION:{type(exc).__name__}",
                 }
             results[i] = result
+            if on_result:
+                on_result(i, result)
     return results
 
 
@@ -454,7 +482,12 @@ def run() -> dict:
             row["futures_episode_id"] = f"{contract}:{episode_seq}"
             selected.append(row)
 
-        old_markets[contract] = {
+        # Preserve prior exact-identity verification metadata across the market
+        # state refresh. Rebuilding the dict from scratch here used to erase
+        # identity_verified_at/contract/pair before load_prior_futures_identities()
+        # ran, silently disabling the 30-minute exact-identity cache.
+        next_state = dict(old)
+        next_state.update({
             "symbol": row["symbol"],
             "first_seen_at": row["first_seen_at"],
             "first_seen_price": row["first_seen_price"],
@@ -471,7 +504,8 @@ def run() -> dict:
             "selected_last_scan": selected_now,
             "episode_seq": episode_seq,
             "episode_started_at": episode_started_at,
-        }
+        })
+        old_markets[contract] = next_state
 
     selected.sort(key=priority_key)
     selected = selected[:MAX_SELECTED]
@@ -530,7 +564,57 @@ def run() -> dict:
     write(OUTPUT, checkpoint)
     write(STATE, {"version": 1, "updated_at": current.isoformat(), "markets": old_markets})
 
-    identity_results = resolve_identities(selected)
+    # Work on the checkpoint rows themselves so every completed identity can be
+    # durably reflected in OUTPUT/STATE before the entire bounded pool finishes.
+    selected = checkpoint_rows
+
+    def persist_identity_progress(index: int, identity: dict) -> None:
+        row = selected[index]
+        row.update(identity if isinstance(identity, dict) else {})
+        if row.get("identity_status") == "RESOLVED_EXACT":
+            if not row.get("identity_reused_from_futures_state"):
+                row["identity_verified_at"] = current.isoformat()
+            row["status"] = "IDENTITY_RESOLVED"
+            row["execution_identity_scope"] = "EXACT_CHAIN_CONTRACT_PAIR_WITH_FUTURES_TRIGGER"
+            row["futures_signal_verified"] = True
+            row["research_only_identity"] = bool(row.get("research_only_identity"))
+        else:
+            row["status"] = "FUTURES_SIGNAL_IDENTITY_PENDING"
+            row["futures_signal_verified"] = True
+            row["research_only_identity"] = True
+
+        contract = row["futures_contract"]
+        state_row = old_markets.get(contract) or {}
+        for field in (
+            "identity_status", "identity_reason", "network", "contract", "pair",
+            "dex_url", "dex_liquidity_usd", "identity_source",
+            "research_only_identity", "native_asset_proxy", "coingecko_id",
+            "identity_recovery_method", "identity_verified_at",
+            "identity_recovery_attempted", "identity_recovery_deferred",
+            "identity_expensive_recovery_eligible", "identity_expensive_recovery_selected",
+        ):
+            if row.get(field) is not None:
+                state_row[field] = row.get(field)
+        state_row["identity_last_progress_at"] = current.isoformat()
+        old_markets[contract] = state_row
+
+        progress = dict(checkpoint)
+        progress["checkpoint"] = "IDENTITY_ENRICHMENT_PARTIAL"
+        progress["counts"] = dict(checkpoint["counts"])
+        progress["counts"].update({
+            "identity_resolved": sum(x.get("identity_status") == "RESOLVED_EXACT" for x in selected),
+            "identity_pending": sum(x.get("identity_status") != "RESOLVED_EXACT" for x in selected),
+            "identity_reused_from_spot": sum(bool(x.get("identity_reused_from_spot")) for x in selected),
+            "identity_reused_from_futures_state": sum(bool(x.get("identity_reused_from_futures_state")) for x in selected),
+            "expensive_recovery_selected": sum(bool(x.get("identity_expensive_recovery_selected")) for x in selected),
+            "expensive_recovery_attempted": sum(bool(x.get("identity_recovery_attempted")) for x in selected),
+            "expensive_recovery_deferred": sum(bool(x.get("identity_recovery_deferred")) for x in selected),
+        })
+        progress["candidates"] = selected
+        write(OUTPUT, progress)
+        write(STATE, {"version": 1, "updated_at": current.isoformat(), "markets": old_markets})
+
+    identity_results = resolve_identities(selected, on_result=persist_identity_progress)
 
     resolved = 0
     for i, row in enumerate(selected):
