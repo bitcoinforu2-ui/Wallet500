@@ -79,7 +79,7 @@ jobs:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: |
           set -o pipefail
-          timeout --signal=TERM --kill-after=10s 3m python scripts/futures_market_discovery_collector.py
+          timeout --signal=TERM --kill-after=10s 4m python scripts/futures_market_discovery_collector.py
 
       # Build current-scan exact identities before intelligence collection.
       # This removes the one-cycle lag where a mover was discovered now but its
@@ -141,6 +141,7 @@ jobs:
         if: always()
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          WALLET500_SERIALIZED_PUBLISH_FALLBACK_DIRECT: '1'
         run: |
           set -euo pipefail
           python scripts/serialized_publish.py \

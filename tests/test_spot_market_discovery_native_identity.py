@@ -304,3 +304,72 @@ def test_bulk_discovery_defers_expensive_coingecko_recovery(monkeypatch):
     assert row["identity_reason"] == "DEFERRED_EXPENSIVE_IDENTITY_RECOVERY"
     assert row["identity_recovery_deferred"] is True
     assert row["identity_recovery_attempted"] is False
+
+
+
+def test_coingecko_hot_batch_prefetch_groups_symbols_once(monkeypatch):
+    calls = []
+
+    def fake_cg(url, timeout=12):
+        calls.append(url)
+        assert "/coins/markets?" in url
+        return [
+            {"id": "paid", "symbol": "paid", "current_price": 0.01},
+            {"id": "brew", "symbol": "brew", "current_price": 0.02},
+            {"id": "paid-two", "symbol": "paid", "current_price": 0.011},
+        ]
+
+    monkeypatch.setattr(mod, "coingecko_get_json", fake_cg)
+    grouped = mod.prefetch_coingecko_market_matches(["PAID", "BREW", "PAID"])
+
+    assert len(calls) == 1
+    assert {x["id"] for x in grouped["PAID"]} == {"paid", "paid-two"}
+    assert [x["id"] for x in grouped["BREW"]] == ["brew"]
+
+
+def test_prefetched_coingecko_matches_skip_redundant_market_query(monkeypatch):
+    token = "0x1111111111111111111111111111111111111111"
+    pair = "0x2222222222222222222222222222222222222222"
+    market_calls = []
+
+    def fake_get(url, timeout=12):
+        if "currency_chains" in url:
+            return [{"chain": "ETH", "contract_address": ""}]
+        if "dexscreener.com/latest/dex/tokens/" in url:
+            return {
+                "pairs": [{
+                    "chainId": "ethereum",
+                    "pairAddress": pair,
+                    "baseToken": {"address": token},
+                    "quoteToken": {"address": "0xquote"},
+                    "priceUsd": "0.101",
+                    "liquidity": {"usd": 90000},
+                }]
+            }
+        raise AssertionError(url)
+
+    def fake_cg(url, timeout=12):
+        if "/coins/markets?" in url:
+            market_calls.append(url)
+            raise AssertionError("prefetched recovery must not refetch markets")
+        if "/coins/example-token?" in url:
+            return {"platforms": {"ethereum": token}}
+        raise AssertionError(url)
+
+    monkeypatch.setattr(mod, "get_json", fake_get)
+    monkeypatch.setattr(mod, "coingecko_get_json", fake_cg)
+    row = mod.resolve_identity(
+        "ABC",
+        native_registry={},
+        cex_price=0.10,
+        coingecko_market_matches=[{
+            "id": "example-token",
+            "symbol": "abc",
+            "current_price": 0.10,
+        }],
+    )
+
+    assert market_calls == []
+    assert row["identity_status"] == "RESOLVED_EXACT"
+    assert row["contract"] == token
+    assert row["pair"] == pair

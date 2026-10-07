@@ -61,7 +61,7 @@ def test_run_resolves_exact_identity_and_preserves_immutable_anchor(tmp_path, mo
         raise AssertionError(url)
 
     monkeypatch.setattr(radar, "get_json", fake_get)
-    monkeypatch.setattr(radar, "resolve_identities", lambda rows: {
+    monkeypatch.setattr(radar, "resolve_identities", lambda rows, on_result=None: {
         0: {
             "identity_status": "RESOLVED_EXACT",
             "identity_reason": "EXACT_CHAIN_CONTRACT_PAIR",
@@ -100,7 +100,7 @@ def test_futures_episode_rearms_only_after_signal_goes_cold(tmp_path, monkeypatc
         datetime(2026, 10, 8, 0, 10, tzinfo=timezone.utc),
     ])
     monkeypatch.setattr(radar, "now_dt", lambda: next(moments))
-    monkeypatch.setattr(radar, "resolve_identities", lambda rows: {})
+    monkeypatch.setattr(radar, "resolve_identities", lambda rows, on_result=None: {})
 
     calls = {"n": 0}
     def fake_get(url, timeout=15):
@@ -184,8 +184,17 @@ def test_hot_unresolved_candidates_get_bounded_expensive_identity_recovery(tmp_p
 
     calls = {}
 
-    def fake_identity_task(index, row, native_registry, expensive):
-        calls[row["symbol"]] = expensive
+    monkeypatch.setattr(
+        radar.spot_identity,
+        "prefetch_coingecko_market_matches",
+        lambda symbols: {symbol: [{"symbol": symbol}] for symbol in symbols},
+    )
+
+    def fake_identity_task(index, row, native_registry, expensive, coingecko_market_matches=None):
+        calls[row["symbol"]] = {
+            "expensive": expensive,
+            "prefetched": coingecko_market_matches,
+        }
         return index, {
             "identity_status": "UNRESOLVED",
             "identity_reason": "TEST_UNRESOLVED",
@@ -229,10 +238,13 @@ def test_hot_unresolved_candidates_get_bounded_expensive_identity_recovery(tmp_p
 
     radar.resolve_identities(selected)
 
-    assert calls["HOT1"] is True
-    assert calls["HOT2"] is True
-    assert calls["HOT3"] is False
-    assert calls["COLD"] is False
+    assert calls["HOT1"]["expensive"] is True
+    assert calls["HOT2"]["expensive"] is True
+    assert calls["HOT1"]["prefetched"] == [{"symbol": "HOT1"}]
+    assert calls["HOT2"]["prefetched"] == [{"symbol": "HOT2"}]
+    assert calls["HOT3"]["expensive"] is False
+    assert calls["HOT3"]["prefetched"] is None
+    assert calls["COLD"]["expensive"] is False
     assert selected[0]["identity_expensive_recovery_selected"] is True
     assert selected[1]["identity_expensive_recovery_selected"] is True
 
@@ -311,3 +323,127 @@ def test_prior_exact_futures_identity_expires_and_forces_refresh(tmp_path, monke
     monkeypatch.setattr(radar, "STATE", state)
     monkeypatch.setattr(radar, "now_dt", lambda: datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc))
     assert "STALE_USDT" not in radar.load_prior_futures_identities()
+
+
+
+def test_market_state_refresh_preserves_recent_exact_identity_metadata(tmp_path, monkeypatch):
+    output = tmp_path / "out.json"
+    state = tmp_path / "state.json"
+    spot = tmp_path / "spot.json"
+    spot.write_text(json.dumps({"candidates": []}))
+    state.write_text(json.dumps({
+        "version": 1,
+        "markets": {
+            "KEEP_USDT": {
+                "first_seen_at": "2026-10-07T11:00:00+00:00",
+                "first_seen_price": 1.0,
+                "first_seen_change_24h_pct": 6.0,
+                "first_seen_quote_volume_24h_usd": 10000.0,
+                "last_quote_volume_24h_usd": 12000.0,
+                "last_total_size": 1000.0,
+                "identity_status": "RESOLVED_EXACT",
+                "identity_reason": "EXACT_CHAIN_CONTRACT_PAIR",
+                "identity_verified_at": "2026-10-07T11:55:00+00:00",
+                "network": "solana",
+                "contract": "KeepToken",
+                "pair": "KeepPair",
+                "dex_url": "https://dex.example/keep",
+                "dex_liquidity_usd": 50000,
+            }
+        }
+    }))
+    monkeypatch.setattr(radar, "OUTPUT", output)
+    monkeypatch.setattr(radar, "STATE", state)
+    monkeypatch.setattr(radar, "SPOT_DISCOVERY", spot)
+    monkeypatch.setattr(radar, "now_dt", lambda: datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc))
+
+    def fake_get(url, timeout=15):
+        if url.endswith("/contracts"):
+            return [{"name": "KEEP_USDT", "in_delisting": False}]
+        if url.endswith("/tickers"):
+            return [{
+                "contract": "KEEP_USDT",
+                "last": "1.1",
+                "change_percentage": "10",
+                "volume_24h_quote": "20000",
+                "total_size": "1100",
+                "funding_rate": "0.0001",
+            }]
+        raise AssertionError(url)
+
+    observed = {}
+
+    def fake_resolve(rows, on_result=None):
+        persisted = json.loads(state.read_text())
+        observed.update(persisted["markets"]["KEEP_USDT"])
+        return {}
+
+    monkeypatch.setattr(radar, "get_json", fake_get)
+    monkeypatch.setattr(radar, "resolve_identities", fake_resolve)
+    radar.run()
+
+    assert observed["identity_status"] == "RESOLVED_EXACT"
+    assert observed["identity_verified_at"] == "2026-10-07T11:55:00+00:00"
+    assert observed["contract"] == "KeepToken"
+    assert observed["pair"] == "KeepPair"
+
+
+def test_completed_identity_is_checkpointed_before_later_resolver_failure(tmp_path, monkeypatch):
+    output = tmp_path / "out.json"
+    state = tmp_path / "state.json"
+    spot = tmp_path / "spot.json"
+    spot.write_text(json.dumps({"candidates": []}))
+    state.write_text(json.dumps({"version": 1, "markets": {}}))
+    monkeypatch.setattr(radar, "OUTPUT", output)
+    monkeypatch.setattr(radar, "STATE", state)
+    monkeypatch.setattr(radar, "SPOT_DISCOVERY", spot)
+    monkeypatch.setattr(radar, "now_dt", lambda: datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc))
+
+    def fake_get(url, timeout=15):
+        if url.endswith("/contracts"):
+            return [{"name": "FAST_USDT", "in_delisting": False}]
+        if url.endswith("/tickers"):
+            return [{
+                "contract": "FAST_USDT",
+                "last": "1.2",
+                "change_percentage": "12",
+                "volume_24h_quote": "50000",
+                "total_size": "1200",
+                "funding_rate": "0.0001",
+            }]
+        raise AssertionError(url)
+
+    def fake_resolve(rows, on_result=None):
+        assert on_result is not None
+        on_result(0, {
+            "identity_status": "RESOLVED_EXACT",
+            "identity_reason": "EXACT_IDENTITY_RECOVERED_FROM_COINGECKO_PLATFORM",
+            "network": "solana",
+            "contract": "FastToken",
+            "pair": "FastPair",
+            "dex_url": "https://dex.example/fast",
+            "dex_liquidity_usd": 88000,
+            "identity_recovery_attempted": True,
+        })
+        raise RuntimeError("simulated later provider stall")
+
+    monkeypatch.setattr(radar, "get_json", fake_get)
+    monkeypatch.setattr(radar, "resolve_identities", fake_resolve)
+
+    try:
+        radar.run()
+        assert False, "expected simulated resolver failure"
+    except RuntimeError as exc:
+        assert "simulated later provider stall" in str(exc)
+
+    progress = json.loads(output.read_text())
+    row = progress["candidates"][0]
+    assert progress["checkpoint"] == "IDENTITY_ENRICHMENT_PARTIAL"
+    assert row["identity_status"] == "RESOLVED_EXACT"
+    assert row["contract"] == "FastToken"
+    assert progress["counts"]["identity_resolved"] == 1
+
+    persisted = json.loads(state.read_text())["markets"]["FAST_USDT"]
+    assert persisted["identity_status"] == "RESOLVED_EXACT"
+    assert persisted["contract"] == "FastToken"
+    assert persisted["identity_verified_at"] == "2026-10-07T12:00:00+00:00"
