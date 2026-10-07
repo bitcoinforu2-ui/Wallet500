@@ -35,6 +35,8 @@ def test_buy_registry_bridges_to_unified_watch_at_highest_priority(tmp_path, mon
     spot = tmp_path / "spot.json"
     cex_identity = tmp_path / "cex_identity.json"
     alpha = tmp_path / "alpha.json"
+    futures = tmp_path / "futures.json"
+    kol = tmp_path / "kol.json"
     registry = tmp_path / "registry.json"
     bootstrap = tmp_path / "bootstrap.json"
     output = tmp_path / "dynamic.json"
@@ -43,6 +45,8 @@ def test_buy_registry_bridges_to_unified_watch_at_highest_priority(tmp_path, mon
     _write(spot, {"candidates": []})
     _write(cex_identity, {"candidates": []})
     _write(alpha, {"candidates": []})
+    _write(futures, {"candidates": []})
+    _write(kol, {"candidates": []})
     _write(registry, {"entries": {"ethereum:0xabc:0xpair": _buy_entry()}})
     _write(bootstrap, {"candidates": []})
     _write(events, {"version": 3, "events": []})
@@ -50,6 +54,8 @@ def test_buy_registry_bridges_to_unified_watch_at_highest_priority(tmp_path, mon
     monkeypatch.setattr(bridge, "SPOT", spot)
     monkeypatch.setattr(bridge, "CEX_SPOT_IDENTITY", cex_identity)
     monkeypatch.setattr(bridge, "ALPHA", alpha)
+    monkeypatch.setattr(bridge, "FUTURES", futures)
+    monkeypatch.setattr(bridge, "KOL", kol)
     monkeypatch.setattr(bridge, "BUY_REGISTRY", registry)
     monkeypatch.setattr(bridge, "BOOTSTRAP", bootstrap)
     monkeypatch.setattr(bridge, "OUT", output)

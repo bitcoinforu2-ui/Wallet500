@@ -37,7 +37,12 @@ MAX_SELECTED = 120
 # wait for dozens of duplicate network lookups; same-run Spot exact identities
 # are reused first and only the hottest unresolved symbols hit network recovery.
 IDENTITY_RESOLUTION_BUDGET = 24
-EXPENSIVE_RECOVERY_BUDGET = 0
+# CoinGecko/platform recovery is slower, so keep it bounded but never disable it
+# for the hottest early movers. Eight escalations fit comfortably inside the
+# 3-minute discovery budget while covering the visible top-mover cohort.
+EXPENSIVE_RECOVERY_BUDGET = 8
+EXPENSIVE_RECOVERY_TOP_RANK = 12
+EXPENSIVE_RECOVERY_MIN_CHANGE_PCT = 5.0
 IDENTITY_WORKERS = 12
 HOT_RETENTION_HOURS = 36
 
@@ -126,6 +131,69 @@ def priority_key(row: dict):
     return (forced, rank, -max(change, gain), -vol_mult, -volume)
 
 
+def should_escalate_expensive_recovery(row: dict) -> bool:
+    """Spend slow identity recovery only where timing can change the decision.
+
+    This does not make a candidate actionable. It only allows the existing
+    fail-closed resolver to use CoinGecko/platform evidence after Gate's exact
+    contract path has failed.
+    """
+    rank = int(row.get("positive_gainer_rank") or 999999)
+    change = float(row.get("change_24h_pct") or 0)
+    gain = float(row.get("gain_from_first_seen_pct") or 0)
+    baseline_multiple = float(row.get("futures_volume_baseline_multiple") or 0)
+    scan_multiple = float(row.get("futures_volume_scan_multiple") or 0)
+    oi_delta = float(row.get("futures_total_size_change_pct") or 0)
+    return bool(
+        row.get("forced_hot_watch")
+        or (
+            rank <= EXPENSIVE_RECOVERY_TOP_RANK
+            and max(change, gain) >= EXPENSIVE_RECOVERY_MIN_CHANGE_PCT
+        )
+        or (
+            max(baseline_multiple, scan_multiple) >= VOLUME_ACCELERATION_MULTIPLE
+            and max(change, gain) >= MIN_EARLY_CHANGE_PCT
+        )
+        or (oi_delta >= 10.0 and max(change, gain) >= MIN_EARLY_CHANGE_PCT)
+    )
+
+
+def load_prior_futures_identities(path: Path | None = None) -> dict[str, dict]:
+    """Reuse previously verified exact identity for the same futures contract.
+
+    Exact identity is immutable enough to cache across scans, but research-only
+    native proxies are intentionally excluded so they can never become actionable
+    merely because they were seen in a prior run.
+    """
+    doc = load(path or STATE, {"markets": {}})
+    markets = doc.get("markets") if isinstance(doc, dict) else {}
+    out: dict[str, dict] = {}
+    for futures_contract, row in (markets or {}).items():
+        if not isinstance(row, dict) or row.get("identity_status") != "RESOLVED_EXACT":
+            continue
+        reason = str(row.get("identity_reason") or "")
+        if "RESEARCH_ONLY" in reason or row.get("native_asset_proxy") is True:
+            continue
+        network = str(row.get("network") or "").strip()
+        contract = str(row.get("contract") or "").strip()
+        pair = str(row.get("pair") or "").strip()
+        if not network or not contract or not pair:
+            continue
+        out[str(futures_contract).upper().strip()] = {
+            "identity_status": "RESOLVED_EXACT",
+            "identity_reason": "REUSED_PRIOR_FUTURES_EXACT_IDENTITY",
+            "network": network,
+            "contract": contract,
+            "pair": pair,
+            "dex_url": str(row.get("dex_url") or ""),
+            "dex_liquidity_usd": row.get("dex_liquidity_usd"),
+            "identity_source": str(row.get("identity_source") or "prior futures exact identity"),
+            "identity_reused_from_futures_state": True,
+            "research_only_identity": False,
+        }
+    return out
+
+
 def load_same_run_spot_identities(path: Path | None = None) -> dict[str, dict]:
     """Reuse exact Spot identities instead of resolving the same symbol twice.
 
@@ -190,24 +258,36 @@ def _identity_task(index: int, row: dict, native_registry: dict, expensive: bool
 def resolve_identities(selected: list[dict]) -> dict[int, dict]:
     native_registry = spot_identity.load_native_discovery_registry()
     reused = load_same_run_spot_identities()
+    prior_futures = load_prior_futures_identities()
     results: dict[int, dict] = {}
 
-    # First consume zero-cost exact identities from the Spot discovery that ran
-    # immediately before this sensor in the same Unified Watch job.
+    # First consume zero-cost exact identities from Spot in the same run, then
+    # reuse an already verified identity for this exact futures contract.
     unresolved = []
     for i, row in enumerate(selected):
         exact = reused.get(str(row.get("symbol") or "").upper().strip())
         if exact:
             results[i] = exact
-        else:
-            unresolved.append(i)
+            continue
+        prior = prior_futures.get(str(row.get("futures_contract") or "").upper().strip())
+        if prior:
+            results[i] = prior
+            continue
+        unresolved.append(i)
 
     # Never let identity enrichment hold the futures leaderboard hostage. Resolve
     # only the hottest unresolved slice; the remainder persists as PENDING and is
     # retried on later cycles.
     unresolved.sort(key=lambda i: priority_key(selected[i]))
     target_indexes = unresolved[:IDENTITY_RESOLUTION_BUDGET]
-    expensive_set: set[int] = set()
+    expensive_candidates = [
+        i for i in target_indexes
+        if should_escalate_expensive_recovery(selected[i])
+    ]
+    expensive_set: set[int] = set(expensive_candidates[:EXPENSIVE_RECOVERY_BUDGET])
+    for i in target_indexes:
+        selected[i]["identity_expensive_recovery_eligible"] = i in expensive_candidates
+        selected[i]["identity_expensive_recovery_selected"] = i in expensive_set
 
     if not target_indexes:
         return results
@@ -459,7 +539,12 @@ def run() -> dict:
 
         contract = row["futures_contract"]
         state_row = old_markets.get(contract) or {}
-        for field in ("identity_status", "identity_reason", "network", "contract", "pair", "dex_url", "dex_liquidity_usd", "identity_source"):
+        for field in (
+            "identity_status", "identity_reason", "network", "contract", "pair",
+            "dex_url", "dex_liquidity_usd", "identity_source",
+            "research_only_identity", "native_asset_proxy", "coingecko_id",
+            "identity_recovery_method",
+        ):
             if row.get(field) is not None:
                 state_row[field] = row.get(field)
         old_markets[contract] = state_row
@@ -482,6 +567,10 @@ def run() -> dict:
             "identity_resolved": resolved,
             "identity_pending": len(selected) - resolved,
             "identity_reused_from_spot": sum(bool(x.get("identity_reused_from_spot")) for x in selected),
+            "identity_reused_from_futures_state": sum(bool(x.get("identity_reused_from_futures_state")) for x in selected),
+            "expensive_recovery_selected": sum(bool(x.get("identity_expensive_recovery_selected")) for x in selected),
+            "expensive_recovery_attempted": sum(bool(x.get("identity_recovery_attempted")) for x in selected),
+            "expensive_recovery_deferred": sum(bool(x.get("identity_recovery_deferred")) for x in selected),
             "forced_hot_watch": sum(bool(x.get("forced_hot_watch")) for x in selected),
             "top10_selected": sum(int(x.get("positive_gainer_rank") or 999999) <= 10 for x in selected),
         },
