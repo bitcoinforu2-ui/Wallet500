@@ -237,7 +237,23 @@ def _route_unsafe_large_transports_to_direct_git() -> None:
 def main() -> int:
     _expand_directory_payloads()
     _route_unsafe_large_transports_to_direct_git()
-    token, repo, lock_sha = acquire_lock()
+    try:
+        token, repo, lock_sha = acquire_lock()
+    except RuntimeError as exc:
+        # Time-sensitive critical state must not fail merely because a separate
+        # long publisher owns the advisory lease. atomic_publish is itself a
+        # non-force CAS publisher and preserves paths changed since our base, so
+        # it is safe to fall back to that path when explicitly enabled.
+        allow_direct = os.environ.get(
+            "WALLET500_SERIALIZED_PUBLISH_FALLBACK_DIRECT", ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        if allow_direct and "SERIALIZED_PUBLISH_LOCK_TIMEOUT" in str(exc):
+            print(
+                "SERIALIZED_PUBLISH_LOCK_TIMEOUT_FALLBACK_DIRECT_CAS",
+                flush=True,
+            )
+            return atomic_publish.main()
+        raise
     try:
         return atomic_publish.main()
     finally:
