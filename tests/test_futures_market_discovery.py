@@ -169,3 +169,122 @@ def test_same_run_spot_identity_reuse_is_unambiguous_and_zero_cost(tmp_path, mon
     assert identities["FAST"]["contract"] == "TokenFast"
     assert identities["FAST"]["identity_reused_from_spot"] is True
     assert "AMB" not in identities
+
+
+
+def test_hot_unresolved_candidates_get_bounded_expensive_identity_recovery(tmp_path, monkeypatch):
+    spot = tmp_path / "spot.json"
+    state = tmp_path / "state.json"
+    spot.write_text(json.dumps({"candidates": []}))
+    state.write_text(json.dumps({"version": 1, "markets": {}}))
+    monkeypatch.setattr(radar, "SPOT_DISCOVERY", spot)
+    monkeypatch.setattr(radar, "STATE", state)
+    monkeypatch.setattr(radar, "EXPENSIVE_RECOVERY_BUDGET", 2)
+    monkeypatch.setattr(radar.spot_identity, "load_native_discovery_registry", lambda: {})
+
+    calls = {}
+
+    def fake_identity_task(index, row, native_registry, expensive):
+        calls[row["symbol"]] = expensive
+        return index, {
+            "identity_status": "UNRESOLVED",
+            "identity_reason": "TEST_UNRESOLVED",
+        }
+
+    monkeypatch.setattr(radar, "_identity_task", fake_identity_task)
+    selected = [
+        {
+            "symbol": "HOT1", "futures_contract": "HOT1_USDT",
+            "forced_hot_watch": True, "positive_gainer_rank": 1,
+            "change_24h_pct": 18.0, "gain_from_first_seen_pct": 6.0,
+            "futures_volume_baseline_multiple": 1.0,
+            "futures_volume_scan_multiple": 1.0,
+            "futures_total_size_change_pct": 0.0,
+        },
+        {
+            "symbol": "HOT2", "futures_contract": "HOT2_USDT",
+            "forced_hot_watch": False, "positive_gainer_rank": 4,
+            "change_24h_pct": 9.0, "gain_from_first_seen_pct": 2.0,
+            "futures_volume_baseline_multiple": 1.0,
+            "futures_volume_scan_multiple": 1.0,
+            "futures_total_size_change_pct": 0.0,
+        },
+        {
+            "symbol": "HOT3", "futures_contract": "HOT3_USDT",
+            "forced_hot_watch": False, "positive_gainer_rank": 6,
+            "change_24h_pct": 8.0, "gain_from_first_seen_pct": 1.0,
+            "futures_volume_baseline_multiple": 1.0,
+            "futures_volume_scan_multiple": 1.0,
+            "futures_total_size_change_pct": 0.0,
+        },
+        {
+            "symbol": "COLD", "futures_contract": "COLD_USDT",
+            "forced_hot_watch": False, "positive_gainer_rank": 40,
+            "change_24h_pct": 5.0, "gain_from_first_seen_pct": 0.0,
+            "futures_volume_baseline_multiple": 1.0,
+            "futures_volume_scan_multiple": 1.0,
+            "futures_total_size_change_pct": 0.0,
+        },
+    ]
+
+    radar.resolve_identities(selected)
+
+    assert calls["HOT1"] is True
+    assert calls["HOT2"] is True
+    assert calls["HOT3"] is False
+    assert calls["COLD"] is False
+    assert selected[0]["identity_expensive_recovery_selected"] is True
+    assert selected[1]["identity_expensive_recovery_selected"] is True
+
+
+def test_prior_exact_futures_identity_is_reused_without_network(tmp_path, monkeypatch):
+    spot = tmp_path / "spot.json"
+    state = tmp_path / "state.json"
+    spot.write_text(json.dumps({"candidates": []}))
+    state.write_text(json.dumps({
+        "version": 1,
+        "markets": {
+            "FAST_USDT": {
+                "identity_status": "RESOLVED_EXACT",
+                "identity_reason": "EXACT_CHAIN_CONTRACT_PAIR",
+                "network": "solana",
+                "contract": "TokenFast",
+                "pair": "PairFast",
+                "dex_url": "https://dex.example/fast",
+                "dex_liquidity_usd": 123000,
+                "identity_source": "test exact",
+            },
+            "NATIVE_USDT": {
+                "identity_status": "RESOLVED_EXACT",
+                "identity_reason": "EXACT_CURATED_NATIVE_PROXY_PAIR_RESEARCH_ONLY",
+                "network": "solana",
+                "contract": "WrappedNative",
+                "pair": "NativePair",
+            },
+        },
+    }))
+    monkeypatch.setattr(radar, "SPOT_DISCOVERY", spot)
+    monkeypatch.setattr(radar, "STATE", state)
+    monkeypatch.setattr(radar.spot_identity, "load_native_discovery_registry", lambda: {})
+
+    def must_not_call(*args, **kwargs):
+        raise AssertionError("network identity recovery should not run for cached exact identity")
+
+    monkeypatch.setattr(radar, "_identity_task", must_not_call)
+    selected = [{
+        "symbol": "FAST", "futures_contract": "FAST_USDT",
+        "forced_hot_watch": True, "positive_gainer_rank": 1,
+        "change_24h_pct": 12.0, "gain_from_first_seen_pct": 3.0,
+        "futures_volume_baseline_multiple": 1.0,
+        "futures_volume_scan_multiple": 1.0,
+        "futures_total_size_change_pct": 0.0,
+    }]
+
+    results = radar.resolve_identities(selected)
+    assert results[0]["identity_status"] == "RESOLVED_EXACT"
+    assert results[0]["contract"] == "TokenFast"
+    assert results[0]["identity_reused_from_futures_state"] is True
+
+    cached = radar.load_prior_futures_identities()
+    assert "FAST_USDT" in cached
+    assert "NATIVE_USDT" not in cached
