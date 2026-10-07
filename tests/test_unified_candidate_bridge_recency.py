@@ -31,6 +31,8 @@ def test_public_alpha_live_queue_excludes_stale_history(tmp_path, monkeypatch):
         "SPOT": tmp_path / "spot.json",
         "CEX_SPOT_IDENTITY": tmp_path / "cex_identity.json",
         "ALPHA": tmp_path / "alpha.json",
+        "FUTURES": tmp_path / "futures.json",
+        "KOL": tmp_path / "kol.json",
         "BUY_REGISTRY": tmp_path / "buy.json",
         "BOOTSTRAP": tmp_path / "bootstrap.json",
         "OUT": tmp_path / "out.json",
@@ -39,6 +41,8 @@ def test_public_alpha_live_queue_excludes_stale_history(tmp_path, monkeypatch):
     paths["SPOT"].write_text('{"candidates":[]}', encoding="utf-8")
     paths["CEX_SPOT_IDENTITY"].write_text('{"candidates":[]}', encoding="utf-8")
     paths["ALPHA"].write_text(json.dumps(alpha), encoding="utf-8")
+    paths["FUTURES"].write_text('{"candidates":[]}', encoding="utf-8")
+    paths["KOL"].write_text('{"candidates":[]}', encoding="utf-8")
     paths["BUY_REGISTRY"].write_text('{"entries":{}}', encoding="utf-8")
     paths["BOOTSTRAP"].write_text('{"candidates":[]}', encoding="utf-8")
     paths["EVENTS"].write_text('{"version":3,"events":[]}', encoding="utf-8")
@@ -69,6 +73,8 @@ def test_exact_multi_cex_identity_is_bridged_into_unified_watch(tmp_path, monkey
         "SPOT": tmp_path / "spot.json",
         "CEX_SPOT_IDENTITY": tmp_path / "cex_identity.json",
         "ALPHA": tmp_path / "alpha.json",
+        "FUTURES": tmp_path / "futures.json",
+        "KOL": tmp_path / "kol.json",
         "BUY_REGISTRY": tmp_path / "buy.json",
         "BOOTSTRAP": tmp_path / "bootstrap.json",
         "OUT": tmp_path / "out.json",
@@ -76,6 +82,8 @@ def test_exact_multi_cex_identity_is_bridged_into_unified_watch(tmp_path, monkey
     }
     paths["SPOT"].write_text('{"candidates":[]}', encoding="utf-8")
     paths["ALPHA"].write_text('{"candidates":[]}', encoding="utf-8")
+    paths["FUTURES"].write_text('{"candidates":[]}', encoding="utf-8")
+    paths["KOL"].write_text('{"candidates":[]}', encoding="utf-8")
     paths["BUY_REGISTRY"].write_text('{"entries":{}}', encoding="utf-8")
     paths["BOOTSTRAP"].write_text('{"candidates":[]}', encoding="utf-8")
     paths["EVENTS"].write_text('{"version":3,"events":[]}', encoding="utf-8")
