@@ -248,33 +248,52 @@ jobs:
         run: python scripts/unified_candidate_bridge.py
 
       # Slow/deep enrichment improves the next scan but can no longer delay or
-      # cancel the current scan's PRE-BUY / FINAL BUY decision.
+      # cancel the current scan's PRE-BUY / FINAL BUY decision. Every network-heavy
+      # lane is hard-bounded so one provider cannot hold the production concurrency
+      # slot and starve the next scheduled early-mover scan.
       - name: Collect holder wallet attention search and news intelligence
         id: cross_domain
-        run: python scripts/cross_domain_intelligence_collector.py
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          timeout --signal=TERM --kill-after=10s 100s python scripts/cross_domain_intelligence_collector.py
 
       - name: Collect verified narrative dependency rotation intelligence
         id: narrative_dependency
-        run: python scripts/narrative_dependency_collector.py
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          timeout --signal=TERM --kill-after=10s 100s python scripts/narrative_dependency_collector.py
 
       # Research-only evidence lane, scheduled WITH the unified watch engine.
       # No independent tracker or Telegram sender; runs after critical decisions.
       - name: Collect exact-contract partnership research
         id: partnership_research
         continue-on-error: true
-        run: python scripts/partnership_intelligence_collector.py
+        run: |
+          set -o pipefail
+          timeout --signal=TERM --kill-after=10s 100s python scripts/partnership_intelligence_collector.py
 
       - name: Collect Gate-stat plus Hyperliquid failover derivatives intelligence
         id: derivatives
-        run: python scripts/derivatives_intelligence_collector.py
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          timeout --signal=TERM --kill-after=10s 100s python scripts/derivatives_intelligence_collector.py
 
       - name: Update forward-only alpha caller reputation
         id: alpha_reputation
-        run: python scripts/alpha_caller_reputation.py
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          timeout --signal=TERM --kill-after=10s 60s python scripts/alpha_caller_reputation.py
 
       - name: Refresh enriched fusion snapshot for the next critical scan
         id: enriched_fusion
-        run: python scripts/intelligence_fusion.py
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          timeout --signal=TERM --kill-after=10s 60s python scripts/intelligence_fusion.py
 
       - name: Build unified runtime evidence manifest
         if: always()
