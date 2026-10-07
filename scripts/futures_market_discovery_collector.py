@@ -43,6 +43,7 @@ IDENTITY_RESOLUTION_BUDGET = 24
 EXPENSIVE_RECOVERY_BUDGET = 8
 EXPENSIVE_RECOVERY_TOP_RANK = 12
 EXPENSIVE_RECOVERY_MIN_CHANGE_PCT = 5.0
+PRIOR_IDENTITY_REUSE_MINUTES = 30
 IDENTITY_WORKERS = 12
 HOT_RETENTION_HOURS = 36
 
@@ -159,20 +160,33 @@ def should_escalate_expensive_recovery(row: dict) -> bool:
 
 
 def load_prior_futures_identities(path: Path | None = None) -> dict[str, dict]:
-    """Reuse previously verified exact identity for the same futures contract.
+    """Reuse a recently verified exact identity for the same futures contract.
 
-    Exact identity is immutable enough to cache across scans, but research-only
-    native proxies are intentionally excluded so they can never become actionable
-    merely because they were seen in a prior run.
+    The cache is intentionally short-lived: chain+contract identity is stable, but
+    the best execution pair can migrate quickly on new assets. Missing/expired
+    verification timestamps fail closed and force fresh identity resolution.
     """
     doc = load(path or STATE, {"markets": {}})
     markets = doc.get("markets") if isinstance(doc, dict) else {}
     out: dict[str, dict] = {}
+    current = now_dt()
     for futures_contract, row in (markets or {}).items():
         if not isinstance(row, dict) or row.get("identity_status") != "RESOLVED_EXACT":
             continue
         reason = str(row.get("identity_reason") or "")
         if "RESEARCH_ONLY" in reason or row.get("native_asset_proxy") is True:
+            continue
+        verified_raw = str(row.get("identity_verified_at") or "").strip()
+        if not verified_raw:
+            continue
+        try:
+            verified_at = datetime.fromisoformat(verified_raw.replace("Z", "+00:00"))
+            if verified_at.tzinfo is None:
+                verified_at = verified_at.replace(tzinfo=timezone.utc)
+            age_minutes = (current - verified_at.astimezone(timezone.utc)).total_seconds() / 60.0
+        except Exception:
+            continue
+        if age_minutes < 0 or age_minutes > PRIOR_IDENTITY_REUSE_MINUTES:
             continue
         network = str(row.get("network") or "").strip()
         contract = str(row.get("contract") or "").strip()
@@ -188,6 +202,8 @@ def load_prior_futures_identities(path: Path | None = None) -> dict[str, dict]:
             "dex_url": str(row.get("dex_url") or ""),
             "dex_liquidity_usd": row.get("dex_liquidity_usd"),
             "identity_source": str(row.get("identity_source") or "prior futures exact identity"),
+            "identity_verified_at": verified_at.isoformat(),
+            "identity_cache_age_minutes": round(age_minutes, 2),
             "identity_reused_from_futures_state": True,
             "research_only_identity": False,
         }
@@ -528,6 +544,8 @@ def run() -> dict:
 
         if row.get("identity_status") == "RESOLVED_EXACT":
             resolved += 1
+            if not row.get("identity_reused_from_futures_state"):
+                row["identity_verified_at"] = current.isoformat()
             row["status"] = "IDENTITY_RESOLVED"
             row["execution_identity_scope"] = "EXACT_CHAIN_CONTRACT_PAIR_WITH_FUTURES_TRIGGER"
             row["futures_signal_verified"] = True
@@ -543,7 +561,7 @@ def run() -> dict:
             "identity_status", "identity_reason", "network", "contract", "pair",
             "dex_url", "dex_liquidity_usd", "identity_source",
             "research_only_identity", "native_asset_proxy", "coingecko_id",
-            "identity_recovery_method",
+            "identity_recovery_method", "identity_verified_at",
         ):
             if row.get(field) is not None:
                 state_row[field] = row.get(field)

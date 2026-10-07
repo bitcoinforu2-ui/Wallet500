@@ -246,6 +246,7 @@ def test_prior_exact_futures_identity_is_reused_without_network(tmp_path, monkey
         "markets": {
             "FAST_USDT": {
                 "identity_status": "RESOLVED_EXACT",
+                "identity_verified_at": "2026-10-07T12:00:00+00:00",
                 "identity_reason": "EXACT_CHAIN_CONTRACT_PAIR",
                 "network": "solana",
                 "contract": "TokenFast",
@@ -265,6 +266,7 @@ def test_prior_exact_futures_identity_is_reused_without_network(tmp_path, monkey
     }))
     monkeypatch.setattr(radar, "SPOT_DISCOVERY", spot)
     monkeypatch.setattr(radar, "STATE", state)
+    monkeypatch.setattr(radar, "now_dt", lambda: datetime(2026, 10, 7, 12, 10, tzinfo=timezone.utc))
     monkeypatch.setattr(radar.spot_identity, "load_native_discovery_registry", lambda: {})
 
     def must_not_call(*args, **kwargs):
@@ -288,3 +290,24 @@ def test_prior_exact_futures_identity_is_reused_without_network(tmp_path, monkey
     cached = radar.load_prior_futures_identities()
     assert "FAST_USDT" in cached
     assert "NATIVE_USDT" not in cached
+
+
+
+def test_prior_exact_futures_identity_expires_and_forces_refresh(tmp_path, monkeypatch):
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps({
+        "version": 1,
+        "markets": {
+            "STALE_USDT": {
+                "identity_status": "RESOLVED_EXACT",
+                "identity_reason": "EXACT_CHAIN_CONTRACT_PAIR",
+                "identity_verified_at": "2026-10-07T10:00:00+00:00",
+                "network": "solana",
+                "contract": "StaleToken",
+                "pair": "StalePair",
+            },
+        },
+    }))
+    monkeypatch.setattr(radar, "STATE", state)
+    monkeypatch.setattr(radar, "now_dt", lambda: datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc))
+    assert "STALE_USDT" not in radar.load_prior_futures_identities()
