@@ -242,7 +242,54 @@ def _native_proxy_possibilities(symbol: str, registry: dict[str, dict]) -> list[
     return out
 
 
-def _coingecko_identity_recovery(symbol: str, cex_price: float | None) -> dict:
+def prefetch_coingecko_market_matches(symbols: list[str]) -> dict[str, list[dict]] | None:
+    """Fetch CoinGecko symbol candidates once for a bounded hot batch.
+
+    Futures identity recovery can otherwise issue the same /coins/markets query
+    once per hot symbol. A single batch materially reduces rate-limit exposure
+    and latency. None means the batch request itself failed and callers should
+    fall back to the existing per-symbol request; an empty dict is a valid
+    successful response with no matching symbols.
+    """
+    unique = []
+    seen = set()
+    for raw in symbols:
+        symbol = str(raw or "").upper().strip()
+        if symbol and symbol not in seen:
+            seen.add(symbol)
+            unique.append(symbol)
+    if not unique:
+        return {}
+
+    q = urllib.parse.urlencode({
+        "vs_currency": "usd",
+        "symbols": ",".join(x.lower() for x in unique),
+        "include_tokens": "all",
+        "order": "market_cap_desc",
+        "per_page": 250,
+        "page": 1,
+        "sparkline": "false",
+    })
+    markets = coingecko_get_json(f"{COINGECKO}/coins/markets?{q}")
+    if markets is None:
+        return None
+
+    grouped: dict[str, list[dict]] = {symbol: [] for symbol in unique}
+    for row in markets or []:
+        if not isinstance(row, dict):
+            continue
+        symbol = str(row.get("symbol") or "").upper().strip()
+        if symbol in grouped:
+            grouped[symbol].append(row)
+    return grouped
+
+
+def _coingecko_identity_recovery(
+    symbol: str,
+    cex_price: float | None,
+    *,
+    prefetched_matches: list[dict] | None = None,
+) -> dict:
     """Recover exact identity when Gate omits contract metadata, fail-closed."""
     base = str(symbol or "").upper().strip()
     cex_price = num(cex_price, 0.0) or 0.0
@@ -252,20 +299,26 @@ def _coingecko_identity_recovery(symbol: str, cex_price: float | None) -> dict:
             "identity_recovery_blocker": "CEX_PRICE_OR_SYMBOL_MISSING",
         }
 
-    q = urllib.parse.urlencode({
-        "vs_currency": "usd",
-        "symbols": base.lower(),
-        "include_tokens": "all",
-        "order": "market_cap_desc",
-        "per_page": 250,
-        "page": 1,
-        "sparkline": "false",
-    })
-    markets = coingecko_get_json(f"{COINGECKO}/coins/markets?{q}")
-    matches = [
-        x for x in (markets or [])
-        if isinstance(x, dict) and str(x.get("symbol") or "").upper() == base
-    ]
+    if prefetched_matches is None:
+        q = urllib.parse.urlencode({
+            "vs_currency": "usd",
+            "symbols": base.lower(),
+            "include_tokens": "all",
+            "order": "market_cap_desc",
+            "per_page": 250,
+            "page": 1,
+            "sparkline": "false",
+        })
+        markets = coingecko_get_json(f"{COINGECKO}/coins/markets?{q}")
+        matches = [
+            x for x in (markets or [])
+            if isinstance(x, dict) and str(x.get("symbol") or "").upper() == base
+        ]
+    else:
+        matches = [
+            x for x in prefetched_matches
+            if isinstance(x, dict) and str(x.get("symbol") or "").upper() == base
+        ]
     if not matches:
         return {
             "identity_recovery_attempted": True,
@@ -385,6 +438,7 @@ def resolve_identity(
     *,
     cex_price: float | None = None,
     allow_expensive_recovery: bool = True,
+    coingecko_market_matches: list[dict] | None = None,
 ) -> dict:
     q = urllib.parse.urlencode({"currency": symbol})
     chains = get_json(f"{GATE}/wallet/currency_chains?{q}")
@@ -438,7 +492,11 @@ def resolve_identity(
         }
 
     if not possibilities:
-        recovery = _coingecko_identity_recovery(symbol, cex_price)
+        recovery = _coingecko_identity_recovery(
+            symbol,
+            cex_price,
+            prefetched_matches=coingecko_market_matches,
+        )
         if recovery.get("identity_status") == "RESOLVED_EXACT":
             return recovery
         if not gate_currency_chains_available:
