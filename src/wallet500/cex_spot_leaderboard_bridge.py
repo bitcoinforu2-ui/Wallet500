@@ -81,7 +81,22 @@ def _base_score(change: float, volume: float, volume_comparable: bool = True) ->
     return score
 
 
-def _latest_market_rows(state: dict) -> list[dict]:
+def _timestamp_fresh(value: object, now: datetime, max_age_seconds: int = 2700) -> bool:
+    """Fail closed on missing, future, or stale observation timestamps."""
+    if not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        observed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if observed.tzinfo is None:
+            return False
+        age = (now - observed.astimezone(timezone.utc)).total_seconds()
+        return -120 <= age <= max_age_seconds
+    except (ValueError, OverflowError):
+        return False
+
+
+def _latest_market_rows(state: dict, now: datetime | None = None) -> list[dict]:
+    now = now or datetime.now(timezone.utc)
     markets = state.get("markets") if isinstance(state.get("markets"), dict) else {}
     out = []
     for key, history in markets.items():
@@ -100,6 +115,8 @@ def _latest_market_rows(state: dict) -> list[dict]:
             continue
         latest = history[-1] if isinstance(history[-1], dict) else {}
         if not symbol.endswith("USDT"):
+            continue
+        if not _timestamp_fresh(latest.get("observed_at"), now):
             continue
         inferred_regional = exchange in NON_USD_REGIONAL_EXCHANGES
         comparable = bool(latest.get("volume_comparable_usd_like", not inferred_regional))
@@ -191,7 +208,7 @@ def run(data_dir: Path = DATA, now: str | None = None) -> dict:
         leaderboard_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         return report
 
-    ranked = _rank(_latest_market_rows(state))
+    ranked = _rank(_latest_market_rows(state, datetime.fromisoformat(now.replace("Z", "+00:00"))))
     watchlist = [dict(x) for x in (radar.get("watchlist") or []) if isinstance(x, dict)]
     existing = {str(x.get("symbol") or ""): i for i, x in enumerate(watchlist)}
     milestones = state.get("signal_milestones") if isinstance(state.get("signal_milestones"), dict) else {}
