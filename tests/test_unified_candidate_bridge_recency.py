@@ -465,7 +465,10 @@ def test_cex_only_gate_mover_recovers_exact_identity_and_sibling_pools(tmp_path,
     exact = [
         x for x in result["candidates"]
         if x.get("asset_identity_key") == "bsc:" + token
+        and x.get("candidate_type") == "CEX_SPOT_DISCOVERY"
     ]
+    # A venue-only discovery is a separate observation, not a third DEX pool.
+    # Assert the two independently identified exact pairs, not all asset-level rows.
     assert len(exact) == 2
     assert {x["pair"].lower() for x in exact} == {primary, sibling}
     assert all(x["candidate_type"] == "CEX_SPOT_DISCOVERY" for x in exact)
