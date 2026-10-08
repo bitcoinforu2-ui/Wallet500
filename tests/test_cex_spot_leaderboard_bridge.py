@@ -206,7 +206,9 @@ def test_leveraged_products_never_reenter_research_watch_via_leaderboard_bridge(
 
 
 def test_current_leaderboard_candidate_is_protected_from_top100_watchlist_starvation(tmp_path: Path):
-    _write(tmp_path / "cex-spot-state.json", _state(("gate", "TRIOUSDT", 30.0, 25_500, 0.01)))
+    state = _state(("gate", "TRIOUSDT", 30.0, 25_500, 0.01))
+    state["markets"]["spot:gate:TRIOUSDT"][-1]["observed_at"] = "2026-09-22T00:00:00+00:00"
+    _write(tmp_path / "cex-spot-state.json", state)
     crowded = [
         {
             "symbol": f"OLD{i}USDT",
