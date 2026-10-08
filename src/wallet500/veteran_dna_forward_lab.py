@@ -21,6 +21,8 @@ LIQ_FLOOR = 50_000.0
 WINNER_RETURN_24H = 25.0
 CONTROL_RETURN_24H = 5.0
 MAX_NEW_PER_RUN = 60
+# Late observations are retained as evidence but never labeled as on-time 24h outcomes.
+MAX_24H_LABEL_LAG_HOURS = 2.0
 CHECKPOINTS = (("1h", 1.0), ("3h", 3.0), ("6h", 6.0), ("24h", 24.0))
 
 
@@ -151,6 +153,7 @@ def summarize(records: dict):
         f: round(wm[f] / cm[f], 6) if wm.get(f) is not None and cm.get(f) not in (None, 0) else None
         for f in fields
     }
+    late_24h = sum(1 for r in rows if (r.get("checkpoints") or {}).get("24h", {}).get("label_eligible") is False)
     ready = len(winners) >= 20 and len(controls) >= 20
     return {
         "mode": MODE,
@@ -176,6 +179,7 @@ def summarize(records: dict):
             "controls": len(controls),
             "ambiguous": len(ambiguous),
             "research_ready": ready,
+            "late_24h_excluded_from_labels": late_24h,
         },
         "winner_t0_medians": wm,
         "control_t0_medians": cm,
@@ -280,6 +284,7 @@ def main():
             cps[name] = {
                 "observed_at": now.isoformat(),
                 "observed_age_hours": round(age_h, 4),
+                "label_eligible": (age_h <= 24.0 + MAX_24H_LABEL_LAG_HOURS) if name == "24h" else None,
                 "price_usd": current_price,
                 "return_pct": round(ret, 6),
                 "liquidity_usd": current.get("liquidity_usd"),
@@ -288,7 +293,14 @@ def main():
             }
             checkpoint_updates += 1
         if "24h" in cps and rec.get("label_24h") is None:
-            rec["label_24h"] = label_24h(n(cps["24h"].get("return_pct")))
+            checkpoint = cps["24h"]
+            observed_age = n(checkpoint.get("observed_age_hours"))
+            # Existing historical checkpoints lack eligibility metadata; never
+            # assume they were timely. Preserve evidence without backfilling.
+            if checkpoint.get("label_eligible") is True and observed_age is not None and 24.0 <= observed_age <= 24.0 + MAX_24H_LABEL_LAG_HOURS:
+                rec["label_24h"] = label_24h(n(checkpoint.get("return_pct")))
+            else:
+                rec["label_status"] = "INSUFFICIENT_TIMESTAMP_COVERAGE"
 
     ledger.update({
         "version": 1,
