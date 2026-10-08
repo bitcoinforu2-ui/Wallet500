@@ -74,6 +74,34 @@ def audit() -> dict:
                 "required_owner": SOLE_CANONICAL_PUBLISHER,
             })
 
+    # The publisher regenerates these files after applying the immutable scan
+    # artifact. Every regenerated canonical file must be in the *same* atomic
+    # generation commit; otherwise the manifest can point to stale bytes.
+    regenerated_canonical = {
+        "data/real-alerts.json",
+        "data/decision-snapshot-integrity.json",
+        "data/system-health.json",
+        "data/revival-funnel-diagnostics.json",
+        "data/decision-generation.json",
+    }
+    publisher_path = WF / SOLE_CANONICAL_PUBLISHER
+    if not publisher_path.is_file():
+        findings.append({
+            "severity": "CRITICAL",
+            "code": "CANONICAL_PUBLISHER_WORKFLOW_MISSING",
+            "workflow": SOLE_CANONICAL_PUBLISHER,
+        })
+    else:
+        atomic_paths = _workflow_direct_writes(publisher_path.read_text(encoding="utf-8"))
+        missing_atomic = sorted(regenerated_canonical - atomic_paths)
+        if missing_atomic:
+            findings.append({
+                "severity": "CRITICAL",
+                "code": "REGENERATED_CANONICAL_NOT_ATOMICALLY_PUBLISHED",
+                "workflow": SOLE_CANONICAL_PUBLISHER,
+                "missing": missing_atomic,
+            })
+
     legacy_hits = []
     for p in sorted(SRC.glob("*.py")):
         text = p.read_text(encoding="utf-8")
