@@ -267,7 +267,20 @@ jobs:
               exit 1
             fi
             if [ "$published_run" -gt "$LIVE_SOURCE_RUN" ]; then
-              echo 'NEWER_SNAPSHOT_ALREADY_PUBLISHED; retaining its generation provenance'
+              # A superseded publisher must never report success unless the
+              # newer published snapshot already has its own coherent generation.
+              PUBLISHED_RUN="$published_run" python - <<'PY'
+              import json, os
+              from pathlib import Path
+              p = Path('data/decision-generation.json')
+              if not p.is_file():
+                  raise SystemExit('::error::NEWER_SNAPSHOT_GENERATION_MISSING')
+              generation = json.loads(p.read_text())
+              expected = 'wallet500:' + os.environ['PUBLISHED_RUN'] + ':'
+              if generation.get('status') != 'COHERENT_READY' or not str(generation.get('generation_id', '')).startswith(expected):
+                  raise SystemExit('::error::NEWER_SNAPSHOT_GENERATION_NOT_BOUND')
+              print('NEWER_SNAPSHOT_GENERATION_ALREADY_BOUND', generation['generation_id'])
+              PY
               exit 0
             fi
             export SOURCE_SHA="$LIVE_SOURCE_SHA"
