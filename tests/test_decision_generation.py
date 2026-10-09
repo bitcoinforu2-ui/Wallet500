@@ -54,3 +54,36 @@ def test_timestamped_source_must_be_an_object(snapshot, payload):
     (snapshot / "data/real-alerts.json").write_text(json.dumps(payload))
     with pytest.raises(RuntimeError, match="DECISION_GENERATION_INCOMPLETE_FAIL_CLOSED"):
         generation.build(now=NOW)
+
+
+def test_delayed_research_revival_does_not_block_fresh_canonical_alerts(snapshot):
+    # The research universe is produced independently and can lag under Actions
+    # pressure, but production REAL_ALERT + guard still have a strict 2h TTL.
+    name = "data/revival-1000-latest.json"
+    (snapshot / name).write_text(json.dumps({
+        "generated_at": (NOW - timedelta(hours=3)).isoformat()
+    }))
+    manifest = generation.build(now=NOW)
+    assert manifest["status"] == "COHERENT_READY"
+    assert manifest["source_freshness"][name]["max_age_seconds"] == 6 * 3600
+
+    production = "data/real-alerts.json"
+    (snapshot / production).write_text(json.dumps({
+        "generated_at": (NOW - timedelta(hours=3)).isoformat()
+    }))
+    with pytest.raises(RuntimeError, match="DECISION_GENERATION_INCOMPLETE_FAIL_CLOSED"):
+        generation.build(now=NOW)
+    failed = json.loads((snapshot / generation.OUT).read_text())
+    assert failed["status"] == "INCOMPLETE_FAIL_CLOSED"
+    assert {x["path"] for x in failed["unhealthy_sources"]} == {production}
+
+
+def test_research_revival_still_fails_closed_after_six_hours(snapshot):
+    name = "data/revival-1000-latest.json"
+    (snapshot / name).write_text(json.dumps({
+        "generated_at": (NOW - timedelta(hours=7)).isoformat()
+    }))
+    with pytest.raises(RuntimeError, match="DECISION_GENERATION_INCOMPLETE_FAIL_CLOSED"):
+        generation.build(now=NOW)
+    payload = json.loads((snapshot / generation.OUT).read_text())
+    assert payload["unhealthy_sources"][0]["path"] == name

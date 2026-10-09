@@ -103,6 +103,43 @@ def identity_key(row: dict) -> str:
     return f"{chain}:{token}:{pair}" if chain and token and pair else ""
 
 
+def early_cex_momentum_watch(row: dict, live: dict | None, *, now: datetime | None = None) -> bool:
+    """Start strict buy evaluation at an early verified CEX momentum episode.
+
+    Discovery is NOT a BUY. Exact DEX identity, a recent observed market,
+    material venue turnover, a top rank and independent relative-volume
+    acceleration only earn an evaluation slot. evaluate() retains all live
+    execution, intelligence, hard-risk, timing and two-scan checks.
+    """
+    if str(row.get("candidate_type") or "").upper() not in {
+        "GATE_SPOT_DISCOVERY", "CEX_SPOT_DISCOVERY"
+    }:
+        return False
+    key = identity_key(row)
+    if not key or key.startswith("cex:") or not isinstance(live, dict):
+        return False
+    if identity_key(live) != key:
+        return False
+    market_age = age_seconds(live.get("observed_at"), now or now_utc())
+    if market_age is None or not 0 <= market_age <= 2100:
+        return False
+
+    gain = max(
+        num(row.get("discovery_momentum_change_pct"), 0.0) or 0.0,
+        num(row.get("change_24h_pct"), 0.0) or 0.0,
+        num(row.get("gain_from_first_seen_pct"), 0.0) or 0.0,
+    )
+    rank = num(live.get("positive_gainer_rank") or row.get("positive_gainer_rank"))
+    turnover = num(live.get("cex_quote_volume_24h_usd")) or 0.0
+    relative_volume = num(live.get("cex_relative_volume_multiple")) or 0.0
+    return bool(
+        8.0 <= gain < 25.0
+        and rank is not None and 1 <= rank <= 15
+        and turnover >= 100_000.0
+        and relative_volume >= 4.0
+    )
+
+
 def eligible_targets(
     config: dict,
     dynamic: dict | None = None,
@@ -147,7 +184,12 @@ def eligible_targets(
         new_listing_fast_lane = bool(row.get("new_listing_fast_lane"))
         if not isinstance(live, dict):
             continue
-        if not new_listing_fast_lane and live.get("quarter_wave_revalidation_armed") is not True:
+        early_cex_lane = early_cex_momentum_watch(row, live)
+        if (
+            not new_listing_fast_lane
+            and live.get("quarter_wave_revalidation_armed") is not True
+            and not early_cex_lane
+        ):
             continue
 
         target = dict(row)
@@ -158,6 +200,7 @@ def eligible_targets(
             "exact_pair_required": ctype != "CEX_MARKET_DISCOVERY",
             "exact_cex_market_required": ctype == "CEX_MARKET_DISCOVERY",
             "quarter_wave_revalidation_lane": live.get("quarter_wave_revalidation_armed") is True,
+            "early_cex_momentum_lane": early_cex_lane,
             "new_listing_fast_lane": new_listing_fast_lane,
             "new_listing_buy_start": row.get("buy_start"),
             "gate_st_tag": bool(row.get("gate_st_tag")),
@@ -462,6 +505,7 @@ def evaluate(
     blockers: list[str] = []
     proof: list[str] = []
     quarter_wave_lane = bool(target.get("quarter_wave_revalidation_lane"))
+    early_cex_lane = bool(target.get("early_cex_momentum_lane"))
     new_listing_lane = bool(target.get("new_listing_fast_lane"))
     new_listing_buy_start = num(target.get("new_listing_buy_start") or target.get("buy_start"))
     new_listing_age_seconds = (
@@ -941,7 +985,7 @@ def evaluate(
 
     cex_breakout_continuation = bool(
         policy.get("cex_breakout_continuation_enabled") is True
-        and quarter_wave_lane
+        and (quarter_wave_lane or early_cex_lane)
         and not cex_market_only
         and report_verified
         and cex_execution_verified
@@ -991,7 +1035,7 @@ def evaluate(
     )
     hybrid_breakout_continuation = bool(
         policy.get("hybrid_breakout_enabled") is True
-        and quarter_wave_lane
+        and (quarter_wave_lane or early_cex_lane)
         and not cex_market_only
         and report_verified
         and cex_execution_verified
@@ -1106,6 +1150,8 @@ def evaluate(
     if pre_buy_alert:
         pre_buy_armed = False
 
+    if early_cex_lane:
+        proof.append("EARLY_CEX_MOMENTUM_STRICT_REVALIDATION")
     if quarter_wave_lane:
         if quarter_wave_gain is None and quarter_wave_anchor > 0 and price > 0:
             quarter_wave_gain = ((price / quarter_wave_anchor) - 1.0) * 100.0
@@ -1278,6 +1324,8 @@ def evaluate(
             "manual_decision_only": True,
             "automatic_trade": False,
             "quarter_wave_revalidation_lane": quarter_wave_lane,
+            "early_cex_momentum_lane_requires_live_exact_identity_and_relative_volume": early_cex_lane,
+            "early_cex_momentum_is_not_buy": True,
             "quarter_wave_trigger_is_not_buy": True,
             "all_hard_safety_gates_still_required": True,
             "contextual_execution_gates_may_be_satisfied_by_verified_alternate_path": True,

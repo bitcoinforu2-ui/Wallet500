@@ -36,9 +36,16 @@ ADVISORY_FILES = (
 OUT = Path("data/decision-generation.json")
 MAX_SOURCE_AGE_SECONDS = 2 * 3600
 MAX_SOURCE_FUTURE_SKEW_SECONDS = 5 * 60
+# Revival-1000 is a research-only upstream refreshed by its own scheduled job.
+# An Actions scheduling delay must not shut down the unrelated fresh REAL_ALERT
+# publisher. Do not extend the age of real-alerts, guards or production inputs.
+RESEARCH_REVIVAL_MAX_SOURCE_AGE_SECONDS = 6 * 3600
+RESEARCH_REVIVAL_SOURCES = frozenset({"data/revival-1000-latest.json"})
 
 
-def _source_freshness(stamp: object, now: datetime) -> tuple[str, float | None]:
+def _source_freshness(
+    stamp: object, now: datetime, *, max_age_seconds: int = MAX_SOURCE_AGE_SECONDS
+) -> tuple[str, float | None]:
     try:
         observed = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
         if observed.tzinfo is None:
@@ -48,7 +55,7 @@ def _source_freshness(stamp: object, now: datetime) -> tuple[str, float | None]:
         return "SOURCE_TIMESTAMP_INVALID", None
     if age < -MAX_SOURCE_FUTURE_SKEW_SECONDS:
         return "SOURCE_TIMESTAMP_IN_FUTURE", age
-    if age > MAX_SOURCE_AGE_SECONDS:
+    if age > max_age_seconds:
         return "SOURCE_STALE", age
     return "CURRENT", age
 
@@ -75,8 +82,15 @@ def build(*, source_sha: str | None = None, run_id: str | None = None, now: date
         hashes[name] = hashlib.sha256(raw).hexdigest()
         if isinstance(r.value, dict):
             generated[name] = r.value.get("generated_at") or r.value.get("updated_at") or r.value.get("created_at")
-            status, age = _source_freshness(generated[name], now)
-            freshness[name] = {"status": status, "age_seconds": age}
+            max_age = (
+                RESEARCH_REVIVAL_MAX_SOURCE_AGE_SECONDS
+                if name in RESEARCH_REVIVAL_SOURCES
+                else MAX_SOURCE_AGE_SECONDS
+            )
+            status, age = _source_freshness(generated[name], now, max_age_seconds=max_age)
+            freshness[name] = {
+                "status": status, "age_seconds": age, "max_age_seconds": max_age
+            }
             if status != "CURRENT":
                 unhealthy.append({"path": name, "state": status, "age_seconds": age})
         elif name != "data/active-qualified-candidates.json" or not isinstance(r.value, list):
@@ -114,7 +128,12 @@ def build(*, source_sha: str | None = None, run_id: str | None = None, now: date
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if unhealthy:
-        raise RuntimeError("DECISION_GENERATION_INCOMPLETE_FAIL_CLOSED")
+        # A masked generic exception made the publisher silently fail for hours.
+        # Preserve the fail-closed behavior but expose the actual stale inputs.
+        raise RuntimeError(
+            "DECISION_GENERATION_INCOMPLETE_FAIL_CLOSED "
+            + json.dumps(unhealthy, ensure_ascii=False, sort_keys=True)
+        )
     return payload
 
 
