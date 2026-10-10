@@ -76,3 +76,42 @@ def test_cross_domain_holder_poll_is_fair_and_preserves_unpolled_baselines(tmp_p
     # holder snapshot instead of overwriting it with a fake current null.
     assert second_state["tokens"][cross.ident(sample[8])[3]]["holder"]["holders_count"] == 100
     assert second_state["holder_rotation_cursor"] == 16
+
+
+def test_critical_lane_reserves_pre_wave_volume_shocks_without_buy_promotion(tmp_path, monkeypatch):
+    from scripts import unified_watch_engine as engine
+
+    rows = []
+    for i in range(24):
+        rows.append({
+            "candidate_type": "CEX_MARKET_DISCOVERY",
+            "symbol": f"HOT{i}",
+            "exchange": "gate",
+            "currency_pair": f"HOT{i}_USDT",
+            "gain_from_first_seen_pct": 80 - i,
+            "discovery_momentum_change_pct": 65 - i,
+            "quote_volume_24h_usd": 1_000_000,
+            "positive_gainer_rank": i + 1,
+        })
+    for i in range(4):
+        rows.append({
+            "candidate_type": "CEX_MARKET_DISCOVERY",
+            "symbol": f"EARLY{i}",
+            "exchange": "gate",
+            "currency_pair": f"EARLY{i}_USDT",
+            "gain_from_first_seen_pct": 6.0,
+            "discovery_momentum_change_pct": 9.0,
+            "cex_relative_volume_multiple": 8.0 + i,
+            "quote_volume_24h_usd": 150_000,
+            "positive_gainer_rank": 40 + i,
+        })
+    dynamic = tmp_path / "dynamic.json"
+    dynamic.write_text(json.dumps({"candidates": rows}))
+    monkeypatch.setattr(engine, "DYNAMIC", dynamic)
+    monkeypatch.delenv("WALLET500_CRITICAL_SPOT_CAP", raising=False)
+    selected = engine.dynamic_candidates({})
+    critical = [x for x in selected if x.get("critical_market_lane") is True]
+    assert len(critical) == 18
+    assert {f"EARLY{i}" for i in range(4)}.issubset({x["symbol"] for x in critical})
+    assert len([x for x in critical if x["symbol"].startswith("HOT")]) == 14
+    assert all(not row.get("dynamic_buy_candidate") for row in critical)
