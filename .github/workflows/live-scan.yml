@@ -3,7 +3,8 @@ name: Wallet500 Multi-Chain Live Scan
 on:
   workflow_dispatch:
   schedule:
-    - cron: '7,22,37,52 * * * *'
+    # Ten-minute production cadence; critical user-watch rescans run separately.
+    - cron: '2,12,22,32,42,52 * * * *'
 permissions:
   contents: write
   actions: write
