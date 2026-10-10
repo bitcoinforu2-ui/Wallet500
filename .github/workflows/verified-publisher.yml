@@ -309,25 +309,25 @@ jobs:
             # in the committed parent generation. GitHub Pages verifies these
             # same hashes; catch any race or accidental local mutation here.
             python - <<'PY'
-            import hashlib, json, subprocess
-            from pathlib import Path
-            gen = json.loads(Path('data/decision-generation.json').read_text())
-            locally_generated = {
-                'data/decision-snapshot-integrity.json',
-                'data/revival-funnel-diagnostics.json',
-                'data/system-health.json',
-            }
-            for rel in gen['canonical_files']:
-                expected = gen['hashes'][rel]
-                if rel in locally_generated:
-                    actual = hashlib.sha256(Path(rel).read_bytes()).hexdigest()
-                else:
-                    committed = subprocess.check_output(['git', 'show', f'HEAD:{rel}'])
-                    actual = hashlib.sha256(committed).hexdigest()
-                if actual != expected:
-                    raise SystemExit(f'GENERATION_COMMITTED_INPUT_HASH_MISMATCH {rel} expected={expected} actual={actual}')
-            print('GENERATION_CANONICAL_INPUT_HASHES_BOUND', len(gen['canonical_files']))
-            PY
+          import hashlib, json, subprocess
+          from pathlib import Path
+          gen = json.loads(Path('data/decision-generation.json').read_text())
+          locally_generated = {
+              'data/decision-snapshot-integrity.json',
+              'data/revival-funnel-diagnostics.json',
+              'data/system-health.json',
+          }
+          for rel in gen['canonical_files']:
+              expected = gen['hashes'][rel]
+              if rel in locally_generated:
+                  actual = hashlib.sha256(Path(rel).read_bytes()).hexdigest()
+              else:
+                  committed = subprocess.check_output(['git', 'show', f'HEAD:{rel}'])
+                  actual = hashlib.sha256(committed).hexdigest()
+              if actual != expected:
+                  raise SystemExit(f'GENERATION_COMMITTED_INPUT_HASH_MISMATCH {rel} expected={expected} actual={actual}')
+          print('GENERATION_CANONICAL_INPUT_HASHES_BOUND', len(gen['canonical_files']))
+          PY
             set +e
             python scripts/atomic_publish.py \
               --base "$base" \
