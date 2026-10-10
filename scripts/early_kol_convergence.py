@@ -413,6 +413,7 @@ def main() -> int:
     wallets = wallets[cursor:] + wallets[:cursor]
     wallets_attempted = 0
     interrupted = False
+    wallet_incomplete = False
 
     for wallet in wallets:
         if time.monotonic() - started >= budget_seconds:
