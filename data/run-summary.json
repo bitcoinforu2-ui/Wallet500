@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-10T05:51:09.937236+00:00",
+  "updated_at": "2026-10-10T06:13:57.804685+00:00",
   "market_scan": 384,
   "qualified": 2,
   "rejected": 24,
@@ -41,15 +41,15 @@
   "cex": {
     "healthy_sources": 7,
     "requested_sources": 10,
-    "contracts_seen": 5240,
-    "symbols_seen": 2033,
-    "alerts": 83,
+    "contracts_seen": 5239,
+    "symbols_seen": 2032,
+    "alerts": 22,
     "errors": 2,
     "identity_counts": {
-      "dex_verified": 27,
-      "dex_verified_dormant": 12,
+      "dex_verified": 8,
+      "dex_verified_dormant": 3,
       "pair_pending": 0,
-      "identity_pending": 44
+      "identity_pending": 11
     }
   },
   "established_hour_census": {
@@ -68,7 +68,7 @@
     "unique_symbols": 3141,
     "consensus_symbols": 3141,
     "source_attribution_sources": 9,
-    "archetypes": 40,
+    "archetypes": 39,
     "counting_rule": "market_profiles are exchange:symbol observations; unique_symbols_count is the deduplicated symbol universe"
   },
   "time_machine": {
@@ -85,7 +85,7 @@
     "errors": 0,
     "rule": "social momentum never overrides exact identity, age, liquidity, security, holder-cluster or manipulation gates"
   },
-  "cex_revival_alerts": 83,
+  "cex_revival_alerts": 22,
   "mode": "VETERAN_COIN_REVIVAL_ONLY_180D_MIN+CEX_EXACT_ID+CEX_SPOT_RESEARCH+CORE_MULTICHAIN_RESEARCH+CATALYST_DNA+TIME_MACHINE+SOCIAL",
   "quality_gate_qualified": 2,
   "active_qualified": 0,
@@ -160,18 +160,15 @@
     }
   },
   "system_health": {
-    "overall": "DEGRADED",
-    "pipeline_health": "DEGRADED",
+    "overall": "HEALTHY",
+    "pipeline_health": "HEALTHY",
     "capability_health": "HEALTHY",
     "failure_summary": {
-      "count": 2,
+      "count": 0,
       "production_blockers": 0,
       "system_production_blockers": 0,
       "candidate_gate_blocks": 0,
-      "codes": [
-        "PREVIOUS_PUBLISH_EVIDENCE_STALE_OR_MISSING",
-        "DECISION_PATH_NO_CURRENT_COVERAGE"
-      ]
+      "codes": []
     },
     "gate_summary": {
       "holder_cluster_input": 0,
@@ -182,119 +179,38 @@
       "production_authorized_candidates": 0,
       "interpretation": "Candidate gate blocks are correct fail-closed decisions and are separate from system health failures."
     },
-    "failures": [
-      {
-        "component": "publish_pipeline",
-        "status": "DEGRADED",
-        "phase": "PRE_CURRENT_RUN_PUBLISH_STEP_PREVIOUS_COMMIT_EVIDENCE",
-        "age_seconds": 12104.9,
-        "max_age_seconds": 1800,
-        "evidence_status": "VERIFIED_PUBLISHED_SNAPSHOT",
-        "strict_validation": "PASS",
-        "source_sha": "954c59a642f4af9def156f9dfe3e2f403191cd2b",
-        "run_id": 38016994394,
-        "proof_rule": "IF_THIS_FILE_IS_VISIBLE_ON_MAIN_THE_VALIDATED_DATA_COMMIT_WAS_PUSHED_SUCCESSFULLY",
-        "interpretation": "This checks the previous published commit only; current-run publication happens after health and strict validation.",
-        "failure_code": "PREVIOUS_PUBLISH_EVIDENCE_STALE_OR_MISSING",
-        "severity": "MEDIUM",
-        "blocks_production": false,
-        "expected": {
-          "max_age_seconds": 1800,
-          "status": [
-            "READY_TO_PUBLISH",
-            "VERIFIED_PUBLISHED_SNAPSHOT"
-          ]
-        },
-        "actual": {
-          "age_seconds": 12104.9,
-          "status": "VERIFIED_PUBLISHED_SNAPSHOT",
-          "source_sha": "954c59a642f4af9def156f9dfe3e2f403191cd2b",
-          "run_id": 38016994394
-        },
-        "recommended_action": "CHECK_PREVIOUS_PUBLISH_HISTORY; CURRENT_RUN_HAS_NOT_REACHED_PUBLISH_STEP_YET",
-        "diagnosed_at": "2026-10-10T05:52:38.394857+00:00"
-      },
-      {
-        "component": "decision_path",
-        "status": "DEGRADED",
-        "runtime_age_seconds": 11572.1,
-        "max_runtime_age_seconds": 3600,
-        "market_watch_outcome": "success",
-        "configured_targets": 897,
-        "partial_upstream_evaluated": 0,
-        "partial_upstream_skipped": 0,
-        "evaluated_target_count": 897,
-        "decision_coverage_pct": 100.0,
-        "observable_target_count": 23,
-        "observable_coverage_pct": 2.56,
-        "coverage_semantics": "EVALUATED_IS_NOT_THE_SAME_AS_FRESH_EXACT_PAIR_OBSERVED",
-        "final_buy_status": "OK",
-        "interpretation": "Discovery health is not decision health; current market-watch coverage is required.",
-        "failure_code": "DECISION_PATH_NO_CURRENT_COVERAGE",
-        "severity": "HIGH",
-        "blocks_production": false,
-        "expected": {
-          "market_watch_outcome": "success",
-          "when_targets_exist": "current FINAL BUY evaluation coverage"
-        },
-        "actual": {
-          "runtime_age_seconds": 11572.1,
-          "market_watch_outcome": "success",
-          "configured_targets": 897,
-          "partial_upstream_evaluated": 0,
-          "partial_upstream_skipped": 0,
-          "evaluated_target_count": 897,
-          "decision_coverage_pct": 100.0,
-          "observable_target_count": 23,
-          "observable_coverage_pct": 2.56,
-          "final_buy_status": "OK"
-        },
-        "recommended_action": "RESTORE_UNIFIED_MARKET_WATCH_CURRENT_SNAPSHOT_COVERAGE",
-        "diagnosed_at": "2026-10-10T05:52:38.394857+00:00"
-      }
-    ],
+    "failures": [],
     "checks": {
       "primary_scan": {
         "status": "HEALTHY",
-        "age_seconds": 88.5,
-        "max_age_seconds": 600,
+        "age_seconds": 93.0,
+        "max_age_seconds": 1200,
         "failure_code": "OK",
         "severity": "INFO",
         "blocks_production": false,
         "expected": null,
         "actual": null,
         "recommended_action": "NONE",
-        "diagnosed_at": "2026-10-10T05:52:38.394857+00:00"
+        "diagnosed_at": "2026-10-10T06:15:30.808232+00:00"
       },
       "publish_pipeline": {
-        "status": "DEGRADED",
+        "status": "HEALTHY",
         "phase": "PRE_CURRENT_RUN_PUBLISH_STEP_PREVIOUS_COMMIT_EVIDENCE",
-        "age_seconds": 12104.9,
+        "age_seconds": 400.8,
         "max_age_seconds": 1800,
         "evidence_status": "VERIFIED_PUBLISHED_SNAPSHOT",
         "strict_validation": "PASS",
-        "source_sha": "954c59a642f4af9def156f9dfe3e2f403191cd2b",
-        "run_id": 38016994394,
+        "source_sha": "225325365564bcb21bf243e646f1a79c72f7887e",
+        "run_id": 38029106080,
         "proof_rule": "IF_THIS_FILE_IS_VISIBLE_ON_MAIN_THE_VALIDATED_DATA_COMMIT_WAS_PUSHED_SUCCESSFULLY",
         "interpretation": "This checks the previous published commit only; current-run publication happens after health and strict validation.",
-        "failure_code": "PREVIOUS_PUBLISH_EVIDENCE_STALE_OR_MISSING",
-        "severity": "MEDIUM",
+        "failure_code": "OK",
+        "severity": "INFO",
         "blocks_production": false,
-        "expected": {
-          "max_age_seconds": 1800,
-          "status": [
-            "READY_TO_PUBLISH",
-            "VERIFIED_PUBLISHED_SNAPSHOT"
-          ]
-        },
-        "actual": {
-          "age_seconds": 12104.9,
-          "status": "VERIFIED_PUBLISHED_SNAPSHOT",
-          "source_sha": "954c59a642f4af9def156f9dfe3e2f403191cd2b",
-          "run_id": 38016994394
-        },
-        "recommended_action": "CHECK_PREVIOUS_PUBLISH_HISTORY; CURRENT_RUN_HAS_NOT_REACHED_PUBLISH_STEP_YET",
-        "diagnosed_at": "2026-10-10T05:52:38.394857+00:00"
+        "expected": null,
+        "actual": null,
+        "recommended_action": "NONE",
+        "diagnosed_at": "2026-10-10T06:15:30.808232+00:00"
       },
       "old_coin_revival": {
         "status": "HEALTHY",
@@ -304,7 +220,7 @@
         "expected": null,
         "actual": null,
         "recommended_action": "NONE",
-        "diagnosed_at": "2026-10-10T05:52:38.394857+00:00"
+        "diagnosed_at": "2026-10-10T06:15:30.808232+00:00"
       },
       "new_token_lab": {
         "status": "HEALTHY",
@@ -318,7 +234,7 @@
         "expected": null,
         "actual": null,
         "recommended_action": "NONE",
-        "diagnosed_at": "2026-10-10T05:52:38.394857+00:00"
+        "diagnosed_at": "2026-10-10T06:15:30.808232+00:00"
       },
       "holder_cluster_fail_closed": {
         "status": "HEALTHY",
@@ -329,44 +245,30 @@
         "expected": null,
         "actual": null,
         "recommended_action": "NONE",
-        "diagnosed_at": "2026-10-10T05:52:38.394857+00:00"
+        "diagnosed_at": "2026-10-10T06:15:30.808232+00:00"
       },
       "decision_path": {
-        "status": "DEGRADED",
-        "runtime_age_seconds": 11572.1,
+        "status": "HEALTHY",
+        "runtime_age_seconds": 486.2,
         "max_runtime_age_seconds": 3600,
         "market_watch_outcome": "success",
-        "configured_targets": 897,
+        "configured_targets": 886,
         "partial_upstream_evaluated": 0,
         "partial_upstream_skipped": 0,
-        "evaluated_target_count": 897,
+        "evaluated_target_count": 886,
         "decision_coverage_pct": 100.0,
-        "observable_target_count": 23,
-        "observable_coverage_pct": 2.56,
+        "observable_target_count": 16,
+        "observable_coverage_pct": 1.81,
         "coverage_semantics": "EVALUATED_IS_NOT_THE_SAME_AS_FRESH_EXACT_PAIR_OBSERVED",
         "final_buy_status": "OK",
         "interpretation": "Discovery health is not decision health; current market-watch coverage is required.",
-        "failure_code": "DECISION_PATH_NO_CURRENT_COVERAGE",
-        "severity": "HIGH",
+        "failure_code": "OK",
+        "severity": "INFO",
         "blocks_production": false,
-        "expected": {
-          "market_watch_outcome": "success",
-          "when_targets_exist": "current FINAL BUY evaluation coverage"
-        },
-        "actual": {
-          "runtime_age_seconds": 11572.1,
-          "market_watch_outcome": "success",
-          "configured_targets": 897,
-          "partial_upstream_evaluated": 0,
-          "partial_upstream_skipped": 0,
-          "evaluated_target_count": 897,
-          "decision_coverage_pct": 100.0,
-          "observable_target_count": 23,
-          "observable_coverage_pct": 2.56,
-          "final_buy_status": "OK"
-        },
-        "recommended_action": "RESTORE_UNIFIED_MARKET_WATCH_CURRENT_SNAPSHOT_COVERAGE",
-        "diagnosed_at": "2026-10-10T05:52:38.394857+00:00"
+        "expected": null,
+        "actual": null,
+        "recommended_action": "NONE",
+        "diagnosed_at": "2026-10-10T06:15:30.808232+00:00"
       },
       "liquidity_policy": {
         "status": "HEALTHY",
@@ -379,7 +281,7 @@
         "expected": null,
         "actual": null,
         "recommended_action": "NONE",
-        "diagnosed_at": "2026-10-10T05:52:38.394857+00:00"
+        "diagnosed_at": "2026-10-10T06:15:30.808232+00:00"
       },
       "holder_cluster_evidence_coverage": {
         "status": "HEALTHY",
@@ -394,7 +296,7 @@
         "expected": null,
         "actual": null,
         "recommended_action": "NONE",
-        "diagnosed_at": "2026-10-10T05:52:38.394857+00:00"
+        "diagnosed_at": "2026-10-10T06:15:30.808232+00:00"
       },
       "wallet_forensics": {
         "status": "HEALTHY",
@@ -413,7 +315,7 @@
         "expected": null,
         "actual": null,
         "recommended_action": "NONE",
-        "diagnosed_at": "2026-10-10T05:52:38.394857+00:00"
+        "diagnosed_at": "2026-10-10T06:15:30.808232+00:00"
       },
       "wallet_forensics_capability": {
         "status": "HEALTHY",
@@ -432,7 +334,7 @@
         "expected": null,
         "actual": null,
         "recommended_action": "NONE",
-        "diagnosed_at": "2026-10-10T05:52:38.394857+00:00"
+        "diagnosed_at": "2026-10-10T06:15:30.808232+00:00"
       },
       "wallet_forensics_evidence_yield": {
         "status": "HEALTHY",
@@ -450,7 +352,7 @@
         "expected": null,
         "actual": null,
         "recommended_action": "NONE",
-        "diagnosed_at": "2026-10-10T05:52:38.394857+00:00"
+        "diagnosed_at": "2026-10-10T06:15:30.808232+00:00"
       }
     },
     "lane_metrics": {
@@ -466,7 +368,7 @@
       },
       "revival": {
         "qualified": 0,
-        "cex_revival_alerts": 83
+        "cex_revival_alerts": 22
       },
       "allocation_decision": "VETERAN_COIN_REVIVAL_ONLY"
     }
@@ -480,39 +382,39 @@
       "arbitrum",
       "base"
     ],
-    "discovered": 38,
-    "snapshots": 36,
-    "veteran_gate_pass": 8,
-    "dna_watch_count": 4,
+    "discovered": 18,
+    "snapshots": 15,
+    "veteran_gate_pass": 3,
+    "dna_watch_count": 1,
     "late_move_count": 0,
     "counts_by_chain": {
       "solana": {
-        "snapshots": 4,
-        "veteran_gate_pass": 1,
-        "dna_watch": 0,
-        "late_move": 0
-      },
-      "ethereum": {
-        "snapshots": 12,
-        "veteran_gate_pass": 0,
-        "dna_watch": 0,
-        "late_move": 0
-      },
-      "bsc": {
-        "snapshots": 12,
-        "veteran_gate_pass": 5,
-        "dna_watch": 4,
-        "late_move": 0
-      },
-      "arbitrum": {
         "snapshots": 3,
         "veteran_gate_pass": 0,
         "dna_watch": 0,
         "late_move": 0
       },
+      "ethereum": {
+        "snapshots": 4,
+        "veteran_gate_pass": 0,
+        "dna_watch": 0,
+        "late_move": 0
+      },
+      "bsc": {
+        "snapshots": 6,
+        "veteran_gate_pass": 1,
+        "dna_watch": 0,
+        "late_move": 0
+      },
+      "arbitrum": {
+        "snapshots": 1,
+        "veteran_gate_pass": 1,
+        "dna_watch": 1,
+        "late_move": 0
+      },
       "base": {
-        "snapshots": 5,
-        "veteran_gate_pass": 2,
+        "snapshots": 1,
+        "veteran_gate_pass": 1,
         "dna_watch": 0,
         "late_move": 0
       }
