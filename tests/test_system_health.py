@@ -248,3 +248,21 @@ def test_health_rejects_source_timestamps_far_in_future(tmp_path, monkeypatch):
     assert report["checks"]["primary_scan"]["age_seconds"] is None
     assert report["checks"]["publish_pipeline"]["status"] == "DEGRADED"
     assert report["pipeline_health"] == "DEGRADED"
+
+
+def test_primary_scan_ttl_matches_scheduled_10_min_cycle_and_still_fails_closed(tmp_path, monkeypatch):
+    monkeypatch.setenv("WALLET500_WORKFLOW_DEGRADED_SECONDS", "600")
+    now = datetime(2026, 8, 30, 0, 0, 0, tzinfo=timezone.utc)
+    _heartbeat(tmp_path, "2026-08-29T23:58:00+00:00")
+    _write(tmp_path / "run-summary.json", _policy_summary("2026-08-29T23:41:00+00:00"))
+    fresh = build_health(str(tmp_path), now)
+    assert fresh["checks"]["primary_scan"]["status"] == "HEALTHY"
+    assert fresh["checks"]["primary_scan"]["max_age_seconds"] == 1200
+
+    # Missing more than two full collection windows is still a hard blocker.
+    _write(tmp_path / "run-summary.json", _policy_summary("2026-08-29T23:39:00+00:00"))
+    stale = build_health(str(tmp_path), now)
+    check = stale["checks"]["primary_scan"]
+    assert check["status"] == "DEGRADED"
+    assert check["failure_code"] == "SCAN_STALE_OR_TIMESTAMP_MISSING"
+    assert check["blocks_production"] is True
