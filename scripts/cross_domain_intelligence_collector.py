@@ -538,6 +538,8 @@ def main():
     old_state = load(STATE, {"version": 1, "tokens": {}})
     old_tokens = old_state.get("tokens") or {}
     rows = targets()
+    # Global attention is independent of holder providers. A hung public RPC
+    # must not prevent bounded fresh holder collection on the next cycle.
     trending, boosts = global_attention_maps(rows)
     fresh = []
     new_state = {
@@ -555,9 +557,22 @@ def main():
         a = asset_ident(t)
         if a:
             holder_targets.setdefault(a[2], t)
+    # A full (>100 asset) fan-out over public RPCs exceeded the workflow's
+    # 100-second hard limit. Keep the eight highest-priority assets every scan,
+    # and rotate eight more through the rest so none starve. Unpolled samples
+    # are preserved for the next genuine observation, never used as fresh proof.
+    asset_keys = list(holder_targets)
+    priority_keys = asset_keys[:8]
+    tail = asset_keys[8:]
+    rotation = int(old_state.get("holder_rotation_cursor") or 0)
+    rotating_keys = [tail[(rotation + j) % len(tail)] for j in range(min(8, len(tail)))] if tail else []
+    selected_keys = set(priority_keys + rotating_keys)
+    new_state["holder_rotation_cursor"] = (rotation + len(rotating_keys)) % len(tail) if tail else 0
+    new_state["holder_poll_attempted"] = len(selected_keys)
+    new_state["holder_poll_deferred"] = len(asset_keys) - len(selected_keys)
     holder_results = {}
     with ThreadPoolExecutor(max_workers=8) as ex:
-        futs = {ex.submit(holder_snapshot, t): (asset_key, t) for asset_key, t in holder_targets.items()}
+        futs = {ex.submit(holder_snapshot, t): (asset_key, t) for asset_key, t in holder_targets.items() if asset_key in selected_keys}
         for f in as_completed(futs):
             asset_key, _ = futs[f]
             try:
@@ -596,7 +611,14 @@ def main():
         prev = old_tokens.get(key) or {}
         hs = holder_results.get(asset_key)
         ns = news_results.get(key)
-        token_state = {"observed_at": now(), "holder": hs, "news": ns}
+        # Preserve the holder baseline timestamp when no NEW snapshot arrived.
+        # Resetting it to now on every skipped cycle invents velocity / hides
+        # movement; the next actual poll must compare against the real sample.
+        token_state = {
+            "observed_at": now() if hs is not None else (prev.get("observed_at") or now()),
+            "holder": hs if hs is not None else prev.get("holder"),
+            "news": ns if ns is not None else prev.get("news"),
+        }
 
         if hs:
             prevh = prev.get("holder") or {}
@@ -766,6 +788,9 @@ def main():
         "status": "OK",
         "targets": len(rows),
         "holder_snapshots": sum(v is not None for v in holder_results.values()),
+        "holder_poll_attempted": len(selected_keys),
+        "holder_poll_deferred": len(asset_keys) - len(selected_keys),
+        "holder_rotation_cursor": new_state["holder_rotation_cursor"],
         "news_snapshots": sum(v is not None for v in news_results.values()),
         "new_events": len([x for x in fresh if x]),
         "trending_matches": sum(1 for x in fresh if x and x.get("kind") == "geckoterminal_trending_pool"),
