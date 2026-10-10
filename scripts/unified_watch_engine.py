@@ -472,9 +472,49 @@ def dynamic_candidates(persisted_tokens=None):
     critical_spot_cap = bounded_env_int(
         "WALLET500_CRITICAL_SPOT_CAP", 18, 8, 32
     )
+    # Pre-wave detection must not wait behind an entire page of +50% movers.
+    # This is a bounded SCAN priority only: never a risk, identity or BUY bypass.
+    # Reserve up to four of the 18 critical groups for genuine early volume shocks.
+    def _prewave_critical(x):
+        try:
+            change = float(x.get("discovery_momentum_change_pct") or x.get("change_24h_pct") or 0)
+            gain = float(x.get("gain_from_first_seen_pct") or 0)
+            volume = float(x.get("quote_volume_24h_usd") or 0)
+            multiple = float(
+                x.get("cex_relative_volume_multiple")
+                or x.get("futures_volume_baseline_multiple") or 0
+            )
+        except (TypeError, ValueError):
+            return False
+        return (
+            3.0 <= change < 25.0
+            and gain < 25.0
+            and volume >= 20_000
+            and multiple >= 4.0
+        )
+
+    early_rows = sorted(
+        (x for x in spot if _prewave_critical(x)),
+        key=lambda x: (
+            -float(x.get("cex_relative_volume_multiple") or x.get("futures_volume_baseline_multiple") or 0),
+            _spot_priority(x),
+        ),
+    )
     critical_rows = []
     critical_ids = set()
     critical_groups = set()
+    early_groups_reserved = 0
+    for x in early_rows:
+        if early_groups_reserved >= min(4, critical_spot_cap // 3):
+            break
+        group = _critical_group(x)
+        if group in critical_groups:
+            continue
+        critical_rows.append(x)
+        critical_ids.add(x["_identity_key"])
+        critical_groups.add(group)
+        early_groups_reserved += 1
+
     for x in spot:
         group = _critical_group(x)
         if group in critical_groups:
