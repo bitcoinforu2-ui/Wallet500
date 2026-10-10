@@ -342,23 +342,59 @@ def previous_generation_paths(parent: str, incoming_run: int) -> set[str]:
     Such older, hash-bound bytes must not permanently veto the newer validated
     full snapshot. Unbound changes still retain the original conflict protection.
     """
+    # An older, independently validated LIVE snapshot is publisher-owned too.
+    # Its immutable content digest is stronger evidence than file mtime.
+    # In high-churn GitHub Actions, an earlier run may publish after a newer
+    # run checked out. The newer validated snapshot must be able to supersede
+    # that exact older hash-bound REAL ALERT file, but never an unproven edit.
+    prior_verified = set()
+    proof_raw = _parent_bytes(parent, "data/publish-evidence.json")
+    try:
+        proof = json.loads(proof_raw.decode("utf-8")) if proof_raw is not None else {}
+        prior_run = int(proof.get("run_id") or 0)
+        prior_sha = str(proof.get("source_sha") or "")
+        prior_digest = str(proof.get("real_alerts_sha256") or "")
+        prior_real = _parent_bytes(parent, "data/real-alerts.json")
+        prior_production = _parent_bytes(parent, "data/production-status.json")
+        if (
+            proof.get("version") == 3
+            and proof.get("status") == "VERIFIED_PUBLISHED_SNAPSHOT"
+            and proof.get("strict_validation") == "PASS"
+            and proof.get("canonical_decision_preserved") is False
+            and proof.get("proof_rule") == "ATOMIC_WITH_VERIFIED_SNAPSHOT_AND_BOUND_TO_REAL_ALERTS_SHA256"
+            and 0 < prior_run < incoming_run
+            and len(prior_sha) == 40
+            and all(ch in "0123456789abcdef" for ch in prior_sha.lower())
+            and proof.get("source_run_id") == prior_run
+            and proof.get("generation_id") == f"live-scan:{prior_run}:{prior_sha}"
+            and prior_real is not None
+            and prior_digest == hashlib.sha256(prior_real).hexdigest()
+            and prior_digest == proof.get("snapshot_real_alerts_sha256")
+            and _bound_real_alerts_passes_production_contract(prior_real)
+            and prior_production is not None
+            and _production_status_bytes_passes_contract(prior_production)
+        ):
+            prior_verified.add("data/real-alerts.json")
+    except (TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        pass
+
     raw = _parent_bytes(parent, "data/decision-generation.json")
     try:
         generation = json.loads(raw.decode("utf-8")) if raw is not None else {}
         run = int(generation["workflow_run_id"])
         sha = str(generation["source_sha"])
     except (ValueError, TypeError, KeyError, AttributeError):
-        return set()
+        return prior_verified
     if (generation.get("version") != 3
             or generation.get("status") != "COHERENT_READY"
             or generation.get("automatic_buy") is not False
             or run >= incoming_run
             or len(sha) != 40
             or generation.get("generation_id") != f"wallet500:{run}:{sha}"):
-        return set()
+        return prior_verified
     hashes = generation.get("hashes")
     if not isinstance(hashes, dict) or set(hashes) != set(CANONICAL_FILES):
-        return set()
+        return prior_verified
     matched = set()
     for path, expected in hashes.items():
         body = _parent_bytes(parent, path)
@@ -368,11 +404,11 @@ def previous_generation_paths(parent: str, incoming_run: int) -> set[str]:
     # REAL ALERT surface. Its current bytes must be bound and policy-strict.
     real_path = DECISION_HASH_PATHS["real_alerts"]
     if real_path not in matched or not _bound_real_alerts_passes_production_contract(_parent_bytes(parent, real_path)):
-        return set()
+        return prior_verified
     production_path = DECISION_HASH_PATHS["production_status"]
     if production_path not in matched or not _production_status_bytes_passes_contract(_parent_bytes(parent, production_path)):
-        return set()
-    return matched
+        return prior_verified
+    return matched | prior_verified
 
 
 def _proof_blob(
