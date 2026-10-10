@@ -81,7 +81,7 @@ def get_json(url, timeout=7):
         return resilient_http.request_json(
             url,
             timeout=timeout,
-            attempts=4,
+            attempts=1,
             cache_ttl=45,
             user_agent=UA,
         )
@@ -94,7 +94,7 @@ def get_text(url, timeout=7):
         return resilient_http.request_text(
             url,
             timeout=timeout,
-            attempts=4,
+            attempts=1,
             cache_ttl=90,
             user_agent=UA,
             accept="application/rss+xml,text/xml,*/*",
@@ -110,7 +110,7 @@ def post_json(url, payload, timeout=7):
             method="POST",
             payload=payload,
             timeout=timeout,
-            attempts=4,
+            attempts=1,
             user_agent=UA,
         )
     except Exception:
@@ -291,7 +291,13 @@ def global_attention_maps(rows=None):
         network = GT_NET.get(chain)
         if network:
             networks.add(network)
-    for network in sorted(networks)[:10]:
+    # Rotate optional networks across scans rather than making ten sequential
+    # provider calls on every run. Preserve the core SOL/ETH/BSC radar.
+    core = [n for n in ("solana", "eth", "bsc") if n in networks]
+    optional = sorted(networks.difference(core))
+    slot = (int(datetime.now(timezone.utc).timestamp() // 600) * 3) % len(optional) if optional else 0
+    ordered = core + optional[slot:] + optional[:slot]
+    for network in ordered[:6]:
         d = get_json(f"https://api.geckoterminal.com/api/v2/networks/{network}/trending_pools", timeout=6) or {}
         for rank, item in enumerate(d.get("data") or [], 1):
             attrs = item.get("attributes") or {}
