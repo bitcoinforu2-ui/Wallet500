@@ -1,6 +1,12 @@
 name: Wallet500 Verified Snapshot Publisher
 
 on:
+  # Recovery-triggered validation when publisher logic itself is repaired.
+  # Ordinary data/code pushes are deliberately NOT a publishing authority.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verified-publisher.yml'
   workflow_run:
     workflows: ["Wallet500 Multi-Chain Live Scan"]
     types: [completed]
