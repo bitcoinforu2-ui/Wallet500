@@ -302,11 +302,23 @@ def resolve_identities(selected: list[dict], on_result=None) -> dict[int, dict]:
     # only the hottest unresolved slice; the remainder persists as PENDING and is
     # retried on later cycles.
     unresolved.sort(key=lambda i: priority_key(selected[i]))
-    # Reserve the hottest 16 slots on EVERY run, then fairly rotate the
-    # remaining eight. Repeated polling of the same leaders previously left
-    # lower-ranked movers permanently PENDING even across many scans.
-    protected = unresolved[:min(16, IDENTITY_RESOLUTION_BUDGET)]
-    tail = unresolved[len(protected):]
+    # A retained "forced hot" watch must not starve a NEW top-12 mover:
+    # forced_hot_watch sorts first, even when its current rank is much lower.
+    # Reserve up to twelve of the sixteen fixed identity slots for current
+    # top-12 gainers with >=5% momentum, then fill from the usual hot queue.
+    # Only prioritization changes; strict identity and BUY gates remain intact.
+    protected_limit = min(16, IDENTITY_RESOLUTION_BUDGET)
+    current_leaders = [
+        i for i in unresolved
+        if int(selected[i].get("positive_gainer_rank") or 999999) <= EXPENSIVE_RECOVERY_TOP_RANK
+        and float(selected[i].get("change_24h_pct") or 0) >= MIN_EARLY_CHANGE_PCT
+    ]
+    current_leaders.sort(key=lambda i: int(selected[i].get("positive_gainer_rank") or 999999))
+    guaranteed = current_leaders[:min(EXPENSIVE_RECOVERY_TOP_RANK, protected_limit)]
+    guarantee_set = set(guaranteed)
+    remaining = [i for i in unresolved if i not in guarantee_set]
+    protected = guaranteed + remaining[:protected_limit - len(guaranteed)]
+    tail = remaining[protected_limit - len(guaranteed):]
     if tail:
         # Eight slots rotate once per ten-minute scan without modifying state
         # or relying on a mutable cursor in concurrent publishers.
