@@ -329,3 +329,51 @@ def test_workflow_cannot_rebind_source_if_snapshot_was_not_published():
     assert 'if [ "$published_run" -lt "$LIVE_SOURCE_RUN" ]' in workflow
     assert "SOURCE_SNAPSHOT_NOT_PUBLISHED" in workflow
     assert workflow.index("SOURCE_SNAPSHOT_NOT_PUBLISHED") < workflow.index("python -m wallet500.decision_generation")
+
+
+def _prior_verified_publisher(monkeypatch, *, prior_run=123, policy_age=180, mutate_hash=False):
+    real = json.dumps(_strict_real_alert(policy_age, 50000)).encode()
+    prod = json.dumps(_strict_production_status()).encode()
+    digest = hashlib.sha256(real).hexdigest()
+    proof = {
+        "version": 3,
+        "status": "VERIFIED_PUBLISHED_SNAPSHOT",
+        "strict_validation": "PASS",
+        "canonical_decision_preserved": False,
+        "proof_rule": "ATOMIC_WITH_VERIFIED_SNAPSHOT_AND_BOUND_TO_REAL_ALERTS_SHA256",
+        "run_id": prior_run,
+        "source_run_id": prior_run,
+        "source_sha": "b" * 40,
+        "generation_id": f"live-scan:{prior_run}:" + "b" * 40,
+        "real_alerts_sha256": digest if not mutate_hash else "c" * 64,
+        "snapshot_real_alerts_sha256": digest,
+    }
+    bodies = {
+        "data/publish-evidence.json": json.dumps(proof).encode(),
+        "data/real-alerts.json": real,
+        "data/production-status.json": prod,
+        # No post-publication decision-generation exists yet.
+    }
+    monkeypatch.setattr(mod, "_parent_bytes", lambda parent, path: bodies.get(path))
+    return bodies, proof
+
+
+def test_newer_verified_live_scan_can_supersede_hash_bound_older_verified_live_scan(monkeypatch):
+    _prior_verified_publisher(monkeypatch)
+    assert mod.previous_generation_paths("main", 124) == {"data/real-alerts.json"}
+    assert mod.previous_generation_paths("main", 123) == set()
+    assert mod.previous_generation_paths("main", 122) == set()
+
+
+def test_verified_publisher_conflict_override_rejects_unbound_or_weak_feed(monkeypatch):
+    bodies, proof = _prior_verified_publisher(monkeypatch)
+    bodies["data/real-alerts.json"] += b"\\n"
+    assert mod.previous_generation_paths("main", 124) == set()
+    bodies, proof = _prior_verified_publisher(monkeypatch, mutate_hash=True)
+    assert mod.previous_generation_paths("main", 124) == set()
+    bodies, proof = _prior_verified_publisher(monkeypatch, policy_age=90)
+    assert mod.previous_generation_paths("main", 124) == set()
+    bodies, proof = _prior_verified_publisher(monkeypatch)
+    proof["canonical_decision_preserved"] = True
+    bodies["data/publish-evidence.json"] = json.dumps(proof).encode()
+    assert mod.previous_generation_paths("main", 124) == set()
