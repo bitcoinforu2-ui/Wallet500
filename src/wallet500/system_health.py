@@ -138,8 +138,11 @@ def _diagnose(name, check, now):
                 recommended_action="INSPECT_QUARANTINE_REASONS_AND_MISSING_HOLDER_CLUSTER_EVIDENCE",
             )
     elif name == "decision_path":
+        runtime_age = check.get("runtime_age_seconds")
+        max_age = check.get("max_runtime_age_seconds", 3600)
+        runtime_stale = runtime_age is None or runtime_age > max_age
         diag.update(
-            failure_code="DECISION_PATH_NO_CURRENT_COVERAGE",
+            failure_code="DECISION_PATH_RUNTIME_STALE" if runtime_stale else "DECISION_PATH_NO_CURRENT_COVERAGE",
             severity="HIGH",
             blocks_production=False,
             expected={
@@ -158,7 +161,7 @@ def _diagnose(name, check, now):
                 "observable_coverage_pct": check.get("observable_coverage_pct"),
                 "final_buy_status": check.get("final_buy_status"),
             },
-            recommended_action="RESTORE_UNIFIED_MARKET_WATCH_CURRENT_SNAPSHOT_COVERAGE",
+            recommended_action="RESTORE_UNIFIED_WATCH_RUNTIME_FRESHNESS" if runtime_stale else "RESTORE_UNIFIED_MARKET_WATCH_CURRENT_SNAPSHOT_COVERAGE",
         )
     elif name == "wallet_forensics":
         diag.update(
