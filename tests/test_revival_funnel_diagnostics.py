@@ -114,3 +114,21 @@ def test_diagnostics_separates_hard_blockers_from_pending_confirmations(tmp_path
     assert "NO_ACTIVE_QUALIFIED_BEFORE_AGE_GOVERNANCE" not in hard_codes
     assert "active_qualification" not in out["lanes"]
     assert "MARKET_WAKING_IS_LATE_CONFIRMATION_NOT_EARLY_DISCOVERY_GATE" in out["truth_rules"]
+
+
+def test_unknown_wallet_coverage_is_not_reported_complete(tmp_path: Path) -> None:
+    _write(tmp_path / "revival-prewaking-wallet-evidence.json", {
+        "targets": 3,
+        "tokens": [
+            {"coverage": {"coverage_quality": "COMPLETE", "coverage_gap": False}},
+            {"coverage": {"coverage_quality": "PARTIAL", "coverage_gap": True}},
+            {"coverage": {}},
+        ],
+    })
+    out = rfd.build(tmp_path)
+    lane = out["lanes"]["prewaking_wallet_evidence"]
+    assert lane["coverage_complete"] == 1
+    assert lane["coverage_partial"] == 1
+    assert lane["coverage_unknown"] == 1
+    assert any(x["code"] == "PREWAKING_WALLET_COVERAGE_UNKNOWN" and x["count"] == 1
+               for x in out["pending_confirmations"])

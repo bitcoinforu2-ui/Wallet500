@@ -46,6 +46,7 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
     wallet_rows = wallet_rows if isinstance(wallet_rows, list) else []
     wallet_partial = 0
     wallet_complete = 0
+    wallet_unknown = 0
     wallet_forensics_eligible = 0
     for row in wallet_rows:
         if not isinstance(row, dict):
@@ -53,8 +54,11 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
         coverage = _dict(row.get("coverage"))
         if coverage.get("coverage_quality") == "PARTIAL" or coverage.get("coverage_gap") is True:
             wallet_partial += 1
-        else:
+        elif coverage.get("coverage_quality") == "COMPLETE" and coverage.get("coverage_gap") is False:
             wallet_complete += 1
+        else:
+            # Unknown/missing coverage must never be reported as complete.
+            wallet_unknown += 1
         if coverage.get("eligible_as_forensics_t0_wallet_evidence") is True:
             wallet_forensics_eligible += 1
 
@@ -103,6 +107,13 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
             "code": "PRECURSOR_EVIDENCE_INSUFFICIENT",
             "count": insufficient,
             "classification": "PENDING_CONFIRMATION_NOT_HARD_FAILURE",
+        })
+
+    if wallet_unknown:
+        pending_confirmations.append({
+            "code": "PREWAKING_WALLET_COVERAGE_UNKNOWN",
+            "count": wallet_unknown,
+            "classification": "COVERAGE_GAP_NOT_HARD_FAILURE",
         })
 
     if wallet_partial:
@@ -192,6 +203,7 @@ def build(data_dir: Path = DATA) -> dict[str, Any]:
                 "targets": _num(wallets.get("targets")) if isinstance(wallets, dict) else 0,
                 "coverage_complete": wallet_complete,
                 "coverage_partial": wallet_partial,
+                "coverage_unknown": wallet_unknown,
                 "forensics_t0_eligible": wallet_forensics_eligible,
             },
             "reawakening_recovery": {
