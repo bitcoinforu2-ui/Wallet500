@@ -63,7 +63,9 @@ def http_json(url: str, *, payload: Any = None, timeout: int = 15) -> Any:
         method="POST" if payload is not None else "GET",
         payload=payload,
         timeout=timeout,
-        attempts=4,
+        # The public Solana RPC can throttle for minutes.  Bounded retries keep
+        # this research lane from killing the whole 10-minute production cycle.
+        attempts=2 if payload is not None else 3,
         cache_ttl=20 if payload is None else 0,
         user_agent="Wallet500-EarlyKOL/2.0",
     )
@@ -73,7 +75,7 @@ def rpc_call(rpc_url: str, method: str, params: list[Any]) -> Any:
     response = http_json(
         rpc_url,
         payload={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
-        timeout=18,
+        timeout=7,
     )
     if isinstance(response, dict) and response.get("error"):
         raise RuntimeError(f"RPC_{method}:{response['error']}")
@@ -401,7 +403,22 @@ def main() -> int:
     new_events = 0
     initialized = 0
 
+    # Scheduled scans are hard-killed at 100s. Rotate the wallet cohort and
+    # finish/persist a bounded partial scan instead of losing ALL observations.
+    # Unprocessed wallets retain their immutable signature boundaries.
+    started = time.monotonic()
+    budget_seconds = max(15.0, min(70.0, float(os.environ.get("EARLY_KOL_BUDGET_SECONDS", "65"))))
+    wallet_count = len(wallets)
+    cursor = int(state.get("next_wallet_offset") or 0) % wallet_count if wallet_count else 0
+    wallets = wallets[cursor:] + wallets[:cursor]
+    wallets_attempted = 0
+    interrupted = False
+
     for wallet in wallets:
+        if time.monotonic() - started >= budget_seconds:
+            interrupted = True
+            break
+        wallets_attempted += 1
         wid = str(wallet.get("id") or "")
         address = str(wallet.get("address") or "")
         if not wid or not address:
@@ -425,7 +442,14 @@ def main() -> int:
             if sig:
                 fresh.append(row)
         fresh = list(reversed(fresh[-tx_limit:]))
+        wallet_incomplete = False
         for row in fresh:
+            if time.monotonic() - started >= budget_seconds:
+                # Do NOT advance this wallet's boundary if its batch is partial.
+                # Recorded event ids deduplicate completed transactions next run.
+                wallet_incomplete = True
+                interrupted = True
+                break
             sig = str(row.get("signature") or "")
             if not sig:
                 continue
@@ -474,9 +498,13 @@ def main() -> int:
                 new_events += 1
             except Exception as exc:
                 errors.append({"wallet_id": wid, "stage": "TRANSACTION", "signature": sig, "error": f"{type(exc).__name__}:{exc}"[:300]})
-        if sigs:
+        if sigs and not wallet_incomplete:
             boundaries[wid] = str(sigs[0].get("signature") or boundary)
+        if wallet_incomplete:
+            break
         time.sleep(float(config.get("wallet_delay_seconds") or 0.03))
+
+    state["next_wallet_offset"] = (cursor + wallets_attempted - int(interrupted and wallet_incomplete)) % wallet_count if wallet_count else 0
 
     retention_hours = float(config.get("event_retention_hours") or 24)
     cutoff = now_dt().timestamp() - retention_hours * 3600
@@ -558,6 +586,9 @@ def main() -> int:
         "mode": "FORWARD_ONLY_EXACT_MINT_RESEARCH",
         "updated_at": now_iso(),
         "wallet_boundaries": boundaries,
+        "scan_partial": bool(interrupted),
+        "wallets_attempted": wallets_attempted,
+        "wallets_deferred": max(0, wallet_count - wallets_attempted),
         "events": events,
         "errors": errors[-100:],
         "automatic_buy": False,
@@ -569,6 +600,10 @@ def main() -> int:
         "mode": "EARLY_KOL_CONVERGENCE_FORWARD_ONLY",
         "wallets_configured": len(wallets),
         "wallets_initialized_this_run": initialized,
+        "scan_partial": bool(interrupted),
+        "wallets_attempted": wallets_attempted,
+        "wallets_deferred": max(0, wallet_count - wallets_attempted),
+        "next_wallet_offset": state["next_wallet_offset"],
         "new_buy_events": new_events,
         "retained_buy_events": len(events),
         "active_convergences": len(convergences),
