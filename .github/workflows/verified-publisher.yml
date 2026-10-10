@@ -285,6 +285,19 @@ jobs:
             fi
             export SOURCE_SHA="$LIVE_SOURCE_SHA"
             export GITHUB_RUN_ID="$LIVE_SOURCE_RUN"
+            # All canonical upstream files must come from the exact published
+            # HEAD. The immutable artifact publisher can preserve newer data
+            # for some paths; do not hash local pre-publish bytes as though
+            # they had been included in the atomically published commit.
+            git restore --source=HEAD --worktree -- \
+              data/revival-1000-latest.json \
+              data/cex-revival-radar.json \
+              data/active-qualified-candidates.json \
+              data/active-qualified-age-gate.json \
+              data/candidate-evidence-envelope.json \
+              data/real-alerts.json \
+              data/strict-validation.json \
+              data/production-status.json
             python -m wallet500.truth_input_preflight
             python -m wallet500.decision_snapshot_guard
             python scripts/pipeline_integrity_audit.py
@@ -292,6 +305,29 @@ jobs:
             # unified watch, rather than its pre-publication scan-time view.
             python -m wallet500.system_health
             python -m wallet500.decision_generation
+            # Fail closed if the manifest claims a hash that is not actually
+            # in the committed parent generation. GitHub Pages verifies these
+            # same hashes; catch any race or accidental local mutation here.
+            python - <<'PY'
+            import hashlib, json, subprocess
+            from pathlib import Path
+            gen = json.loads(Path('data/decision-generation.json').read_text())
+            locally_generated = {
+                'data/decision-snapshot-integrity.json',
+                'data/revival-funnel-diagnostics.json',
+                'data/system-health.json',
+            }
+            for rel in gen['canonical_files']:
+                expected = gen['hashes'][rel]
+                if rel in locally_generated:
+                    actual = hashlib.sha256(Path(rel).read_bytes()).hexdigest()
+                else:
+                    committed = subprocess.check_output(['git', 'show', f'HEAD:{rel}'])
+                    actual = hashlib.sha256(committed).hexdigest()
+                if actual != expected:
+                    raise SystemExit(f'GENERATION_COMMITTED_INPUT_HASH_MISMATCH {rel} expected={expected} actual={actual}')
+            print('GENERATION_CANONICAL_INPUT_HASHES_BOUND', len(gen['canonical_files']))
+            PY
             set +e
             python scripts/atomic_publish.py \
               --base "$base" \
