@@ -85,6 +85,7 @@ def test_critical_lane_reserves_pre_wave_volume_shocks_without_buy_promotion(tmp
     for i in range(24):
         rows.append({
             "candidate_type": "CEX_MARKET_DISCOVERY",
+            "execution_identity_scope": "EXACT_CEX_MARKET",
             "symbol": f"HOT{i}",
             "exchange": "gate",
             "currency_pair": f"HOT{i}_USDT",
@@ -96,6 +97,7 @@ def test_critical_lane_reserves_pre_wave_volume_shocks_without_buy_promotion(tmp
     for i in range(4):
         rows.append({
             "candidate_type": "CEX_MARKET_DISCOVERY",
+            "execution_identity_scope": "EXACT_CEX_MARKET",
             "symbol": f"EARLY{i}",
             "exchange": "gate",
             "currency_pair": f"EARLY{i}_USDT",
