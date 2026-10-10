@@ -1310,6 +1310,17 @@ def prioritize_scan_targets(targets):
     return sorted(list(targets), key=scan_priority)
 
 
+def rotate_noncritical_targets(targets, cursor):
+    """Rotate only the budgeted tail; never delay FINAL BUY or critical movers."""
+    ordered = prioritize_scan_targets(targets)
+    critical = [t for t in ordered if scan_priority(t) < 3]
+    tail = [t for t in ordered if scan_priority(t) >= 3]
+    if not tail:
+        return ordered
+    offset = max(0, int(cursor or 0)) % len(tail)
+    return critical + tail[offset:] + tail[:offset]
+
+
 def noncritical_budget_exhausted(noncritical_started, now, budget_seconds):
     """Give the fair-rotation tail its own fixed budget after critical work.
 
@@ -1387,7 +1398,10 @@ def main():
     # tail. Previously a noncritical target could hit the runtime budget and
     # `break` the loop before a later configured FINAL-BUY watch (for example
     # MCAT) was refreshed, leaving its canonical market observation stale.
-    tokens = prioritize_scan_targets(tokens)
+    # Persisted cursor prevents the fixed research tail from starving the same
+    # late identities on every budget-limited run.
+    rotation_cursor = max(0, int(state.get('noncritical_scan_cursor') or 0))
+    tokens = rotate_noncritical_targets(tokens, rotation_cursor)
 
     dynamic = dynamic_all
     intel_index, intel_doc = load_intelligence()
@@ -1825,6 +1839,7 @@ def main():
             reserve_flow_alerts += 1
         sent_alerts += 1
 
+    state["noncritical_scan_cursor"] = rotation_cursor + noncritical_attempts
     state["updated_at"] = now_iso()
     STATE.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n")
     report = {
@@ -1860,6 +1875,8 @@ def main():
             if x.get("critical_market_lane") and x.get("dynamic_spot_candidate")
         } - {""}),
         "noncritical_fair_rotation_enabled": True,
+        "noncritical_rotation_cursor_before": rotation_cursor,
+        "noncritical_rotation_cursor_after": state["noncritical_scan_cursor"],
         "scan_elapsed_seconds": round(time.monotonic() - scan_started_monotonic, 2),
         "noncritical_scan_budget_seconds": noncritical_budget_seconds,
         "noncritical_scan_started_after_critical": True,
