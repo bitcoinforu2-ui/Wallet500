@@ -222,6 +222,12 @@ def build_health(output_dir="data", now=None):
     unified_runtime = _load(out / "unified-watch-runtime-evidence.json", {})
     final_buy = _load(out / "user-watch-final-buy-report.json", {})
 
+    # Live Scan is scheduled every ten minutes; its validated snapshot then
+    # passes through a separate publisher/queue. A ten-minute health TTL
+    # falsely blocks production during a normal scheduled cycle. Allow one
+    # complete 10-minute cycle plus bounded publication grace, but keep the
+    # fail-closed hard block for genuinely stale (>20 minute) primary scans.
+    primary_scan_max_age_seconds = max(1200, int(cfg.workflow_degraded_seconds))
     primary_age = _age_seconds(summary.get("updated_at") if isinstance(summary, dict) else None, now)
     wallet_age = _age_seconds(wallet.get("updated_at") if isinstance(wallet, dict) else None, now)
     publish_age = _age_seconds(publish.get("created_at") if isinstance(publish, dict) else None, now)
@@ -276,9 +282,9 @@ def build_health(output_dir="data", now=None):
 
     checks = {
         "primary_scan": {
-            "status": "HEALTHY" if primary_age is not None and primary_age <= cfg.workflow_degraded_seconds else "DEGRADED",
+            "status": "HEALTHY" if primary_age is not None and primary_age <= primary_scan_max_age_seconds else "DEGRADED",
             "age_seconds": round(primary_age, 1) if primary_age is not None else None,
-            "max_age_seconds": cfg.workflow_degraded_seconds,
+            "max_age_seconds": primary_scan_max_age_seconds,
         },
         "publish_pipeline": {
             "status": "HEALTHY" if prior_publish_ok else "DEGRADED",
