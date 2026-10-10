@@ -42,8 +42,12 @@ permissions:
 # deploy alive so high-frequency workflow_run/push events cannot starve public
 # publication. GitHub may replace an older pending run, but the running deploy
 # is allowed to finish and the newest pending run then converges the site.
+# Use a repository-scoped group instead of the generic "pages" lock.
+# An abandoned run using that shared name starved successive deployments even
+# when no dashboard job was actively executing. A new pending run may replace
+# an older pending run; it must never cancel a running deployment.
 concurrency:
-  group: pages
+  group: wallet500-dashboard-pages-main-v2
   cancel-in-progress: false
 
 jobs:
