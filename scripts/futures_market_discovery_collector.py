@@ -40,7 +40,7 @@ IDENTITY_RESOLUTION_BUDGET = 24
 # CoinGecko/platform recovery is slower, so keep it bounded but never disable it
 # for the hottest early movers. Ten slots cover the top-12 cohort plus volume/OI
 # shocks; CoinGecko market lookup is batched so this does not multiply API calls.
-EXPENSIVE_RECOVERY_BUDGET = 10
+EXPENSIVE_RECOVERY_BUDGET = 16
 EXPENSIVE_RECOVERY_TOP_RANK = 12
 EXPENSIVE_RECOVERY_MIN_CHANGE_PCT = 5.0
 PRIOR_IDENTITY_REUSE_MINUTES = 30
@@ -302,7 +302,17 @@ def resolve_identities(selected: list[dict], on_result=None) -> dict[int, dict]:
     # only the hottest unresolved slice; the remainder persists as PENDING and is
     # retried on later cycles.
     unresolved.sort(key=lambda i: priority_key(selected[i]))
-    target_indexes = unresolved[:IDENTITY_RESOLUTION_BUDGET]
+    # Reserve the hottest 16 slots on EVERY run, then fairly rotate the
+    # remaining eight. Repeated polling of the same leaders previously left
+    # lower-ranked movers permanently PENDING even across many scans.
+    protected = unresolved[:min(16, IDENTITY_RESOLUTION_BUDGET)]
+    tail = unresolved[len(protected):]
+    if tail:
+        # Eight slots rotate once per ten-minute scan without modifying state
+        # or relying on a mutable cursor in concurrent publishers.
+        offset = (int(now_dt().timestamp() // 600) * 8) % len(tail)
+        tail = tail[offset:] + tail[:offset]
+    target_indexes = (protected + tail)[:IDENTITY_RESOLUTION_BUDGET]
     expensive_candidates = [
         i for i in target_indexes
         if should_escalate_expensive_recovery(selected[i])
