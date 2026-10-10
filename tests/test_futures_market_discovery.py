@@ -447,3 +447,39 @@ def test_completed_identity_is_checkpointed_before_later_resolver_failure(tmp_pa
     assert persisted["identity_status"] == "RESOLVED_EXACT"
     assert persisted["contract"] == "FastToken"
     assert persisted["identity_verified_at"] == "2026-10-07T12:00:00+00:00"
+
+
+def test_new_top_rank_mover_cannot_be_starved_by_retained_forced_hot_watches(monkeypatch):
+    # Before the fix, 30 retained forced watches occupied all 16 protected
+    # slots. A newly accelerating top-2 mover without a forced flag was pushed
+    # into the rotating tail and often stayed identity-pending.
+    monkeypatch.setattr(radar.spot_identity, "load_native_discovery_registry", lambda: {})
+    monkeypatch.setattr(radar, "load_same_run_spot_identities", lambda: {})
+    monkeypatch.setattr(radar, "load_prior_futures_identities", lambda: {})
+    monkeypatch.setattr(radar.spot_identity, "prefetch_coingecko_market_matches", lambda symbols: {})
+
+    calls = {}
+
+    def identity_task(index, row, native_registry, expensive, coingecko_market_matches=None):
+        calls[row["symbol"]] = expensive
+        return index, {"identity_status": "UNRESOLVED", "identity_reason": "TEST"}
+
+    monkeypatch.setattr(radar, "_identity_task", identity_task)
+    selected = [
+        {
+            "symbol": f"OLD{i}", "futures_contract": f"OLD{i}_USDT",
+            "forced_hot_watch": True, "positive_gainer_rank": 20 + i,
+            "change_24h_pct": 5.0, "gain_from_first_seen_pct": 5.0,
+        }
+        for i in range(30)
+    ] + [{
+        "symbol": "FRESH_TOP2", "futures_contract": "FRESH_TOP2_USDT",
+        "forced_hot_watch": False, "positive_gainer_rank": 2,
+        "change_24h_pct": 7.0, "gain_from_first_seen_pct": 2.0,
+    }]
+
+    radar.resolve_identities(selected)
+    assert len(calls) == radar.IDENTITY_RESOLUTION_BUDGET
+    assert "FRESH_TOP2" in calls
+    assert calls["FRESH_TOP2"] is True
+    assert selected[-1]["identity_expensive_recovery_selected"] is True
