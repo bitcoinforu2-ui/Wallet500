@@ -78,6 +78,9 @@ def audit() -> dict:
     # artifact. Every regenerated canonical file must be in the *same* atomic
     # generation commit; otherwise the manifest can point to stale bytes.
     regenerated_canonical = {
+        # The Solana mintability guard sanitizes this file during decision validation.
+        # Its modified bytes must be committed with the matching decision manifest.
+        "data/candidate-evidence-envelope.json",
         "data/real-alerts.json",
         "data/decision-snapshot-integrity.json",
         "data/system-health.json",
