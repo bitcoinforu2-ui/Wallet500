@@ -310,6 +310,23 @@ jobs:
             # Health must describe the published main snapshot and the current
             # unified watch, rather than its pre-publication scan-time view.
             python -m wallet500.system_health
+            # Guard against checkout/smudge/local research rewrite drift: restore
+            # the exact Git blob bytes for inputs that will NOT be part of this
+            # atomic commit. git restore may run checkout filters; git show does
+            # not. The public dashboard serves Git blob bytes, not worktree bytes.
+            for rel in \
+              data/revival-1000-latest.json \
+              data/cex-revival-radar.json \
+              data/active-qualified-candidates.json \
+              data/active-qualified-age-gate.json \
+              data/candidate-evidence-envelope.json \
+              data/strict-validation.json \
+              data/production-status.json; do
+              git show "HEAD:$rel" > "$rel"
+            done
+            # Re-validate production guards against the exact committed inputs.
+            python -m wallet500.truth_input_preflight
+            python -m wallet500.decision_snapshot_guard
             python -m wallet500.decision_generation
             # Fail closed if the manifest claims a hash that is not actually
             # in the committed parent generation. GitHub Pages verifies these
