@@ -88,6 +88,30 @@ jobs:
         id: candidate_bridge
         run: python scripts/unified_candidate_bridge.py
 
+      # The unified verification tail can run for many minutes. Publish fresh
+      # research-only Gate observations immediately, without waiting for that
+      # tail. This never publishes REAL_ALERTS or sends Telegram messages.
+      - name: Checkpoint fresh Gate discovery before long-running verification
+        if: steps.spot_discovery.outcome == 'success' || steps.futures_discovery.outcome == 'success'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          files=()
+          if [ "${{ steps.spot_discovery.outcome }}" = success ]; then
+            files+=(data/spot-market-discovery.json data/spot-market-discovery-state.json)
+          fi
+          if [ "${{ steps.futures_discovery.outcome }}" = success ]; then
+            files+=(data/futures-market-discovery.json data/futures-market-discovery-state.json)
+          fi
+          for f in "${files[@]}"; do python -m json.tool "$f" >/dev/null; done
+          if [ "${#files[@]}" -gt 0 ]; then
+            timeout --signal=TERM --kill-after=5s 45s python scripts/atomic_publish.py \
+              --github-api-cas --attempts 3 \
+              --message 'data: early Gate research discovery checkpoint [skip ci]' \
+              "${files[@]}"
+          fi
       # CEX decision data is built before new-chain/social/research collectors.
       # Free intelligence now consumes same-run recovered canonical CEX identities,
       # so hot movers can reach fusion CURRENT in this very scan.
