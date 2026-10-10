@@ -16,6 +16,9 @@ def test_publisher_does_not_undo_solana_sanitization_before_generation():
     assert "data/candidate-evidence-envelope.json" not in committed_restore
     local_hashes = block.split("locally_generated = {", 1)[1].split("}", 1)[0]
     assert "'data/candidate-evidence-envelope.json'" in local_hashes
+    # The same safety guard also sanitizes REAL_ALERTS; hashes must be taken
+    # from the local file that enters atomic_publish, never the parent blob.
+    assert "'data/real-alerts.json'" in local_hashes
 
 
 def test_sanitized_envelope_and_generation_are_committed_atomically():
