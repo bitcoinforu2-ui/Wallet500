@@ -266,3 +266,14 @@ def test_primary_scan_ttl_matches_scheduled_10_min_cycle_and_still_fails_closed(
     assert check["status"] == "DEGRADED"
     assert check["failure_code"] == "SCAN_STALE_OR_TIMESTAMP_MISSING"
     assert check["blocks_production"] is True
+
+
+def test_decision_path_stale_runtime_is_distinct_from_missing_coverage():
+    from wallet500.system_health import _diagnose
+    now = datetime(2026, 10, 10, tzinfo=timezone.utc)
+    stale = _diagnose("decision_path", {"status": "DEGRADED", "runtime_age_seconds": 13608, "max_runtime_age_seconds": 3600}, now)
+    assert stale["failure_code"] == "DECISION_PATH_RUNTIME_STALE"
+    assert stale["recommended_action"] == "RESTORE_UNIFIED_WATCH_RUNTIME_FRESHNESS"
+    low_coverage = _diagnose("decision_path", {"status": "DEGRADED", "runtime_age_seconds": 120, "max_runtime_age_seconds": 3600, "observable_coverage_pct": 1.9}, now)
+    assert low_coverage["failure_code"] == "DECISION_PATH_NO_CURRENT_COVERAGE"
+    assert low_coverage["blocks_production"] is False
